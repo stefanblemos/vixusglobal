@@ -60,7 +60,9 @@ export function simpleInterest(
   basis: DayCountBasis,
 ): Decimal {
   if (end <= start) return ZERO;
-  return D(principal).mul(D(annualRate)).mul(dayCountFraction(start, end, basis));
+  return D(principal)
+    .mul(D(annualRate))
+    .mul(dayCountFraction(start, end, basis));
 }
 
 /** Origination fee = principal × taxa (padrão 1%). */

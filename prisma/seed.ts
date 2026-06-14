@@ -1,23 +1,30 @@
 import { PrismaClient, UserRole } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
 /**
  * Seed inicial.
- * Fase 0: cria um usuário admin de teste (sem senha ainda — login real na Fase 1).
- * Fase 1: passará a semear as empresas/donos reais (Vixus, L2, J. Monteiro...).
+ * - Cria/atualiza o usuário admin com senha (hash bcrypt) para login.
+ * - As empresas/donos reais serão semeadas após confirmação das entidades.
  */
 async function main() {
+  const email = "admin@vixusglobal.com";
+  const devPassword = process.env.SEED_ADMIN_PASSWORD ?? "vixus@2026";
+  const passwordHash = await bcrypt.hash(devPassword, 10);
+
   const admin = await prisma.user.upsert({
-    where: { email: "admin@vixusglobal.com" },
-    update: {},
+    where: { email },
+    update: { passwordHash, role: UserRole.ADMIN },
     create: {
-      email: "admin@vixusglobal.com",
+      email,
       name: "Admin Vixus",
       role: UserRole.ADMIN,
+      passwordHash,
     },
   });
-  console.log(`Seed ok — usuário admin: ${admin.email} (${admin.role})`);
+
+  console.log(`Seed ok — admin: ${admin.email} / senha: ${devPassword} (troque depois)`);
 }
 
 main()

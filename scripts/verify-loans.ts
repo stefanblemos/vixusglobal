@@ -63,7 +63,5 @@ check("Juros pagos", round(bal.interestPaid, 2).toFixed(2), "1500.00");
 check("Juros em aberto", round(bal.interestOutstanding, 2).toFixed(2), "4900.00");
 check("Total em aberto (principal + juros)", round(bal.totalOutstanding, 2).toFixed(2), "64900.00");
 
-console.log(
-  failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`,
-);
+console.log(failures === 0 ? "\nTODOS OS TESTES PASSARAM" : `\n${failures} TESTE(S) FALHARAM`);
 process.exit(failures === 0 ? 0 : 1);
