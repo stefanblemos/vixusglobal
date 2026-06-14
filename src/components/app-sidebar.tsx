@@ -13,6 +13,7 @@ import {
   Landmark,
   ReceiptText,
   PieChart,
+  Activity,
   Upload,
   LogOut,
 } from "lucide-react";
@@ -26,6 +27,7 @@ const NAV = [
   { href: "/exposure", label: "Exposure", icon: Scale },
   { href: "/ledger", label: "Ledger", icon: BookOpen },
   { href: "/bank", label: "Bank", icon: Landmark },
+  { href: "/audit", label: "Audit", icon: Activity },
   { href: "/import", label: "Import QBO", icon: Upload },
   { href: "/tax", label: "Tax", icon: ReceiptText },
   { href: "/reports", label: "Reports", icon: PieChart },
