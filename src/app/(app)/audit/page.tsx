@@ -13,6 +13,12 @@ const compact = (n: number) =>
 
 const SPIKE = 2.5; // múltiplo da média mensal que marca um possível outlier
 
+function monthEnd(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${ym}-${String(last).padStart(2, "0")}`;
+}
+
 export default async function AuditPage({
   searchParams,
 }: {
@@ -158,7 +164,17 @@ export default async function AuditPage({
                         flagged ? "bg-amber-100 font-medium text-amber-800" : "text-slate-600"
                       }`}
                     >
-                      {v == null || v === 0 ? "" : compact(v)}
+                      {v == null || v === 0 ? (
+                        ""
+                      ) : (
+                        <Link
+                          href={`/ledger?company=${company}&account=${encodeURIComponent(a.account)}&from=${ym}-01&to=${monthEnd(ym)}`}
+                          className="hover:underline"
+                          title="View transactions"
+                        >
+                          {compact(v)}
+                        </Link>
+                      )}
                     </td>
                   );
                 })}

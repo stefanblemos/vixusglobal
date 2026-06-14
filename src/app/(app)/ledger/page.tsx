@@ -9,9 +9,9 @@ const LIMIT = 200;
 export default async function LedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ company?: string; from?: string; to?: string }>;
+  searchParams: Promise<{ company?: string; from?: string; to?: string; account?: string }>;
 }) {
-  const { company, from, to } = await searchParams;
+  const { company, from, to, account } = await searchParams;
 
   const glImports = await prisma.qboImport.findMany({
     where: { reportKind: "GENERAL_LEDGER" },
@@ -74,7 +74,7 @@ export default async function LedgerPage({
           },
         }
       : {};
-  const txnWhere = { companyId: company, ...dateFilter };
+  const txnWhere = { companyId: company, ...dateFilter, ...(account ? { account } : {}) };
 
   const [comp, total, txns, accountCount, vendorCount] = await Promise.all([
     prisma.company.findUnique({ where: { id: company } }),
@@ -108,13 +108,21 @@ export default async function LedgerPage({
           {total.toLocaleString("en-US")} transactions · {accountCount.length} accounts ·{" "}
           {vendorCount.length} vendors · showing latest {Math.min(LIMIT, total)}
         </p>
+        {account && (
+          <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-[#1f3a5f]/[0.06] px-3 py-1 text-sm text-[#1f3a5f]">
+            Account: {account}
+            <a href={`/ledger?company=${company}`} className="text-slate-400 hover:text-slate-700">
+              ✕
+            </a>
+          </div>
+        )}
       </div>
 
       <DateRangeFilter
-        hidden={{ company }}
+        hidden={{ company, account }}
         from={from}
         to={to}
-        clearHref={`/ledger?company=${company}`}
+        clearHref={`/ledger?company=${company}${account ? `&account=${encodeURIComponent(account)}` : ""}`}
       />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
