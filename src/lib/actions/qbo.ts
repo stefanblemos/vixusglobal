@@ -40,6 +40,12 @@ export async function analyzeQbo(text: string): Promise<AnalyzeResult> {
   };
 }
 
+export async function deleteQboImport(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (id) await prisma.qboImport.delete({ where: { id } });
+  revalidatePath("/import");
+}
+
 export async function saveQboImport(input: {
   text: string;
   companyId: string | null;

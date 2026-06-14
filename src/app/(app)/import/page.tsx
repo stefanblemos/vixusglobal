@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ImportForm } from "@/components/import-form";
+import { deleteQboImport } from "@/lib/actions/qbo";
 
 const REPORT_LABEL: Record<string, string> = {
   BALANCE_SHEET: "Balance Sheet",
@@ -40,6 +41,7 @@ export default async function ImportPage() {
                   <th className="px-4 py-3 font-medium">Report</th>
                   <th className="px-4 py-3 font-medium">Period</th>
                   <th className="px-4 py-3 text-right font-medium">Lines</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -59,6 +61,14 @@ export default async function ImportPage() {
                     <td className="px-4 py-3 text-slate-600">{REPORT_LABEL[imp.reportKind]}</td>
                     <td className="px-4 py-3 text-slate-600">{imp.periodLabel}</td>
                     <td className="px-4 py-3 text-right text-slate-600">{imp._count.lines}</td>
+                    <td className="px-4 py-3 text-right">
+                      <form action={deleteQboImport}>
+                        <input type="hidden" name="id" value={imp.id} />
+                        <button className="text-xs text-slate-400 hover:text-red-600">
+                          Delete
+                        </button>
+                      </form>
+                    </td>
                   </tr>
                 ))}
               </tbody>
