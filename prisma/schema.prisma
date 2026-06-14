@@ -173,14 +173,22 @@ model TaxReturn {
   companyId    String?
   company      Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
   matchedName  String? // nome da empresa lido no IR
+  taxId        String? // EIN/CNPJ/NIF da entidade
   year         Int?
   jurisdiction String?
   entityType   String?
   taxTreatment String?
   taxForm      String? // ex.: "Form 1120-S", "1065", "ECF"
+  city         String?
+  state        String?
+  preparer     String? // contador/escritório que preparou
+  responsible  String? // ex.: Partnership Representative / responsável
+  ordinaryIncome Decimal? @db.Decimal(20, 2)
+  totalIncome    Decimal? @db.Decimal(20, 2)
+  netIncome      Decimal? @db.Decimal(20, 2)
   confidence   String?
   summary      String?
-  owners       Json? // [{ name, ownershipPct, role }]
+  owners       Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
   status       TaxReturnStatus @default(ANALYZED)
   createdAt    DateTime        @default(now())
 }

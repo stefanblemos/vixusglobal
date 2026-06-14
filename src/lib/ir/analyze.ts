@@ -5,16 +5,26 @@ import { z } from "zod";
 // Extração estruturada de um IR (declaração de imposto) — sócios + forma de tributação.
 export const irOwnerSchema = z.object({
   name: z.string(),
+  taxId: z.string().nullable(), // SSN/CPF/EIN do sócio — será mascarado ao salvar
   ownershipPct: z.number().nullable(),
+  allocatedIncome: z.number().nullable(), // renda alocada ao sócio (K-1, etc.)
   role: z.string().nullable(),
 });
 
 export const irExtractionSchema = z.object({
   companyName: z.string().nullable(),
+  taxId: z.string().nullable(), // EIN/CNPJ/NIF da entidade
   jurisdiction: z.enum(["US", "BR", "PT", "OTHER"]),
   year: z.number().nullable(),
   taxForm: z.string().nullable(),
   entityType: z.string().nullable(),
+  city: z.string().nullable(),
+  state: z.string().nullable(),
+  preparer: z.string().nullable(),
+  responsible: z.string().nullable(), // Partnership Representative / responsável
+  ordinaryIncome: z.number().nullable(),
+  totalIncome: z.number().nullable(),
+  netIncome: z.number().nullable(),
   taxTreatment: z.enum([
     "DISREGARDED",
     "PARTNERSHIP",
@@ -39,16 +49,21 @@ export type IrExtraction = z.infer<typeof irExtractionSchema>;
 const PROMPT = `You are a tax analyst for a multinational holding (US, Brazil, Portugal).
 Read this income tax return (IR) and extract, strictly from what the document shows:
 
-1) The company it belongs to (legal name) and the tax year.
+1) The company it belongs to (legal name), its tax id (EIN / CNPJ / NIF), and the tax year.
 2) The tax form / return type (e.g. "Form 1120" = C-Corp, "Form 1120-S" = S-Corp,
    "Form 1065" = Partnership, "Schedule C" = sole proprietor/disregarded; Brazil
    "ECF"/DIRPJ with Lucro Real/Presumido or Simples Nacional/MEI; Portugal IRC
    Regime Geral/Simplificado).
 3) From the form type, the tax treatment — map to one of the allowed enum values.
-4) The legal entity type if stated.
-5) The partners/shareholders (sócios): for each, name, ownership percentage if shown
-   (e.g. from Schedule K-1, Schedule G, or a shareholders/quadro societário section),
-   and their role. Use null for a percentage you cannot read — never guess a number.
+4) The legal entity type if stated, and the city/state of the entity.
+5) Headline financials, as numbers (no currency symbols, null if not shown):
+   ordinaryIncome (ordinary business income), totalIncome, netIncome.
+6) Who prepared the return (preparer firm/person) and the responsible party
+   (e.g. Partnership Representative, responsável legal).
+7) The partners/shareholders (sócios): for each, name, their tax id (SSN/CPF/EIN) if
+   shown, ownership percentage (e.g. from Schedule K-1, Schedule G, or the quadro
+   societário), the income allocated to them (allocatedIncome), and their role. Use null
+   for any number you cannot read — never guess.
 
 Be faithful to the document. Set confidence to "low" if the document is unclear or a
 field is inferred rather than stated. Put any caveats in the summary.`;

@@ -28,28 +28,63 @@ export async function analyzeAndStoreTaxReturn(
   }
 
   const companies = await prisma.company.findMany({
-    select: { id: true, legalName: true, tradeName: true, aliases: true },
+    select: { id: true, legalName: true, tradeName: true, aliases: true, taxId: true },
   });
   const companyId = data.companyName ? matchCompany(data.companyName, companies) : null;
+
+  // Sócios: mascara o SSN/CPF (guarda só os últimos 4).
+  const owners = data.owners.map((o) => ({
+    name: o.name,
+    taxIdLast4: maskTaxId(o.taxId),
+    ownershipPct: o.ownershipPct,
+    allocatedIncome: o.allocatedIncome,
+    role: o.role,
+  }));
 
   const created = await prisma.taxReturn.create({
     data: {
       fileName: file.name,
       companyId,
       matchedName: data.companyName,
+      taxId: data.taxId,
       year: data.year,
       jurisdiction: data.jurisdiction,
       entityType: data.entityType,
       taxTreatment: data.taxTreatment,
       taxForm: data.taxForm,
+      city: data.city,
+      state: data.state,
+      preparer: data.preparer,
+      responsible: data.responsible,
+      ordinaryIncome: data.ordinaryIncome,
+      totalIncome: data.totalIncome,
+      netIncome: data.netIncome,
       confidence: data.confidence,
       summary: data.summary,
-      owners: data.owners,
+      owners,
     },
   });
 
+  // Preenche o Tax ID (EIN) oficial da empresa, se casou e ainda não tem.
+  if (companyId && data.taxId) {
+    const matched = companies.find((c) => c.id === companyId);
+    if (matched && !matched.taxId) {
+      await prisma.company.update({ where: { id: companyId }, data: { taxId: data.taxId } });
+      revalidatePath(`/companies/${companyId}`);
+    }
+  }
+
   revalidatePath("/tax");
   return { id: created.id };
+}
+
+// Mantém só os últimos 4 dígitos de um SSN/CPF/EIN (dado sensível).
+function maskTaxId(raw: string | null): string | null {
+  if (!raw) return null;
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  const last4 = digits.slice(-4);
+  return digits.length >= 9 ? `***-**-${last4}` : `…${last4}`;
 }
 
 // Aplica a classificação extraída ao histórico de tributação por ano da empresa.
