@@ -158,6 +158,31 @@ model Company {
   ledgerTxns      LedgerTxn[]
   bankStatements  BankStatement[]
   taxStatuses     CompanyTaxStatus[]
+  taxReturns      TaxReturn[]
+}
+
+enum TaxReturnStatus {
+  ANALYZED
+  APPLIED
+}
+
+// IR (declaração) enviado pelo operador; a Claude extrai sócios + forma de tributação.
+model TaxReturn {
+  id           String          @id @default(cuid())
+  fileName     String
+  companyId    String?
+  company      Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  matchedName  String? // nome da empresa lido no IR
+  year         Int?
+  jurisdiction String?
+  entityType   String?
+  taxTreatment String?
+  taxForm      String? // ex.: "Form 1120-S", "1065", "ECF"
+  confidence   String?
+  summary      String?
+  owners       Json? // [{ name, ownershipPct, role }]
+  status       TaxReturnStatus @default(ANALYZED)
+  createdAt    DateTime        @default(now())
 }
 
 // Forma de tributação (independe do tipo legal — ex.: LLC tributada como S-corp).
