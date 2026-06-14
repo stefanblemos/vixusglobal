@@ -70,3 +70,242 @@ model VerificationToken {
 
   @@unique([identifier, token])
 }
+
+// ─────────────────────────────────────────────────────────────
+// Domínio — empresas, donos e ownership (recursivo / UBO)
+// ─────────────────────────────────────────────────────────────
+
+enum PartyKind {
+  PERSON
+  ENTITY
+}
+
+enum Jurisdiction {
+  PT
+  BR
+  US
+  OTHER
+}
+
+// Tipologias (flat — a combinação válida com a jurisdição é checada na app/Zod).
+enum EntityType {
+  LLC
+  C_CORP
+  S_CORP
+  PA
+  LP
+  LLP
+  SOLE_PROP
+  LTDA
+  SLU
+  SA
+  MEI
+  EI
+  LDA
+  UNIPESSOAL_LDA
+  ENI
+  OTHER
+}
+
+enum CompanyRelationship {
+  GROUP_MEMBER
+  MANAGED_ONLY
+}
+
+enum CompanyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model Party {
+  id              String       @id @default(cuid())
+  kind            PartyKind
+  name            String
+  taxJurisdiction Jurisdiction @default(OTHER)
+  taxId           String?
+  notes           String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  ownerStakes Ownership[] @relation("OwnerParty")
+  ownedStakes Ownership[] @relation("OwnedParty")
+}
+
+model Company {
+  id            String              @id @default(cuid())
+  legalName     String
+  tradeName     String?
+  jurisdiction  Jurisdiction
+  state         String? // ex.: "FL"
+  entityType    EntityType
+  taxId         String? // EIN / NIF / CNPJ
+  fiscalYearEnd String              @default("12-31")
+  baseCurrency  String              @default("USD")
+  relationship  CompanyRelationship
+  status        CompanyStatus       @default(ACTIVE)
+  notes         String?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  ownerStakes     Ownership[]        @relation("OwnerCompany")
+  ownedStakes     Ownership[]        @relation("OwnedCompany")
+  accounts        LedgerAccount[]
+  journalEntries  JournalEntry[]
+  loansAsLender   IntercompanyLoan[] @relation("Lender")
+  loansAsBorrower IntercompanyLoan[] @relation("Borrower")
+}
+
+/// Aresta de participação genérica. Dono e possuído podem ser Party OU Company,
+/// permitindo a árvore recursiva até o beneficiário final (UBO).
+/// Regra (validada na app): exatamente UM owner* e UM owned* preenchidos.
+model Ownership {
+  id String @id @default(cuid())
+
+  ownerPartyId   String?
+  ownerParty     Party?   @relation("OwnerParty", fields: [ownerPartyId], references: [id])
+  ownerCompanyId String?
+  ownerCompany   Company? @relation("OwnerCompany", fields: [ownerCompanyId], references: [id])
+
+  ownedCompanyId String?
+  ownedCompany   Company? @relation("OwnedCompany", fields: [ownedCompanyId], references: [id])
+  ownedPartyId   String?
+  ownedParty     Party?   @relation("OwnedParty", fields: [ownedPartyId], references: [id])
+
+  percentage    Decimal   @db.Decimal(9, 6) // 0–100
+  shareClass    String?
+  effectiveDate DateTime  @default(now())
+  endDate       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ledger — plano de contas e lançamentos (partida dobrada)
+// ─────────────────────────────────────────────────────────────
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalSource {
+  MANUAL
+  QBO_IMPORT
+  LOAN
+}
+
+model LedgerAccount {
+  id        String         @id @default(cuid())
+  companyId String
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  code      String
+  name      String
+  type      AccountType
+  parentId  String?
+  parent    LedgerAccount? @relation("AccountTree", fields: [parentId], references: [id])
+  children  LedgerAccount[] @relation("AccountTree")
+  isActive  Boolean        @default(true)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  lines JournalLine[]
+
+  @@unique([companyId, code])
+}
+
+model JournalEntry {
+  id          String        @id @default(cuid())
+  companyId   String
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  date        DateTime
+  description String?
+  source      JournalSource @default(MANUAL)
+  reference   String?
+  loanTxnId   String?       @unique // se originado de uma transação de empréstimo
+  createdAt   DateTime      @default(now())
+
+  lines JournalLine[]
+}
+
+model JournalLine {
+  id             String       @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        LedgerAccount @relation(fields: [accountId], references: [id])
+  debit          Decimal      @default(0) @db.Decimal(20, 4)
+  credit         Decimal      @default(0) @db.Decimal(20, 4)
+  currency       String       @default("USD")
+  fxRate         Decimal?     @db.Decimal(18, 8)
+  memo           String?
+}
+
+// ─────────────────────────────────────────────────────────────
+// Empréstimos intercompany (juros simples + origination fee)
+// ─────────────────────────────────────────────────────────────
+
+enum LoanStatus {
+  ACTIVE
+  PAID
+  DEFAULTED
+  CANCELLED
+}
+
+enum LoanInterestMethod {
+  SIMPLE
+  COMPOUND
+}
+
+enum DayCountBasis {
+  ACT_365
+  ACT_360
+  D30_360
+}
+
+enum LoanTxnType {
+  DISBURSEMENT
+  ORIGINATION_FEE
+  INTEREST_ACCRUAL
+  REPAYMENT_PRINCIPAL
+  REPAYMENT_INTEREST
+  ADJUSTMENT
+}
+
+model IntercompanyLoan {
+  id                String   @id @default(cuid())
+  lenderCompanyId   String
+  lender            Company  @relation("Lender", fields: [lenderCompanyId], references: [id])
+  borrowerCompanyId String
+  borrower          Company  @relation("Borrower", fields: [borrowerCompanyId], references: [id])
+
+  principal          Decimal            @db.Decimal(20, 4)
+  currency           String             @default("USD")
+  annualInterestRate Decimal            @db.Decimal(9, 6) // fração anual: 0.085 = 8,5%
+  interestMethod     LoanInterestMethod @default(SIMPLE)
+  dayCountBasis      DayCountBasis      @default(ACT_365)
+  originationFeeRate Decimal            @default(0.01) @db.Decimal(9, 6) // configurável; padrão 1%
+
+  startDate    DateTime
+  maturityDate DateTime?
+  status       LoanStatus @default(ACTIVE)
+  notes        String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  transactions LoanTransaction[]
+}
+
+model LoanTransaction {
+  id     String           @id @default(cuid())
+  loanId String
+  loan   IntercompanyLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  type      LoanTxnType
+  amount    Decimal     @db.Decimal(20, 4)
+  date      DateTime
+  memo      String?
+  createdAt DateTime    @default(now())
+}
