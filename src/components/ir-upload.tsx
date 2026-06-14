@@ -1,21 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { useActionState } from "react";
-import { analyzeAndStoreTaxReturn, type IrState } from "@/lib/actions/ir";
+import { useRouter } from "next/navigation";
 
-const HARD_LIMIT_MB = 48; // logo abaixo do limite do Server Action (50 MB)
-const CLAUDE_LIMIT_MB = 32; // limite prático de PDF da Claude (~32 MB / 100 páginas)
+const HARD_LIMIT_MB = 48; // limite de upload
+const CLAUDE_LIMIT_MB = 32; // limite prático de tamanho da Claude
 
 export function IrUpload() {
-  const [state, formAction, pending] = useActionState<IrState, FormData>(
-    analyzeAndStoreTaxReturn,
-    undefined,
-  );
+  const router = useRouter();
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [sizeMsg, setSizeMsg] = useState<{ text: string; hard: boolean } | null>(null);
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     setSizeMsg(null);
+    setError(null);
     const f = e.target.files?.[0];
     if (!f) return;
     const mb = f.size / (1024 * 1024);
@@ -26,22 +25,50 @@ export function IrUpload() {
       });
     } else if (mb > CLAUDE_LIMIT_MB) {
       setSizeMsg({
-        text: `This PDF is ${mb.toFixed(0)} MB. Claude's limit is ~${CLAUDE_LIMIT_MB} MB / 100 pages — it may be rejected. If so, compress or split it.`,
+        text: `This PDF is ${mb.toFixed(0)} MB. Claude's limit is ~${CLAUDE_LIMIT_MB} MB — it may be rejected. If so, compress it.`,
         hard: false,
       });
+    }
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const file = fd.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      setError("Choose a PDF file first.");
+      return;
+    }
+    setPending(true);
+    try {
+      const res = await fetch("/api/tax-returns/analyze", { method: "POST", body: fd });
+      const json = (await res.json().catch(() => ({}))) as { id?: string; error?: string };
+      if (!res.ok) {
+        setError(json.error ?? `Upload failed (${res.status}).`);
+      } else {
+        form.reset();
+        setSizeMsg(null);
+        router.refresh();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setPending(false);
     }
   }
 
   const blocked = sizeMsg?.hard ?? false;
 
   return (
-    <form action={formAction} className="rounded-xl border border-slate-200 bg-white p-5">
+    <form onSubmit={onSubmit} className="rounded-xl border border-slate-200 bg-white p-5">
       <label className="mb-1 block text-sm font-medium text-slate-700">
         Upload an income tax return (PDF)
       </label>
       <p className="mb-3 text-sm text-slate-500">
         Claude reads it and extracts the partners (sócios) and the tax treatment — no tax experience
-        needed.
+        needed. Returns over 100 pages are read up to the first 100.
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <input
@@ -62,8 +89,8 @@ export function IrUpload() {
       </div>
       {pending && (
         <p className="mt-3 text-sm text-slate-500">
-          Reading the document and extracting partners and tax treatment — this can take a few
-          seconds.
+          Reading the document and extracting partners and tax treatment — this can take up to a
+          minute for large returns.
         </p>
       )}
       {sizeMsg && (
@@ -71,7 +98,7 @@ export function IrUpload() {
           {sizeMsg.text}
         </p>
       )}
-      {state?.error && <p className="mt-3 text-sm text-red-600">{state.error}</p>}
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </form>
   );
 }

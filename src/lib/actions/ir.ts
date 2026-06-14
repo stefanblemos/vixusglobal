@@ -3,8 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { analyzeTaxReturnPdf } from "@/lib/ir/analyze";
-import { matchCompany } from "@/lib/qbo/match";
+import { ingestTaxReturn } from "@/lib/ir/ingest";
 import { ALL_ENTITY_TYPE_VALUES, ALL_TAX_TREATMENT_VALUES } from "@/lib/catalog";
 import { normalizeName } from "@/lib/qbo/match";
 import { EntityType, Jurisdiction, PartyKind, TaxTreatment } from "@prisma/client";
@@ -20,77 +19,11 @@ export async function analyzeAndStoreTaxReturn(
   if (file.type && file.type !== "application/pdf")
     return { error: "Only PDF files are supported." };
 
-  const buf = Buffer.from(await file.arrayBuffer());
-  const base64 = buf.toString("base64");
-
-  let data;
-  try {
-    data = await analyzeTaxReturnPdf(base64);
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : "Analysis failed." };
-  }
-
-  // Texto vazio "" (vindo da extração) vira null no banco.
-  const s = (v: string) => (v && v.trim() ? v.trim() : null);
-
-  const companies = await prisma.company.findMany({
-    select: { id: true, legalName: true, tradeName: true, aliases: true, taxId: true },
-  });
-  const companyId = s(data.companyName) ? matchCompany(data.companyName, companies) : null;
-
-  // Sócios: mascara o SSN/CPF (guarda só os últimos 4).
-  const owners = data.owners.map((o) => ({
-    name: o.name,
-    taxIdLast4: maskTaxId(o.taxId),
-    ownershipPct: o.ownershipPct,
-    allocatedIncome: o.allocatedIncome,
-    role: s(o.role),
-  }));
-
-  // Projeta os 3 números universais a partir das linhas (figures) para acesso rápido.
-  const fig = (k: string) => data.figures.find((f) => f.key === k)?.value ?? null;
-
-  const created = await prisma.taxReturn.create({
-    data: {
-      fileName: file.name,
-      companyId,
-      matchedName: s(data.companyName),
-      taxId: s(data.taxId),
-      year: data.year,
-      jurisdiction: data.jurisdiction,
-      entityType: s(data.entityType),
-      taxTreatment: data.taxTreatment,
-      taxForm: s(data.taxForm),
-      city: s(data.city),
-      state: s(data.state),
-      address: s(data.address),
-      businessActivity: s(data.businessActivity),
-      incorporationDate: s(data.incorporationDate),
-      preparer: s(data.preparer),
-      responsible: s(data.responsible),
-      ordinaryIncome: fig("ORDINARY_INCOME"),
-      totalIncome: fig("TOTAL_INCOME"),
-      netIncome: fig("NET_INCOME"),
-      figures: data.figures,
-      confidence: data.confidence,
-      summary: data.summary,
-      owners,
-      pdf: buf,
-      pdfSize: buf.length,
-    },
-  });
-
-  // Preenche o Tax ID (EIN) oficial da empresa, se casou e ainda não tem.
-  if (companyId && s(data.taxId)) {
-    const matched = companies.find((c) => c.id === companyId);
-    if (matched && !matched.taxId) {
-      await prisma.company.update({ where: { id: companyId }, data: { taxId: s(data.taxId) } });
-      revalidatePath(`/companies/${companyId}`);
-    }
-  }
-
+  const res = await ingestTaxReturn(file.name, Buffer.from(await file.arrayBuffer()));
+  if (res.error) return { error: res.error };
   revalidatePath("/tax");
-  return { id: created.id };
+  if (res.companyId) revalidatePath(`/companies/${res.companyId}`);
+  return { id: res.id };
 }
 
 // Cria ownership (carimbado pelo ano do IR) a partir dos sócios extraídos.
@@ -140,15 +73,6 @@ export async function deleteTaxReturn(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.taxReturn.delete({ where: { id } });
   revalidatePath("/tax");
-}
-
-// Mantém só os últimos 4 dígitos de um SSN/CPF/EIN (dado sensível).
-function maskTaxId(raw: string | null): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return null;
-  const last4 = digits.slice(-4);
-  return digits.length >= 9 ? `***-**-${last4}` : `…${last4}`;
 }
 
 // Aplica a classificação extraída ao histórico de tributação por ano da empresa.
