@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { labelForTaxTreatment, labelForJurisdiction } from "@/lib/catalog";
 import { normalizeName } from "@/lib/qbo/match";
+import { pnlTotals } from "@/lib/qbo/pnl";
 
 type Owner = {
   name: string;
@@ -76,6 +77,32 @@ export default async function CompanyYearPage({
     select: { amount: true },
   });
   const depTotal = depTxns.length ? depTxns.reduce((s, t) => s + Number(t.amount), 0) : null;
+
+  // P&L do QBO do mesmo ano, para o cruzamento.
+  const pnlImport = await prisma.qboImport.findFirst({
+    where: {
+      companyId: id,
+      reportKind: "PROFIT_AND_LOSS",
+      periodLabel: { contains: String(year) },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  const pnlLines = pnlImport
+    ? await prisma.qboImportLine.findMany({ where: { importId: pnlImport.id, lineType: "TOTAL" } })
+    : [];
+  const pnl = pnlTotals(pnlLines);
+
+  // Compara um valor do IR com o equivalente nos livros (QBO).
+  function compare(irVal: number | null, qboVal: number | null) {
+    if (irVal == null && qboVal == null) return { status: "none" as const };
+    if (irVal == null) return { status: "qboOnly" as const };
+    if (qboVal == null) return { status: "irOnly" as const };
+    const diff = qboVal - irVal;
+    const tol = Math.max(1, Math.abs(irVal) * 0.01);
+    return Math.abs(diff) <= tol
+      ? { status: "match" as const, diff }
+      : { status: "diff" as const, diff };
+  }
 
   const ccy = company.baseCurrency;
 
@@ -199,6 +226,65 @@ export default async function CompanyYearPage({
                 </div>
               )}
 
+              {/* IR × QBO */}
+              <div>
+                <div className="mb-1 text-sm font-medium text-slate-700">
+                  Tax return vs books (QBO {year})
+                </div>
+                {!pnlImport && (
+                  <p className="mb-1 text-xs text-amber-600">
+                    No QBO Profit &amp; Loss on file for {year} — import it to compare income.
+                  </p>
+                )}
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-slate-500">
+                      <tr>
+                        <th className="px-4 py-2 font-medium">Figure</th>
+                        <th className="px-4 py-2 text-right font-medium">Per the IR</th>
+                        <th className="px-4 py-2 text-right font-medium">Per the books (QBO)</th>
+                        <th className="px-4 py-2 text-right font-medium">Difference</th>
+                        <th className="px-4 py-2 text-right font-medium">Check</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {[
+                        {
+                          label: "Total income / revenue",
+                          ir: figVal("TOTAL_INCOME"),
+                          qbo: pnl.income,
+                        },
+                        {
+                          label: "Net income",
+                          ir: figVal("NET_INCOME") ?? figVal("TAXABLE_INCOME"),
+                          qbo: pnl.netIncome,
+                        },
+                        { label: "Depreciation", ir: figVal("DEPRECIATION"), qbo: depTotal },
+                      ].map((row) => {
+                        const c = compare(row.ir, row.qbo);
+                        return (
+                          <tr key={row.label}>
+                            <td className="px-4 py-2 text-slate-700">{row.label}</td>
+                            <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                              {money(row.ir, ccy)}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                              {money(row.qbo, ccy)}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums text-slate-500">
+                              {"diff" in c && c.diff != null ? money(c.diff, ccy) : "—"}
+                            </td>
+                            <td className="px-4 py-2 text-right">
+                              <CmpBadge status={c.status} />
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
               {r.summary && <p className="text-sm text-slate-500">{r.summary}</p>}
 
               <div>
@@ -269,6 +355,20 @@ function Kpi({ label, value }: { label: string; value: string }) {
       <div className="mt-1 text-xl font-semibold text-slate-800">{value}</div>
     </div>
   );
+}
+
+function CmpBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    match: { label: "matches ✓", cls: "bg-green-50 text-green-700" },
+    diff: { label: "differs", cls: "bg-red-50 text-red-700" },
+    irOnly: { label: "not in books", cls: "bg-amber-50 text-amber-700" },
+    qboOnly: { label: "not on IR", cls: "bg-amber-50 text-amber-700" },
+    none: { label: "no data", cls: "bg-slate-100 text-slate-400" },
+  };
+  const m = map[status];
+  return m ? (
+    <span className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${m.cls}`}>{m.label}</span>
+  ) : null;
 }
 
 function ReconBadge({ rec }: { rec: { status: string; pct?: number } }) {
