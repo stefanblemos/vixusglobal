@@ -132,6 +132,13 @@ export async function applyTaxReturnOwnership(formData: FormData): Promise<void>
   redirect(`/tax?msg=owners-${created}`);
 }
 
+// Apaga um IR analisado (limpeza de testes).
+export async function deleteTaxReturn(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (id) await prisma.taxReturn.delete({ where: { id } });
+  revalidatePath("/tax");
+}
+
 // Mantém só os últimos 4 dígitos de um SSN/CPF/EIN (dado sensível).
 function maskTaxId(raw: string | null): string | null {
   if (!raw) return null;

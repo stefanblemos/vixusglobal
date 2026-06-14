@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { IrUpload } from "@/components/ir-upload";
-import { applyTaxReturnClassification, applyTaxReturnOwnership } from "@/lib/actions/ir";
+import {
+  applyTaxReturnClassification,
+  applyTaxReturnOwnership,
+  deleteTaxReturn,
+} from "@/lib/actions/ir";
 import {
   labelForTaxTreatment,
   labelForJurisdiction,
@@ -190,6 +194,12 @@ export default async function TaxPage({
                       <div className="font-medium text-slate-800">
                         {r.taxTreatment ? labelForTaxTreatment(r.taxTreatment) : "—"}
                       </div>
+                      <form action={deleteTaxReturn} className="mt-1">
+                        <input type="hidden" name="id" value={r.id} />
+                        <button className="text-xs text-slate-400 hover:text-red-600">
+                          Delete
+                        </button>
+                      </form>
                     </div>
                   </div>
 
