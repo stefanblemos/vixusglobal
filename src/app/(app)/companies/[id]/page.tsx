@@ -13,6 +13,7 @@ import {
   labelForTaxTreatment,
 } from "@/lib/catalog";
 import { computeEffectiveOwners, edgesFromOwnerships } from "@/lib/ownership/effective";
+import { buildFixedAssetRegister } from "@/lib/assets/register";
 
 const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
 const money = (v: unknown, ccy = "USD") =>
@@ -29,6 +30,7 @@ const TABS = [
   { key: "ownership", label: "Ownership" },
   { key: "history", label: "History & Tax" },
   { key: "financials", label: "Financials" },
+  { key: "assets", label: "Assets" },
 ] as const;
 
 export default async function CompanyDetailPage({
@@ -134,17 +136,17 @@ export default async function CompanyDetailPage({
     ]),
   ].sort((a, b) => b - a);
 
-  // Snapshot do último Balance Sheet do QBO (Ativos / Passivos / Patrimônio).
+  // Último Balance Sheet do QBO — snapshot (Ativos/Passivos/Patrimônio) + registro de ativos fixos.
   const latestBS = qboImports.find((q) => q.reportKind === "BALANCE_SHEET") ?? null;
   const bsLines = latestBS
-    ? await prisma.qboImportLine.findMany({ where: { importId: latestBS.id, lineType: "TOTAL" } })
+    ? await prisma.qboImportLine.findMany({ where: { importId: latestBS.id } })
     : [];
   const bsSubject = (label: string) => {
     const m = label.match(/^total\s+(?:for|para|do|da|de)\s+(.+)$/i);
     return (m?.[1] ?? label.replace(/^total\s+/i, "")).trim().toLowerCase();
   };
   const bsTotal = (key: string) => {
-    const l = bsLines.find((x) => bsSubject(x.label) === key);
+    const l = bsLines.find((x) => x.lineType === "TOTAL" && bsSubject(x.label) === key);
     return l?.value != null ? Number(l.value) : null;
   };
   const bs = latestBS
@@ -155,6 +157,23 @@ export default async function CompanyDetailPage({
         period: latestBS.periodLabel,
       }
     : null;
+  const assetReg = buildFixedAssetRegister(bsLines);
+
+  // Despesa de depreciação por ano (do GL) — para conferir contra o IR.
+  const depTxns = await prisma.ledgerTxn.findMany({
+    where: {
+      companyId: id,
+      account: { contains: "epreciat" },
+      NOT: { account: { contains: "ccumulated" } },
+    },
+    select: { date: true, amount: true },
+  });
+  const depByYear = new Map<number, number>();
+  for (const t of depTxns) {
+    const y = t.date.getUTCFullYear();
+    depByYear.set(y, (depByYear.get(y) ?? 0) + Number(t.amount));
+  }
+  const depYears = [...depByYear.keys()].sort((a, b) => b - a);
 
   return (
     <div className="space-y-6">
@@ -581,6 +600,97 @@ export default async function CompanyDetailPage({
               )}
             </div>
           </section>
+        </div>
+      )}
+
+      {/* ───────── Assets ───────── */}
+      {tab === "assets" && (
+        <div className="space-y-6">
+          {!assetReg ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              No fixed assets in the latest balance sheet.
+            </div>
+          ) : (
+            <>
+              <div>
+                <div className="grid grid-cols-3 gap-3">
+                  <Kpi label="Gross cost" value={money(assetReg.gross, company.baseCurrency)} />
+                  <Kpi
+                    label="Accumulated depreciation"
+                    value={money(assetReg.accDep, company.baseCurrency)}
+                  />
+                  <Kpi label="Net book value" value={money(assetReg.net, company.baseCurrency)} />
+                </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  Fixed assets from the latest balance sheet (QBO){bs ? ` · ${bs.period}` : ""}
+                </p>
+              </div>
+
+              <section className="space-y-3">
+                <h2 className="text-lg font-medium text-slate-800">Fixed asset register</h2>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-medium">Asset</th>
+                        <th className="px-4 py-3 text-right font-medium">Cost</th>
+                        <th className="px-4 py-3 text-right font-medium">Accum. depreciation</th>
+                        <th className="px-4 py-3 text-right font-medium">Net book value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {assetReg.rows.map((a, i) => (
+                        <tr key={i}>
+                          <td className="px-4 py-3 text-slate-700">{a.name}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-600">
+                            {money(a.cost, company.baseCurrency)}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-500">
+                            {a.accDep ? money(a.accDep, company.baseCurrency) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-slate-800">
+                            {money(a.net, company.baseCurrency)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
+
+          {depYears.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-medium text-slate-800">
+                Depreciation expense by year (GL)
+              </h2>
+              <p className="text-sm text-slate-500">
+                From the general ledger — compare against the depreciation deducted on each
+                year&apos;s tax return.
+              </p>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Year</th>
+                      <th className="px-4 py-3 text-right font-medium">Depreciation expense</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {depYears.map((y) => (
+                      <tr key={y}>
+                        <td className="px-4 py-3 font-medium text-slate-800">{y}</td>
+                        <td className="px-4 py-3 text-right tabular-nums text-slate-800">
+                          {money(depByYear.get(y), company.baseCurrency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
         </div>
       )}
     </div>
