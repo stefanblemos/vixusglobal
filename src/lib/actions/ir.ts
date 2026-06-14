@@ -44,6 +44,9 @@ export async function analyzeAndStoreTaxReturn(
     role: o.role,
   }));
 
+  // Projeta os 3 números universais a partir das linhas (figures) para acesso rápido.
+  const fig = (k: string) => data.figures.find((f) => f.key === k)?.value ?? null;
+
   const created = await prisma.taxReturn.create({
     data: {
       fileName: file.name,
@@ -57,11 +60,15 @@ export async function analyzeAndStoreTaxReturn(
       taxForm: data.taxForm,
       city: data.city,
       state: data.state,
+      address: data.address,
+      businessActivity: data.businessActivity,
+      incorporationDate: data.incorporationDate,
       preparer: data.preparer,
       responsible: data.responsible,
-      ordinaryIncome: data.ordinaryIncome,
-      totalIncome: data.totalIncome,
-      netIncome: data.netIncome,
+      ordinaryIncome: fig("ORDINARY_INCOME"),
+      totalIncome: fig("TOTAL_INCOME"),
+      netIncome: fig("NET_INCOME"),
+      figures: data.figures,
       confidence: data.confidence,
       summary: data.summary,
       owners,

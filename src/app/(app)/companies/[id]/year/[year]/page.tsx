@@ -13,6 +13,8 @@ type Owner = {
   role: string | null;
 };
 
+type Figure = { key: string; label: string; value: number | null; line: string | null };
+
 const money = (v: unknown, ccy = "USD") =>
   v == null
     ? "—"
@@ -122,6 +124,8 @@ export default async function CompanyYearPage({
       ) : (
         taxReturns.map((r) => {
           const owners = (r.owners as Owner[] | null) ?? [];
+          const figures = (r.figures as Figure[] | null) ?? [];
+          const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
           return (
             <section key={r.id} className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -141,17 +145,22 @@ export default async function CompanyYearPage({
               </div>
 
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <Kpi label="Ordinary income" value={money(r.ordinaryIncome, ccy)} />
-                <Kpi label="Total income" value={money(r.totalIncome, ccy)} />
-                <Kpi label="Net income" value={money(r.netIncome, ccy)} />
+                <Kpi
+                  label="Total income"
+                  value={money(figVal("TOTAL_INCOME") ?? r.totalIncome, ccy)}
+                />
+                <Kpi label="Taxable income" value={money(figVal("TAXABLE_INCOME"), ccy)} />
+                <Kpi label="Total tax" value={money(figVal("TOTAL_TAX"), ccy)} />
                 <Kpi label="Depreciation (GL)" value={money(depTotal, ccy)} />
               </div>
 
               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
                 <Field label="EIN / Tax ID">{r.taxId ?? "—"}</Field>
                 <Field label="Location">
-                  {r.state ? `${r.city ? `${r.city}, ` : ""}${r.state}` : "—"}
+                  {r.address ?? (r.state ? `${r.city ? `${r.city}, ` : ""}${r.state}` : "—")}
                 </Field>
+                <Field label="Business activity">{r.businessActivity ?? "—"}</Field>
+                <Field label="Incorporated">{r.incorporationDate ?? "—"}</Field>
                 <Field label="Responsible">{r.responsible ?? "—"}</Field>
                 <Field label="Preparer">{r.preparer ?? "—"}</Field>
                 <Field label="Confidence">{r.confidence ?? "—"}</Field>
@@ -160,11 +169,37 @@ export default async function CompanyYearPage({
                 </Field>
               </div>
 
-              {r.summary && (
-                <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
-                  {r.summary}
+              {figures.length > 0 && (
+                <div>
+                  <div className="mb-1 text-sm font-medium text-slate-700">
+                    Tax return — line items
+                  </div>
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                          <th className="px-4 py-2 font-medium">Item</th>
+                          <th className="px-4 py-2 font-medium">Form line</th>
+                          <th className="px-4 py-2 text-right font-medium">Amount</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {figures.map((f, i) => (
+                          <tr key={i}>
+                            <td className="px-4 py-2 text-slate-700">{f.label}</td>
+                            <td className="px-4 py-2 text-slate-400">{f.line ?? "—"}</td>
+                            <td className="px-4 py-2 text-right tabular-nums text-slate-800">
+                              {money(f.value, ccy)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
+
+              {r.summary && <p className="text-sm text-slate-500">{r.summary}</p>}
 
               <div>
                 <div className="mb-1 text-sm font-medium text-slate-700">

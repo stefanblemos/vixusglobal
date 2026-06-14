@@ -11,6 +11,32 @@ export const irOwnerSchema = z.object({
   role: z.string().nullable(),
 });
 
+// Chaves normalizadas para os números do IR (permitem comparar IR × QBO).
+export const FIGURE_KEYS = [
+  "GROSS_RECEIPTS",
+  "COST_OF_GOODS",
+  "OTHER_INCOME",
+  "TOTAL_INCOME",
+  "ORDINARY_INCOME",
+  "TOTAL_DEDUCTIONS",
+  "DEPRECIATION",
+  "TAXABLE_INCOME",
+  "NET_INCOME",
+  "TOTAL_TAX",
+  "ESTIMATED_PAYMENTS",
+  "TAX_DUE",
+  "TAX_REFUND",
+  "STATE_TAX",
+  "OTHER",
+] as const;
+
+export const irFigureSchema = z.object({
+  key: z.enum(FIGURE_KEYS),
+  label: z.string(), // rótulo como aparece no formulário
+  value: z.number().nullable(),
+  line: z.string().nullable(), // ex.: "1120 line 30", "F-1120"
+});
+
 export const irExtractionSchema = z.object({
   companyName: z.string().nullable(),
   taxId: z.string().nullable(), // EIN/CNPJ/NIF da entidade
@@ -20,11 +46,12 @@ export const irExtractionSchema = z.object({
   entityType: z.string().nullable(),
   city: z.string().nullable(),
   state: z.string().nullable(),
+  address: z.string().nullable(),
+  businessActivity: z.string().nullable(),
+  incorporationDate: z.string().nullable(),
   preparer: z.string().nullable(),
   responsible: z.string().nullable(), // Partnership Representative / responsável
-  ordinaryIncome: z.number().nullable(),
-  totalIncome: z.number().nullable(),
-  netIncome: z.number().nullable(),
+  figures: z.array(irFigureSchema),
   taxTreatment: z.enum([
     "DISREGARDED",
     "PARTNERSHIP",
@@ -55,18 +82,26 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    "ECF"/DIRPJ with Lucro Real/Presumido or Simples Nacional/MEI; Portugal IRC
    Regime Geral/Simplificado).
 3) From the form type, the tax treatment — map to one of the allowed enum values.
-4) The legal entity type if stated, and the city/state of the entity.
-5) Headline financials, as numbers (no currency symbols, null if not shown):
-   ordinaryIncome (ordinary business income), totalIncome, netIncome.
-6) Who prepared the return (preparer firm/person) and the responsible party
-   (e.g. Partnership Representative, responsável legal).
+4) The legal entity type if stated; the city/state and full address; the business
+   activity (and code); and the incorporation/organization date.
+5) "figures": a list of EVERY monetary line on the return — gross receipts, cost of
+   goods, other income, total income, ordinary business income, total deductions,
+   depreciation, taxable income, net income (per books), total tax, estimated payments,
+   amount owed/refund, state tax (e.g. Florida F-1120), etc. For each: key (one of the
+   allowed codes, or OTHER), label (exactly as printed on the form), value (number, no
+   symbols, null if blank), line (the form line reference, e.g. "1120 line 30", "F-1120").
+   Map obvious ones to their code; use OTHER for the rest. Do NOT leave figures only in
+   the summary — every number must be a figures item.
+6) Who prepared the return (preparer firm/person + PTIN) and the responsible/signing
+   party (e.g. Partnership Representative, President, responsável legal).
 7) The partners/shareholders (sócios): for each, name, their tax id (SSN/CPF/EIN) if
    shown, ownership percentage (e.g. from Schedule K-1, Schedule G, or the quadro
    societário), the income allocated to them (allocatedIncome), and their role. Use null
    for any number you cannot read — never guess.
 
-Be faithful to the document. Set confidence to "low" if the document is unclear or a
-field is inferred rather than stated. Put any caveats in the summary.`;
+Be faithful to the document. Set confidence to "low" if anything is unclear or inferred.
+Keep "summary" to ONE short sentence of context — the figures and fields carry the data,
+not the prose.`;
 
 export async function analyzeTaxReturnPdf(base64Pdf: string): Promise<IrExtraction> {
   if (!process.env.ANTHROPIC_API_KEY) {

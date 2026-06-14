@@ -186,6 +186,10 @@ model TaxReturn {
   ordinaryIncome Decimal? @db.Decimal(20, 2)
   totalIncome    Decimal? @db.Decimal(20, 2)
   netIncome      Decimal? @db.Decimal(20, 2)
+  businessActivity  String?
+  incorporationDate String?
+  address           String?
+  figures      Json? // linhas do IR: [{ key, label, value, line }]
   confidence   String?
   summary      String?
   owners       Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
