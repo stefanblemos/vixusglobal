@@ -40,7 +40,12 @@ export default async function CompaniesPage() {
               {companies.map((c) => (
                 <tr key={c.id} className="hover:bg-slate-50">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800">{c.legalName}</div>
+                    <Link
+                      href={`/companies/${c.id}`}
+                      className="font-medium text-[#1f3a5f] hover:underline"
+                    >
+                      {c.legalName}
+                    </Link>
                     {c.tradeName && <div className="text-xs text-slate-400">{c.tradeName}</div>}
                   </td>
                   <td className="px-4 py-3 text-slate-600">{labelForEntityType(c.entityType)}</td>
