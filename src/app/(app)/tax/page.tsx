@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { IrUpload } from "@/components/ir-upload";
-import { applyTaxReturnClassification } from "@/lib/actions/ir";
+import { applyTaxReturnClassification, applyTaxReturnOwnership } from "@/lib/actions/ir";
 import {
   labelForTaxTreatment,
   labelForJurisdiction,
@@ -203,16 +203,25 @@ export default async function TaxPage() {
                     )}
                   </div>
 
-                  {canApply && r.status !== "APPLIED" && (
-                    <form
-                      action={applyTaxReturnClassification}
-                      className="mt-4 border-t border-slate-100 pt-3"
-                    >
-                      <input type="hidden" name="id" value={r.id} />
-                      <button className="rounded-lg border border-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-[#1f3a5f] hover:bg-[#1f3a5f]/[0.04]">
-                        Apply {r.year} tax classification to {r.company?.legalName}
-                      </button>
-                    </form>
+                  {(canApply || (r.companyId && owners.some((o) => o.ownershipPct != null))) && (
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-3">
+                      {canApply && r.status !== "APPLIED" && (
+                        <form action={applyTaxReturnClassification}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <button className="rounded-lg border border-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-[#1f3a5f] hover:bg-[#1f3a5f]/[0.04]">
+                            Apply {r.year} tax classification
+                          </button>
+                        </form>
+                      )}
+                      {r.companyId && owners.some((o) => o.ownershipPct != null) && (
+                        <form action={applyTaxReturnOwnership}>
+                          <input type="hidden" name="id" value={r.id} />
+                          <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100">
+                            Create ownership from K-1 ({r.year})
+                          </button>
+                        </form>
+                      )}
+                    </div>
                   )}
                 </div>
               );

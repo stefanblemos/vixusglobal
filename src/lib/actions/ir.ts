@@ -5,7 +5,8 @@ import { prisma } from "@/lib/db";
 import { analyzeTaxReturnPdf } from "@/lib/ir/analyze";
 import { matchCompany } from "@/lib/qbo/match";
 import { ALL_ENTITY_TYPE_VALUES, ALL_TAX_TREATMENT_VALUES } from "@/lib/catalog";
-import { EntityType, TaxTreatment } from "@prisma/client";
+import { normalizeName } from "@/lib/qbo/match";
+import { EntityType, Jurisdiction, PartyKind, TaxTreatment } from "@prisma/client";
 
 export type IrState = { error?: string; id?: string } | undefined;
 
@@ -76,6 +77,45 @@ export async function analyzeAndStoreTaxReturn(
 
   revalidatePath("/tax");
   return { id: created.id };
+}
+
+// Cria ownership (carimbado pelo ano do IR) a partir dos sócios extraídos.
+// Idempotente: casa/cria a Party e só adiciona quem ainda não é dono cadastrado.
+export async function applyTaxReturnOwnership(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  const tr = await prisma.taxReturn.findUnique({ where: { id } });
+  if (!tr || !tr.companyId) return;
+
+  const owners = (tr.owners as { name: string; ownershipPct: number | null }[] | null) ?? [];
+  const jur = (
+    ["US", "BR", "PT", "OTHER"].includes(tr.jurisdiction ?? "") ? tr.jurisdiction : "OTHER"
+  ) as Jurisdiction;
+  const effectiveDate = tr.year ? new Date(`${tr.year}-01-01T00:00:00Z`) : undefined;
+
+  const parties = await prisma.party.findMany();
+  const existing = await prisma.ownership.findMany({ where: { ownedCompanyId: tr.companyId } });
+
+  for (const o of owners) {
+    if (o.ownershipPct == null) continue;
+    let party = parties.find((p) => normalizeName(p.name) === normalizeName(o.name));
+    if (!party) {
+      party = await prisma.party.create({
+        data: { name: o.name, kind: PartyKind.PERSON, taxJurisdiction: jur },
+      });
+      parties.push(party);
+    }
+    if (existing.some((e) => e.ownerPartyId === party!.id)) continue; // já é dono cadastrado
+    await prisma.ownership.create({
+      data: {
+        ownerPartyId: party.id,
+        ownedCompanyId: tr.companyId,
+        percentage: o.ownershipPct,
+        ...(effectiveDate ? { effectiveDate } : {}),
+      },
+    });
+  }
+  revalidatePath(`/companies/${tr.companyId}`);
+  revalidatePath("/tax");
 }
 
 // Mantém só os últimos 4 dígitos de um SSN/CPF/EIN (dado sensível).
