@@ -20,7 +20,7 @@ export default async function ImportPage() {
       <div>
         <h1 className="text-2xl font-semibold text-slate-800">Import QBO report</h1>
         <p className="text-sm text-slate-500">
-          Upload a QuickBooks Balance Sheet or Profit &amp; Loss CSV export.
+          Upload a QuickBooks Balance Sheet or Profit &amp; Loss export — CSV or Excel (.xlsx).
         </p>
       </div>
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import * as XLSX from "xlsx";
 import { analyzeQbo, saveQboImport, type AnalyzeResult } from "@/lib/actions/qbo";
 
 const fmtUSD = (v: string | null) =>
@@ -29,8 +30,22 @@ export function ImportForm() {
     setResult(null);
     setError("");
     const reader = new FileReader();
-    reader.onload = () => setText(String(reader.result));
-    reader.readAsText(file);
+    if (/\.xlsx?$/i.test(file.name)) {
+      // Excel: lê a 1ª planilha e converte para CSV (mesmo formato do export CSV do QBO).
+      reader.onload = () => {
+        try {
+          const wb = XLSX.read(reader.result as ArrayBuffer, { type: "array" });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          setText(XLSX.utils.sheet_to_csv(sheet));
+        } catch {
+          setError("Could not read this Excel file.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.onload = () => setText(String(reader.result));
+      reader.readAsText(file);
+    }
   }
 
   function analyze() {
@@ -59,7 +74,7 @@ export function ImportForm() {
         <div className="flex items-center gap-3">
           <input
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={onFile}
             className="block text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
           />
