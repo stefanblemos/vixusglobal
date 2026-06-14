@@ -119,6 +119,12 @@ export function ImportForm() {
             </button>
           </div>
 
+          {result.duplicateId && (
+            <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-700">
+              An import for this company and period already exists — saving will replace it.
+            </p>
+          )}
+
           <div className="overflow-hidden rounded-lg border border-slate-200">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">

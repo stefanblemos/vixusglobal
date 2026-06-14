@@ -11,6 +11,7 @@ export interface AnalyzeResult {
   report: QboReport;
   matchedCompanyId: string | null;
   companies: { id: string; legalName: string }[];
+  duplicateId: string | null; // import já existente para (empresa, tipo, período)
 }
 
 export async function analyzeQbo(text: string): Promise<AnalyzeResult> {
@@ -20,10 +21,22 @@ export async function analyzeQbo(text: string): Promise<AnalyzeResult> {
     orderBy: { legalName: "asc" },
   });
   const matchedCompanyId = matchCompany(report.companyName, companies);
+
+  const duplicate = matchedCompanyId
+    ? await prisma.qboImport.findFirst({
+        where: {
+          companyId: matchedCompanyId,
+          reportKind: report.reportType as QboReportKind,
+          periodLabel: report.periodLabel,
+        },
+      })
+    : null;
+
   return {
     report,
     matchedCompanyId,
     companies: companies.map((c) => ({ id: c.id, legalName: c.legalName })),
+    duplicateId: duplicate?.id ?? null,
   };
 }
 
@@ -38,6 +51,17 @@ export async function saveQboImport(input: {
   const currency = companyId
     ? ((await prisma.company.findUnique({ where: { id: companyId } }))?.baseCurrency ?? "USD")
     : "USD";
+
+  // Dedup: substitui um import anterior do mesmo (empresa, tipo, período).
+  if (companyId) {
+    await prisma.qboImport.deleteMany({
+      where: {
+        companyId,
+        reportKind: report.reportType as QboReportKind,
+        periodLabel: report.periodLabel,
+      },
+    });
+  }
 
   const imp = await prisma.qboImport.create({
     data: {
