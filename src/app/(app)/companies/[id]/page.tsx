@@ -450,14 +450,31 @@ export default async function CompanyDetailPage({
                     {historyYears.map((y) => {
                       const ts = taxByYear.get(y);
                       const rs = returnsByYear.get(y) ?? [];
+                      const ir = rs[0];
                       return (
-                        <tr key={y}>
-                          <td className="px-4 py-3 font-medium text-slate-800">{y}</td>
+                        <tr key={y} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-medium">
+                            <Link
+                              href={`/companies/${id}/year/${y}`}
+                              className="text-[#1f3a5f] hover:underline"
+                            >
+                              {y}
+                            </Link>
+                          </td>
                           <td className="px-4 py-3 text-slate-600">
-                            {ts ? labelForEntityType(ts.entityType) : "—"}
+                            {ts ? labelForEntityType(ts.entityType) : (ir?.entityType ?? "—")}
                           </td>
                           <td className="px-4 py-3 text-slate-700">
-                            {ts ? labelForTaxTreatment(ts.taxTreatment) : "—"}
+                            {ts ? (
+                              labelForTaxTreatment(ts.taxTreatment)
+                            ) : ir?.taxTreatment ? (
+                              <>
+                                {labelForTaxTreatment(ir.taxTreatment)}{" "}
+                                <span className="text-xs text-slate-400">(from IR)</span>
+                              </>
+                            ) : (
+                              "—"
+                            )}
                           </td>
                           <td className="px-4 py-3 text-slate-500">
                             {rs.length === 0

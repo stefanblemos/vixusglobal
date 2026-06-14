@@ -33,7 +33,25 @@ const usd = (v: unknown) =>
         maximumFractionDigits: 0,
       }).format(Number(v));
 
-export default async function TaxPage() {
+function banner(msg: string | undefined): string | null {
+  if (!msg) return null;
+  if (msg.startsWith("owners-")) {
+    const n = parseInt(msg.slice(7), 10) || 0;
+    return n > 0
+      ? `Created ${n} ownership link${n > 1 ? "s" : ""} from the K-1.`
+      : "All partners were already registered owners — nothing to add.";
+  }
+  if (msg.startsWith("class-")) return `Tax classification applied for ${msg.slice(6)}.`;
+  return null;
+}
+
+export default async function TaxPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ msg?: string }>;
+}) {
+  const { msg } = await searchParams;
+  const note = banner(msg);
   const [returns, ownerships, parties, companies] = await Promise.all([
     prisma.taxReturn.findMany({
       orderBy: { createdAt: "desc" },
@@ -86,6 +104,12 @@ export default async function TaxPage() {
           checks the partners against the registered ownership.
         </p>
       </div>
+
+      {note && (
+        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-800">
+          {note}
+        </div>
+      )}
 
       <IrUpload />
 
@@ -144,7 +168,7 @@ export default async function TaxPage() {
                         {r.jurisdiction ? labelForJurisdiction(r.jurisdiction) : "—"}
                         {r.taxId ? ` · EIN/Tax ID ${r.taxId}` : ""}
                         {r.state ? ` · ${r.city ? `${r.city}, ` : ""}${r.state}` : ""}
-                        {r.pdfSize != null && (
+                        {r.pdfSize != null ? (
                           <>
                             {" · "}
                             <a
@@ -156,6 +180,8 @@ export default async function TaxPage() {
                               View PDF
                             </a>
                           </>
+                        ) : (
+                          <span className="text-slate-400"> · no PDF (re-upload to attach)</span>
                         )}
                       </p>
                     </div>

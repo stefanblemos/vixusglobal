@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { analyzeTaxReturnPdf } from "@/lib/ir/analyze";
 import { matchCompany } from "@/lib/qbo/match";
@@ -98,6 +99,7 @@ export async function applyTaxReturnOwnership(formData: FormData): Promise<void>
   const parties = await prisma.party.findMany();
   const existing = await prisma.ownership.findMany({ where: { ownedCompanyId: tr.companyId } });
 
+  let created = 0;
   for (const o of owners) {
     if (o.ownershipPct == null) continue;
     let party = parties.find((p) => normalizeName(p.name) === normalizeName(o.name));
@@ -116,9 +118,11 @@ export async function applyTaxReturnOwnership(formData: FormData): Promise<void>
         ...(effectiveDate ? { effectiveDate } : {}),
       },
     });
+    created++;
   }
   revalidatePath(`/companies/${tr.companyId}`);
   revalidatePath("/tax");
+  redirect(`/tax?msg=owners-${created}`);
 }
 
 // Mantém só os últimos 4 dígitos de um SSN/CPF/EIN (dado sensível).
@@ -158,4 +162,5 @@ export async function applyTaxReturnClassification(formData: FormData): Promise<
   await prisma.taxReturn.update({ where: { id }, data: { status: "APPLIED" } });
   revalidatePath("/tax");
   revalidatePath(`/companies/${tr.companyId}`);
+  redirect(`/tax?msg=class-${tr.year}`);
 }
