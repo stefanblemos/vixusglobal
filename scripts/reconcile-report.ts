@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { matchCompany } from "../src/lib/qbo/match";
 import { extractPositions, reconcile } from "../src/lib/qbo/reconcile";
+import { loadRatesAsOf, toUsd } from "../src/lib/fx/rates";
 
 const prisma = new PrismaClient();
 
@@ -23,18 +24,22 @@ async function main() {
     return true;
   });
 
-  const positions = latest.flatMap((imp) =>
-    extractPositions(
-      imp.companyId!,
-      imp.lines.map((l) => ({
-        label: l.label,
-        lineType: l.lineType,
-        sectionPath: l.sectionPath,
-        amount: l.value?.toString() ?? null,
-      })),
-      resolve,
-    ),
-  );
+  const rates = await loadRatesAsOf(new Date());
+  const positions = latest
+    .flatMap((imp) =>
+      extractPositions(
+        imp.companyId!,
+        imp.lines.map((l) => ({
+          label: l.label,
+          lineType: l.lineType,
+          sectionPath: l.sectionPath,
+          amount: l.value?.toString() ?? null,
+        })),
+        resolve,
+        imp.lines[0]?.currency ?? "USD",
+      ),
+    )
+    .map((p) => ({ ...p, amount: toUsd(p.amount, p.currency, rates) }));
   const rows = reconcile(positions);
 
   const f = (n: number | null) =>

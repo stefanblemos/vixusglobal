@@ -183,6 +183,19 @@ model QboImport {
   lines QboImportLine[]
 }
 
+// Taxas de câmbio travadas por data (buscadas online, ex.: fim de mês).
+model FxRate {
+  id        String   @id @default(cuid())
+  base      String // moeda base, ex.: "USD"
+  quote     String // moeda cotada, ex.: "BRL", "EUR" (1 base = rate quote)
+  date      DateTime @db.Date
+  rate      Decimal  @db.Decimal(18, 8)
+  source    String   @default("frankfurter")
+  fetchedAt DateTime @default(now())
+
+  @@unique([base, quote, date])
+}
+
 model QboImportLine {
   id          String    @id @default(cuid())
   importId    String

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { matchCompany } from "@/lib/qbo/match";
 import { extractPositions, reconcile, type ReconStatus } from "@/lib/qbo/reconcile";
+import { loadRatesAsOf, toUsd } from "@/lib/fx/rates";
 
 const fmtUSD = (v: number | null) =>
   v == null
@@ -33,18 +34,22 @@ export default async function ReportsPage() {
     return true;
   });
 
-  const positions = latest.flatMap((imp) =>
-    extractPositions(
-      imp.companyId!,
-      imp.lines.map((l) => ({
-        label: l.label,
-        lineType: l.lineType,
-        sectionPath: l.sectionPath,
-        amount: l.value?.toString() ?? null,
-      })),
-      resolve,
-    ),
-  );
+  const rates = await loadRatesAsOf(new Date());
+  const positions = latest
+    .flatMap((imp) =>
+      extractPositions(
+        imp.companyId!,
+        imp.lines.map((l) => ({
+          label: l.label,
+          lineType: l.lineType,
+          sectionPath: l.sectionPath,
+          amount: l.value?.toString() ?? null,
+        })),
+        resolve,
+        imp.lines[0]?.currency ?? "USD",
+      ),
+    )
+    .map((p) => ({ ...p, amount: toUsd(p.amount, p.currency, rates) }));
   const rows = reconcile(positions);
 
   const counts = {
@@ -59,7 +64,8 @@ export default async function ReportsPage() {
         <h1 className="text-2xl font-semibold text-slate-800">Intercompany reconciliation</h1>
         <p className="text-sm text-slate-500">
           Cross-checks each loan position against the counterparty&apos;s books, using the latest
-          imported Balance Sheet per company. {latest.length} balance sheet(s) covered.
+          imported Balance Sheet per company. {latest.length} balance sheet(s) covered. Amounts in
+          USD — foreign currencies converted at the locked month-end rate (FX).
         </p>
       </div>
 
@@ -105,6 +111,11 @@ export default async function ReportsPage() {
                     <span className={`rounded-full px-3 py-1 text-xs ${STATUS[r.status].cls}`}>
                       {STATUS[r.status].label}
                     </span>
+                    {r.fxApplied && (
+                      <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-xs text-slate-500">
+                        FX
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

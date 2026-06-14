@@ -9,7 +9,8 @@ export interface Position {
   reportedBy: string; // companyId que reportou
   creditorId: string;
   debtorId: string;
-  amount: number; // absoluto
+  amount: number; // absoluto (na moeda informada)
+  currency: string; // moeda do relatório de origem
   kind: "RECEIVABLE" | "PAYABLE";
 }
 
@@ -17,6 +18,7 @@ export function extractPositions(
   reportedBy: string,
   lines: DetectLine[],
   resolve: (name: string) => string | null,
+  currency = "USD",
 ): Position[] {
   const out: Position[] = [];
   for (const l of lines) {
@@ -44,6 +46,7 @@ export function extractPositions(
         creditorId: reportedBy,
         debtorId: other,
         amount: amt,
+        currency,
         kind: "RECEIVABLE",
       });
     } else if (isLiab) {
@@ -52,6 +55,7 @@ export function extractPositions(
         creditorId: other,
         debtorId: reportedBy,
         amount: amt,
+        currency,
         kind: "PAYABLE",
       });
     }
@@ -64,9 +68,10 @@ export type ReconStatus = "RECONCILED" | "MISMATCH" | "ONE_SIDED";
 export interface ReconRow {
   creditorId: string;
   debtorId: string;
-  creditorAmount: number | null; // o que o credor reporta como receber
-  debtorAmount: number | null; // o que o devedor reporta como dever
+  creditorAmount: number | null; // USD — o que o credor reporta como receber
+  debtorAmount: number | null; // USD — o que o devedor reporta como dever
   diff: number;
+  fxApplied: boolean; // algum lado foi convertido de outra moeda
   status: ReconStatus;
 }
 
@@ -84,10 +89,12 @@ export function reconcile(positions: Position[]): ReconRow[] {
         creditorAmount: null,
         debtorAmount: null,
         diff: 0,
+        fxApplied: false,
         status: "ONE_SIDED",
       };
       map.set(k, row);
     }
+    if (p.currency !== "USD") row.fxApplied = true;
     if (p.kind === "RECEIVABLE" && p.reportedBy === p.creditorId) {
       row.creditorAmount = (row.creditorAmount ?? 0) + p.amount;
     }
@@ -99,7 +106,11 @@ export function reconcile(positions: Position[]): ReconRow[] {
   for (const row of map.values()) {
     if (row.creditorAmount != null && row.debtorAmount != null) {
       row.diff = Math.abs(row.creditorAmount - row.debtorAmount);
-      row.status = row.diff < 0.01 ? "RECONCILED" : "MISMATCH";
+      // FX: tolerância relativa (1%); mesma moeda: estrito ($0,01).
+      const tol = row.fxApplied
+        ? Math.max(1, 0.01 * Math.max(row.creditorAmount, row.debtorAmount))
+        : 0.01;
+      row.status = row.diff <= tol ? "RECONCILED" : "MISMATCH";
     } else {
       row.status = "ONE_SIDED";
     }
