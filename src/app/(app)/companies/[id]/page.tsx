@@ -61,7 +61,11 @@ export default async function CompanyDetailPage({
     prisma.company.findMany({ orderBy: { legalName: "asc" } }),
     prisma.ownership.findMany(),
     prisma.companyTaxStatus.findMany({ where: { companyId: id }, orderBy: { year: "desc" } }),
-    prisma.taxReturn.findMany({ where: { companyId: id }, orderBy: { year: "desc" } }),
+    prisma.taxReturn.findMany({
+      where: { companyId: id },
+      orderBy: { year: "desc" },
+      omit: { pdf: true },
+    }),
     prisma.ledgerTxn.count({ where: { companyId: id } }),
     prisma.bankStatement.findMany({ where: { companyId: id }, orderBy: { periodEnd: "desc" } }),
     prisma.intercompanyLoan.findMany({
@@ -456,13 +460,27 @@ export default async function CompanyDetailPage({
                             {ts ? labelForTaxTreatment(ts.taxTreatment) : "—"}
                           </td>
                           <td className="px-4 py-3 text-slate-500">
-                            {rs.length === 0 ? (
-                              "—"
-                            ) : (
-                              <Link href="/tax" className="text-[#1f3a5f] hover:underline">
-                                {rs.map((r) => r.taxForm ?? r.fileName).join(", ")}
-                              </Link>
-                            )}
+                            {rs.length === 0
+                              ? "—"
+                              : rs.map((r, i) => (
+                                  <span key={r.id}>
+                                    {i > 0 && ", "}
+                                    {r.pdfSize != null ? (
+                                      <a
+                                        href={`/api/tax-returns/${r.id}/pdf`}
+                                        target="_blank"
+                                        rel="noopener"
+                                        className="text-[#1f3a5f] hover:underline"
+                                      >
+                                        {r.taxForm ?? r.fileName}
+                                      </a>
+                                    ) : (
+                                      <Link href="/tax" className="text-[#1f3a5f] hover:underline">
+                                        {r.taxForm ?? r.fileName}
+                                      </Link>
+                                    )}
+                                  </span>
+                                ))}
                           </td>
                         </tr>
                       );

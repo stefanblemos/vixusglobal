@@ -19,7 +19,8 @@ export async function analyzeAndStoreTaxReturn(
   if (file.type && file.type !== "application/pdf")
     return { error: "Only PDF files are supported." };
 
-  const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+  const buf = Buffer.from(await file.arrayBuffer());
+  const base64 = buf.toString("base64");
 
   let data;
   try {
@@ -63,6 +64,8 @@ export async function analyzeAndStoreTaxReturn(
       confidence: data.confidence,
       summary: data.summary,
       owners,
+      pdf: buf,
+      pdfSize: buf.length,
     },
   });
 

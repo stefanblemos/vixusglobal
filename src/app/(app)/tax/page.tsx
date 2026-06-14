@@ -38,6 +38,7 @@ export default async function TaxPage() {
     prisma.taxReturn.findMany({
       orderBy: { createdAt: "desc" },
       include: { company: true },
+      omit: { pdf: true },
       take: 25,
     }),
     prisma.ownership.findMany(),
@@ -143,6 +144,19 @@ export default async function TaxPage() {
                         {r.jurisdiction ? labelForJurisdiction(r.jurisdiction) : "—"}
                         {r.taxId ? ` · EIN/Tax ID ${r.taxId}` : ""}
                         {r.state ? ` · ${r.city ? `${r.city}, ` : ""}${r.state}` : ""}
+                        {r.pdfSize != null && (
+                          <>
+                            {" · "}
+                            <a
+                              href={`/api/tax-returns/${r.id}/pdf`}
+                              target="_blank"
+                              rel="noopener"
+                              className="text-[#1f3a5f] hover:underline"
+                            >
+                              View PDF
+                            </a>
+                          </>
+                        )}
                       </p>
                     </div>
                     <div className="text-right text-sm">

@@ -189,6 +189,8 @@ model TaxReturn {
   confidence   String?
   summary      String?
   owners       Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
+  pdf          Bytes? // arquivo original, para consulta/registro
+  pdfSize      Int?
   status       TaxReturnStatus @default(ANALYZED)
   createdAt    DateTime        @default(now())
 }
