@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import { getAdapter } from "../src/lib/bank/adapters";
+import { reconcileStatement } from "../src/lib/bank/reconcile";
 
 const prisma = new PrismaClient();
 const FILE = "C:\\Users\\stefa\\Downloads\\stmt.csv";
@@ -35,7 +36,13 @@ async function main() {
       },
     },
   });
-  console.log(`Statement imported id=${created.id} (${st.lines.length} lines)`);
+  await reconcileStatement(prisma, created.id);
+  const matched = await prisma.bankStatementLine.count({
+    where: { statementId: created.id, status: "MATCHED" },
+  });
+  console.log(
+    `Statement imported id=${created.id} (${st.lines.length} lines, ${matched} auto-matched)`,
+  );
 }
 
 main()

@@ -215,16 +215,26 @@ model BankStatement {
   lines BankStatementLine[]
 }
 
+enum BankLineStatus {
+  UNREVIEWED
+  MATCHED
+  FLAGGED // no razão falta o lançamento (booking faltante)
+  IGNORED
+}
+
 model BankStatementLine {
-  id           String        @id @default(cuid())
+  id           String         @id @default(cuid())
   statementId  String
-  statement    BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  date         DateTime      @db.Date
+  statement    BankStatement  @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  date         DateTime       @db.Date
   description  String
-  amount       Decimal       @db.Decimal(20, 4)
-  balance      Decimal?      @db.Decimal(20, 4)
+  amount       Decimal        @db.Decimal(20, 4)
+  balance      Decimal?       @db.Decimal(20, 4)
   matchedTxnId String? // LedgerTxn reconciliada
-  createdAt    DateTime      @default(now())
+  status       BankLineStatus @default(UNREVIEWED)
+  note         String?
+  reviewedAt   DateTime?
+  createdAt    DateTime       @default(now())
 }
 
 // Linha do razão (General Ledger) — uma transação por conta.

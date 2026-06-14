@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getAdapter, type ParsedStatement } from "@/lib/bank/adapters";
+import { reconcileStatement } from "@/lib/bank/reconcile";
+import type { BankLineStatus } from "@prisma/client";
 
 export interface AnalyzeBankResult {
   statement: ParsedStatement;
@@ -57,6 +59,92 @@ export async function saveBankStatement(input: {
     },
   });
 
+  await reconcileStatement(prisma, created.id);
   revalidatePath("/bank");
   redirect(`/bank/${created.id}`);
+}
+
+export interface MatchCandidate {
+  id: string;
+  date: string;
+  account: string;
+  split: string | null;
+  vendor: string | null;
+  amount: string;
+}
+
+/** Candidatos do razão para casar manualmente uma linha do extrato (mesmo valor). */
+export async function getMatchCandidates(lineId: string): Promise<MatchCandidate[]> {
+  const line = await prisma.bankStatementLine.findUnique({
+    where: { id: lineId },
+    include: { statement: true },
+  });
+  if (!line) return [];
+
+  const amount = Number(line.amount.toString());
+  const lo = (amount - 0.005).toFixed(4);
+  const hi = (amount + 0.005).toFixed(4);
+
+  // Já casados por outras linhas (não oferecer de novo).
+  const taken = await prisma.bankStatementLine.findMany({
+    where: { statementId: line.statementId, matchedTxnId: { not: null }, id: { not: lineId } },
+    select: { matchedTxnId: true },
+  });
+  const takenIds = new Set(taken.map((t) => t.matchedTxnId!));
+
+  const txns = await prisma.ledgerTxn.findMany({
+    where: { companyId: line.statement.companyId, amount: { gte: lo, lte: hi } },
+    include: { vendor: true },
+    take: 50,
+  });
+
+  return txns
+    .filter((t) => !takenIds.has(t.id))
+    .sort(
+      (a, b) =>
+        Math.abs(a.date.getTime() - line.date.getTime()) -
+        Math.abs(b.date.getTime() - line.date.getTime()),
+    )
+    .slice(0, 15)
+    .map((t) => ({
+      id: t.id,
+      date: t.date.toISOString().slice(0, 10),
+      account: t.account,
+      split: t.split,
+      vendor: t.vendor?.name ?? t.rawName ?? null,
+      amount: t.amount.toString(),
+    }));
+}
+
+async function refreshLine(lineId: string) {
+  const line = await prisma.bankStatementLine.findUnique({ where: { id: lineId } });
+  if (line) revalidatePath(`/bank/${line.statementId}`);
+}
+
+export async function matchLine(lineId: string, txnId: string): Promise<void> {
+  await prisma.bankStatementLine.update({
+    where: { id: lineId },
+    data: { matchedTxnId: txnId, status: "MATCHED", reviewedAt: new Date() },
+  });
+  await refreshLine(lineId);
+}
+
+export async function reviewLine(
+  lineId: string,
+  status: BankLineStatus,
+  note: string,
+): Promise<void> {
+  await prisma.bankStatementLine.update({
+    where: { id: lineId },
+    data: { status, note: note || null, matchedTxnId: null, reviewedAt: new Date() },
+  });
+  await refreshLine(lineId);
+}
+
+export async function resetLine(lineId: string): Promise<void> {
+  await prisma.bankStatementLine.update({
+    where: { id: lineId },
+    data: { status: "UNREVIEWED", matchedTxnId: null, note: null, reviewedAt: null },
+  });
+  await refreshLine(lineId);
 }
