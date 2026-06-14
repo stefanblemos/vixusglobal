@@ -50,7 +50,8 @@ function detectCurrency(text: string): string {
   return "USD";
 }
 
-const TOTAL_RE = /^total\s+(?:for|para)\s+(.+)$/i;
+// Aceita tanto o export CSV do QBO ("Total for Income") quanto o Excel ("Total Income").
+const TOTAL_RE = /^total\s+(?:(?:for|para)\s+)?(.+)$/i;
 
 function extractCode(label: string): { name: string; code: string | null } {
   const m = label.match(/\s*\(([^)]+)\)\s*$/);

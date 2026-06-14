@@ -2,7 +2,7 @@
 type Line = { lineType: string; label: string; value: unknown };
 
 const subject = (label: string) => {
-  const m = label.match(/^total\s+(?:for|para|do|da|de)\s+(.+)$/i);
+  const m = label.match(/^total\s+(?:(?:for|para|do|da|de)\s+)?(.+)$/i);
   return (m?.[1] ?? label.replace(/^total\s+/i, "")).trim().toLowerCase();
 };
 

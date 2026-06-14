@@ -146,7 +146,7 @@ export default async function CompanyDetailPage({
     ? await prisma.qboImportLine.findMany({ where: { importId: latestBS.id } })
     : [];
   const bsSubject = (label: string) => {
-    const m = label.match(/^total\s+(?:for|para|do|da|de)\s+(.+)$/i);
+    const m = label.match(/^total\s+(?:(?:for|para|do|da|de)\s+)?(.+)$/i);
     return (m?.[1] ?? label.replace(/^total\s+/i, "")).trim().toLowerCase();
   };
   const bsTotal = (key: string) => {
