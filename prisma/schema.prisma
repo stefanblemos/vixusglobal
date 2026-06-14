@@ -155,6 +155,7 @@ model Company {
   loansAsLender   IntercompanyLoan[] @relation("Lender")
   loansAsBorrower IntercompanyLoan[] @relation("Borrower")
   qboImports      QboImport[]
+  ledgerTxns      LedgerTxn[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -164,6 +165,7 @@ model Company {
 enum QboReportKind {
   BALANCE_SHEET
   PROFIT_AND_LOSS
+  GENERAL_LEDGER
   UNKNOWN
 }
 
@@ -180,7 +182,43 @@ model QboImport {
   columns           String[]
   createdAt         DateTime      @default(now())
 
-  lines QboImportLine[]
+  lines      QboImportLine[]
+  ledgerTxns LedgerTxn[]
+}
+
+// Contato (fornecedor/cliente/contraparte) — populado da coluna "Name" do GL.
+model Vendor {
+  id               String      @id @default(cuid())
+  name             String
+  normalizedKey    String      @unique
+  matchedCompanyId String?
+  matchedPartyId   String?
+  createdAt        DateTime    @default(now())
+  txns             LedgerTxn[]
+}
+
+// Linha do razão (General Ledger) — uma transação por conta.
+model LedgerTxn {
+  id          String     @id @default(cuid())
+  companyId   String
+  company     Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  importId    String?
+  import      QboImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  account     String
+  date        DateTime   @db.Date
+  type        String
+  num         String?
+  vendorId    String?
+  vendor      Vendor?    @relation(fields: [vendorId], references: [id])
+  rawName     String?
+  description String?
+  split       String?
+  amount      Decimal    @db.Decimal(20, 4)
+  currency    String     @default("USD")
+  createdAt   DateTime   @default(now())
+
+  @@index([companyId, account])
+  @@index([companyId, date])
 }
 
 // Taxas de câmbio travadas por data (buscadas online, ex.: fim de mês).
