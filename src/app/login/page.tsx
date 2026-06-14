@@ -19,13 +19,13 @@ export default function LoginPage() {
             priority
             unoptimized
           />
-          <p className="mt-3 text-sm text-slate-500">Plataforma de Controle</p>
+          <p className="mt-3 text-sm text-slate-500">Control Platform</p>
         </div>
 
         <form action={formAction} className="space-y-4">
           <div>
             <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-700">
-              E-mail
+              Email
             </label>
             <input
               id="email"
@@ -38,7 +38,7 @@ export default function LoginPage() {
           </div>
           <div>
             <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-700">
-              Senha
+              Password
             </label>
             <input
               id="password"
@@ -57,7 +57,7 @@ export default function LoginPage() {
             disabled={isPending}
             className="w-full rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#16304f] disabled:opacity-60"
           >
-            {isPending ? "Entrando..." : "Entrar"}
+            {isPending ? "Signing in..." : "Sign in"}
           </button>
         </form>
       </div>

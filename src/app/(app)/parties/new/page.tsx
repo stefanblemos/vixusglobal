@@ -19,9 +19,9 @@ export default function NewPartyPage() {
     <div className="max-w-2xl space-y-6">
       <div>
         <Link href="/parties" className="text-sm text-slate-500 hover:text-slate-700">
-          ← Donos
+          ← Owners
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-800">Novo dono</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-800">New owner</h1>
       </div>
 
       <form
@@ -30,7 +30,7 @@ export default function NewPartyPage() {
       >
         <div>
           <label htmlFor="name" className={labelClass}>
-            Nome *
+            Name *
           </label>
           <input id="name" name="name" required className={inputClass} />
         </div>
@@ -38,7 +38,7 @@ export default function NewPartyPage() {
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="kind" className={labelClass}>
-              Tipo *
+              Type *
             </label>
             <select id="kind" name="kind" required className={inputClass}>
               {PARTY_KINDS.map((k) => (
@@ -50,7 +50,7 @@ export default function NewPartyPage() {
           </div>
           <div>
             <label htmlFor="taxJurisdiction" className={labelClass}>
-              Jurisdição fiscal *
+              Tax jurisdiction *
             </label>
             <select id="taxJurisdiction" name="taxJurisdiction" required className={inputClass}>
               {JURISDICTIONS.map((j) => (
@@ -71,7 +71,7 @@ export default function NewPartyPage() {
 
         <div>
           <label htmlFor="notes" className={labelClass}>
-            Observações
+            Notes
           </label>
           <textarea id="notes" name="notes" rows={3} className={inputClass} />
         </div>
@@ -83,14 +83,14 @@ export default function NewPartyPage() {
             href="/parties"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
           >
-            Cancelar
+            Cancel
           </Link>
           <button
             type="submit"
             disabled={isPending}
             className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
           >
-            {isPending ? "Salvando..." : "Salvar"}
+            {isPending ? "Saving..." : "Save"}
           </button>
         </div>
       </form>

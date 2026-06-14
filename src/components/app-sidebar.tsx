@@ -16,13 +16,13 @@ import {
 import { logout } from "@/lib/actions/auth";
 
 const NAV = [
-  { href: "/", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/companies", label: "Empresas", icon: Building2 },
-  { href: "/parties", label: "Donos", icon: Users },
-  { href: "/loans", label: "Empréstimos", icon: ArrowLeftRight },
+  { href: "/", label: "Overview", icon: LayoutDashboard },
+  { href: "/companies", label: "Companies", icon: Building2 },
+  { href: "/parties", label: "Owners", icon: Users },
+  { href: "/loans", label: "Loans", icon: ArrowLeftRight },
   { href: "/ledger", label: "Ledger", icon: BookOpen },
-  { href: "/tax", label: "Fiscal / IR", icon: ReceiptText },
-  { href: "/reports", label: "Relatórios", icon: PieChart },
+  { href: "/tax", label: "Tax", icon: ReceiptText },
+  { href: "/reports", label: "Reports", icon: PieChart },
 ];
 
 export function AppSidebar({ email, role }: { email?: string | null; role?: string | null }) {
@@ -72,7 +72,7 @@ export function AppSidebar({ email, role }: { email?: string | null; role?: stri
         <form action={logout}>
           <button className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-100">
             <LogOut size={18} className="text-slate-400" />
-            Sair
+            Sign out
           </button>
         </form>
       </div>

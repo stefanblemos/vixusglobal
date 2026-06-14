@@ -1,10 +1,10 @@
 // Catálogos de domínio para formulários e validação.
 
 export const JURISDICTIONS = [
-  { value: "US", label: "Estados Unidos" },
-  { value: "BR", label: "Brasil" },
+  { value: "US", label: "United States" },
+  { value: "BR", label: "Brazil" },
   { value: "PT", label: "Portugal" },
-  { value: "OTHER", label: "Outra" },
+  { value: "OTHER", label: "Other" },
 ] as const;
 
 export type JurisdictionValue = (typeof JURISDICTIONS)[number]["value"];
@@ -25,18 +25,18 @@ export const ENTITY_TYPES_BY_JURISDICTION: Record<
   ],
   BR: [
     { value: "LTDA", label: "LTDA" },
-    { value: "SLU", label: "Sociedade Unipessoal (SLU)" },
+    { value: "SLU", label: "Single-member Ltd (SLU)" },
     { value: "SA", label: "S.A." },
     { value: "MEI", label: "MEI" },
-    { value: "EI", label: "Empresário Individual" },
+    { value: "EI", label: "Sole Proprietor (EI)" },
   ],
   PT: [
-    { value: "LDA", label: "Lda (Sociedade por Quotas)" },
+    { value: "LDA", label: "Lda (private limited)" },
     { value: "UNIPESSOAL_LDA", label: "Unipessoal Lda" },
     { value: "SA", label: "S.A." },
-    { value: "ENI", label: "Empresário em Nome Individual" },
+    { value: "ENI", label: "Sole Trader (ENI)" },
   ],
-  OTHER: [{ value: "OTHER", label: "Outra" }],
+  OTHER: [{ value: "OTHER", label: "Other" }],
 };
 
 export const ALL_ENTITY_TYPE_VALUES = Array.from(
@@ -44,13 +44,13 @@ export const ALL_ENTITY_TYPE_VALUES = Array.from(
 ) as [string, ...string[]];
 
 export const RELATIONSHIPS = [
-  { value: "GROUP_MEMBER", label: "Do grupo (participação)" },
-  { value: "MANAGED_ONLY", label: "Administrada (gestão, sem participação)" },
+  { value: "GROUP_MEMBER", label: "Group member (ownership)" },
+  { value: "MANAGED_ONLY", label: "Managed only (no ownership)" },
 ] as const;
 
 export const PARTY_KINDS = [
-  { value: "PERSON", label: "Pessoa física" },
-  { value: "ENTITY", label: "Pessoa jurídica / entidade" },
+  { value: "PERSON", label: "Individual" },
+  { value: "ENTITY", label: "Entity / company" },
 ] as const;
 
 // Verifica se a combinação tipologia × jurisdição é válida.

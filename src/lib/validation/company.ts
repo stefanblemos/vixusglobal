@@ -6,26 +6,37 @@ const emptyToNull = (v: unknown) =>
 
 export const companyCreateSchema = z
   .object({
-    legalName: z.string().trim().min(1, "Razão social é obrigatória"),
+    legalName: z.string().trim().min(1, "Legal name is required"),
     tradeName: z.preprocess(emptyToNull, z.string().trim().nullable()),
+    // Comma-separated former/alternate names (for QBO matching).
+    aliases: z.preprocess(
+      (v) =>
+        typeof v === "string"
+          ? v
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : [],
+      z.array(z.string()),
+    ),
     jurisdiction: z.enum(["US", "BR", "PT", "OTHER"]),
     state: z.preprocess(emptyToNull, z.string().trim().nullable()),
     entityType: z.enum(ALL_ENTITY_TYPE_VALUES),
     taxId: z.preprocess(emptyToNull, z.string().trim().nullable()),
     fiscalYearEnd: z
       .string()
-      .regex(/^\d{2}-\d{2}$/, "Use o formato MM-DD")
+      .regex(/^\d{2}-\d{2}$/, "Use the MM-DD format")
       .default("12-31"),
     baseCurrency: z
       .string()
       .trim()
-      .regex(/^[A-Z]{3}$/, "Use o código ISO de 3 letras (ex.: USD)")
+      .regex(/^[A-Z]{3}$/, "Use the 3-letter ISO code (e.g. USD)")
       .default("USD"),
     relationship: z.enum(["GROUP_MEMBER", "MANAGED_ONLY"]),
     notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
   })
   .refine((d) => isEntityTypeValidFor(d.jurisdiction, d.entityType), {
-    message: "Tipologia inválida para a jurisdição selecionada",
+    message: "Entity type is not valid for the selected jurisdiction",
     path: ["entityType"],
   });
 

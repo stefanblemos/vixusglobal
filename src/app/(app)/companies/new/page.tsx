@@ -19,9 +19,9 @@ export default function NewCompanyPage() {
     <div className="max-w-2xl space-y-6">
       <div>
         <Link href="/companies" className="text-sm text-slate-500 hover:text-slate-700">
-          ← Empresas
+          ← Companies
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-800">Nova empresa</h1>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-800">New company</h1>
       </div>
 
       <form
@@ -30,22 +30,35 @@ export default function NewCompanyPage() {
       >
         <div>
           <label htmlFor="legalName" className={labelClass}>
-            Razão social *
+            Legal name *
           </label>
           <input id="legalName" name="legalName" required className={inputClass} />
         </div>
 
-        <div>
-          <label htmlFor="tradeName" className={labelClass}>
-            Nome fantasia
-          </label>
-          <input id="tradeName" name="tradeName" className={inputClass} />
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="tradeName" className={labelClass}>
+              Trade name
+            </label>
+            <input id="tradeName" name="tradeName" className={inputClass} />
+          </div>
+          <div>
+            <label htmlFor="aliases" className={labelClass}>
+              Former / alternate names
+            </label>
+            <input
+              id="aliases"
+              name="aliases"
+              placeholder="comma-separated (e.g. L&L International Investments LLC)"
+              className={inputClass}
+            />
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label htmlFor="jurisdiction" className={labelClass}>
-              Jurisdição *
+              Jurisdiction *
             </label>
             <select id="jurisdiction" name="jurisdiction" required className={inputClass}>
               {JURISDICTIONS.map((j) => (
@@ -57,7 +70,7 @@ export default function NewCompanyPage() {
           </div>
           <div>
             <label htmlFor="entityType" className={labelClass}>
-              Tipologia *
+              Entity type *
             </label>
             <select id="entityType" name="entityType" required className={inputClass}>
               {Object.entries(ENTITY_TYPES_BY_JURISDICTION).map(([jur, types]) => (
@@ -76,13 +89,13 @@ export default function NewCompanyPage() {
         <div className="grid grid-cols-3 gap-4">
           <div>
             <label htmlFor="state" className={labelClass}>
-              Estado (ex.: FL)
+              State (e.g. FL)
             </label>
             <input id="state" name="state" className={inputClass} />
           </div>
           <div>
             <label htmlFor="baseCurrency" className={labelClass}>
-              Moeda base
+              Base currency
             </label>
             <input
               id="baseCurrency"
@@ -93,7 +106,7 @@ export default function NewCompanyPage() {
           </div>
           <div>
             <label htmlFor="fiscalYearEnd" className={labelClass}>
-              Fim do ano fiscal
+              Fiscal year end
             </label>
             <input
               id="fiscalYearEnd"
@@ -113,7 +126,7 @@ export default function NewCompanyPage() {
           </div>
           <div>
             <label htmlFor="relationship" className={labelClass}>
-              Relação com a Vixus *
+              Relationship to Vixus *
             </label>
             <select id="relationship" name="relationship" required className={inputClass}>
               {RELATIONSHIPS.map((r) => (
@@ -127,7 +140,7 @@ export default function NewCompanyPage() {
 
         <div>
           <label htmlFor="notes" className={labelClass}>
-            Observações
+            Notes
           </label>
           <textarea id="notes" name="notes" rows={3} className={inputClass} />
         </div>
@@ -139,14 +152,14 @@ export default function NewCompanyPage() {
             href="/companies"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
           >
-            Cancelar
+            Cancel
           </Link>
           <button
             type="submit"
             disabled={isPending}
             className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
           >
-            {isPending ? "Salvando..." : "Salvar"}
+            {isPending ? "Saving..." : "Save"}
           </button>
         </div>
       </form>

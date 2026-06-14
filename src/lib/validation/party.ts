@@ -5,7 +5,7 @@ const emptyToNull = (v: unknown) =>
 
 export const partyCreateSchema = z.object({
   kind: z.enum(["PERSON", "ENTITY"]),
-  name: z.string().trim().min(1, "Nome é obrigatório"),
+  name: z.string().trim().min(1, "Name is required"),
   taxJurisdiction: z.enum(["US", "BR", "PT", "OTHER"]).default("OTHER"),
   taxId: z.preprocess(emptyToNull, z.string().trim().nullable()),
   notes: z.preprocess(emptyToNull, z.string().trim().nullable()),

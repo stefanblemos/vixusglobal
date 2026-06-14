@@ -5,17 +5,17 @@ const emptyToNull = (v: unknown) =>
 
 export const ownershipCreateSchema = z
   .object({
-    ownedCompanyId: z.string().min(1, "Empresa inválida"),
-    // Referência ao dono no formato "party:<id>" ou "company:<id>".
-    owner: z.string().regex(/^(party|company):.+/, "Selecione um dono"),
+    ownedCompanyId: z.string().min(1, "Invalid company"),
+    // Owner reference in the form "party:<id>" or "company:<id>".
+    owner: z.string().regex(/^(party|company):.+/, "Select an owner"),
     percentage: z.coerce
       .number()
-      .gt(0, "O percentual deve ser maior que 0")
-      .max(100, "O percentual não pode passar de 100"),
+      .gt(0, "Percentage must be greater than 0")
+      .max(100, "Percentage cannot exceed 100"),
     shareClass: z.preprocess(emptyToNull, z.string().trim().nullable()),
   })
   .refine((d) => d.owner !== `company:${d.ownedCompanyId}`, {
-    message: "Uma empresa não pode ser dona de si mesma",
+    message: "A company cannot own itself",
     path: ["owner"],
   });
 

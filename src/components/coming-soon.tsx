@@ -8,7 +8,7 @@ export function ComingSoon({ title, description }: { title: string; description:
         <Construction className="mb-3 text-slate-300" size={40} />
         <p className="max-w-md text-sm text-slate-500">{description}</p>
         <span className="mt-3 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
-          Em construção
+          Coming soon
         </span>
       </div>
     </div>

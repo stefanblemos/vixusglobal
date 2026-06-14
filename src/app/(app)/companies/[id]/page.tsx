@@ -6,7 +6,7 @@ import { deleteOwnership } from "@/lib/actions/ownership";
 import { labelForEntityType, labelForJurisdiction, labelForRelationship } from "@/lib/catalog";
 import { computeEffectiveOwners, edgesFromOwnerships } from "@/lib/ownership/effective";
 
-const fmtPct = (n: number) => `${n.toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%`;
+const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
 
 export default async function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -56,24 +56,25 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
     owners: ubo,
     coverage,
     hasCycle,
-  } = computeEffectiveOwners("company", id, edges, {
-    ultimateOnly: true,
-  });
+  } = computeEffectiveOwners("company", id, edges, { ultimateOnly: true });
 
   const ownerOptions = [
-    ...parties.map((p) => ({ value: `party:${p.id}`, label: p.name, group: "Donos" })),
+    ...parties.map((p) => ({ value: `party:${p.id}`, label: p.name, group: "Owners" })),
     ...companies
       .filter((c) => c.id !== id)
-      .map((c) => ({ value: `company:${c.id}`, label: c.legalName, group: "Empresas" })),
+      .map((c) => ({ value: `company:${c.id}`, label: c.legalName, group: "Companies" })),
   ];
 
   return (
     <div className="space-y-8">
       <div>
         <Link href="/companies" className="text-sm text-slate-500 hover:text-slate-700">
-          ← Empresas
+          ← Companies
         </Link>
         <h1 className="mt-1 text-2xl font-semibold text-slate-800">{company.legalName}</h1>
+        {company.aliases.length > 0 && (
+          <p className="mt-1 text-sm text-slate-400">Formerly: {company.aliases.join(", ")}</p>
+        )}
         <div className="mt-2 flex flex-wrap gap-2 text-xs">
           <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">
             {labelForEntityType(company.entityType)}
@@ -92,18 +93,18 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
       </div>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-medium text-slate-800">Donos diretos</h2>
+        <h2 className="text-lg font-medium text-slate-800">Direct owners</h2>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           {directOwners.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">Nenhum dono vinculado ainda.</p>
+            <p className="p-6 text-sm text-slate-500">No owners linked yet.</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Dono</th>
-                  <th className="px-4 py-3 font-medium">Tipo</th>
-                  <th className="px-4 py-3 font-medium">Classe</th>
-                  <th className="px-4 py-3 text-right font-medium">Participação</th>
+                  <th className="px-4 py-3 font-medium">Owner</th>
+                  <th className="px-4 py-3 font-medium">Type</th>
+                  <th className="px-4 py-3 font-medium">Class</th>
+                  <th className="px-4 py-3 text-right font-medium">Ownership</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
@@ -112,7 +113,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                   <tr key={o.id}>
                     <td className="px-4 py-3 font-medium text-slate-800">{o.name}</td>
                     <td className="px-4 py-3 text-slate-500">
-                      {o.type === "party" ? "Dono" : "Empresa"}
+                      {o.type === "party" ? "Owner" : "Company"}
                     </td>
                     <td className="px-4 py-3 text-slate-500">{o.shareClass ?? "—"}</td>
                     <td className="px-4 py-3 text-right text-slate-800">{fmtPct(o.percentage)}</td>
@@ -121,7 +122,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
                         <input type="hidden" name="ownershipId" value={o.id} />
                         <input type="hidden" name="companyId" value={id} />
                         <button className="text-xs text-slate-400 hover:text-red-600">
-                          Remover
+                          Remove
                         </button>
                       </form>
                     </td>
@@ -138,33 +139,32 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
 
       <section className="space-y-3">
         <div className="flex items-center gap-3">
-          <h2 className="text-lg font-medium text-slate-800">Beneficiários finais (UBO)</h2>
+          <h2 className="text-lg font-medium text-slate-800">Ultimate beneficial owners (UBO)</h2>
           {coverage < 99.99 && (
             <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-              Cobertura {fmtPct(coverage)} — ownership incompleto
+              Coverage {fmtPct(coverage)} — incomplete ownership
             </span>
           )}
           {hasCycle && (
             <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-              Participação cruzada detectada
+              Cross-holding detected
             </span>
           )}
         </div>
         <p className="text-sm text-slate-500">
-          Participação efetiva atravessando toda a cadeia societária até as pessoas/entidades
-          finais.
+          Effective ownership across the full chain, down to the final individuals/entities.
         </p>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           {ubo.length === 0 ? (
             <p className="p-6 text-sm text-slate-500">
-              Sem dados suficientes — vincule donos para calcular o UBO.
+              Not enough data — link owners to compute the UBO.
             </p>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Beneficiário final</th>
-                  <th className="px-4 py-3 text-right font-medium">Participação efetiva</th>
+                  <th className="px-4 py-3 font-medium">Ultimate owner</th>
+                  <th className="px-4 py-3 text-right font-medium">Effective ownership</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -182,7 +182,7 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
 
       {holdings.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-lg font-medium text-slate-800">Participações desta empresa</h2>
+          <h2 className="text-lg font-medium text-slate-800">This company&apos;s holdings</h2>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <tbody className="divide-y divide-slate-100">

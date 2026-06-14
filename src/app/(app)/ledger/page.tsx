@@ -4,7 +4,7 @@ export default function LedgerPage() {
   return (
     <ComingSoon
       title="Ledger"
-      description="Plano de contas e lançamentos (partida dobrada) por empresa. A base já existe no banco de dados; as telas entram na sequência da Fase 1."
+      description="Chart of accounts and double-entry journal per company. The data model already exists in the database; the screens come next in Phase 1."
     />
   );
 }

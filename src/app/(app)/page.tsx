@@ -9,16 +9,16 @@ export default async function DashboardPage() {
   ]);
 
   const cards = [
-    { label: "Empresas", value: companies, href: "/companies" },
-    { label: "Donos", value: parties, href: "/parties" },
-    { label: "Empréstimos", value: loans, href: "/companies" },
+    { label: "Companies", value: companies, href: "/companies" },
+    { label: "Owners", value: parties, href: "/parties" },
+    { label: "Loans", value: loans, href: "/loans" },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Visão geral</h1>
-        <p className="text-sm text-slate-500">Plataforma Vixus Global Investments.</p>
+        <h1 className="text-2xl font-semibold text-slate-800">Overview</h1>
+        <p className="text-sm text-slate-500">Vixus Global Investments platform.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

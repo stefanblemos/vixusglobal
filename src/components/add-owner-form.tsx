@@ -20,20 +20,20 @@ export function AddOwnerForm({
     undefined,
   );
 
-  const parties = options.filter((o) => o.group === "Donos");
-  const companies = options.filter((o) => o.group === "Empresas");
+  const parties = options.filter((o) => o.group === "Owners");
+  const companies = options.filter((o) => o.group === "Companies");
 
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="ownedCompanyId" value={companyId} />
       <div className="min-w-56 flex-1">
-        <label className="mb-1 block text-xs font-medium text-slate-600">Dono</label>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Owner</label>
         <select name="owner" required defaultValue="" className={inputClass}>
           <option value="" disabled>
-            Selecione…
+            Select…
           </option>
           {parties.length > 0 && (
-            <optgroup label="Donos (pessoas/entidades)">
+            <optgroup label="Owners (individuals/entities)">
               {parties.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -42,7 +42,7 @@ export function AddOwnerForm({
             </optgroup>
           )}
           {companies.length > 0 && (
-            <optgroup label="Empresas">
+            <optgroup label="Companies">
               {companies.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
@@ -53,7 +53,7 @@ export function AddOwnerForm({
         </select>
       </div>
       <div className="w-28">
-        <label className="mb-1 block text-xs font-medium text-slate-600">Participação %</label>
+        <label className="mb-1 block text-xs font-medium text-slate-600">Ownership %</label>
         <input
           name="percentage"
           type="number"
@@ -65,15 +65,15 @@ export function AddOwnerForm({
         />
       </div>
       <div className="w-36">
-        <label className="mb-1 block text-xs font-medium text-slate-600">Classe (opcional)</label>
-        <input name="shareClass" placeholder="ex.: ON, Class A" className={inputClass} />
+        <label className="mb-1 block text-xs font-medium text-slate-600">Class (optional)</label>
+        <input name="shareClass" placeholder="e.g. Class A" className={inputClass} />
       </div>
       <button
         type="submit"
         disabled={isPending}
         className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
       >
-        {isPending ? "Adicionando…" : "Adicionar"}
+        {isPending ? "Adding…" : "Add"}
       </button>
       {state?.error && <p className="w-full text-sm text-red-600">{state.error}</p>}
     </form>

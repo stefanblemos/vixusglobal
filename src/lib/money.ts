@@ -21,7 +21,7 @@ export function round(v: DecimalInput, dp = 2): Decimal {
 }
 
 /** Formata um valor monetário com a moeda (ex.: "1.234,56 USD"). */
-export function formatMoney(v: DecimalInput, currency: string, locale = "pt-BR"): string {
+export function formatMoney(v: DecimalInput, currency: string, locale = "en-US"): string {
   const n = Number(round(v, 2));
   try {
     return new Intl.NumberFormat(locale, { style: "currency", currency }).format(n);

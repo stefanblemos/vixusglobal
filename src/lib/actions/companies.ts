@@ -18,6 +18,7 @@ export async function createCompany(_prev: FormState, formData: FormData): Promi
     data: {
       legalName: d.legalName,
       tradeName: d.tradeName,
+      aliases: d.aliases,
       jurisdiction: d.jurisdiction as Jurisdiction,
       state: d.state,
       entityType: d.entityType as EntityType,

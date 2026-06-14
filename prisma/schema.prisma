@@ -135,6 +135,7 @@ model Company {
   id            String              @id @default(cuid())
   legalName     String
   tradeName     String?
+  aliases       String[]            @default([]) // nomes alternativos/antigos vistos no QBO (matching de import)
   jurisdiction  Jurisdiction
   state         String? // ex.: "FL"
   entityType    EntityType

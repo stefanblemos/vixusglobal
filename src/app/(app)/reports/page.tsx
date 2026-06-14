@@ -3,8 +3,8 @@ import { ComingSoon } from "@/components/coming-soon";
 export default function ReportsPage() {
   return (
     <ComingSoon
-      title="Relatórios"
-      description="Relatório prévio (QBO) vs. contábil externa, consolidação por ownership e o relatório por dono (UBO). Módulos das Fases 2, 3 e 6."
+      title="Reports"
+      description="Preliminary report (QBO) vs. external accounting, ownership consolidation and the per-owner report (UBO). Phase 2, 3 and 6 modules."
     />
   );
 }
