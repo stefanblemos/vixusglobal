@@ -19,6 +19,39 @@ check("num: negative $", parseQboNumber("-$8,000.00"), "-8000.00");
 check("num: parentheses", parseQboNumber("(1,234.00)"), "-1234.00");
 check("num: zero", parseQboNumber("$0.00"), "0");
 check("num: empty", parseQboNumber(""), "null");
+check("num: BRL R$", parseQboNumber("R$278,999.81"), "278999.81");
+check("num: EUR €", parseQboNumber("€102.88"), "102.88");
+check("num: neg BRL", parseQboNumber("-R$35,943.13"), "-35943.13");
+check("num: EUR w/ spaces", parseQboNumber("  €5,813.96"), "5813.96");
+
+// ── Relatório em português (Portugal) ──
+const ptCsv = [
+  "Hipérbole Vigilante Unipessoal Lda,",
+  "Balanço patrimonial,",
+  '"À data de 31 dez, 2025",',
+  "",
+  ",Total",
+  "Ativos,",
+  "Ativos circulantes,",
+  'Caixa e equivalentes-caixa,"5,813.96"',
+  'Total para Ativos circulantes,"  €5,813.96"',
+  'Total para Ativos,"  €5,813.96"',
+].join("\n");
+const pt = parseQboReport(ptCsv);
+check("PT type", pt.reportType, "BALANCE_SHEET");
+check("PT currency", pt.currency, "EUR");
+check(
+  "PT 'Total para' parsed",
+  pt.lines.find((l) => l.label === "Total para Ativos circulantes")?.values[0],
+  "5813.96",
+);
+check(
+  "PT leaf under section",
+  pt.lines
+    .find((l) => l.label === "Caixa e equivalentes-caixa")
+    ?.sectionPath.includes("Ativos circulantes"),
+  "true",
+);
 
 // ── L&L Balance Sheet ──
 const ll = parseQboReport(fx("ll-balance-sheet.csv"));

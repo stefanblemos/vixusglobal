@@ -14,8 +14,8 @@ export function parseQboNumber(raw: string | undefined | null): string | null {
     s = s.slice(1, -1).trim();
   }
 
-  // Remove cifrão, espaços e separadores de milhar
-  s = s.replace(/\$/g, "").replace(/\s/g, "").replace(/,/g, "");
+  // Remove símbolos de moeda (R$, $, €, £), espaços e separadores de milhar
+  s = s.replace(/R\$/g, "").replace(/[$€£]/g, "").replace(/\s/g, "").replace(/,/g, "");
 
   if (s.startsWith("-")) {
     negative = true;

@@ -19,16 +19,38 @@ export interface QboReport {
   reportTypeLabel: string;
   periodLabel: string;
   basis: string | null;
+  currency: string; // ISO 4217 detectado pelos símbolos ($→USD, R$→BRL, €→EUR)
   columns: string[]; // cabeçalhos das colunas de período (ex.: ["Total"])
   lines: QboLine[];
 }
 
 function detectType(label: string): QboReportType {
   const l = label.toLowerCase();
-  if (l.includes("balance sheet")) return "BALANCE_SHEET";
-  if (l.includes("profit and loss") || l.includes("profit & loss")) return "PROFIT_AND_LOSS";
+  if (
+    l.includes("balance sheet") ||
+    l.includes("balanço patrimonial") ||
+    l.includes("balanco patrimonial")
+  )
+    return "BALANCE_SHEET";
+  if (
+    l.includes("profit and loss") ||
+    l.includes("profit & loss") ||
+    l.includes("resultado do exerc") ||
+    l.includes("demonstração de result") ||
+    l.includes("demonstracao de result")
+  )
+    return "PROFIT_AND_LOSS";
   return "UNKNOWN";
 }
+
+function detectCurrency(text: string): string {
+  if (/R\$/.test(text)) return "BRL";
+  if (/€/.test(text)) return "EUR";
+  if (/£/.test(text)) return "GBP";
+  return "USD";
+}
+
+const TOTAL_RE = /^total\s+(?:for|para)\s+(.+)$/i;
 
 function extractCode(label: string): { name: string; code: string | null } {
   const m = label.match(/\s*\(([^)]+)\)\s*$/);
@@ -53,7 +75,7 @@ export function parseQboReport(csvText: string): QboReport {
   // mesmo quando a linha-pai também traz um valor próprio (ex.: cartão com saldo + sub-contas).
   const parentNames = new Set<string>();
   for (let i = headerIdx + 1; i < rows.length; i++) {
-    const m = (rows[i]?.[0] ?? "").match(/^total for\s+(.+)$/i);
+    const m = (rows[i]?.[0] ?? "").match(TOTAL_RE);
     if (m) parentNames.add(m[1].trim());
   }
 
@@ -76,8 +98,9 @@ export function parseQboReport(csvText: string): QboReport {
     const values = Array.from({ length: nCols }, (_, c) => parseQboNumber(row[c + 1]));
     const hasValue = values.some((v) => v !== null);
 
-    if (/^total for\s+/i.test(label)) {
-      const sectionName = label.replace(/^total for\s+/i, "").trim();
+    const totalMatch = label.match(TOTAL_RE);
+    if (totalMatch) {
+      const sectionName = totalMatch[1].trim();
       const idx = stack.lastIndexOf(sectionName);
       const depth = idx >= 0 ? idx : Math.max(0, stack.length - 1);
       const path = idx >= 0 ? stack.slice(0, idx) : [...stack];
@@ -118,6 +141,7 @@ export function parseQboReport(csvText: string): QboReport {
     reportTypeLabel,
     periodLabel,
     basis,
+    currency: detectCurrency(csvText),
     columns,
     lines,
   };

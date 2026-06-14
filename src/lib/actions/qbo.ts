@@ -48,9 +48,7 @@ export async function saveQboImport(input: {
   const report = parseQboReport(input.text);
   const companyId = input.companyId || null;
 
-  const currency = companyId
-    ? ((await prisma.company.findUnique({ where: { id: companyId } }))?.baseCurrency ?? "USD")
-    : "USD";
+  const currency = report.currency;
 
   // Dedup: substitui um import anterior do mesmo (empresa, tipo, período).
   if (companyId) {
