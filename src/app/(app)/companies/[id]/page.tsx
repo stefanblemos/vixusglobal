@@ -134,6 +134,28 @@ export default async function CompanyDetailPage({
     ]),
   ].sort((a, b) => b - a);
 
+  // Snapshot do último Balance Sheet do QBO (Ativos / Passivos / Patrimônio).
+  const latestBS = qboImports.find((q) => q.reportKind === "BALANCE_SHEET") ?? null;
+  const bsLines = latestBS
+    ? await prisma.qboImportLine.findMany({ where: { importId: latestBS.id, lineType: "TOTAL" } })
+    : [];
+  const bsSubject = (label: string) => {
+    const m = label.match(/^total\s+(?:for|para|do|da|de)\s+(.+)$/i);
+    return (m?.[1] ?? label.replace(/^total\s+/i, "")).trim().toLowerCase();
+  };
+  const bsTotal = (key: string) => {
+    const l = bsLines.find((x) => bsSubject(x.label) === key);
+    return l?.value != null ? Number(l.value) : null;
+  };
+  const bs = latestBS
+    ? {
+        assets: bsTotal("assets"),
+        liabilities: bsTotal("liabilities"),
+        equity: bsTotal("equity"),
+        period: latestBS.periodLabel,
+      }
+    : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -176,6 +198,22 @@ export default async function CompanyDetailPage({
       {/* ───────── Overview ───────── */}
       {tab === "overview" && (
         <div className="space-y-6">
+          {bs && (
+            <div>
+              <div className="grid grid-cols-3 gap-3">
+                <Kpi label="Total assets" value={money(bs.assets, company.baseCurrency)} />
+                <Kpi
+                  label="Total liabilities"
+                  value={money(bs.liabilities, company.baseCurrency)}
+                />
+                <Kpi label="Total equity" value={money(bs.equity, company.baseCurrency)} />
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                Latest balance sheet (QBO) · {bs.period}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <Kpi label="Direct owners" value={`${directOwners.length}`} />
             <Kpi
