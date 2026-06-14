@@ -45,9 +45,7 @@ export function parseQboReport(csvText: string): QboReport {
   const periodLabel = rows[2]?.[0] ?? "";
 
   // Linha de cabeçalho das colunas: col0 vazia e alguma coluna seguinte preenchida.
-  const headerIdx = rows.findIndex(
-    (r) => (r[0] ?? "") === "" && r.slice(1).some((c) => c !== ""),
-  );
+  const headerIdx = rows.findIndex((r) => (r[0] ?? "") === "" && r.slice(1).some((c) => c !== ""));
   const columns = headerIdx >= 0 ? rows[headerIdx].slice(1).filter((c) => c !== "") : ["Total"];
   const nCols = columns.length;
 
@@ -69,7 +67,9 @@ export function parseQboReport(csvText: string): QboReport {
     if (label === "") continue;
 
     if (/^(accrual|cash)\s+basis/i.test(label)) {
-      basis = label.replace(/\s*(sunday|monday|tuesday|wednesday|thursday|friday|saturday).*/i, "").trim();
+      basis = label
+        .replace(/\s*(sunday|monday|tuesday|wednesday|thursday|friday|saturday).*/i, "")
+        .trim();
       break;
     }
 
@@ -125,7 +125,5 @@ export function parseQboReport(csvText: string): QboReport {
 
 /** Soma o valor (1ª coluna) das contas-folha cujo caminho contém a seção dada. */
 export function leavesUnderSection(report: QboReport, section: string): QboLine[] {
-  return report.lines.filter(
-    (l) => l.lineType === "ACCOUNT" && l.sectionPath.includes(section),
-  );
+  return report.lines.filter((l) => l.lineType === "ACCOUNT" && l.sectionPath.includes(section));
 }

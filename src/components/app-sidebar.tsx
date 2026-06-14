@@ -11,6 +11,7 @@ import {
   BookOpen,
   ReceiptText,
   PieChart,
+  Upload,
   LogOut,
 } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/parties", label: "Owners", icon: Users },
   { href: "/loans", label: "Loans", icon: ArrowLeftRight },
   { href: "/ledger", label: "Ledger", icon: BookOpen },
+  { href: "/import", label: "Import QBO", icon: Upload },
   { href: "/tax", label: "Tax", icon: ReceiptText },
   { href: "/reports", label: "Reports", icon: PieChart },
 ];

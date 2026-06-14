@@ -42,7 +42,11 @@ check("LL balance closes (A = L + E)", (assets === liab + equity).toString(), "t
 // Conta sob 'Loans to Others' com valor e caminho corretos
 const vixusLoan = find("Vixus Partners Investment LLC");
 check("LL loan value", vixusLoan?.values[0], "767704.14");
-check("LL loan under 'Loans to Others'", vixusLoan?.sectionPath.includes("Loans to Others"), "true");
+check(
+  "LL loan under 'Loans to Others'",
+  vixusLoan?.sectionPath.includes("Loans to Others"),
+  "true",
+);
 
 // Código de conta extraído do sufixo "(3303)"
 const bank = find("Business Fundamentals Chk - 3303");

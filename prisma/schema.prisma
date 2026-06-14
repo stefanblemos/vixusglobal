@@ -154,6 +154,47 @@ model Company {
   journalEntries  JournalEntry[]
   loansAsLender   IntercompanyLoan[] @relation("Lender")
   loansAsBorrower IntercompanyLoan[] @relation("Borrower")
+  qboImports      QboImport[]
+}
+
+// ─────────────────────────────────────────────────────────────
+// Importações do QuickBooks (QBO) — relatórios em CSV
+// ─────────────────────────────────────────────────────────────
+
+enum QboReportKind {
+  BALANCE_SHEET
+  PROFIT_AND_LOSS
+  UNKNOWN
+}
+
+model QboImport {
+  id                String        @id @default(cuid())
+  companyId         String?
+  company           Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  sourceCompanyName String // nome exatamente como veio no CSV
+  reportKind        QboReportKind
+  reportTypeLabel   String
+  periodLabel       String
+  basis             String?
+  fileName          String?
+  columns           String[]
+  createdAt         DateTime      @default(now())
+
+  lines QboImportLine[]
+}
+
+model QboImportLine {
+  id          String    @id @default(cuid())
+  importId    String
+  import      QboImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  rowIndex    Int
+  label       String
+  accountCode String?
+  sectionPath String[]
+  depth       Int
+  lineType    String // SECTION | ACCOUNT | TOTAL
+  value       Decimal?  @db.Decimal(20, 4) // valor da 1ª coluna de período
+  currency    String    @default("USD")
 }
 
 /// Aresta de participação genérica. Dono e possuído podem ser Party OU Company,
