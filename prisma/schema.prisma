@@ -157,6 +157,41 @@ model Company {
   qboImports      QboImport[]
   ledgerTxns      LedgerTxn[]
   bankStatements  BankStatement[]
+  taxStatuses     CompanyTaxStatus[]
+}
+
+// Forma de tributação (independe do tipo legal — ex.: LLC tributada como S-corp).
+enum TaxTreatment {
+  // EUA
+  DISREGARDED // LLC single-member (Schedule C/E)
+  PARTNERSHIP // 1065
+  S_CORP // 1120-S
+  C_CORP // 1120
+  SOLE_PROP // Schedule C
+  // Brasil
+  LUCRO_REAL
+  LUCRO_PRESUMIDO
+  SIMPLES_NACIONAL
+  MEI
+  // Portugal
+  REGIME_GERAL
+  REGIME_SIMPLIFICADO
+  OTHER
+}
+
+// Classificação tributária por ANO (muda ao longo do tempo).
+model CompanyTaxStatus {
+  id           String       @id @default(cuid())
+  companyId    String
+  company      Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  year         Int
+  entityType   EntityType // tipo legal naquele ano
+  taxTreatment TaxTreatment // como foi tributada naquele ano
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@unique([companyId, year])
 }
 
 // ─────────────────────────────────────────────────────────────

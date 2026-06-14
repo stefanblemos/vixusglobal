@@ -2,8 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AddOwnerForm } from "@/components/add-owner-form";
+import { TaxStatusForm } from "@/components/tax-status-form";
 import { deleteOwnership } from "@/lib/actions/ownership";
-import { labelForEntityType, labelForJurisdiction, labelForRelationship } from "@/lib/catalog";
+import { deleteTaxStatus } from "@/lib/actions/tax";
+import {
+  labelForEntityType,
+  labelForJurisdiction,
+  labelForRelationship,
+  labelForTaxTreatment,
+} from "@/lib/catalog";
 import { computeEffectiveOwners, edgesFromOwnerships } from "@/lib/ownership/effective";
 
 const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
@@ -11,11 +18,12 @@ const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigi
 export default async function CompanyDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  const [company, parties, companies, ownerships] = await Promise.all([
+  const [company, parties, companies, ownerships, taxStatuses] = await Promise.all([
     prisma.company.findUnique({ where: { id } }),
     prisma.party.findMany({ orderBy: { name: "asc" } }),
     prisma.company.findMany({ orderBy: { legalName: "asc" } }),
     prisma.ownership.findMany(),
+    prisma.companyTaxStatus.findMany({ where: { companyId: id }, orderBy: { year: "desc" } }),
   ]);
 
   if (!company) notFound();
@@ -177,6 +185,54 @@ export default async function CompanyDetailPage({ params }: { params: Promise<{ 
               </tbody>
             </table>
           )}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-medium text-slate-800">Tax classification by year</h2>
+        <p className="text-sm text-slate-500">
+          Legal type and how the company was taxed each year (it can change over time).
+        </p>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          {taxStatuses.length === 0 ? (
+            <p className="p-6 text-sm text-slate-500">No tax classification recorded yet.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Year</th>
+                  <th className="px-4 py-3 font-medium">Entity type</th>
+                  <th className="px-4 py-3 font-medium">Tax treatment</th>
+                  <th className="px-4 py-3 font-medium">Notes</th>
+                  <th className="px-4 py-3"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {taxStatuses.map((t) => (
+                  <tr key={t.id}>
+                    <td className="px-4 py-3 font-medium text-slate-800">{t.year}</td>
+                    <td className="px-4 py-3 text-slate-600">{labelForEntityType(t.entityType)}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {labelForTaxTreatment(t.taxTreatment)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">{t.notes ?? "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <form action={deleteTaxStatus}>
+                        <input type="hidden" name="id" value={t.id} />
+                        <input type="hidden" name="companyId" value={id} />
+                        <button className="text-xs text-slate-400 hover:text-red-600">
+                          Remove
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <TaxStatusForm companyId={id} defaultEntityType={company.entityType} />
         </div>
       </section>
 

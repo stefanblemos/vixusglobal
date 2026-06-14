@@ -43,6 +43,42 @@ export const ALL_ENTITY_TYPE_VALUES = Array.from(
   new Set(Object.values(ENTITY_TYPES_BY_JURISDICTION).flatMap((arr) => arr.map((e) => e.value))),
 ) as [string, ...string[]];
 
+// Formas de tributação por jurisdição (rótulo amigável).
+export const TAX_TREATMENTS_BY_JURISDICTION: Record<
+  JurisdictionValue,
+  { value: string; label: string }[]
+> = {
+  US: [
+    { value: "DISREGARDED", label: "Disregarded (single-member LLC)" },
+    { value: "PARTNERSHIP", label: "Partnership (1065)" },
+    { value: "S_CORP", label: "S-Corp (1120-S)" },
+    { value: "C_CORP", label: "C-Corp (1120)" },
+    { value: "SOLE_PROP", label: "Sole Proprietorship (Sch. C)" },
+  ],
+  BR: [
+    { value: "LUCRO_REAL", label: "Lucro Real" },
+    { value: "LUCRO_PRESUMIDO", label: "Lucro Presumido" },
+    { value: "SIMPLES_NACIONAL", label: "Simples Nacional" },
+    { value: "MEI", label: "MEI" },
+  ],
+  PT: [
+    { value: "REGIME_GERAL", label: "Regime Geral" },
+    { value: "REGIME_SIMPLIFICADO", label: "Regime Simplificado" },
+  ],
+  OTHER: [{ value: "OTHER", label: "Other" }],
+};
+
+export const ALL_TAX_TREATMENT_VALUES = Array.from(
+  new Set(Object.values(TAX_TREATMENTS_BY_JURISDICTION).flatMap((arr) => arr.map((e) => e.value))),
+) as [string, ...string[]];
+
+const TAX_TREATMENT_LABELS: Record<string, string> = Object.fromEntries(
+  Object.values(TAX_TREATMENTS_BY_JURISDICTION).flatMap((arr) =>
+    arr.map((e) => [e.value, e.label]),
+  ),
+);
+export const labelForTaxTreatment = (v: string) => TAX_TREATMENT_LABELS[v] ?? v;
+
 export const RELATIONSHIPS = [
   { value: "GROUP_MEMBER", label: "Group member (ownership)" },
   { value: "MANAGED_ONLY", label: "Managed only (no ownership)" },
