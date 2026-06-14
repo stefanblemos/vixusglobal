@@ -59,8 +59,19 @@ function extractCode(label: string): { name: string; code: string | null } {
 }
 
 export function parseQboReport(csvText: string): QboReport {
+  const decodeEntities = (s: string) =>
+    s
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#0?39;/g, "'")
+      .replace(/&nbsp;/g, " ");
+
   const parsed = Papa.parse<string[]>(csvText, { skipEmptyLines: false });
-  const rows = (parsed.data ?? []).map((r) => (r ?? []).map((c) => (c ?? "").trim()));
+  const rows = (parsed.data ?? []).map((r) =>
+    (r ?? []).map((c) => decodeEntities((c ?? "").trim())),
+  );
 
   const companyName = rows[0]?.[0] ?? "";
   const reportTypeLabel = rows[1]?.[0] ?? "";
