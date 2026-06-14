@@ -156,6 +156,7 @@ model Company {
   loansAsBorrower IntercompanyLoan[] @relation("Borrower")
   qboImports      QboImport[]
   ledgerTxns      LedgerTxn[]
+  bankStatements  BankStatement[]
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -195,6 +196,35 @@ model Vendor {
   matchedPartyId   String?
   createdAt        DateTime    @default(now())
   txns             LedgerTxn[]
+}
+
+// Extrato bancário importado (por banco/adaptador) — para reconciliação.
+model BankStatement {
+  id               String    @id @default(cuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  bankId           String // "boa", etc.
+  bankLabel        String
+  fileName         String?
+  periodStart      DateTime? @db.Date
+  periodEnd        DateTime? @db.Date
+  beginningBalance Decimal?  @db.Decimal(20, 4)
+  endingBalance    Decimal?  @db.Decimal(20, 4)
+  createdAt        DateTime  @default(now())
+
+  lines BankStatementLine[]
+}
+
+model BankStatementLine {
+  id           String        @id @default(cuid())
+  statementId  String
+  statement    BankStatement @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  date         DateTime      @db.Date
+  description  String
+  amount       Decimal       @db.Decimal(20, 4)
+  balance      Decimal?      @db.Decimal(20, 4)
+  matchedTxnId String? // LedgerTxn reconciliada
+  createdAt    DateTime      @default(now())
 }
 
 // Linha do razão (General Ledger) — uma transação por conta.

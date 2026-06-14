@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { DateRangeFilter } from "@/components/date-range-filter";
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 const LIMIT = 200;
@@ -8,9 +9,9 @@ const LIMIT = 200;
 export default async function LedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ company?: string }>;
+  searchParams: Promise<{ company?: string; from?: string; to?: string }>;
 }) {
-  const { company } = await searchParams;
+  const { company, from, to } = await searchParams;
 
   const glImports = await prisma.qboImport.findMany({
     where: { reportKind: "GENERAL_LEDGER" },
@@ -64,22 +65,33 @@ export default async function LedgerPage({
     );
   }
 
+  const dateFilter =
+    from || to
+      ? {
+          date: {
+            ...(from ? { gte: new Date(`${from}T00:00:00Z`) } : {}),
+            ...(to ? { lte: new Date(`${to}T23:59:59Z`) } : {}),
+          },
+        }
+      : {};
+  const txnWhere = { companyId: company, ...dateFilter };
+
   const [comp, total, txns, accountCount, vendorCount] = await Promise.all([
     prisma.company.findUnique({ where: { id: company } }),
-    prisma.ledgerTxn.count({ where: { companyId: company } }),
+    prisma.ledgerTxn.count({ where: txnWhere }),
     prisma.ledgerTxn.findMany({
-      where: { companyId: company },
+      where: txnWhere,
       orderBy: { date: "desc" },
       take: LIMIT,
       include: { vendor: true },
     }),
     prisma.ledgerTxn.findMany({
-      where: { companyId: company },
+      where: txnWhere,
       distinct: ["account"],
       select: { account: true },
     }),
     prisma.ledgerTxn.findMany({
-      where: { companyId: company, vendorId: { not: null } },
+      where: { ...txnWhere, vendorId: { not: null } },
       distinct: ["vendorId"],
       select: { vendorId: true },
     }),
@@ -97,6 +109,13 @@ export default async function LedgerPage({
           {vendorCount.length} vendors · showing latest {Math.min(LIMIT, total)}
         </p>
       </div>
+
+      <DateRangeFilter
+        hidden={{ company }}
+        from={from}
+        to={to}
+        clearHref={`/ledger?company=${company}`}
+      />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
