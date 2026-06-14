@@ -25,8 +25,15 @@ export function extractPositions(
     if (!other || other === reportedBy) continue;
 
     const path = l.sectionPath.map((s) => s.toLowerCase());
-    const isAsset = (path[0] ?? "").includes("asset");
-    const isLiab = path.some((s) => s.includes("liabilit"));
+    // O cabeçalho combinado "Liabilities and Equity" / "Passivos e capital próprio"
+    // contém ambas as palavras — ignorá-lo ao decidir o ramo (passivo vs patrimônio).
+    const isCombined = (s: string) => /liabilities and equity|passivos e capital/.test(s);
+    const liabSeg = path.some((s) => !isCombined(s) && (/liabilit/.test(s) || /passivo/.test(s)));
+    const equitySeg = path.some(
+      (s) => !isCombined(s) && /equity|capital pr|capital dos acion/.test(s),
+    );
+    const isAsset = (path[0] ?? "").includes("asset") || (path[0] ?? "").includes("ativo");
+    const isLiab = liabSeg && !equitySeg;
     const underLoans = path.some((s) => /loans?\s+to\s+others/.test(s));
     const amt = Math.abs(Number(l.amount ?? 0));
     if (!amt) continue;
