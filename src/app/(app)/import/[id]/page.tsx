@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { detectSuggestions } from "@/lib/qbo/detect";
+import { matchCompany, matchParty } from "@/lib/qbo/match";
+import { ImportSuggestions, type ResolvedSuggestion } from "@/components/import-suggestions";
 
 const fmt = (v: { toString(): string } | null, currency: string) =>
   v == null
@@ -20,6 +23,42 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
     include: { company: true, lines: { orderBy: { rowIndex: "asc" } } },
   });
   if (!imp) notFound();
+
+  const [companies, parties] = await Promise.all([
+    prisma.company.findMany({
+      select: { id: true, legalName: true, tradeName: true, aliases: true },
+    }),
+    prisma.party.findMany({ select: { id: true, name: true } }),
+  ]);
+
+  const detected = detectSuggestions(
+    imp.lines.map((l) => ({
+      label: l.label,
+      lineType: l.lineType,
+      sectionPath: l.sectionPath,
+      amount: l.value?.toString() ?? null,
+    })),
+  );
+
+  const suggestions: ResolvedSuggestion[] = detected.map((s) => {
+    const companyId = matchCompany(s.counterpartyName, companies);
+    const partyId = companyId ? null : matchParty(s.counterpartyName, parties);
+    const matchType = companyId ? "company" : partyId ? "party" : null;
+    const matchId = companyId ?? partyId ?? null;
+    const matchName = companyId
+      ? (companies.find((c) => c.id === companyId)?.legalName ?? null)
+      : partyId
+        ? (parties.find((p) => p.id === partyId)?.name ?? null)
+        : null;
+    return {
+      kind: s.kind,
+      counterpartyName: s.counterpartyName,
+      amount: s.amount,
+      matchType,
+      matchId,
+      matchName,
+    };
+  });
 
   return (
     <div className="space-y-6">
@@ -48,7 +87,16 @@ export default async function ImportDetailPage({ params }: { params: Promise<{ i
         </div>
       </div>
 
+      <ImportSuggestions
+        importId={imp.id}
+        importCompanyId={imp.companyId}
+        suggestions={suggestions}
+      />
+
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <h2 className="border-b border-slate-100 px-4 py-3 text-lg font-medium text-slate-800">
+          Report lines
+        </h2>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>

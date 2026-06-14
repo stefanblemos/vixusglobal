@@ -33,3 +33,16 @@ export function matchCompany(
   }
   return null;
 }
+
+/** Retorna o id da pessoa/entidade (Party) cujo nome normalizado bate, ou null. */
+export function matchParty(
+  sourceName: string,
+  parties: { id: string; name: string }[],
+): string | null {
+  const target = normalizeName(sourceName);
+  if (!target) return null;
+  for (const p of parties) {
+    if (normalizeName(p.name) === target) return p.id;
+  }
+  return null;
+}
