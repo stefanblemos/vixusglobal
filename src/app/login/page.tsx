@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useActionState } from "react";
 import { authenticate } from "@/lib/actions/auth";
 
@@ -9,11 +10,16 @@ export default function LoginPage() {
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-semibold tracking-tight text-slate-800">
-            VIX<span className="text-[#8DC63F]">US</span>
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">Plataforma de Controle</p>
+        <div className="mb-7 flex flex-col items-center text-center">
+          <Image
+            src="/vixus-logo.png"
+            alt="Vixus Global Investments"
+            width={190}
+            height={66}
+            priority
+            unoptimized
+          />
+          <p className="mt-3 text-sm text-slate-500">Plataforma de Controle</p>
         </div>
 
         <form action={formAction} className="space-y-4">

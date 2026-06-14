@@ -17,8 +17,8 @@ export default async function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Dashboard</h1>
-        <p className="text-sm text-slate-500">Visão geral da plataforma Vixus Global.</p>
+        <h1 className="text-2xl font-semibold text-slate-800">Visão geral</h1>
+        <p className="text-sm text-slate-500">Plataforma Vixus Global Investments.</p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

@@ -5,6 +5,7 @@ import { authConfig } from "./auth.config";
 export const { auth: middleware } = NextAuth(authConfig);
 
 export const config = {
-  // Protege tudo, exceto assets, rotas do Auth.js e a própria tela de login.
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|login).*)"],
+  // Protege tudo, exceto rotas do Auth.js, internos do Next e arquivos estáticos
+  // do /public (qualquer caminho com extensão, ex.: .png, .svg, .ico).
+  matcher: ["/((?!api/auth|_next/static|_next/image|.*\\..*).*)"],
 };
