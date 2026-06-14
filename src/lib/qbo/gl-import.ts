@@ -63,22 +63,25 @@ export async function importGeneralLedger(
     },
   });
 
-  await prisma.ledgerTxn.createMany({
-    data: gl.transactions.map((t) => ({
-      companyId,
-      importId: imp.id,
-      account: t.account,
-      date: new Date(`${t.date}T00:00:00Z`),
-      type: t.type,
-      num: t.num,
-      vendorId: t.name ? (vendorMap.get(t.name) ?? null) : null,
-      rawName: t.name,
-      description: t.description,
-      split: t.split,
-      amount: t.amount ?? "0",
-      currency: gl.currency,
-    })),
-  });
+  const data = gl.transactions.map((t) => ({
+    companyId,
+    importId: imp.id,
+    account: t.account,
+    date: new Date(`${t.date}T00:00:00Z`),
+    type: t.type,
+    num: t.num,
+    vendorId: t.name ? (vendorMap.get(t.name) ?? null) : null,
+    rawName: t.name,
+    description: t.description,
+    split: t.split,
+    amount: t.amount ?? "0",
+    currency: gl.currency,
+  }));
+  // Chunk para não estourar o limite de parâmetros do Postgres em GLs grandes.
+  const CHUNK = 1000;
+  for (let i = 0; i < data.length; i += CHUNK) {
+    await prisma.ledgerTxn.createMany({ data: data.slice(i, i + CHUNK) });
+  }
 
   return {
     matched: true,
