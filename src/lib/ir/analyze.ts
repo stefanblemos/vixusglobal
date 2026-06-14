@@ -3,12 +3,14 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
 
 // Extração estruturada de um IR (declaração de imposto) — sócios + forma de tributação.
+// Texto opcional usa "" (string vazia) em vez de null — para não estourar o limite
+// de parâmetros com union (anyOf) do structured output da API. Numbers seguem nullable.
 export const irOwnerSchema = z.object({
   name: z.string(),
-  taxId: z.string().nullable(), // SSN/CPF/EIN do sócio — será mascarado ao salvar
+  taxId: z.string(), // SSN/CPF/EIN do sócio ("" se não houver) — mascarado ao salvar
   ownershipPct: z.number().nullable(),
   allocatedIncome: z.number().nullable(), // renda alocada ao sócio (K-1, etc.)
-  role: z.string().nullable(),
+  role: z.string(),
 });
 
 // Chaves normalizadas para os números do IR (permitem comparar IR × QBO).
@@ -34,23 +36,23 @@ export const irFigureSchema = z.object({
   key: z.enum(FIGURE_KEYS),
   label: z.string(), // rótulo como aparece no formulário
   value: z.number().nullable(),
-  line: z.string().nullable(), // ex.: "1120 line 30", "F-1120"
+  line: z.string(), // ex.: "1120 line 30", "F-1120" ("" se não houver)
 });
 
 export const irExtractionSchema = z.object({
-  companyName: z.string().nullable(),
-  taxId: z.string().nullable(), // EIN/CNPJ/NIF da entidade
+  companyName: z.string(),
+  taxId: z.string(), // EIN/CNPJ/NIF da entidade ("" se não houver)
   jurisdiction: z.enum(["US", "BR", "PT", "OTHER"]),
   year: z.number().nullable(),
-  taxForm: z.string().nullable(),
-  entityType: z.string().nullable(),
-  city: z.string().nullable(),
-  state: z.string().nullable(),
-  address: z.string().nullable(),
-  businessActivity: z.string().nullable(),
-  incorporationDate: z.string().nullable(),
-  preparer: z.string().nullable(),
-  responsible: z.string().nullable(), // Partnership Representative / responsável
+  taxForm: z.string(),
+  entityType: z.string(),
+  city: z.string(),
+  state: z.string(),
+  address: z.string(),
+  businessActivity: z.string(),
+  incorporationDate: z.string(),
+  preparer: z.string(),
+  responsible: z.string(), // Partnership Representative / responsável
   figures: z.array(irFigureSchema),
   taxTreatment: z.enum([
     "DISREGARDED",
@@ -100,8 +102,9 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    for any number you cannot read — never guess.
 
 Be faithful to the document. Set confidence to "low" if anything is unclear or inferred.
-Keep "summary" to ONE short sentence of context — the figures and fields carry the data,
-not the prose.`;
+For any TEXT field not shown on the document, use an empty string "" (not null). Use null
+only for numeric values that are not shown. Keep "summary" to ONE short sentence of context
+— the figures and fields carry the data, not the prose.`;
 
 export async function analyzeTaxReturnPdf(base64Pdf: string): Promise<IrExtraction> {
   if (!process.env.ANTHROPIC_API_KEY) {

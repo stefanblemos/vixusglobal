@@ -30,10 +30,13 @@ export async function analyzeAndStoreTaxReturn(
     return { error: e instanceof Error ? e.message : "Analysis failed." };
   }
 
+  // Texto vazio "" (vindo da extração) vira null no banco.
+  const s = (v: string) => (v && v.trim() ? v.trim() : null);
+
   const companies = await prisma.company.findMany({
     select: { id: true, legalName: true, tradeName: true, aliases: true, taxId: true },
   });
-  const companyId = data.companyName ? matchCompany(data.companyName, companies) : null;
+  const companyId = s(data.companyName) ? matchCompany(data.companyName, companies) : null;
 
   // Sócios: mascara o SSN/CPF (guarda só os últimos 4).
   const owners = data.owners.map((o) => ({
@@ -41,7 +44,7 @@ export async function analyzeAndStoreTaxReturn(
     taxIdLast4: maskTaxId(o.taxId),
     ownershipPct: o.ownershipPct,
     allocatedIncome: o.allocatedIncome,
-    role: o.role,
+    role: s(o.role),
   }));
 
   // Projeta os 3 números universais a partir das linhas (figures) para acesso rápido.
@@ -51,20 +54,20 @@ export async function analyzeAndStoreTaxReturn(
     data: {
       fileName: file.name,
       companyId,
-      matchedName: data.companyName,
-      taxId: data.taxId,
+      matchedName: s(data.companyName),
+      taxId: s(data.taxId),
       year: data.year,
       jurisdiction: data.jurisdiction,
-      entityType: data.entityType,
+      entityType: s(data.entityType),
       taxTreatment: data.taxTreatment,
-      taxForm: data.taxForm,
-      city: data.city,
-      state: data.state,
-      address: data.address,
-      businessActivity: data.businessActivity,
-      incorporationDate: data.incorporationDate,
-      preparer: data.preparer,
-      responsible: data.responsible,
+      taxForm: s(data.taxForm),
+      city: s(data.city),
+      state: s(data.state),
+      address: s(data.address),
+      businessActivity: s(data.businessActivity),
+      incorporationDate: s(data.incorporationDate),
+      preparer: s(data.preparer),
+      responsible: s(data.responsible),
       ordinaryIncome: fig("ORDINARY_INCOME"),
       totalIncome: fig("TOTAL_INCOME"),
       netIncome: fig("NET_INCOME"),
@@ -78,10 +81,10 @@ export async function analyzeAndStoreTaxReturn(
   });
 
   // Preenche o Tax ID (EIN) oficial da empresa, se casou e ainda não tem.
-  if (companyId && data.taxId) {
+  if (companyId && s(data.taxId)) {
     const matched = companies.find((c) => c.id === companyId);
     if (matched && !matched.taxId) {
-      await prisma.company.update({ where: { id: companyId }, data: { taxId: data.taxId } });
+      await prisma.company.update({ where: { id: companyId }, data: { taxId: s(data.taxId) } });
       revalidatePath(`/companies/${companyId}`);
     }
   }
