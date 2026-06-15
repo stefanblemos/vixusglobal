@@ -56,6 +56,7 @@ export default async function CompanyDetailPage({
     bankStatements,
     loans,
     qboImports,
+    yearCloses,
   ] = await Promise.all([
     prisma.company.findUnique({ where: { id } }),
     prisma.party.findMany({ orderBy: { name: "asc" } }),
@@ -74,9 +75,12 @@ export default async function CompanyDetailPage({
       include: { lender: true, borrower: true },
     }),
     prisma.qboImport.findMany({ where: { companyId: id }, orderBy: { createdAt: "desc" } }),
+    prisma.yearClose.findMany({ where: { companyId: id }, select: { year: true } }),
   ]);
 
   if (!company) notFound();
+
+  const lockedYears = new Set(yearCloses.map((y) => y.year));
 
   const partyById = new Map(parties.map((p) => [p.id, p]));
   const companyById = new Map(companies.map((c) => [c.id, c]));
@@ -465,6 +469,14 @@ export default async function CompanyDetailPage({
                             >
                               {y}
                             </Link>
+                            {lockedYears.has(y) && (
+                              <span
+                                title="Year locked"
+                                className="ml-2 rounded-full bg-emerald-50 px-1.5 py-0.5 text-xs text-emerald-700"
+                              >
+                                🔒
+                              </span>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-slate-600">
                             {ts ? labelForEntityType(ts.entityType) : (ir?.entityType ?? "—")}
