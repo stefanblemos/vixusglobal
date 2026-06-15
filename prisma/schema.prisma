@@ -159,6 +159,26 @@ model Company {
   bankStatements  BankStatement[]
   taxStatuses     CompanyTaxStatus[]
   taxReturns      TaxReturn[]
+  yearCloses      YearClose[]
+}
+
+// "Fechamento" de um ano conferido: congela a verdade de referência (sócios,
+// tributação e os números-chave do IR). Depois disso, um IR reenviado que
+// divergir do snapshot vira alerta ("possível erro do contador"). A presença
+// da linha = ano travado; reabrir = apagar a linha.
+model YearClose {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  year      Int
+  lockedAt  DateTime @default(now())
+  lockedBy  String // e-mail do usuário que fechou
+  snapshot  Json // { owners:[{name,pct,role}], taxTreatment, entityType, taxForm, figures:[{key,label,value}] }
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, year])
 }
 
 enum TaxReturnStatus {
