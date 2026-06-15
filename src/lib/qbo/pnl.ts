@@ -11,10 +11,21 @@ export function pnlTotals(lines: Line[]) {
     const l = lines.find((x) => x.lineType === "TOTAL" && subject(x.label) === key);
     return l?.value != null ? Number(l.value) : null;
   };
-  const income = find("income");
-  const expenses = find("expenses");
-  const other = find("other expenses");
-  const totalExpenses = expenses != null || other != null ? (expenses ?? 0) + (other ?? 0) : null;
-  const netIncome = income != null && totalExpenses != null ? income - totalExpenses : null;
-  return { income, expenses: totalExpenses, netIncome };
+  const operatingIncome = find("income");
+  const otherIncome = find("other income"); // ex.: distribuição de participações (1099)
+  const operatingExpenses = find("expenses");
+  const otherExpenses = find("other expenses");
+
+  // Receita total = renda operacional + outras receitas (other income entra como receita).
+  const income =
+    operatingIncome != null || otherIncome != null
+      ? (operatingIncome ?? 0) + (otherIncome ?? 0)
+      : null;
+  const expenses =
+    operatingExpenses != null || otherExpenses != null
+      ? (operatingExpenses ?? 0) + (otherExpenses ?? 0)
+      : null;
+  const netIncome = income != null && expenses != null ? income - expenses : null;
+
+  return { income, operatingIncome, otherIncome, expenses, netIncome };
 }
