@@ -14,6 +14,7 @@ import {
 } from "@/lib/catalog";
 import { computeEffectiveOwners, edgesFromOwnerships } from "@/lib/ownership/effective";
 import { buildFixedAssetRegister } from "@/lib/assets/register";
+import { qboPeriodKey } from "@/lib/qbo/period";
 
 const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
 const money = (v: unknown, ccy = "USD") =>
@@ -140,8 +141,12 @@ export default async function CompanyDetailPage({
     ]),
   ].sort((a, b) => b - a);
 
-  // Último Balance Sheet do QBO — snapshot (Ativos/Passivos/Patrimônio) + registro de ativos fixos.
-  const latestBS = qboImports.find((q) => q.reportKind === "BALANCE_SHEET") ?? null;
+  // O raio-x atual usa sempre o relatório de PERÍODO mais recente (não o último importado),
+  // p/ que subir um BS antigo não apague os assets/saldos do ano corrente.
+  const byPeriodDesc = (a: { periodLabel: string }, b: { periodLabel: string }) =>
+    qboPeriodKey(b.periodLabel) - qboPeriodKey(a.periodLabel);
+  const latestBS =
+    qboImports.filter((q) => q.reportKind === "BALANCE_SHEET").sort(byPeriodDesc)[0] ?? null;
   const bsLines = latestBS
     ? await prisma.qboImportLine.findMany({ where: { importId: latestBS.id } })
     : [];
@@ -580,13 +585,23 @@ export default async function CompanyDetailPage({
               ) : (
                 <table className="w-full text-sm">
                   <tbody className="divide-y divide-slate-100">
-                    {qboImports.map((q) => (
-                      <tr key={q.id}>
-                        <td className="px-4 py-3 font-medium text-slate-800">
-                          {q.reportTypeLabel}
+                    {[...qboImports].sort(byPeriodDesc).map((q) => (
+                      <tr key={q.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 font-medium">
+                          <Link href={`/import/${q.id}`} className="text-[#1f3a5f] hover:underline">
+                            {q.reportTypeLabel}
+                          </Link>
                         </td>
                         <td className="px-4 py-3 text-slate-500">{q.periodLabel}</td>
-                        <td className="px-4 py-3 text-right text-slate-400">{q.basis ?? ""}</td>
+                        <td className="px-4 py-3 text-slate-400">{q.basis ?? ""}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Link
+                            href={`/import/${q.id}`}
+                            className="text-xs text-[#1f3a5f] hover:underline"
+                          >
+                            Open →
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

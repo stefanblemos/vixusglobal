@@ -253,13 +253,20 @@ export default async function CompanyYearPage({
                           label: "Total income / revenue",
                           ir: figVal("TOTAL_INCOME"),
                           qbo: pnl.income,
+                          href: pnlImport ? `/import/${pnlImport.id}` : undefined,
                         },
                         {
                           label: "Net income",
                           ir: figVal("NET_INCOME") ?? figVal("TAXABLE_INCOME"),
                           qbo: pnl.netIncome,
+                          href: pnlImport ? `/import/${pnlImport.id}` : undefined,
                         },
-                        { label: "Depreciation", ir: figVal("DEPRECIATION"), qbo: depTotal },
+                        {
+                          label: "Depreciation",
+                          ir: figVal("DEPRECIATION"),
+                          qbo: depTotal,
+                          href: depTotal != null ? `/ledger?company=${id}` : undefined,
+                        },
                       ].map((row) => {
                         const c = compare(row.ir, row.qbo);
                         return (
@@ -269,7 +276,13 @@ export default async function CompanyYearPage({
                               {money(row.ir, ccy)}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums text-slate-600">
-                              {money(row.qbo, ccy)}
+                              {row.qbo != null && row.href ? (
+                                <Link href={row.href} className="text-[#1f3a5f] hover:underline">
+                                  {money(row.qbo, ccy)}
+                                </Link>
+                              ) : (
+                                money(row.qbo, ccy)
+                              )}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums text-slate-500">
                               {"diff" in c && c.diff != null ? money(c.diff, ccy) : "—"}
