@@ -162,7 +162,17 @@ export default async function CompanyYearPage({
           const irRevenue = figVal("GROSS_RECEIPTS");
           const irCogs = figVal("COST_OF_GOODS");
           const irGrossProfit = irRevenue != null ? irRevenue - (irCogs ?? 0) : null;
-          const irOrdinary = figVal("ORDINARY_INCOME");
+          const irTotalIncome = figVal("TOTAL_INCOME");
+          // Other income do IR = Total income (linha 8) − Gross profit (= soma das linhas 4–7),
+          // robusto a como a IA classificou cada linha (ex.: linha 4 "from other partnerships").
+          const irOtherIncome =
+            irTotalIncome != null && irGrossProfit != null
+              ? irTotalIncome - irGrossProfit
+              : figVal("OTHER_INCOME");
+          // Ordinary business income = linha 22 (pelo rótulo), não o 1º match de ORDINARY_INCOME.
+          const irOrdinary =
+            figures.find((f) => /ordinary business income/i.test(f.label))?.value ??
+            figVal("ORDINARY_INCOME");
           const irBookNet = figVal("NET_INCOME") ?? irOrdinary;
           const qboOrdinary = pnl.netIncome != null ? pnl.netIncome + (nonDeductible ?? 0) : null;
           const pnlHref = pnlImport ? `/import/${pnlImport.id}` : undefined;
@@ -184,12 +194,7 @@ export default async function CompanyYearPage({
               qbo: pnl.operatingExpenses,
               href: pnlHref,
             },
-            {
-              label: "Other income",
-              ir: figVal("OTHER_INCOME"),
-              qbo: pnl.otherIncome,
-              href: pnlHref,
-            },
+            { label: "Other income", ir: irOtherIncome, qbo: pnl.otherIncome, href: pnlHref },
             {
               label: "Net income (per books)",
               ir: irBookNet,

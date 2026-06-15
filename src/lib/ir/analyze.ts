@@ -94,7 +94,10 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    allowed codes, or OTHER), label (exactly as printed on the form), value (number, no
    symbols, null if blank), line (the form line reference, e.g. "1120 line 30", "F-1120").
    Map obvious ones to their code; use OTHER for the rest. Do NOT leave figures only in
-   the summary — every number must be a figures item. IMPORTANT: tag nondeductible
+   the summary — every number must be a figures item. ORDINARY_INCOME is ONLY the ordinary
+   BUSINESS income (1065 line 22 / 1120 taxable income line) — NOT income from other
+   partnerships (1065 line 4), net gains, or other income (1065 line 7); those are
+   OTHER_INCOME. IMPORTANT: tag nondeductible
    expenses (Schedule K line 18c "Nondeductible expenses", or the Schedule M-1 add-backs
    for meals/entertainment, penalties, etc.) with key NON_DEDUCTIBLE — these reconcile
    book income to taxable income. Tag NET_INCOME with "Net income per books" (Schedule
