@@ -1,8 +1,8 @@
 import type { NextAuthConfig } from "next-auth";
 
 /**
- * Config "edge-safe" do Auth.js (sem Prisma/bcrypt) — usada pelo middleware
- * para proteger rotas. Os providers são adicionados em src/auth.ts.
+ * Config "edge-safe" do Auth.js (sem Prisma/bcrypt) — usada pelo proxy
+ * (src/proxy.ts) para proteger rotas. Os providers são adicionados em src/auth.ts.
  */
 export const authConfig = {
   pages: { signIn: "/login" },
