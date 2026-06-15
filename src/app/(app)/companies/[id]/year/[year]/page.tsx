@@ -92,6 +92,18 @@ export default async function CompanyYearPage({
     : [];
   const pnl = pnlTotals(pnlLines);
 
+  // Folhas (contas) da seção "Other Income" do QBO — para detalhar de onde vem a renda.
+  const otherIncomeLines = pnlImport
+    ? await prisma.qboImportLine.findMany({
+        where: {
+          importId: pnlImport.id,
+          lineType: "ACCOUNT",
+          sectionPath: { has: "Other Income" },
+        },
+        orderBy: { rowIndex: "asc" },
+      })
+    : [];
+
   // Compara um valor do IR com o equivalente nos livros (QBO).
   function compare(irVal: number | null, qboVal: number | null) {
     if (irVal == null && qboVal == null) return { status: "none" as const };
@@ -174,9 +186,24 @@ export default async function CompanyYearPage({
             figures.find((f) => /ordinary business income/i.test(f.label))?.value ??
             figVal("ORDINARY_INCOME");
           const irBookNet = figVal("NET_INCOME") ?? irOrdinary;
-          const qboOrdinary = pnl.netIncome != null ? pnl.netIncome + (nonDeductible ?? 0) : null;
+          // Renda que está no IR mas não nos books (M-1 linha 2): tipicamente lucro
+          // alocado por K-1 de uma sociedade investida além do caixa distribuído.
+          // Só vira ponte se o gap for material (acima da tolerância de comparação);
+          // diferenças de centavos são arredondamento, não um item de conciliação.
+          const otherIncomeBridge =
+            irOtherIncome != null &&
+            pnl.otherIncome != null &&
+            irOtherIncome - pnl.otherIncome > Math.max(1, Math.abs(irOtherIncome) * 0.01)
+              ? irOtherIncome - pnl.otherIncome
+              : null;
+          const qboOrdinary =
+            pnl.netIncome != null
+              ? pnl.netIncome + (nonDeductible ?? 0) + (otherIncomeBridge ?? 0)
+              : null;
           const pnlHref = pnlImport ? `/import/${pnlImport.id}` : undefined;
 
+          // reconcilesWith: diferença "esperada" que é explicada por um item conhecido
+          // (livro × imposto). Se o gap real bate com ele, a linha conta como conciliada.
           const cmpRows: {
             label: string;
             ir: number | null;
@@ -184,6 +211,8 @@ export default async function CompanyYearPage({
             href?: string;
             strong?: boolean;
             taxOnly?: boolean;
+            reconcilesWith?: number | null;
+            note?: string;
           }[] = [
             { label: "Gross receipts / revenue", ir: irRevenue, qbo: pnl.revenue, href: pnlHref },
             { label: "Cost of goods sold", ir: irCogs, qbo: pnl.cogs, href: pnlHref },
@@ -193,16 +222,38 @@ export default async function CompanyYearPage({
               ir: figVal("TOTAL_DEDUCTIONS"),
               qbo: pnl.expenses,
               href: pnlHref,
+              // QBO inclui as despesas cheias; o IR já tira a não-dedutível → o gap É ela.
+              reconcilesWith: nonDeductible,
+              note: nonDeductible != null ? "gap = non-deductible add-back" : undefined,
             },
-            { label: "Other income", ir: irOtherIncome, qbo: pnl.otherIncome, href: pnlHref },
+            {
+              label: "Other income",
+              ir: irOtherIncome,
+              qbo: pnl.otherIncome,
+              href: pnlHref,
+              reconcilesWith: otherIncomeBridge != null ? -otherIncomeBridge : null,
+              note: otherIncomeBridge != null ? "K-1 allocated vs cash (→ M-1 below)" : undefined,
+            },
             {
               label: "Net income (per books)",
               ir: irBookNet,
               qbo: pnl.netIncome,
               href: pnlHref,
               strong: true,
+              reconcilesWith: otherIncomeBridge != null ? -otherIncomeBridge : null,
+              note: otherIncomeBridge != null ? "gap = K-1 timing (see M-1 below)" : undefined,
             },
             { label: "+ Non-deductible expenses", ir: nonDeductible, qbo: null, taxOnly: true },
+            ...(otherIncomeBridge != null
+              ? [
+                  {
+                    label: "+ Income on return not on books (M-1 line 2)",
+                    ir: otherIncomeBridge,
+                    qbo: null,
+                    taxOnly: true,
+                  },
+                ]
+              : []),
             {
               label: "= Ordinary business income (taxable)",
               ir: irOrdinary,
@@ -314,12 +365,27 @@ export default async function CompanyYearPage({
                     <tbody className="divide-y divide-slate-100">
                       {cmpRows.map((row) => {
                         const c = row.taxOnly ? null : compare(row.ir, row.qbo);
+                        // Diferença explicada por um item conhecido → conta como conciliada.
+                        const reconciled =
+                          !!c &&
+                          c.status === "diff" &&
+                          "diff" in c &&
+                          c.diff != null &&
+                          row.reconcilesWith != null &&
+                          Math.abs(c.diff - row.reconcilesWith) <=
+                            Math.max(1, Math.abs(row.reconcilesWith) * 0.02);
+                        const status = reconciled ? "reconciled" : c?.status;
                         return (
                           <tr key={row.label} className={row.strong ? "bg-slate-50/40" : ""}>
                             <td
                               className={`px-4 py-2 ${row.strong ? "font-medium text-slate-800" : "text-slate-700"}`}
                             >
                               {row.label}
+                              {row.note && (
+                                <span className="block text-xs font-normal text-slate-400">
+                                  {row.note}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums text-slate-600">
                               {money(row.ir, ccy)}
@@ -341,8 +407,8 @@ export default async function CompanyYearPage({
                                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs whitespace-nowrap text-slate-500">
                                   M-1 add-back
                                 </span>
-                              ) : c ? (
-                                <CmpBadge status={c.status} />
+                              ) : status ? (
+                                <CmpBadge status={status} />
                               ) : null}
                             </td>
                           </tr>
@@ -353,9 +419,63 @@ export default async function CompanyYearPage({
                 </div>
                 <p className="mt-1 text-xs text-slate-400">
                   Net income (per books) should match between the IR and the QBO books; the gap to
-                  taxable income is the non-deductible add-back (Schedule M-1 / K line 18c). Click a
-                  QBO value to open the source report.
+                  taxable income is the non-deductible add-back (Schedule M-1 / K line 18c). A
+                  &ldquo;reconciles ✓&rdquo; row means the difference is fully explained by a known
+                  book-vs-tax item. Click a QBO value to open the source report.
                 </p>
+
+                {otherIncomeLines.length > 0 && (
+                  <details className="mt-2 rounded-xl border border-slate-200 bg-white">
+                    <summary className="cursor-pointer px-4 py-2 text-sm font-medium text-slate-700">
+                      Other income — QBO breakdown vs IR
+                    </summary>
+                    <div className="border-t border-slate-100 px-4 py-3">
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y divide-slate-100">
+                          {otherIncomeLines.map((l) => (
+                            <tr key={l.id}>
+                              <td className="py-1.5 text-slate-600">{l.label}</td>
+                              <td className="py-1.5 text-right tabular-nums text-slate-600">
+                                {money(l.value, ccy)}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="border-t-2 border-slate-200 font-medium">
+                            <td className="py-1.5 text-slate-700">Total per QBO books (cash)</td>
+                            <td className="py-1.5 text-right tabular-nums text-slate-800">
+                              {money(pnl.otherIncome, ccy)}
+                            </td>
+                          </tr>
+                          <tr>
+                            <td className="py-1.5 text-slate-600">
+                              Per the IR — other income (Form 1065 lines 4–7)
+                            </td>
+                            <td className="py-1.5 text-right tabular-nums text-slate-600">
+                              {money(irOtherIncome, ccy)}
+                            </td>
+                          </tr>
+                          {otherIncomeBridge != null && (
+                            <tr className="font-medium text-emerald-700">
+                              <td className="py-1.5">
+                                Allocated on K-1 but not distributed in cash (M-1 line 2)
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums">
+                                {money(otherIncomeBridge, ccy)}
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                      <p className="mt-2 text-xs text-slate-400">
+                        The books record the cash actually distributed by the investee; the return
+                        reports this company&rsquo;s allocated share of the investee&rsquo;s income
+                        (K-1). The difference is undistributed earnings — a normal book-vs-tax
+                        timing item, not necessarily an error. Confirm against the investee&rsquo;s
+                        K-1.
+                      </p>
+                    </div>
+                  </details>
+                )}
               </div>
 
               {r.summary && <p className="text-sm text-slate-500">{r.summary}</p>}
@@ -433,6 +553,7 @@ function Kpi({ label, value }: { label: string; value: string }) {
 function CmpBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
     match: { label: "matches ✓", cls: "bg-green-50 text-green-700" },
+    reconciled: { label: "reconciles ✓", cls: "bg-emerald-50 text-emerald-700" },
     diff: { label: "differs", cls: "bg-red-50 text-red-700" },
     irOnly: { label: "not in books", cls: "bg-amber-50 text-amber-700" },
     qboOnly: { label: "not on IR", cls: "bg-amber-50 text-amber-700" },
