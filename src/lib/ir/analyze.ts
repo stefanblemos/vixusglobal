@@ -24,6 +24,7 @@ export const FIGURE_KEYS = [
   "DEPRECIATION",
   "TAXABLE_INCOME",
   "NET_INCOME",
+  "NON_DEDUCTIBLE",
   "TOTAL_TAX",
   "ESTIMATED_PAYMENTS",
   "TAX_DUE",
@@ -93,7 +94,11 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    allowed codes, or OTHER), label (exactly as printed on the form), value (number, no
    symbols, null if blank), line (the form line reference, e.g. "1120 line 30", "F-1120").
    Map obvious ones to their code; use OTHER for the rest. Do NOT leave figures only in
-   the summary — every number must be a figures item.
+   the summary — every number must be a figures item. IMPORTANT: tag nondeductible
+   expenses (Schedule K line 18c "Nondeductible expenses", or the Schedule M-1 add-backs
+   for meals/entertainment, penalties, etc.) with key NON_DEDUCTIBLE — these reconcile
+   book income to taxable income. Tag NET_INCOME with "Net income per books" (Schedule
+   M-1 line 1).
 6) Who prepared the return (preparer firm/person + PTIN) and the responsible/signing
    party (e.g. Partnership Representative, President, responsável legal).
 7) The partners/shareholders (sócios): for each, name, their tax id (SSN/CPF/EIN) if

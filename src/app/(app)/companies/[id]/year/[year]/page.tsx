@@ -153,6 +153,65 @@ export default async function CompanyYearPage({
           const owners = (r.owners as Owner[] | null) ?? [];
           const figures = (r.figures as Figure[] | null) ?? [];
           const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
+
+          // Não-dedutíveis (Schedule K 18c / M-1): chave nova ou, p/ registros antigos, por rótulo.
+          const nonDeductible =
+            figVal("NON_DEDUCTIBLE") ??
+            figures.find((f) => /nondeduct|n[aã]o.?dedut/i.test(f.label))?.value ??
+            null;
+          const irRevenue = figVal("GROSS_RECEIPTS");
+          const irCogs = figVal("COST_OF_GOODS");
+          const irGrossProfit = irRevenue != null ? irRevenue - (irCogs ?? 0) : null;
+          const irOrdinary = figVal("ORDINARY_INCOME");
+          const irBookNet = figVal("NET_INCOME") ?? irOrdinary;
+          const qboOrdinary = pnl.netIncome != null ? pnl.netIncome + (nonDeductible ?? 0) : null;
+          const pnlHref = pnlImport ? `/import/${pnlImport.id}` : undefined;
+
+          const cmpRows: {
+            label: string;
+            ir: number | null;
+            qbo: number | null;
+            href?: string;
+            strong?: boolean;
+            taxOnly?: boolean;
+          }[] = [
+            { label: "Gross receipts / revenue", ir: irRevenue, qbo: pnl.revenue, href: pnlHref },
+            { label: "Cost of goods sold", ir: irCogs, qbo: pnl.cogs, href: pnlHref },
+            { label: "Gross profit", ir: irGrossProfit, qbo: pnl.grossProfit, href: pnlHref },
+            {
+              label: "Operating expenses",
+              ir: figVal("TOTAL_DEDUCTIONS"),
+              qbo: pnl.operatingExpenses,
+              href: pnlHref,
+            },
+            {
+              label: "Other income",
+              ir: figVal("OTHER_INCOME"),
+              qbo: pnl.otherIncome,
+              href: pnlHref,
+            },
+            {
+              label: "Net income (per books)",
+              ir: irBookNet,
+              qbo: pnl.netIncome,
+              href: pnlHref,
+              strong: true,
+            },
+            { label: "+ Non-deductible expenses", ir: nonDeductible, qbo: null, taxOnly: true },
+            {
+              label: "= Ordinary business income (taxable)",
+              ir: irOrdinary,
+              qbo: qboOrdinary,
+              href: pnlHref,
+              strong: true,
+            },
+            {
+              label: "Depreciation (per GL)",
+              ir: figVal("DEPRECIATION"),
+              qbo: depTotal,
+              href: depTotal != null ? `/ledger?company=${id}` : undefined,
+            },
+          ];
           return (
             <section key={r.id} className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -248,30 +307,15 @@ export default async function CompanyYearPage({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {[
-                        {
-                          label: "Total income / revenue",
-                          ir: figVal("TOTAL_INCOME"),
-                          qbo: pnl.income,
-                          href: pnlImport ? `/import/${pnlImport.id}` : undefined,
-                        },
-                        {
-                          label: "Net income",
-                          ir: figVal("NET_INCOME") ?? figVal("TAXABLE_INCOME"),
-                          qbo: pnl.netIncome,
-                          href: pnlImport ? `/import/${pnlImport.id}` : undefined,
-                        },
-                        {
-                          label: "Depreciation",
-                          ir: figVal("DEPRECIATION"),
-                          qbo: depTotal,
-                          href: depTotal != null ? `/ledger?company=${id}` : undefined,
-                        },
-                      ].map((row) => {
-                        const c = compare(row.ir, row.qbo);
+                      {cmpRows.map((row) => {
+                        const c = row.taxOnly ? null : compare(row.ir, row.qbo);
                         return (
-                          <tr key={row.label}>
-                            <td className="px-4 py-2 text-slate-700">{row.label}</td>
+                          <tr key={row.label} className={row.strong ? "bg-slate-50/40" : ""}>
+                            <td
+                              className={`px-4 py-2 ${row.strong ? "font-medium text-slate-800" : "text-slate-700"}`}
+                            >
+                              {row.label}
+                            </td>
                             <td className="px-4 py-2 text-right tabular-nums text-slate-600">
                               {money(row.ir, ccy)}
                             </td>
@@ -285,10 +329,16 @@ export default async function CompanyYearPage({
                               )}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums text-slate-500">
-                              {"diff" in c && c.diff != null ? money(c.diff, ccy) : "—"}
+                              {c && "diff" in c && c.diff != null ? money(c.diff, ccy) : "—"}
                             </td>
                             <td className="px-4 py-2 text-right">
-                              <CmpBadge status={c.status} />
+                              {row.taxOnly ? (
+                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs whitespace-nowrap text-slate-500">
+                                  M-1 add-back
+                                </span>
+                              ) : c ? (
+                                <CmpBadge status={c.status} />
+                              ) : null}
                             </td>
                           </tr>
                         );
@@ -296,6 +346,11 @@ export default async function CompanyYearPage({
                     </tbody>
                   </table>
                 </div>
+                <p className="mt-1 text-xs text-slate-400">
+                  Net income (per books) should match between the IR and the QBO books; the gap to
+                  taxable income is the non-deductible add-back (Schedule M-1 / K line 18c). Click a
+                  QBO value to open the source report.
+                </p>
               </div>
 
               {r.summary && <p className="text-sm text-slate-500">{r.summary}</p>}
