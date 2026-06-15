@@ -28,6 +28,12 @@ export function pnlTotals(lines: Line[]) {
       ? grossProfit - (operatingExpenses ?? 0) + (otherIncome ?? 0) - (otherExpenses ?? 0)
       : null;
 
+  // Despesa total = operacional + outras (o 1065 junta tudo na linha 21 "Total deductions").
+  const expenses =
+    operatingExpenses != null || otherExpenses != null
+      ? (operatingExpenses ?? 0) + (otherExpenses ?? 0)
+      : null;
+
   return {
     revenue,
     cogs,
@@ -35,6 +41,7 @@ export function pnlTotals(lines: Line[]) {
     operatingExpenses,
     otherIncome,
     otherExpenses,
+    expenses,
     netOperatingIncome,
     income,
     netIncome,

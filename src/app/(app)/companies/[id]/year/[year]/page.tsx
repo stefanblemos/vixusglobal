@@ -189,9 +189,9 @@ export default async function CompanyYearPage({
             { label: "Cost of goods sold", ir: irCogs, qbo: pnl.cogs, href: pnlHref },
             { label: "Gross profit", ir: irGrossProfit, qbo: pnl.grossProfit, href: pnlHref },
             {
-              label: "Operating expenses",
+              label: "Total deductions / expenses",
               ir: figVal("TOTAL_DEDUCTIONS"),
-              qbo: pnl.operatingExpenses,
+              qbo: pnl.expenses,
               href: pnlHref,
             },
             { label: "Other income", ir: irOtherIncome, qbo: pnl.otherIncome, href: pnlHref },
