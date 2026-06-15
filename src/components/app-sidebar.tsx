@@ -14,7 +14,7 @@ import {
   ReceiptText,
   PieChart,
   Activity,
-  Upload,
+  FolderOpen,
   LogOut,
 } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
@@ -28,7 +28,7 @@ const NAV = [
   { href: "/ledger", label: "Ledger", icon: BookOpen },
   { href: "/bank", label: "Bank", icon: Landmark },
   { href: "/audit", label: "Audit", icon: Activity },
-  { href: "/import", label: "Import QBO", icon: Upload },
+  { href: "/import", label: "Documents", icon: FolderOpen },
   { href: "/tax", label: "Tax", icon: ReceiptText },
   { href: "/reports", label: "Reports", icon: PieChart },
 ];
