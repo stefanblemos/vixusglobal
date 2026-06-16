@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ingestTaxReturn } from "@/lib/ir/ingest";
-import { applyOwnershipFromReturn } from "@/lib/ir/apply-ownership";
+import { rebuildOwnershipFromIRs } from "@/lib/ir/rebuild-ownership";
 import { ALL_ENTITY_TYPE_VALUES, ALL_TAX_TREATMENT_VALUES } from "@/lib/catalog";
 import { EntityType, TaxTreatment } from "@prisma/client";
 
@@ -36,7 +36,7 @@ export async function applyTaxReturnOwnership(formData: FormData): Promise<void>
   });
   if (!tr || !tr.companyId) return;
 
-  const res = await applyOwnershipFromReturn(tr);
+  const res = await rebuildOwnershipFromIRs(tr.companyId);
   revalidatePath(`/companies/${tr.companyId}`);
   revalidatePath("/tax");
   redirect(`/tax?msg=owners-${res.created}`);
