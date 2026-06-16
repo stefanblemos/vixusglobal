@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { labelForTaxTreatment, labelForJurisdiction } from "@/lib/catalog";
-import { normalizeName } from "@/lib/qbo/match";
+import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { YearCloseControls } from "@/components/year-close-controls";
@@ -203,19 +203,13 @@ export default async function CompanyYearPage({
         return n ? { names: [n], pct: Number(o.percentage) } : null;
       }
       const c = o.ownerCompanyId ? companyById.get(o.ownerCompanyId) : null;
-      return c
-        ? {
-            names: [c.legalName, c.tradeName, ...c.aliases].filter((x): x is string => !!x),
-            pct: Number(o.percentage),
-          }
-        : null;
+      return c ? { names: entityNames(c), pct: Number(o.percentage) } : null;
     })
     .filter((r): r is { names: string[]; pct: number } => !!r);
 
   function reconcile(partner: Owner) {
     if (registered.length === 0) return { status: "none" as const };
-    const pn = normalizeName(partner.name);
-    const hit = registered.find((r) => r.names.some((n) => normalizeName(n) === pn));
+    const hit = registered.find((r) => ownerNameMatches(r.names, partner.name));
     if (!hit) return { status: "missing" as const };
     if (partner.ownershipPct == null) return { status: "registered" as const, pct: hit.pct };
     return Math.abs(hit.pct - partner.ownershipPct) <= 0.5

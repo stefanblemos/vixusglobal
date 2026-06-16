@@ -12,7 +12,7 @@ import {
   ALL_ENTITY_TYPE_VALUES,
   ALL_TAX_TREATMENT_VALUES,
 } from "@/lib/catalog";
-import { normalizeName } from "@/lib/qbo/match";
+import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 
 type Owner = {
   name: string;
@@ -69,20 +69,24 @@ export default async function TaxPage({
   ]);
 
   const partyById = new Map(parties.map((p) => [p.id, p.name]));
-  const companyById = new Map(companies.map((c) => [c.id, c.legalName]));
+  const companyById = new Map(companies.map((c) => [c.id, c]));
 
-  // Donos diretos cadastrados por empresa (nome normalizado → %).
-  const registeredByCompany = new Map<string, { name: string; pct: number }[]>();
+  // Donos diretos cadastrados por empresa — cada um com TODOS os nomes conhecidos
+  // (razão social + fantasia + aliases), para casar o sócio do K-1 mesmo com nome antigo.
+  const registeredByCompany = new Map<string, { names: string[]; pct: number }[]>();
   for (const o of ownerships) {
     if (!o.ownedCompanyId) continue;
-    const name = o.ownerPartyId
-      ? partyById.get(o.ownerPartyId)
-      : o.ownerCompanyId
-        ? companyById.get(o.ownerCompanyId)
-        : null;
-    if (!name) continue;
+    let names: string[] | null = null;
+    if (o.ownerPartyId) {
+      const n = partyById.get(o.ownerPartyId);
+      names = n ? [n] : null;
+    } else if (o.ownerCompanyId) {
+      const c = companyById.get(o.ownerCompanyId);
+      names = c ? entityNames(c) : null;
+    }
+    if (!names) continue;
     const arr = registeredByCompany.get(o.ownedCompanyId) ?? [];
-    arr.push({ name, pct: Number(o.percentage) });
+    arr.push({ names, pct: Number(o.percentage) });
     registeredByCompany.set(o.ownedCompanyId, arr);
   }
 
@@ -90,7 +94,7 @@ export default async function TaxPage({
     if (!companyId) return null;
     const reg = registeredByCompany.get(companyId);
     if (!reg || reg.length === 0) return { status: "none" as const };
-    const hit = reg.find((r) => normalizeName(r.name) === normalizeName(partner.name));
+    const hit = reg.find((r) => ownerNameMatches(r.names, partner.name));
     if (!hit) return { status: "missing" as const };
     if (partner.ownershipPct == null) return { status: "registered" as const, pct: hit.pct };
     const diff = Math.abs(hit.pct - partner.ownershipPct);
