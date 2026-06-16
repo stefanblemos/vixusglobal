@@ -162,7 +162,16 @@ export default async function CompanyDetailPage({
   } = computeEffectiveOwners("company", id, edges, {
     ultimateOnly: true,
   });
-  const directOwnersInYear = directOwners.filter((o) => activeInYear(o, ownYear));
+  // No ano selecionado, quem SAIU (endDate dentro/antes do fim do ano) vem primeiro,
+  // depois os que continuam — pra leitura clara da transição (em vez de intercalado por %).
+  const exitedInYear = (o: { endDate: Date | null }) => !!o.endDate && o.endDate <= yEnd(ownYear);
+  const directOwnersInYear = directOwners
+    .filter((o) => activeInYear(o, ownYear))
+    .sort((a, b) => {
+      const ax = exitedInYear(a) ? 0 : 1;
+      const bx = exitedInYear(b) ? 0 : 1;
+      return ax - bx || b.percentage - a.percentage;
+    });
   // Donos vigentes HOJE (p/ o snapshot da aba Overview).
   const currentOwners = directOwners.filter((o) => activeInYear(o, currentYear));
 
@@ -421,33 +430,45 @@ export default async function CompanyDetailPage({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {directOwnersInYear.map((o) => (
-                      <tr key={o.id}>
-                        <td className="px-4 py-3 font-medium text-slate-800">
-                          {o.name}
-                          {o.shareClass && (
-                            <span className="ml-2 text-xs font-normal text-slate-400">
-                              {o.shareClass}
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">
-                          {o.type === "party" ? "Owner" : "Company"}
-                        </td>
-                        <td className="px-4 py-3 text-xs text-slate-500">{ownPeriod(o)}</td>
-                        <td className="px-4 py-3 text-right text-slate-800">
-                          {fmtPct(o.percentage)}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <OwnershipRowActions
-                            ownershipId={o.id}
-                            companyId={id}
-                            ended={!!o.endDate}
-                            defaultEndDate={`${ownYear}-12-31`}
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                    {directOwnersInYear.map((o) => {
+                      const left = exitedInYear(o);
+                      return (
+                        <tr key={o.id} className={left ? "bg-slate-50/40" : ""}>
+                          <td
+                            className={`px-4 py-3 font-medium ${left ? "text-slate-500" : "text-slate-800"}`}
+                          >
+                            {o.name}
+                            {left && (
+                              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-normal text-slate-500">
+                                left {fmtDate(o.endDate)}
+                              </span>
+                            )}
+                            {o.shareClass && (
+                              <span className="ml-2 text-xs font-normal text-slate-400">
+                                {o.shareClass}
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-slate-500">
+                            {o.type === "party" ? "Owner" : "Company"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">{ownPeriod(o)}</td>
+                          <td
+                            className={`px-4 py-3 text-right ${left ? "text-slate-500" : "text-slate-800"}`}
+                          >
+                            {fmtPct(o.percentage)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <OwnershipRowActions
+                              ownershipId={o.id}
+                              companyId={id}
+                              ended={!!o.endDate}
+                              defaultEndDate={`${ownYear}-12-31`}
+                            />
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}
