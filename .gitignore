@@ -37,6 +37,9 @@ yarn-error.log*
 # storage local de arquivos (uploads em dev)
 /.storage
 
+# scripts temporários de diagnóstico/migração (prefixo _) — podem ter segredos
+scripts/_*.ts
+
 # vercel
 .vercel
 
