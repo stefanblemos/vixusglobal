@@ -15,6 +15,7 @@ import {
 import { computeEffectiveOwners, edgesFromOwnerships } from "@/lib/ownership/effective";
 import { buildFixedAssetRegister } from "@/lib/assets/register";
 import { qboPeriodKey } from "@/lib/qbo/period";
+import { companyReserve } from "@/lib/tax/reserve";
 
 const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
 const money = (v: unknown, ccy = "USD") =>
@@ -30,6 +31,7 @@ const TABS = [
   { key: "overview", label: "Overview" },
   { key: "ownership", label: "Ownership" },
   { key: "history", label: "History & Tax" },
+  { key: "estimated-tax", label: "Estimated tax" },
   { key: "financials", label: "Financials" },
   { key: "assets", label: "Assets" },
 ] as const;
@@ -39,10 +41,10 @@ export default async function CompanyDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; year?: string }>;
 }) {
   const { id } = await params;
-  const { tab: tabRaw } = await searchParams;
+  const { tab: tabRaw, year: yearRaw } = await searchParams;
   const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "overview";
 
   const [
@@ -128,6 +130,30 @@ export default async function CompanyDetailPage({
       .filter((c) => c.id !== id)
       .map((c) => ({ value: `company:${c.id}`, label: c.legalName, group: "Companies" })),
   ];
+
+  // ── Estimated tax tab ──
+  const pnlYears = [
+    ...new Set(
+      qboImports
+        .filter((i) => i.reportKind === "PROFIT_AND_LOSS")
+        .map((i) => {
+          const m = i.periodLabel.match(/(20\d\d)/);
+          return m ? Number(m[1]) : null;
+        })
+        .filter((y): y is number => y != null),
+    ),
+  ].sort((a, b) => b - a);
+  const estYear =
+    yearRaw && pnlYears.includes(Number(yearRaw))
+      ? Number(yearRaw)
+      : (pnlYears[0] ?? new Date().getFullYear());
+  const treatment = (taxStatuses.find((t) => t.year === estYear)?.taxTreatment ??
+    taxReturns.find((t) => t.year === estYear)?.taxTreatment ??
+    null) as string | null;
+  const passThrough = ["PARTNERSHIP", "S_CORP", "DISREGARDED", "SOLE_PROP"].includes(
+    treatment ?? "",
+  );
+  const estimate = tab === "estimated-tax" ? await companyReserve(id, estYear) : null;
 
   // Histórico por ano (montado a partir dos documentos): tributação + IRs arquivados.
   const taxByYear = new Map(taxStatuses.map((t) => [t.year, t]));
@@ -577,6 +603,141 @@ export default async function CompanyDetailPage({
         </div>
       )}
 
+      {/* ───────── Estimated tax ───────── */}
+      {tab === "estimated-tax" && (
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-medium text-slate-800">Estimated tax · {estYear}</h2>
+            {pnlYears.length > 0 && (
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+                {pnlYears.map((y) => (
+                  <Link
+                    key={y}
+                    href={`/companies/${id}?tab=estimated-tax&year=${y}`}
+                    className={`rounded-md px-2.5 py-1 text-sm ${
+                      y === estYear
+                        ? "bg-[#1f3a5f] font-medium text-white"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {y}
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm ${
+              passThrough ? "border-amber-200 bg-amber-50/40" : "border-slate-200 bg-white"
+            }`}
+          >
+            {treatment ? (
+              passThrough ? (
+                <>
+                  <span className="font-medium text-slate-800">
+                    {labelForTaxTreatment(treatment)} — pass-through.
+                  </span>{" "}
+                  This company doesn&apos;t pay income tax itself. Its profit passes to the partners
+                  below, who owe the tax on their own returns — the reserve is what to set aside so
+                  the cash is ready.
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-slate-800">
+                    {labelForTaxTreatment(treatment)} — taxed at the entity.
+                  </span>{" "}
+                  This company pays its own income tax; the reserve is for its bill.
+                </>
+              )
+            ) : (
+              <span className="text-slate-500">
+                No tax treatment on file for {estYear} — using a flat reserve. Set it in History
+                &amp; Tax.
+              </span>
+            )}
+          </div>
+
+          {estimate == null || estimate.periodLabel == null ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              No Profit &amp; Loss on file for {estYear}. Import one in{" "}
+              <Link href="/import" className="text-[#1f3a5f] hover:underline">
+                Documents
+              </Link>
+              .
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+                <Kpi
+                  label="Estimated profit"
+                  value={money(estimate.profit, company.baseCurrency)}
+                  hint={estimate.periodLabel}
+                />
+                <Kpi
+                  label="Reserve rate"
+                  value={`${estimate.ratePct}%`}
+                  hint={estimate.hasOverride ? "company override" : "group default"}
+                />
+                <Kpi
+                  label="Reserve to set aside"
+                  value={money(estimate.reserve, company.baseCurrency)}
+                />
+              </div>
+
+              {passThrough &&
+                directOwners.length > 0 &&
+                estimate.profit != null &&
+                estimate.profit > 0 && (
+                  <div>
+                    <div className="mb-1 text-sm font-medium text-slate-700">
+                      Who owes it — by partner
+                    </div>
+                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-slate-500">
+                          <tr>
+                            <th className="px-4 py-2 font-medium">Partner</th>
+                            <th className="px-4 py-2 text-right font-medium">Share</th>
+                            <th className="px-4 py-2 text-right font-medium">Profit to them</th>
+                            <th className="px-4 py-2 text-right font-medium">Reserve</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {directOwners.map((o) => (
+                            <tr key={o.id}>
+                              <td className="px-4 py-2 text-slate-700">{o.name}</td>
+                              <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                                {fmtPct(o.percentage)}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums text-slate-700">
+                                {money(
+                                  (estimate.profit! * o.percentage) / 100,
+                                  company.baseCurrency,
+                                )}
+                              </td>
+                              <td className="px-4 py-2 text-right font-medium tabular-nums text-slate-800">
+                                {money(
+                                  (estimate.reserve * o.percentage) / 100,
+                                  company.baseCurrency,
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Split by registered ownership %. The actual K-1 allocation can differ (special
+                      allocations) — confirmed against the filed return once the year is reconciled.
+                    </p>
+                  </div>
+                )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ───────── Financials ───────── */}
       {tab === "financials" && (
         <div className="space-y-6">
@@ -763,13 +924,24 @@ function Chip({ children }: { children: ReactNode }) {
   return <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{children}</span>;
 }
 
-function Kpi({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Kpi({
+  label,
+  value,
+  warn,
+  hint,
+}: {
+  label: string;
+  value: string;
+  warn?: boolean;
+  hint?: string;
+}) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="text-xs text-slate-500">{label}</div>
       <div className={`mt-1 text-2xl font-semibold ${warn ? "text-amber-700" : "text-slate-800"}`}>
         {value}
       </div>
+      {hint && <div className="mt-0.5 text-xs text-slate-400">{hint}</div>}
     </div>
   );
 }

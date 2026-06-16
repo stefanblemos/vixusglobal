@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { buildTaxReserve } from "@/lib/tax/reserve";
+import { buildTaxReserve, reserveYears, GLOBAL_RATE_KEY } from "@/lib/tax/reserve";
 import { setReserveRate } from "@/lib/actions/reserve";
+import { prisma } from "@/lib/db";
 
 const money = (v: number | null, ccy = "USD") =>
   v == null
@@ -11,8 +12,21 @@ const money = (v: number | null, ccy = "USD") =>
         maximumFractionDigits: 0,
       }).format(v);
 
-export default async function ReservePage() {
-  const { rows, globalRate } = await buildTaxReserve();
+export default async function ReservePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ year?: string }>;
+}) {
+  const { year: yearRaw } = await searchParams;
+  const years = await reserveYears();
+  const fallbackYear = years[0] ?? new Date().getFullYear();
+  const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
+
+  const [{ rows }, globalRateRow] = await Promise.all([
+    buildTaxReserve(year),
+    prisma.taxReserveRate.findUnique({ where: { companyId: GLOBAL_RATE_KEY } }),
+  ]);
+  const globalRate = Number(globalRateRow?.ratePct ?? 30);
 
   // Total a reservar por moeda (não dá pra somar USD + BRL + EUR).
   const totals = new Map<string, number>();
@@ -20,13 +34,32 @@ export default async function ReservePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Tax reserve</h1>
-        <p className="text-sm text-slate-500">
-          How much profit to set aside each month for taxes. As you import a QuickBooks Profit &amp;
-          Loss, each company shows its latest-period profit and the slice to move into a dedicated
-          tax-reserve account — so the cash is there when the bill comes.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Tax reserve</h1>
+          <p className="text-sm text-slate-500">
+            How much profit to set aside for taxes. For the selected year, each company shows its
+            profit and the slice to move into a dedicated tax-reserve account — so the cash is there
+            when the bill comes.
+          </p>
+        </div>
+        {years.length > 0 && (
+          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+            {years.map((y) => (
+              <Link
+                key={y}
+                href={`/reserve?year=${y}`}
+                className={`rounded-md px-2.5 py-1 text-sm ${
+                  y === year
+                    ? "bg-[#1f3a5f] font-medium text-white"
+                    : "text-slate-600 hover:bg-slate-100"
+                }`}
+              >
+                {y}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Default rate */}
@@ -68,7 +101,7 @@ export default async function ReservePage() {
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-4 py-2 font-medium">Latest P&amp;L period</th>
+                  <th className="px-4 py-2 font-medium">P&amp;L period</th>
                   <th className="px-4 py-2 text-right font-medium">Estimated profit</th>
                   <th className="px-4 py-2 text-right font-medium">Rate</th>
                   <th className="px-4 py-2 text-right font-medium">Reserve this period</th>
@@ -139,10 +172,10 @@ export default async function ReservePage() {
           </div>
 
           <p className="text-xs text-slate-400">
-            Estimate based on the latest P&amp;L net income (already after expenses, including
-            booked depreciation) × the reserve rate; no reserve is shown on a loss. Tax depreciation
-            is usually larger than book, so reserving on book profit errs on the safe side.
-            Reconciled against the actual tax return at year-end.
+            Estimate based on the year&apos;s P&amp;L net income (annual report, or the sum of the
+            monthly ones) × the reserve rate; no reserve on a loss. It already includes booked
+            depreciation; tax depreciation is usually larger, so reserving on book profit errs on
+            the safe side. Reconciled against the actual tax return at year-end.
           </p>
         </>
       )}
