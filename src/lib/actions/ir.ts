@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ingestTaxReturn } from "@/lib/ir/ingest";
+import { applyOwnershipFromReturn } from "@/lib/ir/apply-ownership";
 import { ALL_ENTITY_TYPE_VALUES, ALL_TAX_TREATMENT_VALUES } from "@/lib/catalog";
-import { normalizeName } from "@/lib/qbo/match";
-import { EntityType, Jurisdiction, PartyKind, TaxTreatment } from "@prisma/client";
+import { EntityType, TaxTreatment } from "@prisma/client";
 
 export type IrState = { error?: string; id?: string } | undefined;
 
@@ -26,46 +26,20 @@ export async function analyzeAndStoreTaxReturn(
   return { id: res.id };
 }
 
-// Cria ownership (carimbado pelo ano do IR) a partir dos sócios extraídos.
-// Idempotente: casa/cria a Party e só adiciona quem ainda não é dono cadastrado.
+// Cria ownership (carimbado pelo ano do IR) a partir dos sócios extraídos — casa
+// empresa→empresa quando o sócio é uma empresa cadastrada; respeita ano travado.
 export async function applyTaxReturnOwnership(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
-  const tr = await prisma.taxReturn.findUnique({ where: { id } });
+  const tr = await prisma.taxReturn.findUnique({
+    where: { id },
+    select: { companyId: true, year: true, owners: true, jurisdiction: true },
+  });
   if (!tr || !tr.companyId) return;
 
-  const owners = (tr.owners as { name: string; ownershipPct: number | null }[] | null) ?? [];
-  const jur = (
-    ["US", "BR", "PT", "OTHER"].includes(tr.jurisdiction ?? "") ? tr.jurisdiction : "OTHER"
-  ) as Jurisdiction;
-  const effectiveDate = tr.year ? new Date(`${tr.year}-01-01T00:00:00Z`) : undefined;
-
-  const parties = await prisma.party.findMany();
-  const existing = await prisma.ownership.findMany({ where: { ownedCompanyId: tr.companyId } });
-
-  let created = 0;
-  for (const o of owners) {
-    if (o.ownershipPct == null) continue;
-    let party = parties.find((p) => normalizeName(p.name) === normalizeName(o.name));
-    if (!party) {
-      party = await prisma.party.create({
-        data: { name: o.name, kind: PartyKind.PERSON, taxJurisdiction: jur },
-      });
-      parties.push(party);
-    }
-    if (existing.some((e) => e.ownerPartyId === party!.id)) continue; // já é dono cadastrado
-    await prisma.ownership.create({
-      data: {
-        ownerPartyId: party.id,
-        ownedCompanyId: tr.companyId,
-        percentage: o.ownershipPct,
-        ...(effectiveDate ? { effectiveDate } : {}),
-      },
-    });
-    created++;
-  }
+  const res = await applyOwnershipFromReturn(tr);
   revalidatePath(`/companies/${tr.companyId}`);
   revalidatePath("/tax");
-  redirect(`/tax?msg=owners-${created}`);
+  redirect(`/tax?msg=owners-${res.created}`);
 }
 
 // Apaga um IR analisado (limpeza de testes).

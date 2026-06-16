@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { analyzeTaxReturnPdf } from "@/lib/ir/analyze";
 import { clampPdfPages } from "@/lib/ir/pdf";
 import { matchCompany } from "@/lib/qbo/match";
+import { applyOwnershipFromReturn } from "@/lib/ir/apply-ownership";
 
 export type IngestResult = { id?: string; companyId?: string | null; error?: string };
 
@@ -72,6 +73,19 @@ export async function ingestTaxReturn(fileName: string, buf: Buffer): Promise<In
     if (matched && !matched.taxId) {
       await prisma.company.update({ where: { id: companyId }, data: { taxId: s(data.taxId) } });
     }
+  }
+
+  // Auto-monta o ownership a partir dos sócios do IR (a menos que o ano esteja travado).
+  // Falha aqui não derruba a ingestão — o ownership pode ser aplicado depois.
+  try {
+    await applyOwnershipFromReturn({
+      companyId,
+      year: data.year,
+      owners,
+      jurisdiction: data.jurisdiction,
+    });
+  } catch {
+    /* não-fatal */
   }
 
   return { id: created.id, companyId };
