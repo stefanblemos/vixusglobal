@@ -375,6 +375,18 @@ export default async function CompanyYearPage({
           const cmpRows = buildCmpRows(figures, pnl, depTotal, id, pnlHref);
           const irOtherIncome = irOtherIncomeOf(figures);
           const otherIncomeBridge = otherIncomeBridgeOf(figures, pnl);
+          // KPIs do header são form-aware: numa partnership/S-corp/disregarded (pass-through)
+          // não existe "taxable income"/"total tax" no nível da entidade — o resultado (linha 22)
+          // passa para os sócios. Depreciação vem do IR (linha 16), com o GL como fallback.
+          const irOrdinary =
+            figures.find((f) => /ordinary business income/i.test(f.label))?.value ??
+            figVal("ORDINARY_INCOME");
+          const passThrough = ["PARTNERSHIP", "S_CORP", "DISREGARDED", "SOLE_PROP"].includes(
+            r.taxTreatment ?? "",
+          );
+          const taxableVal = figVal("TAXABLE_INCOME");
+          const totalTaxVal = figVal("TOTAL_TAX");
+          const depIr = figVal("DEPRECIATION");
           return (
             <section key={r.id} className="space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -398,9 +410,21 @@ export default async function CompanyYearPage({
                   label="Total income"
                   value={money(figVal("TOTAL_INCOME") ?? r.totalIncome, ccy)}
                 />
-                <Kpi label="Taxable income" value={money(figVal("TAXABLE_INCOME"), ccy)} />
-                <Kpi label="Total tax" value={money(figVal("TOTAL_TAX"), ccy)} />
-                <Kpi label="Depreciation (GL)" value={money(depTotal, ccy)} />
+                <Kpi
+                  label={taxableVal != null ? "Taxable income" : "Ordinary income"}
+                  value={money(taxableVal ?? irOrdinary, ccy)}
+                  hint={taxableVal == null && passThrough ? "passes to partners" : undefined}
+                />
+                <Kpi
+                  label={totalTaxVal == null && passThrough ? "Entity tax" : "Total tax"}
+                  value={money(totalTaxVal ?? (passThrough ? 0 : null), ccy)}
+                  hint={totalTaxVal == null && passThrough ? "passes to partners" : undefined}
+                />
+                <Kpi
+                  label="Depreciation"
+                  value={money(depIr ?? depTotal, ccy)}
+                  hint={depIr != null ? "per IR" : depTotal != null ? "per GL" : undefined}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
@@ -638,11 +662,12 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
+function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4">
       <div className="text-xs text-slate-500">{label}</div>
       <div className="mt-1 text-xl font-semibold text-slate-800">{value}</div>
+      {hint && <div className="text-xs text-slate-400">{hint}</div>}
     </div>
   );
 }
