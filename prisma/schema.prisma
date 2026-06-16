@@ -253,6 +253,14 @@ model CompanyTaxStatus {
   @@unique([companyId, year])
 }
 
+// Alíquota de reserva de IR (provisão mensal). `companyId` = id da empresa, ou o
+// sentinela "GLOBAL" para o default do grupo. Sem FK (por causa do sentinela).
+model TaxReserveRate {
+  companyId String   @id // id da empresa ou "GLOBAL"
+  ratePct   Decimal  @db.Decimal(5, 2)
+  updatedAt DateTime @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────────
 // Importações do QuickBooks (QBO) — relatórios em CSV
 // ─────────────────────────────────────────────────────────────

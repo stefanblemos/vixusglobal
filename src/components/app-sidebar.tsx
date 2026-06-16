@@ -15,6 +15,7 @@ import {
   PieChart,
   Activity,
   FolderOpen,
+  PiggyBank,
   LogOut,
 } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
@@ -30,6 +31,7 @@ const NAV = [
   { href: "/audit", label: "Audit", icon: Activity },
   { href: "/import", label: "Documents", icon: FolderOpen },
   { href: "/tax", label: "Tax", icon: ReceiptText },
+  { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
   { href: "/reports", label: "Reports", icon: PieChart },
 ];
 
