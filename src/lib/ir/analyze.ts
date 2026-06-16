@@ -122,9 +122,14 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    summarized on Form 1120 line 10 "Other income" with an attached statement, or 1065
    line 4 "Ordinary income from other partnerships" with a statement). For each: issuerName
    (the entity that issued the K-1), issuerEin, and amount (the net income reported from
-   that entity — negative for a loss). This is income RECEIVED as an investor — do NOT
-   confuse with the filer's own shareholders/partners in (7). Only pass-through K-1 items;
-   exclude plain investment income, rebates, etc. Empty list if none.
+   that entity — negative for a loss). IMPORTANT: look across ALL attached statements AND
+   the Schedule K / Schedule K-1 detail and the actual K-1 copies — there are often MULTIPLE
+   statements (Statement 1, 2, 3, 4…), each listing different investees; include EVERY
+   pass-through entity from every statement, not just the first. Cross-check that the sum of
+   your list ties to the return's reported pass-through income; if it doesn't, you missed
+   one — re-scan. This is income RECEIVED as an investor — do NOT confuse with the filer's
+   own shareholders/partners in (7). Only pass-through K-1 items; exclude plain investment
+   income, rebates, trade-ins, etc. Empty list if none.
 
 Be faithful to the document. Set confidence to "low" if anything is unclear or inferred.
 For any TEXT field not shown on the document, use an empty string "" (not null). Use null
