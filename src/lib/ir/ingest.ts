@@ -60,6 +60,7 @@ export async function ingestTaxReturn(fileName: string, buf: Buffer): Promise<In
       confidence: data.confidence,
       summary: data.summary,
       owners,
+      k1sReceived: data.k1sReceived,
       pdf: new Uint8Array(buf),
       pdfSize: buf.length,
     },

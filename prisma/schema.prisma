@@ -216,6 +216,7 @@ model TaxReturn {
   confidence   String?
   summary      String?
   owners       Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
+  k1sReceived  Json? // K-1 RECEBIDOS de investidas: [{ issuerName, issuerEin, amount }]
   pdf          Bytes? // arquivo original, para consulta/registro
   pdfSize      Int?
   status       TaxReturnStatus @default(ANALYZED)

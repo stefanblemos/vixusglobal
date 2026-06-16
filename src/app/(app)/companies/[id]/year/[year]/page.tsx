@@ -177,18 +177,24 @@ export default async function CompanyYearPage({
   const { id, year: yearStr } = await params;
   const year = parseInt(yearStr, 10);
 
-  const [company, taxReturns, taxStatus, ownerships, parties, companies] = await Promise.all([
-    prisma.company.findUnique({ where: { id } }),
-    prisma.taxReturn.findMany({
-      where: { companyId: id, year },
-      omit: { pdf: true },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.companyTaxStatus.findFirst({ where: { companyId: id, year } }),
-    prisma.ownership.findMany({ where: { ownedCompanyId: id } }),
-    prisma.party.findMany(),
-    prisma.company.findMany(),
-  ]);
+  const [company, taxReturns, taxStatus, ownerships, parties, companies, yearReturns] =
+    await Promise.all([
+      prisma.company.findUnique({ where: { id } }),
+      prisma.taxReturn.findMany({
+        where: { companyId: id, year },
+        omit: { pdf: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.companyTaxStatus.findFirst({ where: { companyId: id, year } }),
+      prisma.ownership.findMany({ where: { ownedCompanyId: id } }),
+      prisma.party.findMany(),
+      prisma.company.findMany(),
+      // Todos os IRs do MESMO ano (p/ validar os K-1 recebidos contra o IR do emissor).
+      prisma.taxReturn.findMany({
+        where: { year, companyId: { not: null } },
+        select: { companyId: true, owners: true, taxForm: true },
+      }),
+    ]);
   if (!company) notFound();
 
   const partyById = new Map(parties.map((p) => [p.id, p.name]));
@@ -215,6 +221,38 @@ export default async function CompanyYearPage({
     return Math.abs(hit.pct - partner.ownershipPct) <= 0.5
       ? { status: "match" as const, pct: hit.pct }
       : { status: "diff" as const, pct: hit.pct };
+  }
+
+  // ── K-1 recebidos: casa o emissor (EIN ou nome) e valida contra o IR dele ──
+  const einDigits = (s: string | null | undefined) => (s ?? "").replace(/\D/g, "");
+  const companyByEin = new Map(
+    companies.filter((c) => einDigits(c.taxId)).map((c) => [einDigits(c.taxId), c]),
+  );
+  const yearReturnByCompany = new Map(
+    yearReturns.filter((r) => r.companyId).map((r) => [r.companyId!, r]),
+  );
+  const filerNames = entityNames(company);
+
+  type K1Recv = { issuerName: string; issuerEin: string; amount: number };
+  function evalK1(k: K1Recv) {
+    const ein = einDigits(k.issuerEin);
+    let issuer = ein ? companyByEin.get(ein) : undefined;
+    if (!issuer) issuer = companies.find((c) => ownerNameMatches(entityNames(c), k.issuerName));
+    if (!issuer) return { status: "unregistered" as const, issuer: null, expected: null };
+
+    const ret = yearReturnByCompany.get(issuer.id);
+    if (!ret) return { status: "missing" as const, issuer, expected: null };
+
+    const owners = (ret.owners as { name: string; allocatedIncome: number | null }[] | null) ?? [];
+    const me = owners.find((o) => ownerNameMatches(filerNames, o.name));
+    const expected = me?.allocatedIncome ?? null;
+    if (expected == null) return { status: "noAlloc" as const, issuer, expected: null };
+    const tol = Math.max(1, Math.abs(k.amount) * 0.01);
+    return {
+      status: Math.abs(expected - k.amount) <= tol ? ("validated" as const) : ("differs" as const),
+      issuer,
+      expected,
+    };
   }
 
   const depTxns = await prisma.ledgerTxn.findMany({
@@ -599,6 +637,89 @@ export default async function CompanyYearPage({
                 )}
               </div>
 
+              {(() => {
+                const k1s = (r.k1sReceived as K1Recv[] | null) ?? [];
+                if (k1s.length === 0) return null;
+                const rows = k1s.map((k) => ({ k, e: evalK1(k) }));
+                const total = k1s.reduce((s, k) => s + k.amount, 0);
+                const awaiting = rows.filter((x) => x.e.status === "missing").length;
+                return (
+                  <div>
+                    <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-slate-700">
+                        K-1s received — income from investees
+                      </span>
+                      {awaiting > 0 && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                          {awaiting} awaiting the issuer&apos;s {year} return
+                        </span>
+                      )}
+                    </div>
+                    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-slate-500">
+                          <tr>
+                            <th className="px-4 py-2 font-medium">Issuer (investee)</th>
+                            <th className="px-4 py-2 font-medium">EIN</th>
+                            <th className="px-4 py-2 text-right font-medium">Reported here</th>
+                            <th className="px-4 py-2 text-right font-medium">
+                              Per issuer&apos;s return
+                            </th>
+                            <th className="px-4 py-2 text-right font-medium">Check</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {rows.map(({ k, e }, i) => (
+                            <tr key={i}>
+                              <td className="px-4 py-2 text-slate-700">
+                                {e.issuer ? (
+                                  <Link
+                                    href={`/companies/${e.issuer.id}/year/${year}`}
+                                    className="text-[#1f3a5f] hover:underline"
+                                  >
+                                    {e.issuer.legalName}
+                                  </Link>
+                                ) : (
+                                  k.issuerName
+                                )}
+                              </td>
+                              <td className="px-4 py-2 text-xs text-slate-400">
+                                {k.issuerEin || "—"}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums text-slate-700">
+                                {money(k.amount, ccy)}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums text-slate-500">
+                                {e.expected != null ? money(e.expected, ccy) : "—"}
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                <K1Badge status={e.status} year={year} />
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="border-t-2 border-slate-200 bg-slate-50/60">
+                          <tr>
+                            <td className="px-4 py-2 font-medium text-slate-700" colSpan={2}>
+                              Total received from investees (net)
+                            </td>
+                            <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                              {money(total, ccy)}
+                            </td>
+                            <td colSpan={2} />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Each K-1 this company received from an investee, matched by EIN/name. &ldquo;
+                      Awaiting return&rdquo; = the investee&apos;s {year} tax return isn&apos;t on
+                      file yet to validate the amount — your checklist for closing the year.
+                    </p>
+                  </div>
+                );
+              })()}
+
               {r.summary && <p className="text-sm text-slate-500">{r.summary}</p>}
 
               <div>
@@ -680,6 +801,20 @@ function CmpBadge({ status }: { status: string }) {
     irOnly: { label: "not in books", cls: "bg-amber-50 text-amber-700" },
     qboOnly: { label: "not on IR", cls: "bg-amber-50 text-amber-700" },
     none: { label: "no data", cls: "bg-slate-100 text-slate-400" },
+  };
+  const m = map[status];
+  return m ? (
+    <span className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${m.cls}`}>{m.label}</span>
+  ) : null;
+}
+
+function K1Badge({ status, year }: { status: string; year: number }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    validated: { label: "validated ✓", cls: "bg-green-50 text-green-700" },
+    differs: { label: "differs", cls: "bg-red-50 text-red-700" },
+    missing: { label: `awaiting ${year} return`, cls: "bg-amber-50 text-amber-700" },
+    noAlloc: { label: "filer not on issuer's K-1", cls: "bg-amber-50 text-amber-700" },
+    unregistered: { label: "not registered", cls: "bg-slate-100 text-slate-500" },
   };
   const m = map[status];
   return m ? (

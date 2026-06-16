@@ -40,6 +40,14 @@ export const irFigureSchema = z.object({
   line: z.string(), // ex.: "1120 line 30", "F-1120" ("" se não houver)
 });
 
+// K-1 que a empresa declarante RECEBEU de investidas (pass-through). Campos
+// obrigatórios (sem nullable) p/ não estourar o limite de union da API.
+export const irK1ReceivedSchema = z.object({
+  issuerName: z.string(), // empresa que emitiu o K-1 (a investida)
+  issuerEin: z.string(), // EIN da emissora ("" se não houver)
+  amount: z.number(), // valor líquido vindo dessa investida (pode ser negativo)
+});
+
 export const irExtractionSchema = z.object({
   companyName: z.string(),
   taxId: z.string(), // EIN/CNPJ/NIF da entidade ("" se não houver)
@@ -70,6 +78,7 @@ export const irExtractionSchema = z.object({
     "OTHER",
   ]),
   owners: z.array(irOwnerSchema),
+  k1sReceived: z.array(irK1ReceivedSchema),
   confidence: z.enum(["low", "medium", "high"]),
   summary: z.string(),
 });
@@ -108,6 +117,14 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    shown, ownership percentage (e.g. from Schedule K-1, Schedule G, or the quadro
    societário), the income allocated to them (allocatedIncome), and their role. Use null
    for any number you cannot read — never guess.
+8) "k1sReceived": EVERY Schedule K-1 the FILER RECEIVED from other partnerships/entities
+   it INVESTED IN (the pass-through entities that reported income TO this filer — usually
+   summarized on Form 1120 line 10 "Other income" with an attached statement, or 1065
+   line 4 "Ordinary income from other partnerships" with a statement). For each: issuerName
+   (the entity that issued the K-1), issuerEin, and amount (the net income reported from
+   that entity — negative for a loss). This is income RECEIVED as an investor — do NOT
+   confuse with the filer's own shareholders/partners in (7). Only pass-through K-1 items;
+   exclude plain investment income, rebates, etc. Empty list if none.
 
 Be faithful to the document. Set confidence to "low" if anything is unclear or inferred.
 For any TEXT field not shown on the document, use an empty string "" (not null). Use null
