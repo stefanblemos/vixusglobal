@@ -11,9 +11,11 @@ const inputClass =
 export function AddOwnerForm({
   companyId,
   options,
+  defaultEffectiveDate,
 }: {
   companyId: string;
   options: OwnerOption[];
+  defaultEffectiveDate?: string;
 }) {
   const [state, formAction, isPending] = useActionState<FormState, FormData>(
     createOwnership,
@@ -64,7 +66,16 @@ export function AddOwnerForm({
           className={inputClass}
         />
       </div>
-      <div className="w-36">
+      <div className="w-40">
+        <label className="mb-1 block text-xs font-medium text-slate-600">Effective date</label>
+        <input
+          name="effectiveDate"
+          type="date"
+          defaultValue={defaultEffectiveDate}
+          className={inputClass}
+        />
+      </div>
+      <div className="w-32">
         <label className="mb-1 block text-xs font-medium text-slate-600">Class (optional)</label>
         <input name="shareClass" placeholder="e.g. Class A" className={inputClass} />
       </div>

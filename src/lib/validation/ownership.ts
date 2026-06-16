@@ -13,6 +13,8 @@ export const ownershipCreateSchema = z
       .gt(0, "Percentage must be greater than 0")
       .max(100, "Percentage cannot exceed 100"),
     shareClass: z.preprocess(emptyToNull, z.string().trim().nullable()),
+    // Data de entrada do sócio (YYYY-MM-DD). Vazio = vigente desde sempre.
+    effectiveDate: z.preprocess(emptyToNull, z.string().date().nullable().optional()),
   })
   .refine((d) => d.owner !== `company:${d.ownedCompanyId}`, {
     message: "A company cannot own itself",

@@ -3,8 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AddOwnerForm } from "@/components/add-owner-form";
+import { OwnershipRowActions } from "@/components/ownership-row-actions";
 import { TaxStatusForm } from "@/components/tax-status-form";
-import { deleteOwnership } from "@/lib/actions/ownership";
 import { deleteTaxStatus } from "@/lib/actions/tax";
 import {
   labelForEntityType,
@@ -18,6 +18,18 @@ import { qboPeriodKey } from "@/lib/qbo/period";
 import { companyReserve } from "@/lib/tax/reserve";
 
 const fmtPct = (n: number) => `${n.toLocaleString("en-US", { maximumFractionDigits: 4 })}%`;
+const fmtDate = (d: Date | null | undefined) =>
+  d
+    ? d.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : null;
+// Período de vigência de um vínculo (entrada → saída), legível.
+const ownPeriod = (o: { effectiveDate: Date | null; endDate: Date | null }) =>
+  `${fmtDate(o.effectiveDate) ?? "since start"} → ${fmtDate(o.endDate) ?? "current"}`;
 const money = (v: unknown, ccy = "USD") =>
   v == null
     ? "—"
@@ -102,9 +114,34 @@ export default async function CompanyDetailPage({
         name: nameOf(type, entId),
         percentage: Number(o.percentage),
         shareClass: o.shareClass,
+        effectiveDate: o.effectiveDate,
+        endDate: o.endDate,
       };
     })
     .sort((a, b) => b.percentage - a.percentage);
+
+  // Um vínculo está ativo no ano Y se entrou até o fim do ano e não saiu antes do início.
+  const yStart = (y: number) => new Date(`${y}-01-01T00:00:00Z`);
+  const yEnd = (y: number) => new Date(`${y}-12-31T23:59:59Z`);
+  const activeInYear = (
+    o: { effectiveDate: Date | null; endDate: Date | null },
+    y: number,
+  ): boolean =>
+    (!o.effectiveDate || o.effectiveDate <= yEnd(y)) && (!o.endDate || o.endDate >= yStart(y));
+
+  // Anos para o seletor de ownership: do mais antigo (entrada de algum sócio ou ano de
+  // IR) até o atual, contínuo.
+  const ownerYearMarks = directOwners
+    .map((o) => o.effectiveDate?.getUTCFullYear())
+    .filter((y): y is number => y != null);
+  const currentYear = new Date().getFullYear();
+  const earliestOwnYear = Math.min(currentYear, ...ownerYearMarks);
+  const ownershipYears: number[] = [];
+  for (let y = currentYear; y >= earliestOwnYear; y--) ownershipYears.push(y);
+  const ownYear =
+    yearRaw && Number(yearRaw) >= earliestOwnYear && Number(yearRaw) <= currentYear
+      ? Number(yearRaw)
+      : currentYear;
 
   const holdings = ownerships
     .filter((o) => o.ownerCompanyId === id)
@@ -115,7 +152,8 @@ export default async function CompanyDetailPage({
     })
     .sort((a, b) => b.percentage - a.percentage);
 
-  const edges = edgesFromOwnerships(ownerships);
+  // UBO calculado COMO ESTAVA no fim do ano selecionado (as-of), p/ seguir o IR.
+  const edges = edgesFromOwnerships(ownerships, yEnd(ownYear));
   const {
     owners: ubo,
     coverage,
@@ -123,6 +161,9 @@ export default async function CompanyDetailPage({
   } = computeEffectiveOwners("company", id, edges, {
     ultimateOnly: true,
   });
+  const directOwnersInYear = directOwners.filter((o) => activeInYear(o, ownYear));
+  // Donos vigentes HOJE (p/ o snapshot da aba Overview).
+  const currentOwners = directOwners.filter((o) => activeInYear(o, currentYear));
 
   const ownerOptions = [
     ...parties.map((p) => ({ value: `party:${p.id}`, label: p.name, group: "Owners" })),
@@ -154,6 +195,13 @@ export default async function CompanyDetailPage({
     treatment ?? "",
   );
   const estimate = tab === "estimated-tax" ? await companyReserve(id, estYear) : null;
+  // P/ o split da reserva uso o snapshot de FIM do ano (soma 100%); num ano de transição
+  // a aba Ownership é que mostra todos os sócios com seus períodos.
+  const ownersForEst = directOwners.filter(
+    (o) =>
+      (!o.effectiveDate || o.effectiveDate <= yEnd(estYear)) &&
+      (!o.endDate || o.endDate > yEnd(estYear)),
+  );
 
   // Histórico por ano (montado a partir dos documentos): tributação + IRs arquivados.
   const taxByYear = new Map(taxStatuses.map((t) => [t.year, t]));
@@ -273,7 +321,7 @@ export default async function CompanyDetailPage({
           )}
 
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <Kpi label="Direct owners" value={`${directOwners.length}`} />
+            <Kpi label="Direct owners" value={`${currentOwners.length}`} />
             <Kpi
               label="UBO coverage"
               value={ubo.length ? fmtPct(coverage) : "—"}
@@ -289,11 +337,11 @@ export default async function CompanyDetailPage({
 
           <section className="grid gap-4 md:grid-cols-2">
             <Card title="Ownership">
-              {directOwners.length === 0 ? (
+              {currentOwners.length === 0 ? (
                 <p className="text-sm text-slate-500">No owners linked yet.</p>
               ) : (
                 <ul className="space-y-1 text-sm">
-                  {directOwners.map((o) => (
+                  {currentOwners.map((o) => (
                     <li key={o.id} className="flex justify-between">
                       <span className="text-slate-700">{o.name}</span>
                       <span className="tabular-nums text-slate-800">{fmtPct(o.percentage)}</span>
@@ -342,40 +390,69 @@ export default async function CompanyDetailPage({
       {tab === "ownership" && (
         <div className="space-y-8">
           <section className="space-y-3">
-            <h2 className="text-lg font-medium text-slate-800">Direct owners</h2>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-medium text-slate-800">Direct owners · {ownYear}</h2>
+                <p className="text-sm text-slate-500">
+                  Who held a stake during {ownYear} — entries and exits included, each with its
+                  period. Pick a year to follow the tax return&apos;s reasoning.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+                {ownershipYears.map((y) => (
+                  <Link
+                    key={y}
+                    href={`/companies/${id}?tab=ownership&year=${y}`}
+                    className={`rounded-md px-2.5 py-1 text-sm ${
+                      y === ownYear
+                        ? "bg-[#1f3a5f] font-medium text-white"
+                        : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {y}
+                  </Link>
+                ))}
+              </div>
+            </div>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              {directOwners.length === 0 ? (
-                <p className="p-6 text-sm text-slate-500">No owners linked yet.</p>
+              {directOwnersInYear.length === 0 ? (
+                <p className="p-6 text-sm text-slate-500">No owners on record for {ownYear}.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-4 py-3 font-medium">Owner</th>
                       <th className="px-4 py-3 font-medium">Type</th>
-                      <th className="px-4 py-3 font-medium">Class</th>
+                      <th className="px-4 py-3 font-medium">Period held</th>
                       <th className="px-4 py-3 text-right font-medium">Ownership</th>
                       <th className="px-4 py-3"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {directOwners.map((o) => (
+                    {directOwnersInYear.map((o) => (
                       <tr key={o.id}>
-                        <td className="px-4 py-3 font-medium text-slate-800">{o.name}</td>
+                        <td className="px-4 py-3 font-medium text-slate-800">
+                          {o.name}
+                          {o.shareClass && (
+                            <span className="ml-2 text-xs font-normal text-slate-400">
+                              {o.shareClass}
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-slate-500">
                           {o.type === "party" ? "Owner" : "Company"}
                         </td>
-                        <td className="px-4 py-3 text-slate-500">{o.shareClass ?? "—"}</td>
+                        <td className="px-4 py-3 text-xs text-slate-500">{ownPeriod(o)}</td>
                         <td className="px-4 py-3 text-right text-slate-800">
                           {fmtPct(o.percentage)}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <form action={deleteOwnership}>
-                            <input type="hidden" name="ownershipId" value={o.id} />
-                            <input type="hidden" name="companyId" value={id} />
-                            <button className="text-xs text-slate-400 hover:text-red-600">
-                              Remove
-                            </button>
-                          </form>
+                          <OwnershipRowActions
+                            ownershipId={o.id}
+                            companyId={id}
+                            ended={!!o.endDate}
+                            defaultEndDate={`${ownYear}-12-31`}
+                          />
                         </td>
                       </tr>
                     ))}
@@ -384,14 +461,18 @@ export default async function CompanyDetailPage({
               )}
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <AddOwnerForm companyId={id} options={ownerOptions} />
+              <AddOwnerForm
+                companyId={id}
+                options={ownerOptions}
+                defaultEffectiveDate={`${ownYear}-01-01`}
+              />
             </div>
           </section>
 
           <section className="space-y-3">
             <div className="flex items-center gap-3">
               <h2 className="text-lg font-medium text-slate-800">
-                Ultimate beneficial owners (UBO)
+                Ultimate beneficial owners (UBO) · as of Dec 31, {ownYear}
               </h2>
               {coverage < 99.99 && (
                 <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
@@ -686,7 +767,7 @@ export default async function CompanyDetailPage({
               </div>
 
               {passThrough &&
-                directOwners.length > 0 &&
+                ownersForEst.length > 0 &&
                 estimate.profit != null &&
                 estimate.profit > 0 && (
                   <div>
@@ -704,7 +785,7 @@ export default async function CompanyDetailPage({
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {directOwners.map((o) => (
+                          {ownersForEst.map((o) => (
                             <tr key={o.id}>
                               <td className="px-4 py-2 text-slate-700">{o.name}</td>
                               <td className="px-4 py-2 text-right tabular-nums text-slate-600">

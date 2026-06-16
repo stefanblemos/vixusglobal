@@ -98,10 +98,12 @@ export interface OwnershipRow {
   ownedPartyId: string | null;
   ownedCompanyId: string | null;
   percentage: { toString(): string } | number | string;
+  effectiveDate?: Date | null;
   endDate?: Date | null;
 }
 
-/** Converte linhas de Ownership do banco em arestas, filtrando vínculos encerrados. */
+/** Converte linhas de Ownership do banco em arestas vigentes na data `asOf`
+ * (já entrou: effectiveDate ≤ asOf; ainda não saiu: endDate > asOf). */
 export function edgesFromOwnerships(
   rows: OwnershipRow[],
   asOf: Date = new Date(),
@@ -109,6 +111,7 @@ export function edgesFromOwnerships(
   const edges: OwnershipEdge[] = [];
   for (const r of rows) {
     if (r.endDate && r.endDate <= asOf) continue;
+    if (r.effectiveDate && r.effectiveDate > asOf) continue; // ainda não vigente
     const ownerType: NodeType | null = r.ownerPartyId
       ? "party"
       : r.ownerCompanyId
