@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-const CHUNK = 8 * 1024 * 1024; // 8 MB por pedaço (abaixo do limite de ~10 MiB do dev server)
+// 4 MB por pedaço: abaixo do limite de ~10 MiB do dev server E do ~4,5 MB do Vercel
+// (serverless functions). Mantém o upload de IRs grandes funcionando nos dois ambientes.
+const CHUNK = 4 * 1024 * 1024;
 const ENDPOINT = "/api/tax-returns/analyze";
 
 type UploadResult = { id?: string; error?: string };
