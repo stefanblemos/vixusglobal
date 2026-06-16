@@ -192,19 +192,30 @@ export default async function CompanyYearPage({
   if (!company) notFound();
 
   const partyById = new Map(parties.map((p) => [p.id, p.name]));
-  const companyById = new Map(companies.map((c) => [c.id, c.legalName]));
+  const companyById = new Map(companies.map((c) => [c.id, c]));
+  // Cada dono registrado guarda TODOS os nomes pelos quais pode ser conhecido
+  // (razão social + nome fantasia + aliases) — o IR pode usar o nome ANTIGO da
+  // empresa (ex.: L&L → L2), então casar só pela razão social atual falha.
   const registered = ownerships
-    .map((o) => ({
-      name: o.ownerPartyId
-        ? partyById.get(o.ownerPartyId)
-        : companyById.get(o.ownerCompanyId ?? ""),
-      pct: Number(o.percentage),
-    }))
-    .filter((r): r is { name: string; pct: number } => !!r.name);
+    .map((o) => {
+      if (o.ownerPartyId) {
+        const n = partyById.get(o.ownerPartyId);
+        return n ? { names: [n], pct: Number(o.percentage) } : null;
+      }
+      const c = o.ownerCompanyId ? companyById.get(o.ownerCompanyId) : null;
+      return c
+        ? {
+            names: [c.legalName, c.tradeName, ...c.aliases].filter((x): x is string => !!x),
+            pct: Number(o.percentage),
+          }
+        : null;
+    })
+    .filter((r): r is { names: string[]; pct: number } => !!r);
 
   function reconcile(partner: Owner) {
     if (registered.length === 0) return { status: "none" as const };
-    const hit = registered.find((r) => normalizeName(r.name) === normalizeName(partner.name));
+    const pn = normalizeName(partner.name);
+    const hit = registered.find((r) => r.names.some((n) => normalizeName(n) === pn));
     if (!hit) return { status: "missing" as const };
     if (partner.ownershipPct == null) return { status: "registered" as const, pct: hit.pct };
     return Math.abs(hit.pct - partner.ownershipPct) <= 0.5
