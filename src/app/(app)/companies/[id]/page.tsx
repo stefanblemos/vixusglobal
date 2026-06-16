@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AddOwnerForm } from "@/components/add-owner-form";
 import { OwnershipRowActions } from "@/components/ownership-row-actions";
+import { YearSelect } from "@/components/year-select";
 import { TaxStatusForm } from "@/components/tax-status-form";
 import { deleteTaxStatus } from "@/lib/actions/tax";
 import {
@@ -398,21 +399,12 @@ export default async function CompanyDetailPage({
                   period. Pick a year to follow the tax return&apos;s reasoning.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
-                {ownershipYears.map((y) => (
-                  <Link
-                    key={y}
-                    href={`/companies/${id}?tab=ownership&year=${y}`}
-                    className={`rounded-md px-2.5 py-1 text-sm ${
-                      y === ownYear
-                        ? "bg-[#1f3a5f] font-medium text-white"
-                        : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {y}
-                  </Link>
-                ))}
-              </div>
+              <YearSelect
+                years={ownershipYears}
+                value={ownYear}
+                basePath={`/companies/${id}`}
+                params={{ tab: "ownership" }}
+              />
             </div>
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               {directOwnersInYear.length === 0 ? (
@@ -690,21 +682,12 @@ export default async function CompanyDetailPage({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-lg font-medium text-slate-800">Estimated tax · {estYear}</h2>
             {pnlYears.length > 0 && (
-              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
-                {pnlYears.map((y) => (
-                  <Link
-                    key={y}
-                    href={`/companies/${id}?tab=estimated-tax&year=${y}`}
-                    className={`rounded-md px-2.5 py-1 text-sm ${
-                      y === estYear
-                        ? "bg-[#1f3a5f] font-medium text-white"
-                        : "text-slate-600 hover:bg-slate-100"
-                    }`}
-                  >
-                    {y}
-                  </Link>
-                ))}
-              </div>
+              <YearSelect
+                years={pnlYears}
+                value={estYear}
+                basePath={`/companies/${id}`}
+                params={{ tab: "estimated-tax" }}
+              />
             )}
           </div>
 

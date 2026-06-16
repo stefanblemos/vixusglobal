@@ -2,6 +2,7 @@ import Link from "next/link";
 import { buildTaxReserve, reserveYears, GLOBAL_RATE_KEY } from "@/lib/tax/reserve";
 import { setReserveRate } from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
+import { YearSelect } from "@/components/year-select";
 
 const money = (v: number | null, ccy = "USD") =>
   v == null
@@ -43,23 +44,7 @@ export default async function ReservePage({
             when the bill comes.
           </p>
         </div>
-        {years.length > 0 && (
-          <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
-            {years.map((y) => (
-              <Link
-                key={y}
-                href={`/reserve?year=${y}`}
-                className={`rounded-md px-2.5 py-1 text-sm ${
-                  y === year
-                    ? "bg-[#1f3a5f] font-medium text-white"
-                    : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                {y}
-              </Link>
-            ))}
-          </div>
-        )}
+        {years.length > 0 && <YearSelect years={years} value={year} basePath="/reserve" />}
       </div>
 
       {/* Default rate */}
