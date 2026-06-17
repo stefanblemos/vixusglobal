@@ -54,6 +54,7 @@ export const irExtractionSchema = z.object({
   jurisdiction: z.enum(["US", "BR", "PT", "OTHER"]),
   year: z.number().nullable(),
   taxForm: z.string(),
+  isFinalReturn: z.boolean(), // "Final return" marcado (entidade encerrada no ano)
   entityType: z.string(),
   city: z.string(),
   state: z.string(),
@@ -94,6 +95,9 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    "ECF"/DIRPJ with Lucro Real/Presumido or Simples Nacional/MEI; Portugal IRC
    Regime Geral/Simplificado).
 3) From the form type, the tax treatment — map to one of the allowed enum values.
+   Also set "isFinalReturn": true ONLY if the return's "Final return" box is checked
+   (Form 1065 / 1120 / 1120-S item G "Final return"; Brazil "encerramento"/última ECF) —
+   meaning the entity was dissolved/closed in this tax year. Otherwise false.
 4) The legal entity type if stated; the city/state and full address; the business
    activity (and code); and the incorporation/organization date.
 5) "figures": a list of EVERY monetary line on the return — gross receipts, cost of

@@ -259,10 +259,15 @@ export default async function CompanyDetailPage({
   const yearsWithReturns = new Set(
     taxReturns.map((r) => r.year).filter((y): y is number => y != null),
   );
+  // Ano de encerramento: o IR marcado como "Final return" (entidade fechou nesse ano).
+  const finalReturnYear =
+    taxReturns.find((r) => r.isFinalReturn && r.year != null)?.year ?? null;
+  // Anos esperados vão até o encerramento (se houver), senão o último ano-fiscal fechado.
   const lastExpectedYear =
-    company.status === "INACTIVE" && yearsWithReturns.size > 0
+    finalReturnYear ??
+    (company.status === "INACTIVE" && yearsWithReturns.size > 0
       ? Math.max(...yearsWithReturns)
-      : new Date().getFullYear() - 1;
+      : new Date().getFullYear() - 1);
   const missingYears = formationYear
     ? Array.from(
         { length: Math.max(0, lastExpectedYear - formationYear + 1) },
@@ -319,7 +324,15 @@ export default async function CompanyDetailPage({
         <Link href="/companies" className="text-sm text-slate-500 hover:text-slate-700">
           ← Companies
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-800">{company.legalName}</h1>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-semibold text-slate-800">{company.legalName}</h1>
+          <Link
+            href={`/companies/${id}/edit`}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            Edit
+          </Link>
+        </div>
         {company.aliases.length > 0 && (
           <p className="mt-1 text-sm text-slate-400">Formerly: {company.aliases.join(", ")}</p>
         )}
@@ -332,6 +345,15 @@ export default async function CompanyDetailPage({
           <Chip>{labelForRelationship(company.relationship)}</Chip>
           <Chip>{company.baseCurrency}</Chip>
           {company.taxId && <Chip>Tax ID {company.taxId}</Chip>}
+          {company.formationDate && <Chip>Formed {company.formationDate}</Chip>}
+          {company.status === "INACTIVE" && (
+            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">Closed</span>
+          )}
+          {finalReturnYear && (
+            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+              Final return {finalReturnYear}
+            </span>
+          )}
         </div>
       </div>
 
@@ -611,7 +633,8 @@ export default async function CompanyDetailPage({
                     : "border-emerald-200 bg-emerald-50/60 text-emerald-800"
                 }`}
               >
-                Formed {company.formationDate}.{" "}
+                Formed {company.formationDate}
+                {finalReturnYear ? ` · closed ${finalReturnYear} (final return)` : ""}.{" "}
                 {missingYears.length > 0 ? (
                   <>
                     Missing tax returns:{" "}
@@ -622,7 +645,7 @@ export default async function CompanyDetailPage({
                     .
                   </>
                 ) : (
-                  "Every year since formation has a return on file ✓"
+                  `Every year ${finalReturnYear ? "of its life" : "since formation"} has a return on file ✓`
                 )}
               </div>
             )}

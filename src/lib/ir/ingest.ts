@@ -77,6 +77,7 @@ export async function ingestTaxReturn(fileName: string, buf: Buffer): Promise<In
       summary: data.summary,
       owners,
       k1sReceived: data.k1sReceived,
+      isFinalReturn: data.isFinalReturn ?? false,
       pdf: new Uint8Array(buf),
       pdfSize: buf.length,
     },

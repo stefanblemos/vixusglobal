@@ -198,6 +198,11 @@ export default async function TaxPage({
                             applied ✓
                           </span>
                         )}
+                        {r.isFinalReturn && (
+                          <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-700">
+                            final return — entity closed
+                          </span>
+                        )}
                       </div>
                       <p className="mt-1 text-sm text-slate-500">
                         {r.fileName} · {r.year ?? "—"} ·{" "}

@@ -23,6 +23,8 @@ export const companyCreateSchema = z
     state: z.preprocess(emptyToNull, z.string().trim().nullable()),
     entityType: z.enum(ALL_ENTITY_TYPE_VALUES),
     taxId: z.preprocess(emptyToNull, z.string().trim().nullable()),
+    formationDate: z.preprocess(emptyToNull, z.string().trim().nullable()),
+    status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
     fiscalYearEnd: z
       .string()
       .regex(/^\d{2}-\d{2}$/, "Use the MM-DD format")

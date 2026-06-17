@@ -62,11 +62,19 @@ export async function ingestCorporateDoc(
     },
   });
 
-  // Backfill do EIN da empresa se casou e ainda não tem.
-  if (companyId && s(data.taxId)) {
-    const matched = companies.find((c) => c.id === companyId);
-    if (matched && !matched.taxId) {
-      await prisma.company.update({ where: { id: companyId }, data: { taxId: s(data.taxId) } });
+  // Backfill da empresa a partir do documento societário (OA, Articles, Sunbiz): EIN, data
+  // de abertura e estado — preenche só o que ainda estiver vazio, ao subir o documento.
+  if (companyId) {
+    const cur = await prisma.company.findUnique({
+      where: { id: companyId },
+      select: { taxId: true, formationDate: true, state: true },
+    });
+    const patch: { taxId?: string; formationDate?: string; state?: string } = {};
+    if (s(data.taxId) && cur && !cur.taxId) patch.taxId = s(data.taxId)!;
+    if (s(data.formationDate) && cur && !cur.formationDate) patch.formationDate = s(data.formationDate)!;
+    if (s(data.state) && cur && !cur.state) patch.state = s(data.state)!;
+    if (Object.keys(patch).length > 0) {
+      await prisma.company.update({ where: { id: companyId }, data: patch });
     }
   }
 

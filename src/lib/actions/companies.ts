@@ -23,12 +23,45 @@ export async function createCompany(_prev: FormState, formData: FormData): Promi
       state: d.state,
       entityType: d.entityType as EntityType,
       taxId: d.taxId,
+      formationDate: d.formationDate,
       fiscalYearEnd: d.fiscalYearEnd,
       baseCurrency: d.baseCurrency,
       relationship: d.relationship as CompanyRelationship,
+      status: d.status,
       notes: d.notes,
     },
   });
   revalidatePath("/companies");
   redirect("/companies");
+}
+
+export async function updateCompany(_prev: FormState, formData: FormData): Promise<FormState> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Missing company id." };
+  const parsed = companyCreateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const d = parsed.data;
+  await prisma.company.update({
+    where: { id },
+    data: {
+      legalName: d.legalName,
+      tradeName: d.tradeName,
+      aliases: d.aliases,
+      jurisdiction: d.jurisdiction as Jurisdiction,
+      state: d.state,
+      entityType: d.entityType as EntityType,
+      taxId: d.taxId,
+      formationDate: d.formationDate,
+      fiscalYearEnd: d.fiscalYearEnd,
+      baseCurrency: d.baseCurrency,
+      relationship: d.relationship as CompanyRelationship,
+      status: d.status,
+      notes: d.notes,
+    },
+  });
+  revalidatePath(`/companies/${id}`);
+  revalidatePath("/companies");
+  redirect(`/companies/${id}`);
 }
