@@ -19,7 +19,10 @@ const num = (v: unknown) => (v == null ? null : Number(v));
 
 export default async function PersonalReturnsPage() {
   const [returns, entityReturns, companies] = await Promise.all([
-    prisma.personalReturn.findMany({ orderBy: [{ year: "desc" }, { createdAt: "desc" }] }),
+    prisma.personalReturn.findMany({
+      orderBy: [{ year: "desc" }, { createdAt: "desc" }],
+      include: { party: { select: { name: true } } },
+    }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null } },
       select: { companyId: true, year: true, owners: true },
@@ -77,7 +80,7 @@ export default async function PersonalReturnsPage() {
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-slate-800">
-                        {r.matchedName ?? "Unknown taxpayer"}
+                        {r.party?.name ?? r.matchedName ?? "Unknown taxpayer"}
                         {r.spouseName ? ` & ${r.spouseName}` : ""}
                       </span>
                       {r.partyId ? (
