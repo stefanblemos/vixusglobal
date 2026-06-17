@@ -121,6 +121,19 @@ export default async function TaxPage({
 
       <IrUpload />
 
+      <Link
+        href="/tax/k1"
+        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-[#8DC63F] hover:bg-[#8DC63F]/[0.04]"
+      >
+        <div>
+          <div className="font-medium text-slate-800">K-1 × 1065 reconciliation →</div>
+          <p className="text-sm text-slate-500">
+            Cross-check every intercompany K-1 across the group — each K-1 issued on a 1065 against
+            the K-1 the recipient declared. Surfaces what the accountant may have missed.
+          </p>
+        </div>
+      </Link>
+
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-800">Analyzed returns</h2>
         {returns.length === 0 ? (
