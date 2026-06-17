@@ -25,7 +25,7 @@ export default async function PersonalReturnsPage() {
     }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null } },
-      select: { companyId: true, year: true, owners: true },
+      select: { companyId: true, year: true, taxTreatment: true, owners: true },
     }),
     prisma.company.findMany({ select: { id: true, legalName: true } }),
   ]);
@@ -33,6 +33,7 @@ export default async function PersonalReturnsPage() {
   const entRows = entityReturns.map((r) => ({
     companyId: r.companyId,
     year: r.year,
+    taxTreatment: r.taxTreatment,
     owners: r.owners as { name: string; allocatedIncome: number | null }[] | null,
   }));
 
@@ -70,6 +71,7 @@ export default async function PersonalReturnsPage() {
                 year: r.year,
                 partnershipIncome: num(r.partnershipIncome),
                 partnershipLoss: num(r.partnershipLoss),
+                ordinaryDividends: num(r.ordinaryDividends),
               },
               entRows,
               companyNameById,
@@ -119,9 +121,10 @@ export default async function PersonalReturnsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
                   <Kpi label="Wages" value={usd(r.wages)} />
                   <Kpi label="Sch E — partnership" value={usd(num(r.partnershipIncome))} />
+                  <Kpi label="Dividends" value={usd(num(r.ordinaryDividends))} />
                   <Kpi label="Total income" value={usd(r.totalIncome)} />
                   <Kpi label="Total tax" value={usd(r.totalTax)} />
                 </div>
@@ -197,6 +200,43 @@ export default async function PersonalReturnsPage() {
                     </div>
                   )}
                 </div>
+
+                {/* C-corp holdings: renda fica na entidade (1120); sócio tributado em dividendos */}
+                {cc.cCorpHoldings.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+                    <div className="text-sm font-medium text-slate-700">
+                      C-corp holdings — taxed at the entity, not on this return ({r.year ?? "—"})
+                    </div>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      A C-corp pays its own 1120 tax; its income does <strong>not</strong> flow to
+                      the 1040 (unlike a partnership K-1). The owner is taxed only on dividends
+                      distributed (Form 1099-DIV) — so these don&rsquo;t belong in the K-1 sum above.
+                    </p>
+                    <ul className="mt-2 space-y-1 text-sm">
+                      {cc.cCorpHoldings.map((h, i) => (
+                        <li key={i} className="flex items-center justify-between">
+                          <Link
+                            href={`/companies/${h.entityId}/year/${h.year}`}
+                            className="text-[#1f3a5f] hover:underline"
+                          >
+                            {h.entityName}
+                          </Link>
+                          <span className="text-xs text-slate-400">C-corp · {h.year}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-2 flex items-center justify-between border-t border-slate-200 pt-2 text-sm">
+                      <span className="text-slate-600">Dividends reported on this 1040</span>
+                      <span className="font-medium tabular-nums text-slate-800">
+                        {cc.dividendsReported == null ? "—" : usd(cc.dividendsReported)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Confirm dividends distributed by these C-corps land here — upload the
+                      1099-DIV / distribution records to reconcile each side.
+                    </p>
+                  </div>
+                )}
 
                 {r.summary && <p className="mt-3 text-sm text-slate-500">{r.summary}</p>}
               </div>

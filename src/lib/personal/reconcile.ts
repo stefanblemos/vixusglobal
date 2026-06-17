@@ -27,18 +27,25 @@ export type EntityAllocation = {
   allocated: number; // renda alocada (negativa = perda)
 };
 
+// Participação numa C-Corp do sócio: a renda NÃO passa para o 1040 (a entidade paga o
+// 1120); o sócio só é tributado em dividendos. Mostrada à parte, não na soma de K-1.
+export type CCorpHolding = { entityId: string; entityName: string; year: number | null };
+
 export type PersonalCrossCheck = {
   names: string[]; // contribuinte + cônjuge
-  contributions: EntityAllocation[]; // alocações que deveriam estar no 1040
-  expectedTotal: number; // soma das alocações das entidades
+  contributions: EntityAllocation[]; // alocações pass-through que deveriam estar no 1040
+  expectedTotal: number; // soma das alocações das entidades (pass-through)
   reportedNet: number | null; // partnershipIncome − partnershipLoss do 1040
   gap: number | null; // reportedNet − expectedTotal
   status: "match" | "diff" | "noData";
+  cCorpHoldings: CCorpHolding[]; // entidades C-Corp do sócio (renda fica na entidade)
+  dividendsReported: number | null; // dividendos no 1040 (1099-DIV das C-Corps, etc.)
 };
 
 type EntityReturn = {
   companyId: string | null;
   year: number | null;
+  taxTreatment: string | null;
   owners: { name: string; allocatedIncome: number | null }[] | null;
 };
 
@@ -76,6 +83,7 @@ export function crossCheckPersonalReturn(
     year: number | null;
     partnershipIncome: number | null;
     partnershipLoss: number | null;
+    ordinaryDividends?: number | null;
   },
   returns: EntityReturn[],
   companyNameById: Map<string, string>,
@@ -90,6 +98,19 @@ export function crossCheckPersonalReturn(
     companyNameById,
   ).sort((a, b) => a.entityName.localeCompare(b.entityName));
 
+  // C-Corp holdings: entidades C-Corp em que o sócio aparece (a renda fica na entidade —
+  // 1120; o sócio só é tributado em dividendos, então NÃO entra na soma de K-1 esperada).
+  const cCorpHoldings: CCorpHolding[] = [];
+  const want = names.filter((n) => !!n && !!n.trim());
+  for (const r of returns) {
+    if (!r.companyId || (personal.year != null && r.year !== personal.year)) continue;
+    if (r.taxTreatment !== "C_CORP") continue;
+    if (!(r.owners ?? []).some((o) => want.some((n) => looseNameMatch(n, o.name)))) continue;
+    const id = r.companyId;
+    if (cCorpHoldings.some((h) => h.entityId === id)) continue;
+    cCorpHoldings.push({ entityId: id, entityName: companyNameById.get(id) ?? id, year: r.year });
+  }
+
   const expectedTotal = contributions.reduce((s, c) => s + c.allocated, 0);
   const reportedNet =
     personal.partnershipIncome == null && personal.partnershipLoss == null
@@ -102,5 +123,14 @@ export function crossCheckPersonalReturn(
   else if (gap == null) status = "noData";
   else status = Math.abs(gap) <= Math.max(1, Math.abs(expectedTotal) * 0.02) ? "match" : "diff";
 
-  return { names, contributions, expectedTotal, reportedNet, gap, status };
+  return {
+    names,
+    contributions,
+    expectedTotal,
+    reportedNet,
+    gap,
+    status,
+    cCorpHoldings,
+    dividendsReported: personal.ordinaryDividends ?? null,
+  };
 }

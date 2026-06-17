@@ -15,6 +15,8 @@ export const personalReturnSchema = z.object({
   form: z.string(), // ex.: "1040"
   preparer: z.string(), // PTIN/EIN do preparador, se houver
   wages: z.number().nullable(),
+  ordinaryDividends: z.number().nullable(), // 1040 linha 3b
+  qualifiedDividends: z.number().nullable(), // 1040 linha 3a
   businessIncomeC: z.number().nullable(), // Schedule C
   capitalGain: z.number().nullable(), // Schedule D
   rentalIncome: z.number().nullable(), // Schedule E — aluguel/royalties
@@ -43,6 +45,8 @@ filed 1040). Extract STRICTLY what the document shows:
    (the PTIN / preparer EIN if shown).
 4) The income lines, as numbers (null if blank, negative for losses):
    - wages ("WAGES, SALARIES, TIPS")
+   - ordinaryDividends ("ORDINARY DIVIDEND INCOME" / 1040 line 3b) and qualifiedDividends
+     (1040 line 3a) — these capture dividends received from C-corporations the person owns.
    - businessIncomeC ("BUSINESS INCOME OR LOSS (Schedule C)")
    - capitalGain ("CAPITAL GAIN OR LOSS (Schedule D)")
    - rentalIncome ("TOTAL RENTAL REAL ESTATE AND ROYALTY INCOME OR LOSS", Schedule E part I)

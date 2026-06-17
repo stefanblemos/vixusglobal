@@ -47,6 +47,8 @@ export async function ingestPersonalReturn(
       form: s(data.form),
       preparer: s(data.preparer),
       wages: data.wages,
+      ordinaryDividends: data.ordinaryDividends,
+      qualifiedDividends: data.qualifiedDividends,
       businessIncomeC: data.businessIncomeC,
       capitalGain: data.capitalGain,
       rentalIncome: data.rentalIncome,

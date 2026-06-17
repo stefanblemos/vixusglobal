@@ -593,6 +593,15 @@ export default async function CompanyYearPage({
                 )}
               </div>
 
+              {r.taxTreatment === "C_CORP" && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2 text-sm text-indigo-800">
+                  <strong>C-corp:</strong> tax on this income is paid by the entity itself (Form
+                  1120). It does <strong>not</strong> pass through to the owners — they&rsquo;re taxed
+                  only on dividends distributed (Form 1099-DIV). So this income won&rsquo;t appear on
+                  the partners&rsquo; 1040.
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                 <Kpi
                   label="Total income"

@@ -30,7 +30,7 @@ export default async function PartyDetailPage({
     prisma.personalReturn.findMany({ omit: { pdf: true } }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null } },
-      select: { companyId: true, year: true, owners: true },
+      select: { companyId: true, year: true, taxTreatment: true, owners: true },
     }),
     prisma.company.findMany({ select: { id: true, legalName: true } }),
     prisma.ownership.findMany({
@@ -59,6 +59,7 @@ export default async function PartyDetailPage({
   const entRows = entityReturns.map((r) => ({
     companyId: r.companyId,
     year: r.year,
+    taxTreatment: r.taxTreatment,
     owners: r.owners as { name: string; allocatedIncome: number | null }[] | null,
   }));
 
@@ -147,6 +148,7 @@ export default async function PartyDetailPage({
                         year: r.year,
                         partnershipIncome: num(r.partnershipIncome),
                         partnershipLoss: num(r.partnershipLoss),
+                        ordinaryDividends: num(r.ordinaryDividends),
                       },
                       entRows,
                       companyNameById,
@@ -209,6 +211,7 @@ export default async function PartyDetailPage({
                     year: r.year,
                     partnershipIncome: num(r.partnershipIncome),
                     partnershipLoss: num(r.partnershipLoss),
+                    ordinaryDividends: num(r.ordinaryDividends),
                   },
                   entRows,
                   companyNameById,
@@ -275,6 +278,26 @@ export default async function PartyDetailPage({
                               )}
                           </tbody>
                         </table>
+                      )}
+                      {cc.cCorpHoldings.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5 text-xs text-slate-500">
+                          <span className="font-medium text-slate-600">
+                            C-corp holdings (taxed at the entity, dividends only):
+                          </span>{" "}
+                          {cc.cCorpHoldings.map((h, i) => (
+                            <span key={h.entityId}>
+                              {i > 0 && ", "}
+                              <Link
+                                href={`/companies/${h.entityId}/year/${h.year}`}
+                                className="text-[#1f3a5f] hover:underline"
+                              >
+                                {h.entityName}
+                              </Link>
+                            </span>
+                          ))}
+                          . The 1120 income doesn&rsquo;t flow to the 1040 — only dividends
+                          {cc.dividendsReported != null ? ` (reported: ${money(cc.dividendsReported)})` : ""}.
+                        </div>
                       )}
                     </div>
                   </details>

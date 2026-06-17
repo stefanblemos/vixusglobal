@@ -214,6 +214,8 @@ model PersonalReturn {
   form           String? // ex.: "1040"
   preparer       String?
   wages             Decimal? @db.Decimal(20, 2)
+  ordinaryDividends Decimal? @db.Decimal(20, 2) // 1040 linha 3b (inclui dividendos de C-Corp)
+  qualifiedDividends Decimal? @db.Decimal(20, 2) // 1040 linha 3a
   businessIncomeC   Decimal? @db.Decimal(20, 2) // Schedule C
   capitalGain       Decimal? @db.Decimal(20, 2) // Schedule D
   rentalIncome      Decimal? @db.Decimal(20, 2) // Schedule E aluguel/royalties
