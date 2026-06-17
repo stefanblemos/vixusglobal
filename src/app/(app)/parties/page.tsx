@@ -3,7 +3,10 @@ import { prisma } from "@/lib/db";
 import { labelForJurisdiction, labelForPartyKind } from "@/lib/catalog";
 
 export default async function PartiesPage() {
-  const parties = await prisma.party.findMany({ orderBy: { name: "asc" } });
+  const parties = await prisma.party.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { personalReturns: true, ownerStakes: true } } },
+  });
 
   return (
     <div className="space-y-6">
@@ -32,20 +35,39 @@ export default async function PartiesPage() {
                 <th className="px-4 py-3 font-medium">Name</th>
                 <th className="px-4 py-3 font-medium">Type</th>
                 <th className="px-4 py-3 font-medium">Tax jurisdiction</th>
-                <th className="px-4 py-3 font-medium">Tax ID</th>
+                <th className="px-4 py-3 font-medium">Returns</th>
+                <th className="px-4 py-3 font-medium">Holdings</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {parties.map((p) => (
-                <tr key={p.id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3 font-medium text-slate-800">{p.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{labelForPartyKind(p.kind)}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {labelForJurisdiction(p.taxJurisdiction)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">{p.taxId ?? "—"}</td>
-                </tr>
-              ))}
+              {parties.map((p) => {
+                const isPerson = p.kind === "PERSON";
+                const NameCell = isPerson ? (
+                  <Link
+                    href={`/parties/${p.id}`}
+                    className="font-medium text-[#1f3a5f] hover:underline"
+                  >
+                    {p.name}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-slate-800">{p.name}</span>
+                );
+                return (
+                  <tr key={p.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">{NameCell}</td>
+                    <td className="px-4 py-3 text-slate-600">{labelForPartyKind(p.kind)}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {labelForJurisdiction(p.taxJurisdiction)}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {p._count.personalReturns > 0 ? `${p._count.personalReturns} 1040s` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {p._count.ownerStakes > 0 ? `${p._count.ownerStakes}` : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
