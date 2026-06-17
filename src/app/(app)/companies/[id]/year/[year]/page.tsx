@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { labelForTaxTreatment, labelForJurisdiction } from "@/lib/catalog";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
+import { reconcileK1s, type K1Return } from "@/lib/ir/k1-reconcile";
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { YearCloseControls } from "@/components/year-close-controls";
@@ -346,6 +347,26 @@ export default async function CompanyYearPage({
 
   const pnlHref = pnlImport ? `/import/${pnlImport.id}` : undefined;
 
+  // Lado EMISSOR da conciliação K-1: investidas que alocaram renda a ESTA empresa neste ano.
+  // Se o IR dela não puxou (nem na linha 4 em bloco), o contador esqueceu o pass-through.
+  const allK1Returns = await prisma.taxReturn.findMany({
+    where: { companyId: { not: null } },
+    select: {
+      companyId: true,
+      year: true,
+      taxForm: true,
+      owners: true,
+      k1sReceived: true,
+      figures: true,
+    },
+  });
+  const k1Omissions = reconcileK1s(allK1Returns as unknown as K1Return[], companies).filter(
+    (e) =>
+      e.recipientId === id &&
+      e.year === year &&
+      (e.status === "missingOnRecipient" || e.status === "amountDiff"),
+  );
+
   // Fechamento do ano (lock) + alertas: compara a verdade travada com o IR mais recente.
   const yearClose = await prisma.yearClose.findUnique({
     where: { companyId_year: { companyId: id, year } },
@@ -428,6 +449,59 @@ export default async function CompanyYearPage({
           </div>
         )}
       </section>
+
+      {/* Pass-through que investidas alocaram a esta empresa e o IR dela não declarou */}
+      {k1Omissions.length > 0 && (
+        <section className="overflow-hidden rounded-xl border border-red-200 bg-white">
+          <div className="border-b border-red-100 bg-red-50/60 px-4 py-2 text-sm font-medium text-red-800">
+            ⚠ K-1 income an investee allocated to this company that the return doesn&rsquo;t report
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-4 py-2 font-medium">Investee (issuer)</th>
+                <th className="px-4 py-2 text-right font-medium">Allocated on its 1065</th>
+                <th className="px-4 py-2 text-right font-medium">Picked up here</th>
+                <th className="px-4 py-2 font-medium">What to check</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {k1Omissions.map((e, i) => (
+                <tr key={i}>
+                  <td className="px-4 py-2 font-medium text-slate-800">
+                    {e.issuerId ? (
+                      <Link
+                        href={`/companies/${e.issuerId}/year/${year}`}
+                        className="text-[#1f3a5f] hover:underline"
+                      >
+                        {e.issuerName}
+                      </Link>
+                    ) : (
+                      e.issuerName
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                    {money(e.issuerAmount, ccy)}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums text-red-700">
+                    {e.recipientAmount != null ? money(e.recipientAmount, ccy) : "not on the return"}
+                  </td>
+                  <td className="px-4 py-2 text-slate-500">
+                    {e.status === "amountDiff"
+                      ? "The amount on the issuer's 1065 differs from what this return reports — reconcile the two."
+                      : "The issuer allocated this on its 1065 (the K-1 it issued); this return doesn't pick it up on line 4 or itemize it."}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="px-4 py-2 text-xs text-slate-400">
+            A partnership K-1 (allocated income/loss) is taxable to the partner even when no cash was
+            distributed; a cash distribution by itself is not. Confirm this allocation reached the
+            return — and, for a loss, that it wasn&rsquo;t simply dropped.
+          </p>
+        </section>
+      )}
 
       {/* Tax classification for the year */}
       <section className="space-y-2">
