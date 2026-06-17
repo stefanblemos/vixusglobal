@@ -98,11 +98,27 @@ function irOperatingOtherIncomeOf(figures: Figure[]): number | null {
   return total - (irPassThroughOf(figures) ?? 0);
 }
 
-// Renda faturada nos livros (QBO) que NÃO aparece como other income operacional no IR —
-// possível omissão na declaração. Só sinaliza se materialmente acima da tolerância.
+// Renda SEPARADAMENTE DECLARADA na Schedule K (juros linha 5, dividendos 6a, royalties 7,
+// aluguel 2/3c, ganhos 8/9a/10, outros 11). Está no LUCRO contábil (QBO) e NA declaração,
+// mas NÃO na renda ordinária da página 1 — vai à parte na Schedule K aos sócios. Logo
+// NÃO é omissão quando aparece no "Other Income" do QBO. Exclui a linha 20a (Investment
+// income), que é só um memo e duplicaria os juros da linha 5.
+// Casa o nº de linha da Schedule K em "Sch K line 5" ou "Schedule K line 5" (a IA abrevia).
+const SEP_STATED_K_LINE = /(?:^|\s)k\s+line\s*(2|3c|5|6a|7|8|9a|9b|10|11)\b/i;
+function irSeparatelyStatedIncomeOf(figures: Figure[]): number | null {
+  const items = figures.filter((f) => f.value != null && SEP_STATED_K_LINE.test(f.line ?? ""));
+  if (items.length === 0) return null;
+  return items.reduce((s, f) => s + (f.value ?? 0), 0);
+}
+
+// Renda faturada nos livros (QBO) que NÃO aparece NEM na renda operacional (linhas 5–7) NEM
+// separadamente declarada na Schedule K — aí sim é possível omissão. Só sinaliza acima da
+// tolerância.
 function booksIncomeNotOnReturnOf(figures: Figure[], pnl: Pnl): number | null {
   if (pnl.otherIncome == null) return null;
-  const gap = pnl.otherIncome - (irOperatingOtherIncomeOf(figures) ?? 0);
+  const onReturn =
+    (irOperatingOtherIncomeOf(figures) ?? 0) + (irSeparatelyStatedIncomeOf(figures) ?? 0);
+  const gap = pnl.otherIncome - onReturn;
   return gap > Math.max(1, Math.abs(pnl.otherIncome) * 0.01) ? gap : null;
 }
 
@@ -124,18 +140,31 @@ function buildCmpRows(
   const irGrossProfit = irRevenue != null ? irRevenue - (irCogs ?? 0) : null;
   const irOperatingOther = irOperatingOtherIncomeOf(figures);
   const irPassThrough = irPassThroughOf(figures);
+  const irSeparatelyStated = irSeparatelyStatedIncomeOf(figures);
   const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl);
+  // O "Other Income" do QBO casa com a soma do operacional (linhas 5–7) + o separadamente
+  // declarado na Schedule K (juros, dividendos…). Se ambos forem null, mantém null.
+  const irOtherCombined =
+    irOperatingOther == null && irSeparatelyStated == null
+      ? null
+      : (irOperatingOther ?? 0) + (irSeparatelyStated ?? 0);
   // Ordinary business income = linha 22 (pelo rótulo), não o 1º match de ORDINARY_INCOME.
   const irOrdinary =
     figures.find((f) => /ordinary business income/i.test(f.label))?.value ??
     figVal("ORDINARY_INCOME");
   const irBookNet = figVal("NET_INCOME") ?? irOrdinary;
-  // Ponte livro→imposto: soma o K-1 alocado (no IR, não no caixa) e subtrai a renda
-  // faturada nos livros que ficou de fora do IR (omissão) — assim cada dólar é explicado
-  // e a omissão aparece numa linha própria em vez de ser dissolvida numa "ponte" genérica.
+  // Ponte livro→imposto: o lucro contábil (QBO) inclui a renda separadamente declarada e o
+  // K-1 alocado; a renda ordinária da página 1 NÃO. Então: + K-1 alocado (no IR, não no
+  // caixa), − renda separadamente declarada (na Schedule K, fora da ordinária), − renda
+  // faturada que ficou de fora (omissão). Assim cada dólar é explicado e só a omissão real
+  // aparece sinalizada.
   const qboOrdinary =
     pnl.netIncome != null
-      ? pnl.netIncome + (nonDeductible ?? 0) + (irPassThrough ?? 0) - (booksNotOnReturn ?? 0)
+      ? pnl.netIncome +
+        (nonDeductible ?? 0) +
+        (irPassThrough ?? 0) -
+        (irSeparatelyStated ?? 0) -
+        (booksNotOnReturn ?? 0)
       : null;
 
   return [
@@ -152,16 +181,18 @@ function buildCmpRows(
       note: nonDeductible != null ? "gap = non-deductible add-back" : undefined,
     },
     {
-      label: "Other income (operating)",
-      ir: irOperatingOther,
+      label: "Other income (operating + separately stated)",
+      ir: irOtherCombined,
       qbo: pnl.otherIncome,
       href: pnlHref,
-      // Sem reconciliação: se os livros faturam e o IR não reporta, é possível omissão.
+      // Se os livros faturam e o IR não reporta em lugar nenhum, é possível omissão.
       flag: booksNotOnReturn != null,
       note:
         booksNotOnReturn != null
           ? "invoiced in the books but not on the return — possible omission"
-          : undefined,
+          : irSeparatelyStated != null
+            ? "incl. interest/dividends reported separately on Schedule K"
+            : undefined,
     },
     ...(irPassThrough != null
       ? [
@@ -187,6 +218,16 @@ function buildCmpRows(
           {
             label: "+ Pass-through K-1 income on return, not in cash books (M-1 line 2)",
             ir: irPassThrough,
+            qbo: null,
+            taxOnly: true,
+          },
+        ]
+      : []),
+    ...(irSeparatelyStated != null && irSeparatelyStated !== 0
+      ? [
+          {
+            label: "− Income separately stated on Schedule K (interest/dividends, not in ordinary)",
+            ir: -irSeparatelyStated,
             qbo: null,
             taxOnly: true,
           },
@@ -536,6 +577,7 @@ export default async function CompanyYearPage({
           const cmpRows = buildCmpRows(figures, pnl, depTotal, id, pnlHref);
           const irOperatingOther = irOperatingOtherIncomeOf(figures);
           const irPassThrough = irPassThroughOf(figures);
+          const irSeparatelyStated = irSeparatelyStatedIncomeOf(figures);
           const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl);
           // KPIs do header são form-aware: numa partnership/S-corp/disregarded (pass-through)
           // não existe "taxable income"/"total tax" no nível da entidade — o resultado (linha 22)
@@ -750,6 +792,17 @@ export default async function CompanyYearPage({
                               {money(irOperatingOther, ccy)}
                             </td>
                           </tr>
+                          {irSeparatelyStated != null && (
+                            <tr className="text-emerald-700">
+                              <td className="py-1.5">
+                                On the IR — separately stated on Schedule K (interest, dividends,
+                                etc.)
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums">
+                                {money(irSeparatelyStated, ccy)}
+                              </td>
+                            </tr>
+                          )}
                           {booksNotOnReturn != null && (
                             <tr className="font-medium text-red-700">
                               <td className="py-1.5">
@@ -773,13 +826,13 @@ export default async function CompanyYearPage({
                         </tbody>
                       </table>
                       <p className="mt-2 text-xs text-slate-400">
-                        Operating other income (the cash this company actually invoiced) should
-                        appear on the return&rsquo;s lines 5–7. The K-1 pass-through on line 4 is a
-                        separate, non-cash item — an allocated share of an investee&rsquo;s income,
-                        not invoiced revenue — and is reconciled in the K-1 panel, not here. A red
-                        line means the books invoiced income the return doesn&rsquo;t show — confirm
-                        whether it belongs on the return (gross receipts / other income) or was
-                        correctly reported elsewhere (e.g. Schedule K).
+                        The books&rsquo; &ldquo;other income&rdquo; can land in three places on the
+                        return: operating income on page 1 (lines 5–7); interest, dividends and
+                        other investment income separately stated on Schedule K (green — on the
+                        return, just not in ordinary business income); or the K-1 pass-through on
+                        line 4 (non-cash, reconciled in the K-1 panel). A red line means the books
+                        invoiced income the return shows in none of these — a possible omission to
+                        confirm.
                       </p>
                     </div>
                   </details>
