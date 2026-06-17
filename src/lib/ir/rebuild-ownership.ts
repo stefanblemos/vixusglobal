@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { normalizeName } from "@/lib/qbo/match";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
+import { looseNameMatch } from "@/lib/personal/reconcile";
 import { Jurisdiction, PartyKind } from "@prisma/client";
 
 type StoredOwner = { name: string; ownershipPct: number | null };
@@ -61,7 +62,11 @@ export async function rebuildOwnershipFromIRs(
       resolveCache.set(norm, `company:${co.id}`);
       return `company:${co.id}`;
     }
-    const pt = parties.find((p) => normalizeName(p.name) === norm);
+    // Casa por nome exato OU por prefixo de token ("Fabiola M Lima Lemos" = "Fabiola
+    // Miranda Lima Lemos") — evita criar uma party duplicada para a mesma pessoa.
+    const pt =
+      parties.find((p) => normalizeName(p.name) === norm) ??
+      parties.find((p) => p.kind === PartyKind.PERSON && looseNameMatch(name, p.name));
     if (pt) {
       resolveCache.set(norm, `party:${pt.id}`);
       return `party:${pt.id}`;
