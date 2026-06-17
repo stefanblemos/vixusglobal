@@ -24,7 +24,22 @@ export async function ingestTaxReturn(fileName: string, buf: Buffer): Promise<In
   const companies = await prisma.company.findMany({
     select: { id: true, legalName: true, tradeName: true, aliases: true, taxId: true },
   });
-  const companyId = s(data.companyName) ? matchCompany(data.companyName, companies) : null;
+  // Casa por EIN primeiro (identidade da entidade). Só cai no nome se NÃO houver EIN no IR,
+  // ou se o nome bater com uma empresa que não tem EIN ou tem o MESMO EIN. Se o nome parece,
+  // mas o EIN é DIFERENTE, é OUTRA entidade (nova) — não força o match.
+  const einDigits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+  const irEin = einDigits(data.taxId);
+  let companyId: string | null = null;
+  if (irEin) {
+    companyId = companies.find((c) => einDigits(c.taxId) === irEin)?.id ?? null;
+  }
+  if (!companyId) {
+    const nameMatch = s(data.companyName) ? matchCompany(data.companyName, companies) : null;
+    if (nameMatch) {
+      const nmEin = einDigits(companies.find((c) => c.id === nameMatch)?.taxId);
+      if (!irEin || !nmEin || nmEin === irEin) companyId = nameMatch;
+    }
+  }
 
   const owners = data.owners.map((o) => ({
     name: o.name,
@@ -67,11 +82,20 @@ export async function ingestTaxReturn(fileName: string, buf: Buffer): Promise<In
     },
   });
 
-  // Preenche o Tax ID (EIN) oficial da empresa, se casou e ainda não tem.
-  if (companyId && s(data.taxId)) {
+  // Preenche EIN e data de abertura oficiais da empresa, se casou e ainda não tiver.
+  if (companyId) {
     const matched = companies.find((c) => c.id === companyId);
-    if (matched && !matched.taxId) {
-      await prisma.company.update({ where: { id: companyId }, data: { taxId: s(data.taxId) } });
+    const patch: { taxId?: string; formationDate?: string } = {};
+    if (s(data.taxId) && matched && !matched.taxId) patch.taxId = s(data.taxId)!;
+    if (s(data.incorporationDate)) {
+      const cur = await prisma.company.findUnique({
+        where: { id: companyId },
+        select: { formationDate: true },
+      });
+      if (cur && !cur.formationDate) patch.formationDate = s(data.incorporationDate)!;
+    }
+    if (Object.keys(patch).length > 0) {
+      await prisma.company.update({ where: { id: companyId }, data: patch });
     }
   }
 

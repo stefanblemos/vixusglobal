@@ -144,6 +144,7 @@ model Company {
   state         String? // ex.: "FL"
   entityType    EntityType
   taxId         String? // EIN / NIF / CNPJ
+  formationDate String? // data de abertura/constituição (do IR ou doc societário) — p/ anos faltantes
   fiscalYearEnd String              @default("12-31")
   baseCurrency  String              @default("USD")
   relationship  CompanyRelationship

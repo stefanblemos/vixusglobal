@@ -250,6 +250,26 @@ export default async function CompanyDetailPage({
     ]),
   ].sort((a, b) => b - a);
 
+  // Anos faltantes: do ano de abertura até o último ano-fiscal encerrado, menos os que já têm
+  // IR arquivado. Para empresa inativa, para no último ano declarado (encerrou). Usa o
+  // formationDate (do IR/doc societário).
+  const formationYear = company.formationDate
+    ? Number((company.formationDate.match(/(?:19|20)\d{2}/) ?? [])[0]) || null
+    : null;
+  const yearsWithReturns = new Set(
+    taxReturns.map((r) => r.year).filter((y): y is number => y != null),
+  );
+  const lastExpectedYear =
+    company.status === "INACTIVE" && yearsWithReturns.size > 0
+      ? Math.max(...yearsWithReturns)
+      : new Date().getFullYear() - 1;
+  const missingYears = formationYear
+    ? Array.from(
+        { length: Math.max(0, lastExpectedYear - formationYear + 1) },
+        (_, i) => formationYear + i,
+      ).filter((y) => !yearsWithReturns.has(y))
+    : [];
+
   // O raio-x atual usa sempre o relatório de PERÍODO mais recente (não o último importado),
   // p/ que subir um BS antigo não apague os assets/saldos do ano corrente.
   const byPeriodDesc = (a: { periodLabel: string }, b: { periodLabel: string }) =>
@@ -583,6 +603,29 @@ export default async function CompanyDetailPage({
               The company&apos;s situation each year, built from the filed documents (tax
               classification + income tax returns). Ownership and address per year will join here.
             </p>
+            {company.formationDate && (
+              <div
+                className={`rounded-lg border px-4 py-2 text-sm ${
+                  missingYears.length > 0
+                    ? "border-amber-200 bg-amber-50/60 text-amber-800"
+                    : "border-emerald-200 bg-emerald-50/60 text-emerald-800"
+                }`}
+              >
+                Formed {company.formationDate}.{" "}
+                {missingYears.length > 0 ? (
+                  <>
+                    Missing tax returns:{" "}
+                    <span className="font-medium">{missingYears.join(", ")}</span> — upload them in{" "}
+                    <Link href="/tax" className="underline">
+                      Tax
+                    </Link>
+                    .
+                  </>
+                ) : (
+                  "Every year since formation has a return on file ✓"
+                )}
+              </div>
+            )}
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               {historyYears.length === 0 ? (
                 <p className="p-6 text-sm text-slate-500">No yearly history yet.</p>

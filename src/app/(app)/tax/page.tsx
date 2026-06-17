@@ -12,6 +12,7 @@ import {
   ALL_ENTITY_TYPE_VALUES,
   ALL_TAX_TREATMENT_VALUES,
 } from "@/lib/catalog";
+import { registerCompanyFromReturn } from "@/lib/actions/company-from-ir";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 
 type Owner = {
@@ -181,8 +182,8 @@ export default async function TaxPage({
                           )}
                         </span>
                         {!r.company && (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                            no match in registry
+                          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                            new entity — not registered
                           </span>
                         )}
                         {r.confidence && (
@@ -233,6 +234,28 @@ export default async function TaxPage({
                       </form>
                     </div>
                   </div>
+
+                  {/* Entidade nova: o EIN não casou com nenhuma empresa cadastrada */}
+                  {!r.company && (
+                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
+                      <div className="text-sm font-medium text-amber-800">
+                        New entity — the EIN isn&rsquo;t in the registry
+                      </div>
+                      <p className="mt-0.5 text-xs text-amber-700/90">
+                        {r.taxId ? `EIN ${r.taxId}` : "This return's EIN"} doesn&rsquo;t match any
+                        registered company
+                        {r.incorporationDate ? ` · formed ${r.incorporationDate}` : ""}. Register it
+                        to give it a company page, rebuild ownership from its partners, and flag
+                        missing past-year returns.
+                      </p>
+                      <form action={registerCompanyFromReturn} className="mt-2">
+                        <input type="hidden" name="returnId" value={r.id} />
+                        <button className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16304f]">
+                          Register as new company
+                        </button>
+                      </form>
+                    </div>
+                  )}
 
                   {/* Financials + metadata */}
                   <div className="mt-3 grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-4">
