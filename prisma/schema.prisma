@@ -163,6 +163,37 @@ model Company {
   taxStatuses     CompanyTaxStatus[]
   taxReturns      TaxReturn[]
   yearCloses      YearClose[]
+  corporateDocs   CorporateDoc[]
+}
+
+// Documentos societários/constitutivos (Articles of Organization, Operating Agreement,
+// Sunbiz Annual Report, etc.). A Claude lê o PDF e extrai os dados oficiais (agente
+// registrado, administradores/membros, endereços, nº de registro) — p/ conferir, ano a
+// ano, se o que está registrado no estado bate com o IR declarado.
+model CorporateDoc {
+  id          String   @id @default(cuid())
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  matchedName String? // nome lido no documento
+  docType     String // ARTICLES | OPERATING_AGREEMENT | ANNUAL_REPORT | CERTIFICATE | EIN_LETTER | OTHER
+  year        Int? // ano do annual report / período
+  jurisdiction String?
+  state       String?
+  docNumber   String? // nº de registro estadual (ex.: Sunbiz)
+  taxId       String? // FEI/EIN
+  formationDate String?
+  filingDate    String?
+  status        String?
+  registeredAgent  Json? // { name, address }
+  principalAddress String?
+  mailingAddress   String?
+  people      Json? // administradores/membros/diretores: [{ name, title, address }]
+  fileName    String
+  pdf         Bytes?
+  pdfSize     Int?
+  confidence  String?
+  summary     String?
+  createdAt   DateTime @default(now())
 }
 
 // "Fechamento" de um ano conferido: congela a verdade de referência (sócios,

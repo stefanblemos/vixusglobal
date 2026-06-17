@@ -6,7 +6,11 @@ import { AddOwnerForm } from "@/components/add-owner-form";
 import { OwnershipRowActions } from "@/components/ownership-row-actions";
 import { YearSelect } from "@/components/year-select";
 import { TaxStatusForm } from "@/components/tax-status-form";
+import { CorporateUpload } from "@/components/corporate-upload";
 import { deleteTaxStatus } from "@/lib/actions/tax";
+import { deleteCorporateDoc } from "@/lib/actions/corporate";
+import { ownerNameMatches } from "@/lib/ownership/reconcile";
+import { normalizeName } from "@/lib/qbo/match";
 import {
   labelForEntityType,
   labelForJurisdiction,
@@ -40,10 +44,21 @@ const money = (v: unknown, ccy = "USD") =>
         maximumFractionDigits: 0,
       }).format(Number(v));
 
+const DOC_TYPE_LABEL: Record<string, string> = {
+  ARTICLES: "Articles",
+  OPERATING_AGREEMENT: "Operating Agreement",
+  ANNUAL_REPORT: "Annual Report",
+  CERTIFICATE: "Certificate",
+  EIN_LETTER: "EIN letter",
+  OTHER: "Other",
+};
+const labelForDocType = (t: string) => DOC_TYPE_LABEL[t] ?? t;
+
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "ownership", label: "Ownership" },
   { key: "history", label: "History & Tax" },
+  { key: "corporate", label: "Corporate" },
   { key: "estimated-tax", label: "Estimated tax" },
   { key: "financials", label: "Financials" },
   { key: "assets", label: "Assets" },
@@ -72,6 +87,7 @@ export default async function CompanyDetailPage({
     loans,
     qboImports,
     yearCloses,
+    corporateDocs,
   ] = await Promise.all([
     prisma.company.findUnique({ where: { id } }),
     prisma.party.findMany({ orderBy: { name: "asc" } }),
@@ -91,6 +107,11 @@ export default async function CompanyDetailPage({
     }),
     prisma.qboImport.findMany({ where: { companyId: id }, orderBy: { createdAt: "desc" } }),
     prisma.yearClose.findMany({ where: { companyId: id }, select: { year: true } }),
+    prisma.corporateDoc.findMany({
+      where: { companyId: id },
+      omit: { pdf: true },
+      orderBy: [{ year: "desc" }, { createdAt: "desc" }],
+    }),
   ]);
 
   if (!company) notFound();
@@ -697,6 +718,136 @@ export default async function CompanyDetailPage({
         </div>
       )}
 
+      {/* ───────── Corporate ───────── */}
+      {tab === "corporate" && (
+        <div className="space-y-5">
+          <div>
+            <h2 className="text-lg font-medium text-slate-800">Corporate documents</h2>
+            <p className="text-sm text-slate-500">
+              Articles, Operating Agreement, Sunbiz annual reports, etc. — the official record from
+              the state, read by Claude and checked against the tax return each year.
+            </p>
+          </div>
+          <CorporateUpload companyId={id} />
+          {corporateDocs.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              No corporate documents yet.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {corporateDocs.map((d) => {
+                const people = (d.people as { name: string; title: string }[] | null) ?? [];
+                const ra = d.registeredAgent as { name?: string; address?: string } | null;
+                const irForYear =
+                  d.year != null ? taxReturns.find((t) => t.year === d.year) : undefined;
+                const irOwners =
+                  (irForYear?.owners as { name: string }[] | null)?.map((o) => o.name) ?? [];
+                return (
+                  <details
+                    key={d.id}
+                    className="overflow-hidden rounded-xl border border-slate-200 bg-white"
+                  >
+                    <summary className="flex cursor-pointer flex-wrap items-center gap-2 px-4 py-3">
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">
+                        {labelForDocType(d.docType)}
+                      </span>
+                      <span className="font-medium text-slate-800">
+                        {d.year ?? ""} {d.matchedName ?? d.fileName}
+                      </span>
+                      {d.docNumber && (
+                        <span className="text-xs text-slate-400">#{d.docNumber}</span>
+                      )}
+                      <span className="ml-auto flex items-center gap-3 text-xs">
+                        {d.pdfSize != null && (
+                          <a
+                            href={`/api/corporate-docs/${d.id}/pdf`}
+                            target="_blank"
+                            rel="noopener"
+                            className="text-[#1f3a5f] hover:underline"
+                          >
+                            View PDF
+                          </a>
+                        )}
+                        <form action={deleteCorporateDoc}>
+                          <input type="hidden" name="id" value={d.id} />
+                          <input type="hidden" name="companyId" value={id} />
+                          <button className="text-slate-400 hover:text-red-600">Delete</button>
+                        </form>
+                      </span>
+                    </summary>
+                    <div className="space-y-3 border-t border-slate-100 px-4 py-3">
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm md:grid-cols-3">
+                        <Field label="EIN / FEI">{d.taxId ?? "—"}</Field>
+                        <Field label="Status">{d.status ?? "—"}</Field>
+                        <Field label="State">{d.state ?? "—"}</Field>
+                        <Field label="Formed">{d.formationDate ?? "—"}</Field>
+                        <Field label="Filed">{d.filingDate ?? "—"}</Field>
+                        <Field label="Registered agent">{ra?.name ?? "—"}</Field>
+                        <Field label="Principal address">{d.principalAddress ?? "—"}</Field>
+                        <Field label="Mailing address">{d.mailingAddress ?? "—"}</Field>
+                      </div>
+                      {people.length > 0 && (
+                        <div>
+                          <div className="mb-1 text-sm font-medium text-slate-700">
+                            People on record
+                            {d.year != null && irForYear ? ` — checked vs the ${d.year} tax return` : ""}
+                          </div>
+                          <div className="overflow-hidden rounded-lg border border-slate-200">
+                            <table className="w-full text-sm">
+                              <thead className="bg-slate-50 text-left text-slate-500">
+                                <tr>
+                                  <th className="px-3 py-1.5 font-medium">Name</th>
+                                  <th className="px-3 py-1.5 font-medium">Title</th>
+                                  <th className="px-3 py-1.5 text-right font-medium">vs IR</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {people.map((pp, i) => {
+                                  const onIr =
+                                    irForYear && ownerNameMatches(irOwners, pp.name)
+                                      ? "match"
+                                      : irForYear
+                                        ? "missing"
+                                        : "none";
+                                  return (
+                                    <tr key={i}>
+                                      <td className="px-3 py-1.5 text-slate-700">{pp.name}</td>
+                                      <td className="px-3 py-1.5 text-slate-500">{pp.title}</td>
+                                      <td className="px-3 py-1.5 text-right">
+                                        <span
+                                          className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${
+                                            onIr === "match"
+                                              ? "bg-green-50 text-green-700"
+                                              : onIr === "missing"
+                                                ? "bg-amber-50 text-amber-700"
+                                                : "bg-slate-100 text-slate-400"
+                                          }`}
+                                        >
+                                          {onIr === "match"
+                                            ? "on the IR ✓"
+                                            : onIr === "missing"
+                                              ? `not on the ${d.year} IR`
+                                              : `no IR ${d.year ?? ""}`}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                      {d.summary && <p className="text-xs text-slate-400">{d.summary}</p>}
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ───────── Estimated tax ───────── */}
       {tab === "estimated-tax" && (
         <div className="space-y-5">
@@ -1036,6 +1187,15 @@ function Card({ title, children }: { title: string; children: ReactNode }) {
     <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
       <div className="text-sm font-medium text-slate-700">{title}</div>
       {children}
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-xs text-slate-400">{label}</div>
+      <div className="text-slate-700">{children}</div>
     </div>
   );
 }
