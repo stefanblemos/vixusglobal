@@ -5,6 +5,12 @@ import { prisma } from "@/lib/db";
 import { labelForTaxTreatment, labelForJurisdiction } from "@/lib/catalog";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 import { reconcileK1s, type K1Return } from "@/lib/ir/k1-reconcile";
+import {
+  irOperatingOtherIncomeOf,
+  irPassThroughOf,
+  irSeparatelyStatedIncomeOf,
+  booksIncomeNotOnReturnOf,
+} from "@/lib/ir/income-bridge";
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { YearCloseControls } from "@/components/year-close-controls";
@@ -67,61 +73,6 @@ function rowEval(row: CmpRow) {
   return { c, status: reconciled ? "reconciled" : c?.status };
 }
 
-// Other income do IR = Total income (linha 8) − Gross profit (= soma das linhas 4–7),
-// robusto a como a IA classificou cada linha (ex.: linha 4 "from other partnerships").
-function irOtherIncomeOf(figures: Figure[]): number | null {
-  const fv = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
-  const rev = fv("GROSS_RECEIPTS");
-  const cogs = fv("COST_OF_GOODS");
-  const gp = rev != null ? rev - (cogs ?? 0) : null;
-  const ti = fv("TOTAL_INCOME");
-  return ti != null && gp != null ? ti - gp : fv("OTHER_INCOME");
-}
-
-// K-1 pass-through (linha 4 do 1065: "from other partnerships, estates, and trusts").
-// Renda ALOCADA, não-caixa — não aparece no P&L do QBO; concilia com o K-1 recebido,
-// NÃO com o other income operacional dos livros. Misturar os dois inventa uma ponte falsa.
-function irPassThroughOf(figures: Figure[]): number | null {
-  const f = figures.find(
-    (x) =>
-      /other partnerships|estates,? and trusts|outras sociedades/i.test(x.label) ||
-      /\bline\s*4\b/i.test(x.line ?? ""),
-  );
-  return f?.value ?? null;
-}
-
-// Other income OPERACIONAL do IR = linhas 5–7 (total das 4–7 menos o pass-through da 4).
-// É o que DEVERIA bater com o "Other Income" (caixa faturado) dos livros do QBO.
-function irOperatingOtherIncomeOf(figures: Figure[]): number | null {
-  const total = irOtherIncomeOf(figures);
-  if (total == null) return null;
-  return total - (irPassThroughOf(figures) ?? 0);
-}
-
-// Renda SEPARADAMENTE DECLARADA na Schedule K (juros linha 5, dividendos 6a, royalties 7,
-// aluguel 2/3c, ganhos 8/9a/10, outros 11). Está no LUCRO contábil (QBO) e NA declaração,
-// mas NÃO na renda ordinária da página 1 — vai à parte na Schedule K aos sócios. Logo
-// NÃO é omissão quando aparece no "Other Income" do QBO. Exclui a linha 20a (Investment
-// income), que é só um memo e duplicaria os juros da linha 5.
-// Casa o nº de linha da Schedule K em "Sch K line 5" ou "Schedule K line 5" (a IA abrevia).
-const SEP_STATED_K_LINE = /(?:^|\s)k\s+line\s*(2|3c|5|6a|7|8|9a|9b|10|11)\b/i;
-function irSeparatelyStatedIncomeOf(figures: Figure[]): number | null {
-  const items = figures.filter((f) => f.value != null && SEP_STATED_K_LINE.test(f.line ?? ""));
-  if (items.length === 0) return null;
-  return items.reduce((s, f) => s + (f.value ?? 0), 0);
-}
-
-// Renda faturada nos livros (QBO) que NÃO aparece NEM na renda operacional (linhas 5–7) NEM
-// separadamente declarada na Schedule K — aí sim é possível omissão. Só sinaliza acima da
-// tolerância.
-function booksIncomeNotOnReturnOf(figures: Figure[], pnl: Pnl): number | null {
-  if (pnl.otherIncome == null) return null;
-  const onReturn =
-    (irOperatingOtherIncomeOf(figures) ?? 0) + (irSeparatelyStatedIncomeOf(figures) ?? 0);
-  const gap = pnl.otherIncome - onReturn;
-  return gap > Math.max(1, Math.abs(pnl.otherIncome) * 0.01) ? gap : null;
-}
-
 // Agrupa os line items do IR como o próprio 1065 é estruturado, para a tabela não
 // misturar entrada e saída (ex.: "Interest" linha 15 = despesa vs "Interest income" Sch K
 // linha 5 = receita).
@@ -174,7 +125,7 @@ function buildCmpRows(
   const irOperatingOther = irOperatingOtherIncomeOf(figures);
   const irPassThrough = irPassThroughOf(figures);
   const irSeparatelyStated = irSeparatelyStatedIncomeOf(figures);
-  const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl);
+  const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl.otherIncome);
   // O "Other Income" do QBO casa com a soma do operacional (linhas 5–7) + o separadamente
   // declarado na Schedule K (juros, dividendos…). Se ambos forem null, mantém null.
   const irOtherCombined =
@@ -611,7 +562,7 @@ export default async function CompanyYearPage({
           const irOperatingOther = irOperatingOtherIncomeOf(figures);
           const irPassThrough = irPassThroughOf(figures);
           const irSeparatelyStated = irSeparatelyStatedIncomeOf(figures);
-          const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl);
+          const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl.otherIncome);
           // KPIs do header são form-aware: numa partnership/S-corp/disregarded (pass-through)
           // não existe "taxable income"/"total tax" no nível da entidade — o resultado (linha 22)
           // passa para os sócios. Depreciação vem do IR (linha 16), com o GL como fallback.
