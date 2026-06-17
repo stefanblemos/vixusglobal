@@ -333,6 +333,16 @@ export default async function CompanyDetailPage({
             Edit
           </Link>
         </div>
+        {(finalReturnYear || company.status === "INACTIVE") && (
+          <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm font-medium text-red-700">
+            <span>⚠</span>
+            <span>
+              {finalReturnYear
+                ? `Final return filed for ${finalReturnYear} — this entity is closed.`
+                : "This entity is marked closed (inactive)."}
+            </span>
+          </div>
+        )}
         {company.aliases.length > 0 && (
           <p className="mt-1 text-sm text-slate-400">Formerly: {company.aliases.join(", ")}</p>
         )}
@@ -346,14 +356,6 @@ export default async function CompanyDetailPage({
           <Chip>{company.baseCurrency}</Chip>
           {company.taxId && <Chip>Tax ID {company.taxId}</Chip>}
           {company.formationDate && <Chip>Formed {company.formationDate}</Chip>}
-          {company.status === "INACTIVE" && (
-            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">Closed</span>
-          )}
-          {finalReturnYear && (
-            <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
-              Final return {finalReturnYear}
-            </span>
-          )}
         </div>
       </div>
 
