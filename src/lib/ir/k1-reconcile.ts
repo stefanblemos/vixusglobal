@@ -28,22 +28,37 @@ export type K1Company = {
   taxId: string | null;
 };
 
+export type K1Figure = { label: string; value: number | null; line: string | null };
+
 export type K1Return = {
   companyId: string | null;
   year: number | null;
   taxForm: string | null;
   owners: K1Owner[] | null;
   k1sReceived: K1Received[] | null;
+  figures?: K1Figure[] | null;
 };
 
 export type K1Status =
   | "match" // os dois lados batem
   | "amountDiff" // os dois declaram, valores divergem
   | "missingOnRecipient" // emissor alocou; recebedor tem IR no ano mas não lançou o K-1
+  | "reportedInTotal" // recebedor reportou pass-through em bloco na linha 4, sem itemizar por emissor
   | "missingOnIssuer" // recebedor declarou; IR do emissor existe mas não o lista
   | "noAlloc" // recebedor declarou; emissor lista o sócio mas sem valor no K-1
   | "issuerIrMissing" // recebedor declarou; emissor sem IR carregado no ano
   | "recipientIrMissing"; // emissor alocou; recebedor sem IR carregado no ano
+
+// Pass-through na linha 4 do 1065 ("from other partnerships, estates, and trusts"):
+// o total de K-1 recebidos que o IR reportou — pode não estar itemizado por emissor.
+function lineFourOf(figures: K1Figure[] | null | undefined): number | null {
+  const f = (figures ?? []).find(
+    (x) =>
+      /other partnerships|estates,? and trusts|outras sociedades/i.test(x.label) ||
+      /\bline\s*4\b/i.test(x.line ?? ""),
+  );
+  return f?.value ?? null;
+}
 
 export type K1Edge = {
   year: number;
@@ -207,6 +222,34 @@ export function reconcileK1s(returns: K1Return[], companies: K1Company[]): K1Edg
       recipientAmount,
       status,
     });
+  }
+
+  // Pós-passo: reconhece pass-through reportado EM BLOCO na linha 4 (sem itemização por
+  // emissor). Se a linha 4 do recebedor cobre tudo que lhe foi alocado e ainda não está
+  // itemizado, não é omissão — é só falta de detalhamento. Evita falso "not declared".
+  const byRecip = new Map<string, K1Edge[]>();
+  for (const e of edges) {
+    const k = `${e.recipientId}@${e.year}`;
+    const arr = byRecip.get(k);
+    if (arr) arr.push(e);
+    else byRecip.set(k, [e]);
+  }
+  for (const [k, group] of byRecip) {
+    const at = k.lastIndexOf("@");
+    const recipientId = k.slice(0, at);
+    const year = Number(k.slice(at + 1));
+    const line4 = lineFourOf(getReturn(recipientId, year)?.figures);
+    if (line4 == null) continue;
+    const itemized = group
+      .filter((e) => e.recipientAmount != null)
+      .reduce((s, e) => s + (e.recipientAmount as number), 0);
+    const missing = group.filter((e) => e.status === "missingOnRecipient");
+    const missingSum = missing.reduce((s, e) => s + (e.issuerAmount as number), 0);
+    const budget = line4 - itemized; // parte da linha 4 ainda não explicada por itens itemizados
+    const tol = Math.max(1, Math.abs(line4) * 0.02);
+    if (Math.abs(missingSum) <= Math.abs(budget) + tol) {
+      for (const e of missing) e.status = "reportedInTotal";
+    }
   }
 
   // Ordena: problemas primeiro, depois por ano desc, depois por emissor.

@@ -35,6 +35,11 @@ const STATUS_META: Record<K1Status, { label: string; cls: string; help: string }
     cls: "bg-red-50 text-red-700",
     help: "The issuer's 1065 allocated income to this partner, but the recipient's return doesn't report receiving the K-1.",
   },
+  reportedInTotal: {
+    label: "on line 4 (not itemized)",
+    cls: "bg-amber-50 text-amber-700",
+    help: "The recipient reported its pass-through income as a lump on Form 1065 line 4 (from other partnerships) that covers this allocation — it's on the return, just not broken out per issuer.",
+  },
   missingOnIssuer: {
     label: "not on issuer's 1065",
     cls: "bg-red-50 text-red-700",
@@ -76,6 +81,7 @@ export default async function K1ReconcilePage() {
         taxForm: true,
         owners: true,
         k1sReceived: true,
+        figures: true,
       },
     }),
     prisma.company.findMany({
@@ -114,7 +120,7 @@ export default async function K1ReconcilePage() {
       <div className="grid grid-cols-3 gap-3">
         <Stat label="Discrepancies" value={problems.length} tone={problems.length ? "bad" : "good"} />
         <Stat label="Matched" value={matched.length} tone="good" />
-        <Stat label="Unverifiable (IR missing)" value={unverifiable.length} tone="muted" />
+        <Stat label="On line 4 / IR pending" value={unverifiable.length} tone="muted" />
       </div>
 
       {edges.length === 0 ? (

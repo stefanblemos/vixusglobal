@@ -28,6 +28,8 @@ type CmpRow = {
   // reconcilesWith: diferença "esperada" explicada por um item conhecido (livro × imposto).
   reconcilesWith?: number | null;
   note?: string;
+  // flag: linha que merece atenção (ex.: possível omissão de renda na declaração).
+  flag?: boolean;
 };
 
 const money = (v: unknown, ccy = "USD") =>
@@ -75,15 +77,32 @@ function irOtherIncomeOf(figures: Figure[]): number | null {
   return ti != null && gp != null ? ti - gp : fv("OTHER_INCOME");
 }
 
-// Renda no IR mas não nos books (M-1 linha 2): lucro alocado por K-1 além do caixa.
-// Só vira ponte se o gap for material (acima da tolerância) — centavos são arredondamento.
-function otherIncomeBridgeOf(figures: Figure[], pnl: Pnl): number | null {
-  const oi = irOtherIncomeOf(figures);
-  return oi != null &&
-    pnl.otherIncome != null &&
-    oi - pnl.otherIncome > Math.max(1, Math.abs(oi) * 0.01)
-    ? oi - pnl.otherIncome
-    : null;
+// K-1 pass-through (linha 4 do 1065: "from other partnerships, estates, and trusts").
+// Renda ALOCADA, não-caixa — não aparece no P&L do QBO; concilia com o K-1 recebido,
+// NÃO com o other income operacional dos livros. Misturar os dois inventa uma ponte falsa.
+function irPassThroughOf(figures: Figure[]): number | null {
+  const f = figures.find(
+    (x) =>
+      /other partnerships|estates,? and trusts|outras sociedades/i.test(x.label) ||
+      /\bline\s*4\b/i.test(x.line ?? ""),
+  );
+  return f?.value ?? null;
+}
+
+// Other income OPERACIONAL do IR = linhas 5–7 (total das 4–7 menos o pass-through da 4).
+// É o que DEVERIA bater com o "Other Income" (caixa faturado) dos livros do QBO.
+function irOperatingOtherIncomeOf(figures: Figure[]): number | null {
+  const total = irOtherIncomeOf(figures);
+  if (total == null) return null;
+  return total - (irPassThroughOf(figures) ?? 0);
+}
+
+// Renda faturada nos livros (QBO) que NÃO aparece como other income operacional no IR —
+// possível omissão na declaração. Só sinaliza se materialmente acima da tolerância.
+function booksIncomeNotOnReturnOf(figures: Figure[], pnl: Pnl): number | null {
+  if (pnl.otherIncome == null) return null;
+  const gap = pnl.otherIncome - (irOperatingOtherIncomeOf(figures) ?? 0);
+  return gap > Math.max(1, Math.abs(pnl.otherIncome) * 0.01) ? gap : null;
 }
 
 // Monta o espelho IR × QBO camada a camada (descontando COGS, com ponte M-1).
@@ -102,15 +121,21 @@ function buildCmpRows(
   const irRevenue = figVal("GROSS_RECEIPTS");
   const irCogs = figVal("COST_OF_GOODS");
   const irGrossProfit = irRevenue != null ? irRevenue - (irCogs ?? 0) : null;
-  const irOtherIncome = irOtherIncomeOf(figures);
+  const irOperatingOther = irOperatingOtherIncomeOf(figures);
+  const irPassThrough = irPassThroughOf(figures);
+  const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl);
   // Ordinary business income = linha 22 (pelo rótulo), não o 1º match de ORDINARY_INCOME.
   const irOrdinary =
     figures.find((f) => /ordinary business income/i.test(f.label))?.value ??
     figVal("ORDINARY_INCOME");
   const irBookNet = figVal("NET_INCOME") ?? irOrdinary;
-  const otherIncomeBridge = otherIncomeBridgeOf(figures, pnl);
+  // Ponte livro→imposto: soma o K-1 alocado (no IR, não no caixa) e subtrai a renda
+  // faturada nos livros que ficou de fora do IR (omissão) — assim cada dólar é explicado
+  // e a omissão aparece numa linha própria em vez de ser dissolvida numa "ponte" genérica.
   const qboOrdinary =
-    pnl.netIncome != null ? pnl.netIncome + (nonDeductible ?? 0) + (otherIncomeBridge ?? 0) : null;
+    pnl.netIncome != null
+      ? pnl.netIncome + (nonDeductible ?? 0) + (irPassThrough ?? 0) - (booksNotOnReturn ?? 0)
+      : null;
 
   return [
     { label: "Gross receipts / revenue", ir: irRevenue, qbo: pnl.revenue, href: pnlHref },
@@ -126,30 +151,54 @@ function buildCmpRows(
       note: nonDeductible != null ? "gap = non-deductible add-back" : undefined,
     },
     {
-      label: "Other income",
-      ir: irOtherIncome,
+      label: "Other income (operating)",
+      ir: irOperatingOther,
       qbo: pnl.otherIncome,
       href: pnlHref,
-      reconcilesWith: otherIncomeBridge != null ? -otherIncomeBridge : null,
-      note: otherIncomeBridge != null ? "K-1 allocated vs cash (→ M-1 below)" : undefined,
+      // Sem reconciliação: se os livros faturam e o IR não reporta, é possível omissão.
+      flag: booksNotOnReturn != null,
+      note:
+        booksNotOnReturn != null
+          ? "invoiced in the books but not on the return — possible omission"
+          : undefined,
     },
+    ...(irPassThrough != null
+      ? [
+          {
+            label: "Pass-through income (K-1, line 4)",
+            ir: irPassThrough,
+            qbo: null,
+            // Renda alocada de investidas — não-caixa; concilia no painel de K-1, não no QBO.
+            note: "allocated K-1 from investees — non-cash, see K-1 panel",
+          },
+        ]
+      : []),
     {
       label: "Net income (per books)",
       ir: irBookNet,
       qbo: pnl.netIncome,
       href: pnlHref,
       strong: true,
-      reconcilesWith: otherIncomeBridge != null ? -otherIncomeBridge : null,
-      note: otherIncomeBridge != null ? "gap = K-1 timing (see M-1 below)" : undefined,
     },
     { label: "+ Non-deductible expenses", ir: nonDeductible, qbo: null, taxOnly: true },
-    ...(otherIncomeBridge != null
+    ...(irPassThrough != null && irPassThrough !== 0
       ? [
           {
-            label: "+ Income on return not on books (M-1 line 2)",
-            ir: otherIncomeBridge,
+            label: "+ Pass-through K-1 income on return, not in cash books (M-1 line 2)",
+            ir: irPassThrough,
             qbo: null,
             taxOnly: true,
+          },
+        ]
+      : []),
+    ...(booksNotOnReturn != null
+      ? [
+          {
+            label: "− Income invoiced in the books but missing from the return",
+            ir: -booksNotOnReturn,
+            qbo: null,
+            taxOnly: true,
+            flag: true,
           },
         ]
       : []),
@@ -411,8 +460,9 @@ export default async function CompanyYearPage({
           const figures = (r.figures as Figure[] | null) ?? [];
           const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
           const cmpRows = buildCmpRows(figures, pnl, depTotal, id, pnlHref);
-          const irOtherIncome = irOtherIncomeOf(figures);
-          const otherIncomeBridge = otherIncomeBridgeOf(figures, pnl);
+          const irOperatingOther = irOperatingOtherIncomeOf(figures);
+          const irPassThrough = irPassThroughOf(figures);
+          const booksNotOnReturn = booksIncomeNotOnReturnOf(figures, pnl);
           // KPIs do header são form-aware: numa partnership/S-corp/disregarded (pass-through)
           // não existe "taxable income"/"total tax" no nível da entidade — o resultado (linha 22)
           // passa para os sócios. Depreciação vem do IR (linha 16), com o GL como fallback.
@@ -535,13 +585,20 @@ export default async function CompanyYearPage({
                       {cmpRows.map((row) => {
                         const { c, status } = rowEval(row);
                         return (
-                          <tr key={row.label} className={row.strong ? "bg-slate-50/40" : ""}>
+                          <tr
+                            key={row.label}
+                            className={
+                              row.flag ? "bg-red-50/50" : row.strong ? "bg-slate-50/40" : ""
+                            }
+                          >
                             <td
-                              className={`px-4 py-2 ${row.strong ? "font-medium text-slate-800" : "text-slate-700"}`}
+                              className={`px-4 py-2 ${row.flag ? "font-medium text-red-700" : row.strong ? "font-medium text-slate-800" : "text-slate-700"}`}
                             >
                               {row.label}
                               {row.note && (
-                                <span className="block text-xs font-normal text-slate-400">
+                                <span
+                                  className={`block text-xs font-normal ${row.flag ? "text-red-500" : "text-slate-400"}`}
+                                >
                                   {row.note}
                                 </span>
                               )}
@@ -562,7 +619,11 @@ export default async function CompanyYearPage({
                               {c && "diff" in c && c.diff != null ? money(c.diff, ccy) : "—"}
                             </td>
                             <td className="px-4 py-2 text-right">
-                              {row.taxOnly ? (
+                              {row.flag ? (
+                                <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs whitespace-nowrap text-red-700">
+                                  review
+                                </span>
+                              ) : row.taxOnly ? (
                                 <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs whitespace-nowrap text-slate-500">
                                   M-1 add-back
                                 </span>
@@ -600,37 +661,51 @@ export default async function CompanyYearPage({
                             </tr>
                           ))}
                           <tr className="border-t-2 border-slate-200 font-medium">
-                            <td className="py-1.5 text-slate-700">Total per QBO books (cash)</td>
+                            <td className="py-1.5 text-slate-700">
+                              Total per QBO books (invoiced)
+                            </td>
                             <td className="py-1.5 text-right tabular-nums text-slate-800">
                               {money(pnl.otherIncome, ccy)}
                             </td>
                           </tr>
                           <tr>
                             <td className="py-1.5 text-slate-600">
-                              Per the IR — other income (Form 1065 lines 4–7)
+                              Per the IR — operating other income (Form 1065 lines 5–7)
                             </td>
                             <td className="py-1.5 text-right tabular-nums text-slate-600">
-                              {money(irOtherIncome, ccy)}
+                              {money(irOperatingOther, ccy)}
                             </td>
                           </tr>
-                          {otherIncomeBridge != null && (
-                            <tr className="font-medium text-emerald-700">
+                          {booksNotOnReturn != null && (
+                            <tr className="font-medium text-red-700">
                               <td className="py-1.5">
-                                Allocated on K-1 but not distributed in cash (M-1 line 2)
+                                Invoiced in the books but missing from the return — possible omission
                               </td>
                               <td className="py-1.5 text-right tabular-nums">
-                                {money(otherIncomeBridge, ccy)}
+                                {money(booksNotOnReturn, ccy)}
+                              </td>
+                            </tr>
+                          )}
+                          {irPassThrough != null && (
+                            <tr className="text-slate-500">
+                              <td className="py-1.5">
+                                Memo — K-1 pass-through (line 4, non-cash; shown in the K-1 panel)
+                              </td>
+                              <td className="py-1.5 text-right tabular-nums">
+                                {money(irPassThrough, ccy)}
                               </td>
                             </tr>
                           )}
                         </tbody>
                       </table>
                       <p className="mt-2 text-xs text-slate-400">
-                        The books record the cash actually distributed by the investee; the return
-                        reports this company&rsquo;s allocated share of the investee&rsquo;s income
-                        (K-1). The difference is undistributed earnings — a normal book-vs-tax
-                        timing item, not necessarily an error. Confirm against the investee&rsquo;s
-                        K-1.
+                        Operating other income (the cash this company actually invoiced) should
+                        appear on the return&rsquo;s lines 5–7. The K-1 pass-through on line 4 is a
+                        separate, non-cash item — an allocated share of an investee&rsquo;s income,
+                        not invoiced revenue — and is reconciled in the K-1 panel, not here. A red
+                        line means the books invoiced income the return doesn&rsquo;t show — confirm
+                        whether it belongs on the return (gross receipts / other income) or was
+                        correctly reported elsewhere (e.g. Schedule K).
                       </p>
                     </div>
                   </details>
