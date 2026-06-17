@@ -132,6 +132,7 @@ model Party {
 
   ownerStakes Ownership[] @relation("OwnerParty")
   ownedStakes Ownership[] @relation("OwnedParty")
+  personalReturns PersonalReturn[]
 }
 
 model Company {
@@ -194,6 +195,41 @@ model CorporateDoc {
   confidence  String?
   summary     String?
   createdAt   DateTime @default(now())
+}
+
+// Declaração de imposto da PESSOA FÍSICA (ex.: Form 1040 / IRS Tax Return Transcript).
+// Fecha o ciclo entidade→sócio: confere se o K-1 que cada LLC alocou ao sócio realmente
+// chegou no Schedule E do 1040 dele. SSN guardado só nos últimos 4 dígitos.
+model PersonalReturn {
+  id             String  @id @default(cuid())
+  partyId        String?
+  party          Party?  @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  matchedName    String? // nome do contribuinte lido no transcript
+  spouseName     String?
+  ssnLast4       String?
+  spouseSsnLast4 String?
+  year           Int?
+  filingStatus   String? // ex.: "Married Filing Joint"
+  form           String? // ex.: "1040"
+  preparer       String?
+  wages             Decimal? @db.Decimal(20, 2)
+  businessIncomeC   Decimal? @db.Decimal(20, 2) // Schedule C
+  capitalGain       Decimal? @db.Decimal(20, 2) // Schedule D
+  rentalIncome      Decimal? @db.Decimal(20, 2) // Schedule E aluguel/royalties
+  partnershipIncome Decimal? @db.Decimal(20, 2) // Schedule E partnership/S-corp (renda)
+  partnershipLoss   Decimal? @db.Decimal(20, 2) // Schedule E partnership/S-corp (perda)
+  totalIncome       Decimal? @db.Decimal(20, 2)
+  agi               Decimal? @db.Decimal(20, 2)
+  taxableIncome     Decimal? @db.Decimal(20, 2)
+  totalTax          Decimal? @db.Decimal(20, 2)
+  seTax             Decimal? @db.Decimal(20, 2)
+  qbiDeduction      Decimal? @db.Decimal(20, 2)
+  confidence     String?
+  summary        String?
+  fileName       String
+  pdf            Bytes?
+  pdfSize        Int?
+  createdAt      DateTime @default(now())
 }
 
 // "Fechamento" de um ano conferido: congela a verdade de referência (sócios,

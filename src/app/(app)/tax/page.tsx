@@ -121,18 +121,32 @@ export default async function TaxPage({
 
       <IrUpload />
 
-      <Link
-        href="/tax/k1"
-        className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-[#8DC63F] hover:bg-[#8DC63F]/[0.04]"
-      >
-        <div>
-          <div className="font-medium text-slate-800">K-1 × 1065 reconciliation →</div>
-          <p className="text-sm text-slate-500">
-            Cross-check every intercompany K-1 across the group — each K-1 issued on a 1065 against
-            the K-1 the recipient declared. Surfaces what the accountant may have missed.
-          </p>
-        </div>
-      </Link>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Link
+          href="/tax/k1"
+          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-[#8DC63F] hover:bg-[#8DC63F]/[0.04]"
+        >
+          <div>
+            <div className="font-medium text-slate-800">K-1 × 1065 reconciliation →</div>
+            <p className="text-sm text-slate-500">
+              Cross-check every intercompany K-1 across the group — each K-1 issued on a 1065
+              against the K-1 the recipient declared.
+            </p>
+          </div>
+        </Link>
+        <Link
+          href="/tax/personal"
+          className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 transition hover:border-[#8DC63F] hover:bg-[#8DC63F]/[0.04]"
+        >
+          <div>
+            <div className="font-medium text-slate-800">Personal returns (1040) →</div>
+            <p className="text-sm text-slate-500">
+              Close the loop to the individual — check each owner&rsquo;s 1040 Schedule E against the
+              K-1s their LLCs issued.
+            </p>
+          </div>
+        </Link>
+      </div>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-800">Analyzed returns</h2>
