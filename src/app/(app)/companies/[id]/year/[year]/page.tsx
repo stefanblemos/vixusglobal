@@ -122,6 +122,39 @@ function booksIncomeNotOnReturnOf(figures: Figure[], pnl: Pnl): number | null {
   return gap > Math.max(1, Math.abs(pnl.otherIncome) * 0.01) ? gap : null;
 }
 
+// Agrupa os line items do IR como o próprio 1065 é estruturado, para a tabela não
+// misturar entrada e saída (ex.: "Interest" linha 15 = despesa vs "Interest income" Sch K
+// linha 5 = receita).
+const FIGURE_SECTIONS = [
+  { key: "income", label: "Income (Form 1065, page 1)" },
+  { key: "deductions", label: "Deductions (Form 1065, page 1)" },
+  { key: "result", label: "Result" },
+  { key: "schk", label: "Schedule K — separately stated to the partners" },
+  { key: "recon", label: "Reconciliation, tax & balance sheet" },
+] as const;
+
+function figureSection(f: Figure): string {
+  const line = (f.line ?? "").toLowerCase();
+  const k = f.key;
+  if (/\bsch(?:edule)?\s*k\b/.test(line)) return "schk";
+  if (k === "ORDINARY_INCOME" || /1065 line 23\b/.test(line)) return "result";
+  if (["GROSS_RECEIPTS", "COST_OF_GOODS", "OTHER_INCOME", "TOTAL_INCOME"].includes(k))
+    return "income";
+  if (["TOTAL_DEDUCTIONS", "DEPRECIATION"].includes(k)) return "deductions";
+  const m = line.match(/1065 line (\d+)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    if (n <= 8) return "income";
+    if (n >= 9 && n <= 22) return "deductions";
+    if (n === 23) return "result";
+  }
+  return "recon";
+}
+
+// Saída (despesa/dedução): mostrada entre parênteses e em rosa suave — para diferenciar de
+// entrada SEM usar o vermelho forte, que aqui é reservado a alertas/divergências.
+const isOutflowFigure = (f: Figure) => figureSection(f) === "deductions";
+
 // Monta o espelho IR × QBO camada a camada (descontando COGS, com ponte M-1).
 function buildCmpRows(
   figures: Figure[],
@@ -661,15 +694,36 @@ export default async function CompanyYearPage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {figures.map((f, i) => (
-                          <tr key={i}>
-                            <td className="px-4 py-2 text-slate-700">{f.label}</td>
-                            <td className="px-4 py-2 text-slate-400">{f.line ?? "—"}</td>
-                            <td className="px-4 py-2 text-right tabular-nums text-slate-800">
-                              {money(f.value, ccy)}
-                            </td>
-                          </tr>
-                        ))}
+                        {FIGURE_SECTIONS.flatMap((sec) => {
+                          const items = figures.filter((f) => figureSection(f) === sec.key);
+                          if (items.length === 0) return [];
+                          return [
+                            <tr key={`h-${sec.key}`} className="bg-slate-50/70">
+                              <td
+                                colSpan={3}
+                                className="px-4 py-1.5 text-xs font-medium tracking-wide text-slate-400 uppercase"
+                              >
+                                {sec.label}
+                              </td>
+                            </tr>,
+                            ...items.map((f, i) => {
+                              const out = isOutflowFigure(f);
+                              return (
+                                <tr key={`${sec.key}-${i}`}>
+                                  <td className="px-4 py-2 text-slate-700">{f.label}</td>
+                                  <td className="px-4 py-2 text-slate-400">{f.line ?? "—"}</td>
+                                  <td
+                                    className={`px-4 py-2 text-right tabular-nums ${out ? "text-rose-600" : "text-slate-800"}`}
+                                  >
+                                    {out && f.value != null
+                                      ? `(${money(f.value, ccy)})`
+                                      : money(f.value, ccy)}
+                                  </td>
+                                </tr>
+                              );
+                            }),
+                          ];
+                        })}
                       </tbody>
                     </table>
                   </div>
