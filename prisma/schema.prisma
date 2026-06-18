@@ -170,6 +170,24 @@ model Company {
   yearCloses      YearClose[]
   corporateDocs   CorporateDoc[]
   yearNotes       CompanyYearNote[]
+  obligationStatuses ObligationStatus[]
+}
+
+// Status de uma instância de obrigação (empresa + obrigação + período). Ausência da linha
+// = pendente. Permite marcar "feito" (FILED) ou "não se aplica" (NA) no calendário.
+model ObligationStatus {
+  id        String    @id @default(cuid())
+  companyId String
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  key       String // chave da obrigação (ex.: "fl-sales-tax")
+  periodKey String // ex.: "2026-03", "2026-Q1", "2026"
+  status    String    @default("FILED") // FILED | NA
+  filedDate DateTime? @db.Date
+  note      String?
+  updatedAt DateTime  @updatedAt
+
+  @@unique([companyId, key, periodKey])
+  @@index([companyId])
 }
 
 // Nota livre por empresa/ano — para justificar divergências que não fecham automaticamente
