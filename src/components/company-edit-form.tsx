@@ -23,6 +23,8 @@ export type EditableCompany = {
   baseCurrency: string;
   relationship: string;
   status: string;
+  collectsSalesTax: boolean;
+  hasEmployees: boolean;
   notes: string | null;
 };
 
@@ -210,6 +212,27 @@ export function CompanyEditForm({ company }: { company: EditableCompany }) {
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="flex flex-wrap gap-6">
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="collectsSalesTax"
+            defaultChecked={company.collectsSalesTax}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Resells products (Florida sales tax)
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="hasEmployees"
+            defaultChecked={company.hasEmployees}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          Has employees (payroll)
+        </label>
       </div>
 
       <div>

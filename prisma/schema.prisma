@@ -149,6 +149,8 @@ model Company {
   baseCurrency  String              @default("USD")
   relationship  CompanyRelationship
   status        CompanyStatus       @default(ACTIVE)
+  collectsSalesTax Boolean          @default(false) // revende produtos → FL Sales & Use Tax
+  hasEmployees     Boolean          @default(false) // folha → payroll (941/940/RT-6)
   notes         String?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt

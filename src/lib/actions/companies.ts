@@ -28,6 +28,8 @@ export async function createCompany(_prev: FormState, formData: FormData): Promi
       baseCurrency: d.baseCurrency,
       relationship: d.relationship as CompanyRelationship,
       status: d.status,
+      collectsSalesTax: d.collectsSalesTax,
+      hasEmployees: d.hasEmployees,
       notes: d.notes,
     },
   });
@@ -58,6 +60,8 @@ export async function updateCompany(_prev: FormState, formData: FormData): Promi
       baseCurrency: d.baseCurrency,
       relationship: d.relationship as CompanyRelationship,
       status: d.status,
+      collectsSalesTax: d.collectsSalesTax,
+      hasEmployees: d.hasEmployees,
       notes: d.notes,
     },
   });

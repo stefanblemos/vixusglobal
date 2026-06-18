@@ -35,6 +35,8 @@ export const companyCreateSchema = z
       .regex(/^[A-Z]{3}$/, "Use the 3-letter ISO code (e.g. USD)")
       .default("USD"),
     relationship: z.enum(["GROUP_MEMBER", "MANAGED_ONLY"]),
+    collectsSalesTax: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
+    hasEmployees: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
     notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
   })
   .refine((d) => isEntityTypeValidFor(d.jurisdiction, d.entityType), {

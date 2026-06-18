@@ -38,6 +38,8 @@ export default async function EditCompanyPage({
           baseCurrency: company.baseCurrency,
           relationship: company.relationship,
           status: company.status,
+          collectsSalesTax: company.collectsSalesTax,
+          hasEmployees: company.hasEmployees,
           notes: company.notes,
         }}
       />
