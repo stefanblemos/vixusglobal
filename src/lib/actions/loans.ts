@@ -1,12 +1,42 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { loanTermsSchema, loanTxnSchema } from "@/lib/validation/loan";
 import { parseLoanRegister } from "@/lib/loans/register";
 import { DayCountBasis, LoanInterestMethod, LoanStatus, LoanTxnType } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
+
+// Cria um novo empréstimo intercompany (emprestador → tomador). O principal/transações vêm
+// depois pelo register; aqui só os termos. Redireciona pro detalhe pra importar o ledger.
+export async function createLoan(_prev: FormState, formData: FormData): Promise<FormState> {
+  const lenderCompanyId = String(formData.get("lenderCompanyId") ?? "");
+  const borrowerCompanyId = String(formData.get("borrowerCompanyId") ?? "");
+  if (!lenderCompanyId || !borrowerCompanyId) return { error: "Pick lender and borrower." };
+  if (lenderCompanyId === borrowerCompanyId)
+    return { error: "Lender and borrower must be different." };
+  const startRaw = String(formData.get("startDate") ?? "").trim();
+  const rate = Number(formData.get("annualInterestRatePct"));
+  const fee = Number(formData.get("originationFeeRatePct"));
+
+  const loan = await prisma.intercompanyLoan.create({
+    data: {
+      lenderCompanyId,
+      borrowerCompanyId,
+      principal: 0, // vem do register
+      currency: String(formData.get("currency") ?? "USD").trim() || "USD",
+      annualInterestRate: (Number.isFinite(rate) ? rate : 0) / 100,
+      originationFeeRate: (Number.isFinite(fee) ? fee : 1) / 100,
+      dayCountBasis: "ACT_365",
+      interestMethod: "SIMPLE",
+      startDate: startRaw ? new Date(startRaw) : new Date(),
+    },
+  });
+  revalidatePath("/loans");
+  redirect(`/loans/${loan.id}`);
+}
 
 export async function updateLoanTerms(
   loanId: string,

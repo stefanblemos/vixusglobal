@@ -20,17 +20,26 @@ export default async function LoansPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Loans</h1>
-        <p className="text-sm text-slate-500">
-          {loans.length} intercompany loan(s). Outstanding is computed from dated transactions.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Loans</h1>
+          <p className="text-sm text-slate-500">
+            {loans.length} intercompany loan(s). Outstanding is computed from the register ledger.
+          </p>
+        </div>
+        <Link
+          href="/loans/new"
+          className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"
+        >
+          + New loan
+        </Link>
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
         {loans.length === 0 ? (
           <p className="p-6 text-sm text-slate-500">
-            No loans yet. Create them from a QBO import (Detected relationships).
+            No loans yet. Click <span className="font-medium">+ New loan</span> to add one, then
+            import its QBO register.
           </p>
         ) : (
           <table className="w-full text-sm">
