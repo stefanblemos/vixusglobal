@@ -166,6 +166,22 @@ model Company {
   taxReturns      TaxReturn[]
   yearCloses      YearClose[]
   corporateDocs   CorporateDoc[]
+  yearNotes       CompanyYearNote[]
+}
+
+// Nota livre por empresa/ano — para justificar divergências que não fecham automaticamente
+// (ex.: distribuição lançada com estrutura diferente no QBO, ou no topo da cadeia sem
+// contraparte) e lembrar a razão no futuro.
+model CompanyYearNote {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  year      Int
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, year])
 }
 
 // Documentos societários/constitutivos (Articles of Organization, Operating Agreement,

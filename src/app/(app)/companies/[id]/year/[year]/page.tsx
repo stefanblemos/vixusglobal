@@ -15,6 +15,7 @@ import { pnlTotals } from "@/lib/qbo/pnl";
 import { buildDistExtracts, reconcileDistributions } from "@/lib/qbo/distributions";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { YearCloseControls } from "@/components/year-close-controls";
+import { YearNoteField } from "@/components/year-note-field";
 
 type Owner = {
   name: string;
@@ -415,6 +416,11 @@ export default async function CompanyYearPage({
   const distReceived = reconcileDistributions(distExtracts, companies).filter(
     (e) => e.recipientId === id && e.year === year,
   );
+
+  // Nota livre de justificativa para este ano (divergências que não fecham sozinhas).
+  const yearNote = await prisma.companyYearNote.findUnique({
+    where: { companyId_year: { companyId: id, year } },
+  });
 
   // Fechamento do ano (lock) + alertas: compara a verdade travada com o IR mais recente.
   const yearClose = await prisma.yearClose.findUnique({
@@ -1083,6 +1089,15 @@ export default async function CompanyYearPage({
           </p>
         </div>
       )}
+
+      <YearNoteField
+        companyId={id}
+        year={year}
+        initialBody={yearNote?.body ?? ""}
+        updatedLabel={
+          yearNote ? yearNote.updatedAt.toISOString().slice(0, 16).replace("T", " ") : null
+        }
+      />
     </div>
   );
 }
