@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { loanTermsSchema, loanTxnSchema } from "@/lib/validation/loan";
+import { parseLoanRegister } from "@/lib/loans/register";
 import { DayCountBasis, LoanInterestMethod, LoanStatus, LoanTxnType } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
@@ -101,4 +102,46 @@ export async function deleteLoanYear(formData: FormData): Promise<void> {
   const loanId = String(formData.get("loanId") ?? "");
   if (id) await prisma.loanYear.delete({ where: { id } });
   if (loanId) revalidatePath(`/loans/${loanId}`);
+}
+
+// Importa o register (extrato do QBO, .xls/.xlsx/.csv) como o ledger de transações do
+// empréstimo. Substitui as transações existentes — fielmente ao que está na planilha:
+// Increase → desembolso, Decrease → amortização. Não inventa juro.
+export async function importLoanRegister(
+  loanId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a register file." };
+  let reg;
+  try {
+    reg = parseLoanRegister(Buffer.from(await file.arrayBuffer()));
+  } catch {
+    return { error: "Could not read the file. Export the QBO account register as .xls/.xlsx/.csv." };
+  }
+  const usable = reg.rows.filter((r) => r.increase != null || r.decrease != null);
+  if (usable.length === 0) return { error: "No transactions found in the register." };
+
+  // Confere a soma contra o saldo final informado na planilha.
+  const computed = usable.reduce((s, r) => s + (r.increase ?? 0) - (r.decrease ?? 0), 0);
+  const balanceOk =
+    reg.endingBalance == null || Math.abs(computed - reg.endingBalance) < 0.01;
+
+  await prisma.loanTransaction.deleteMany({ where: { loanId } });
+  await prisma.loanTransaction.createMany({
+    data: usable.map((r) => ({
+      loanId,
+      type: (r.increase != null
+        ? "DISBURSEMENT"
+        : "REPAYMENT_PRINCIPAL") as LoanTxnType,
+      amount: r.increase ?? r.decrease ?? 0,
+      date: r.date ?? new Date(),
+      memo: r.memo || (r.type ? `(${r.type})` : null),
+    })),
+  });
+  revalidatePath(`/loans/${loanId}`);
+  return balanceOk
+    ? undefined
+    : { error: `Imported, but the rows sum to ${computed.toFixed(2)} vs ending balance ${reg.endingBalance} — check for a missing line.` };
 }

@@ -7,6 +7,7 @@ import { formatMoney } from "@/lib/money";
 import { matchCompany } from "@/lib/qbo/match";
 import { LoanTermsForm } from "@/components/loan-terms-form";
 import { AddTransactionForm } from "@/components/add-transaction-form";
+import { RegisterUpload } from "@/components/register-upload";
 import { deleteLoanTransaction, saveLoanYear, deleteLoanYear } from "@/lib/actions/loans";
 
 const TXN_LABEL: Record<string, string> = {
@@ -48,6 +49,14 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
   );
   const yearIdByYear = new Map(loan.years.map((y) => [y.year, y.id]));
   const nextYear = (loan.years.at(-1)?.year ?? loan.startDate.getUTCFullYear() - 1) + 1;
+
+  // Saldo corrente do ledger de transações (igual ao register do QBO: desembolso +, amortização −).
+  let runBal = 0;
+  const txnRows = loan.transactions.map((t) => {
+    const signed = t.type === "REPAYMENT_PRINCIPAL" ? -Number(t.amount) : Number(t.amount);
+    runBal += signed;
+    return { t, signed, running: runBal };
+  });
 
   const now = new Date();
   const bal = computeLoanBalance(
@@ -257,10 +266,15 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
       </section>
 
       <section className="space-y-3">
-        <h2 className="text-lg font-medium text-slate-800">Transactions</h2>
+        <h2 className="text-lg font-medium text-slate-800">Transactions (ledger)</h2>
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <RegisterUpload loanId={loan.id} />
+        </div>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {loan.transactions.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">No transactions yet.</p>
+          {txnRows.length === 0 ? (
+            <p className="p-6 text-sm text-slate-500">
+              No transactions yet — import the QBO register above.
+            </p>
           ) : (
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
@@ -269,17 +283,23 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
                   <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Memo</th>
                   <th className="px-4 py-3 text-right font-medium">Amount</th>
+                  <th className="px-4 py-3 text-right font-medium">Balance</th>
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {loan.transactions.map((t) => (
+                {txnRows.map(({ t, signed, running }) => (
                   <tr key={t.id}>
                     <td className="px-4 py-3 text-slate-600">{isoDate(t.date)}</td>
                     <td className="px-4 py-3 text-slate-700">{TXN_LABEL[t.type]}</td>
                     <td className="px-4 py-3 text-slate-500">{t.memo ?? "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-slate-800">
-                      {formatMoney(t.amount, loan.currency)}
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums ${signed < 0 ? "text-rose-600" : "text-slate-800"}`}
+                    >
+                      {signed < 0 ? `(${formatMoney(-signed, loan.currency)})` : formatMoney(signed, loan.currency)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900">
+                      {formatMoney(running, loan.currency)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <form action={deleteLoanTransaction}>
