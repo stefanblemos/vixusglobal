@@ -27,10 +27,10 @@ export default async function LoanDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; txnYear?: string }>;
 }) {
   const { id } = await params;
-  const { tab } = await searchParams;
+  const { tab, txnYear } = await searchParams;
   const activeTab = tab === "transactions" || tab === "terms" ? tab : "closings";
   const loan = await prisma.intercompanyLoan.findUnique({
     where: { id },
@@ -68,12 +68,21 @@ export default async function LoanDetailPage({
   const nextYear = (loan.years.at(-1)?.year ?? loan.startDate.getUTCFullYear() - 1) + 1;
 
   // Saldo corrente do ledger de transações (igual ao register do QBO: desembolso +, amortização −).
+  // Saldo corrente calculado em ordem CRONOLÓGICA (mais antigo → mais novo), independente do
+  // filtro/visualização — o saldo é acumulado.
   let runBal = 0;
   const txnRows = loan.transactions.map((t) => {
     const signed = t.type === "REPAYMENT_PRINCIPAL" ? -Number(t.amount) : Number(t.amount);
     runBal += signed;
     return { t, signed, running: runBal };
   });
+  // Anos disponíveis (desc) + filtro por ano (ou "all"). Exibição do mais NOVO para o mais
+  // antigo, sempre vendo o último lançamento no topo.
+  const txnYears = [...new Set(txnRows.map((r) => r.t.date.getUTCFullYear()))].sort((a, b) => b - a);
+  const selectedTxnYear = txnYear && /^\d{4}$/.test(txnYear) ? Number(txnYear) : null;
+  const txnRowsView = txnRows
+    .filter((r) => selectedTxnYear == null || r.t.date.getUTCFullYear() === selectedTxnYear)
+    .reverse();
 
   const bal = computeLoanBalance(
     {
@@ -347,58 +356,83 @@ export default async function LoanDetailPage({
       {activeTab === "transactions" && (
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-800">Transactions (ledger)</h2>
+        {/* Entrada no topo: importar register + lançar manual */}
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <RegisterUpload loanId={loan.id} />
-        </div>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {txnRows.length === 0 ? (
-            <p className="p-6 text-sm text-slate-500">
-              No transactions yet — import the QBO register above.
-            </p>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Date</th>
-                  <th className="px-4 py-3 font-medium">Type</th>
-                  <th className="px-4 py-3 font-medium">Memo</th>
-                  <th className="px-4 py-3 text-right font-medium">Amount</th>
-                  <th className="px-4 py-3 text-right font-medium">Balance</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {txnRows.map(({ t, signed, running }) => (
-                  <tr key={t.id}>
-                    <td className="px-4 py-3 text-slate-600">{isoDate(t.date)}</td>
-                    <td className="px-4 py-3 text-slate-700">{TXN_LABEL[t.type]}</td>
-                    <td className="px-4 py-3 text-slate-500">{t.memo ?? "—"}</td>
-                    <td
-                      className={`px-4 py-3 text-right tabular-nums ${signed < 0 ? "text-rose-600" : "text-slate-800"}`}
-                    >
-                      {signed < 0 ? `(${formatMoney(-signed, loan.currency)})` : formatMoney(signed, loan.currency)}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900">
-                      {formatMoney(running, loan.currency)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <form action={deleteLoanTransaction}>
-                        <input type="hidden" name="txnId" value={t.id} />
-                        <input type="hidden" name="loanId" value={loan.id} />
-                        <button className="text-xs text-slate-400 hover:text-red-600">
-                          Remove
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <AddTransactionForm loanId={loan.id} />
         </div>
+
+        {txnRows.length === 0 ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <p className="p-6 text-sm text-slate-500">
+              No transactions yet — import the QBO register above.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Filtro por ano (ou All) */}
+            <div className="flex flex-wrap items-center gap-1.5 text-xs">
+              <span className="mr-1 text-slate-400">Year:</span>
+              <Link
+                href={`/loans/${loan.id}?tab=transactions`}
+                className={`rounded-full px-2.5 py-1 ${selectedTxnYear == null ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+              >
+                All
+              </Link>
+              {txnYears.map((y) => (
+                <Link
+                  key={y}
+                  href={`/loans/${loan.id}?tab=transactions&txnYear=${y}`}
+                  className={`rounded-full px-2.5 py-1 ${selectedTxnYear === y ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                >
+                  {y}
+                </Link>
+              ))}
+            </div>
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Date</th>
+                    <th className="px-4 py-3 font-medium">Type</th>
+                    <th className="px-4 py-3 font-medium">Memo</th>
+                    <th className="px-4 py-3 text-right font-medium">Amount</th>
+                    <th className="px-4 py-3 text-right font-medium">Balance</th>
+                    <th className="px-4 py-3"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {txnRowsView.map(({ t, signed, running }) => (
+                    <tr key={t.id}>
+                      <td className="px-4 py-3 text-slate-600">{isoDate(t.date)}</td>
+                      <td className="px-4 py-3 text-slate-700">{TXN_LABEL[t.type]}</td>
+                      <td className="px-4 py-3 text-slate-500">{t.memo ?? "—"}</td>
+                      <td
+                        className={`px-4 py-3 text-right tabular-nums ${signed < 0 ? "text-rose-600" : "text-slate-800"}`}
+                      >
+                        {signed < 0 ? `(${formatMoney(-signed, loan.currency)})` : formatMoney(signed, loan.currency)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900">
+                        {formatMoney(running, loan.currency)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <form action={deleteLoanTransaction}>
+                          <input type="hidden" name="txnId" value={t.id} />
+                          <input type="hidden" name="loanId" value={loan.id} />
+                          <button className="text-xs text-slate-400 hover:text-red-600">
+                            Remove
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </section>
       )}
     </div>
