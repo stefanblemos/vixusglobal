@@ -60,3 +60,45 @@ export async function deleteLoanTransaction(formData: FormData): Promise<void> {
   if (id) await prisma.loanTransaction.delete({ where: { id } });
   if (loanId) revalidatePath(`/loans/${loanId}`);
 }
+
+const num = (v: FormDataEntryValue | null) => {
+  const n = Number(String(v ?? "").replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+
+// Salva (upsert) os valores fornecidos de um ano do empréstimo.
+export async function saveLoanYear(formData: FormData): Promise<void> {
+  const loanId = String(formData.get("loanId") ?? "");
+  const year = Number(formData.get("year"));
+  if (!loanId || !Number.isFinite(year)) return;
+  const rateRaw = String(formData.get("annualRatePct") ?? "").trim();
+  await prisma.loanYear.upsert({
+    where: { loanId_year: { loanId, year } },
+    create: {
+      loanId,
+      year,
+      annualRatePct: rateRaw === "" ? null : num(rateRaw),
+      principalAdded: num(formData.get("principalAdded")),
+      principalRepaid: num(formData.get("principalRepaid")),
+      interestAccrued: num(formData.get("interestAccrued")),
+      interestPaid: num(formData.get("interestPaid")),
+      note: String(formData.get("note") ?? "").trim() || null,
+    },
+    update: {
+      annualRatePct: rateRaw === "" ? null : num(rateRaw),
+      principalAdded: num(formData.get("principalAdded")),
+      principalRepaid: num(formData.get("principalRepaid")),
+      interestAccrued: num(formData.get("interestAccrued")),
+      interestPaid: num(formData.get("interestPaid")),
+      note: String(formData.get("note") ?? "").trim() || null,
+    },
+  });
+  revalidatePath(`/loans/${loanId}`);
+}
+
+export async function deleteLoanYear(formData: FormData): Promise<void> {
+  const id = String(formData.get("yearId") ?? "");
+  const loanId = String(formData.get("loanId") ?? "");
+  if (id) await prisma.loanYear.delete({ where: { id } });
+  if (loanId) revalidatePath(`/loans/${loanId}`);
+}

@@ -2,11 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { computeLoanBalance } from "@/lib/loans/interest";
+import { buildLoanLedger } from "@/lib/loans/ledger";
 import { formatMoney } from "@/lib/money";
 import { matchCompany } from "@/lib/qbo/match";
 import { LoanTermsForm } from "@/components/loan-terms-form";
 import { AddTransactionForm } from "@/components/add-transaction-form";
-import { deleteLoanTransaction } from "@/lib/actions/loans";
+import { deleteLoanTransaction, saveLoanYear, deleteLoanYear } from "@/lib/actions/loans";
 
 const TXN_LABEL: Record<string, string> = {
   DISBURSEMENT: "Disbursement",
@@ -24,9 +25,29 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const loan = await prisma.intercompanyLoan.findUnique({
     where: { id },
-    include: { lender: true, borrower: true, transactions: { orderBy: { date: "asc" } } },
+    include: {
+      lender: true,
+      borrower: true,
+      transactions: { orderBy: { date: "asc" } },
+      years: { orderBy: { year: "asc" } },
+    },
   });
   if (!loan) notFound();
+
+  // Razão ano a ano dos valores FORNECIDOS, com o juro capitalizado em conta separada.
+  const ledger = buildLoanLedger(
+    loan.principal.toString(),
+    loan.years.map((y) => ({
+      year: y.year,
+      annualRatePct: y.annualRatePct?.toString() ?? null,
+      principalAdded: y.principalAdded.toString(),
+      principalRepaid: y.principalRepaid.toString(),
+      interestAccrued: y.interestAccrued.toString(),
+      interestPaid: y.interestPaid.toString(),
+    })),
+  );
+  const yearIdByYear = new Map(loan.years.map((y) => [y.year, y.id]));
+  const nextYear = (loan.years.at(-1)?.year ?? loan.startDate.getUTCFullYear() - 1) + 1;
 
   const now = new Date();
   const bal = computeLoanBalance(
@@ -133,6 +154,90 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
         </div>
       </section>
 
+      <section className="space-y-2">
+        <h2 className="text-lg font-medium text-slate-800">Year by year — provided figures</h2>
+        <p className="text-sm text-slate-500">
+          The interest you enter (from the accountant / QBO). Unpaid interest at year-end rolls into
+          a <strong>separate capitalized-interest</strong> bucket the next year — kept apart from
+          principal so the principal still ties to QBO.
+        </p>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-500">
+              <tr>
+                <th className="px-3 py-2 font-medium">Year</th>
+                <th className="px-3 py-2 text-right font-medium">Rate</th>
+                <th className="px-3 py-2 text-right font-medium">Principal (close)</th>
+                <th className="px-3 py-2 text-right font-medium">Interest accrued</th>
+                <th className="px-3 py-2 text-right font-medium">Interest paid</th>
+                <th className="px-3 py-2 text-right font-medium">Unpaid → capital</th>
+                <th className="px-3 py-2 text-right font-medium">Capitalized (sep.)</th>
+                <th className="px-3 py-2 text-right font-medium">Total owed</th>
+                <th className="px-3 py-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {ledger.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-3 py-4 text-sm text-slate-400">
+                    No years yet. Add one below.
+                  </td>
+                </tr>
+              ) : (
+                ledger.map((r) => (
+                  <tr key={r.year}>
+                    <td className="px-3 py-2 font-medium text-slate-700">{r.year}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">
+                      {r.annualRatePct == null ? "—" : `${r.annualRatePct.toString()}%`}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                      {formatMoney(r.closingPrincipal, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                      {formatMoney(r.interestAccrued, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                      {formatMoney(r.interestPaid, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-amber-700">
+                      {formatMoney(r.interestUnpaid, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-indigo-700">
+                      {formatMoney(r.closingCapitalized, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-900">
+                      {formatMoney(r.totalOutstanding, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <form action={deleteLoanYear}>
+                        <input type="hidden" name="yearId" value={yearIdByYear.get(r.year) ?? ""} />
+                        <input type="hidden" name="loanId" value={loan.id} />
+                        <button className="text-xs text-slate-400 hover:text-red-600">Remove</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <form
+          action={saveLoanYear}
+          className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4"
+        >
+          <input type="hidden" name="loanId" value={loan.id} />
+          <YearInput name="year" label="Year" defaultValue={String(nextYear)} width="w-20" />
+          <YearInput name="annualRatePct" label="Rate %" placeholder="8.5" width="w-20" />
+          <YearInput name="principalAdded" label="Principal added" placeholder="0" />
+          <YearInput name="principalRepaid" label="Principal repaid" placeholder="0" />
+          <YearInput name="interestAccrued" label="Interest accrued" placeholder="0" />
+          <YearInput name="interestPaid" label="Interest paid" placeholder="0" />
+          <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
+            Save year
+          </button>
+        </form>
+      </section>
+
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-800">Terms</h2>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -196,6 +301,33 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
         </div>
       </section>
     </div>
+  );
+}
+
+function YearInput({
+  name,
+  label,
+  defaultValue,
+  placeholder,
+  width = "w-32",
+}: {
+  name: string;
+  label: string;
+  defaultValue?: string;
+  placeholder?: string;
+  width?: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-slate-500">{label}</span>
+      <input
+        name={name}
+        defaultValue={defaultValue}
+        placeholder={placeholder}
+        autoComplete="off"
+        className={`${width} rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-[#1f3a5f] focus:ring-1 focus:ring-[#1f3a5f]`}
+      />
+    </label>
   );
 }
 

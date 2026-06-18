@@ -622,6 +622,27 @@ model IntercompanyLoan {
   updatedAt    DateTime   @updatedAt
 
   transactions LoanTransaction[]
+  years        LoanYear[]
+}
+
+// Valores FORNECIDOS por ano de um empréstimo intercompany (do contador/QBO). O app não
+// recalcula o juro — guarda o que é informado e faz o roll-forward do juro não pago para uma
+// conta SEPARADA (juro capitalizado), que fica apartada do principal para bater com o QBO.
+model LoanYear {
+  id              String           @id @default(cuid())
+  loanId          String
+  loan            IntercompanyLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  year            Int
+  annualRatePct   Decimal?         @db.Decimal(9, 4) // taxa do ano (%, reajustável) — informativa
+  principalAdded  Decimal          @default(0) @db.Decimal(20, 2) // aportes de principal no ano
+  principalRepaid Decimal          @default(0) @db.Decimal(20, 2) // principal amortizado no ano
+  interestAccrued Decimal          @default(0) @db.Decimal(20, 2) // juro do ano (fornecido)
+  interestPaid    Decimal          @default(0) @db.Decimal(20, 2) // juro pago no ano (fornecido)
+  note            String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@unique([loanId, year])
 }
 
 model LoanTransaction {
