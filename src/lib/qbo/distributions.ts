@@ -10,12 +10,17 @@ import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 
 export type DistLine = { counterpartyName: string; amount: number };
 
-// Reconhece a seção do RECEBEDOR ("...1099..." / "...Not K1...").
+// Reconhece a conta "1099 / Not K1" usada nas distribuições.
 const NOT_K1 = /1099|not\s*-?\s*k\.?-?\s*1/i;
-// Reconhece a seção do PAGADOR ("Profit (Sharing|Other Investors) Distribution").
-const DIST_PAID = /profit\s+(?:sharing\s+|other\s+investors\s+)?distribution/i;
+// Reconhece uma seção de distribuição (paga ou recebida).
+const DIST_SECTION = /distribution|distribui/i;
 
 const last = (path: string[]) => path[path.length - 1] ?? "";
+// A direção é dada pela árvore: uma distribuição em DESPESAS é PAGA; em RENDA é RECEBIDA.
+// É o que separa "Profit Distribution Shareholders - 1099" (despesa, pago aos donos) da
+// "Investment Income - 1099 (...)" (renda, recebido de investidas) — ambas têm "1099" no nome.
+const inExpenses = (path: string[]) =>
+  path.some((s) => /^(expenses?|other expenses?|despesas|cost of goods)/i.test(s.trim()));
 
 // Mínimo de uma linha — compatível com QboLine do parser (value em `values[0]`) e com
 // QboImportLine do banco (value singular).
@@ -32,27 +37,32 @@ const lineValue = (l: LineLike): number | null => {
   return typeof raw === "number" ? raw : Number(raw) || null;
 };
 
-// Distribuições PAGAS pela empresa (deduzidas no P&L dela): a quem e quanto.
+// Distribuições PAGAS pela empresa: contas sob uma seção de distribuição DENTRO de Despesas
+// (ex.: "Profit Distribution Shareholders - 1099", "Profit Sharing Distribution"). O "1099" no
+// nome não importa — o que define "pago" é estar em Despesas.
 export function distributionsPaid(lines: LineLike[]): DistLine[] {
   const out: DistLine[] = [];
   for (const l of lines) {
     if (l.lineType !== "ACCOUNT") continue;
     const v = lineValue(l);
     if (v == null) continue;
-    const sec = last(l.sectionPath);
-    if (DIST_PAID.test(sec) && !NOT_K1.test(sec)) out.push({ counterpartyName: l.label, amount: v });
+    if (inExpenses(l.sectionPath) && DIST_SECTION.test(last(l.sectionPath))) {
+      out.push({ counterpartyName: l.label, amount: Math.abs(v) });
+    }
   }
   return out;
 }
 
-// Distribuições RECEBIDAS pela empresa (lançadas como "1099 - Not K1"): de quem e quanto.
-// Pega tanto a entrada direta (ex.: "Avantec Engineering Solutions $4.500") quanto o subtotal
-// por emissor ("Total for Avantech Group Investment $157.223"), sem duplicar as linhas de imóvel.
+// Distribuições RECEBIDAS pela empresa (conta "1099 - Not K1" na RENDA): de quem e quanto.
+// Pega a entrada direta (ex.: "Avantec Engineering Solutions $4.500") e o subtotal por emissor
+// ("Total for Avantech Group Investment $157.223"), sem duplicar as linhas de imóvel. Ignora o
+// que está em Despesas — isso é distribuição PAGA, não recebida.
 export function distributionsReceived(lines: LineLike[]): DistLine[] {
   const out: DistLine[] = [];
   for (const l of lines) {
     const v = lineValue(l);
     if (v == null) continue;
+    if (inExpenses(l.sectionPath)) continue;
     if (l.lineType === "ACCOUNT" && NOT_K1.test(last(l.sectionPath))) {
       out.push({ counterpartyName: l.label, amount: v });
     } else if (l.lineType === "TOTAL") {
