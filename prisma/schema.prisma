@@ -151,6 +151,7 @@ model Company {
   status        CompanyStatus       @default(ACTIVE)
   collectsSalesTax Boolean          @default(false) // revende produtos → FL Sales & Use Tax
   hasEmployees     Boolean          @default(false) // folha → payroll (941/940/RT-6)
+  monitored        Boolean          @default(true) // controlar no fechamento/overview? (false = ex-sócio etc.)
   notes         String?
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt

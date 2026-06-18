@@ -40,6 +40,7 @@ export default async function EditCompanyPage({
           status: company.status,
           collectsSalesTax: company.collectsSalesTax,
           hasEmployees: company.hasEmployees,
+          monitored: company.monitored,
           notes: company.notes,
         }}
       />

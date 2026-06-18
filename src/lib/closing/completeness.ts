@@ -27,7 +27,7 @@ export async function buildCompleteness(year: number): Promise<{
 }> {
   const [companies, returns, imports, banks] = await Promise.all([
     prisma.company.findMany({
-      where: { relationship: "GROUP_MEMBER" },
+      where: { relationship: "GROUP_MEMBER", monitored: true },
       select: { id: true, legalName: true, formationDate: true, status: true },
       orderBy: { legalName: "asc" },
     }),

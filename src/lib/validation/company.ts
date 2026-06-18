@@ -37,6 +37,11 @@ export const companyCreateSchema = z
     relationship: z.enum(["GROUP_MEMBER", "MANAGED_ONLY"]),
     collectsSalesTax: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
     hasEmployees: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
+    // Ausente (formulário sem o campo) = controlado por padrão; "false" explícito desliga.
+    monitored: z.preprocess(
+      (v) => (v === undefined || v === null ? true : v === "on" || v === "true" || v === true),
+      z.boolean(),
+    ),
     notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
   })
   .refine((d) => isEntityTypeValidFor(d.jurisdiction, d.entityType), {

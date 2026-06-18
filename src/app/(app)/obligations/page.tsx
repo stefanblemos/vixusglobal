@@ -16,7 +16,7 @@ const AUTH_CLS: Record<string, string> = {
 export default async function ObligationsPage() {
   const [companies, returns, ownerships, parties] = await Promise.all([
     prisma.company.findMany({
-      where: { status: "ACTIVE" },
+      where: { status: "ACTIVE", monitored: true },
       select: {
         id: true,
         legalName: true,

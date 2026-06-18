@@ -25,6 +25,7 @@ export type EditableCompany = {
   status: string;
   collectsSalesTax: boolean;
   hasEmployees: boolean;
+  monitored: boolean;
   notes: string | null;
 };
 
@@ -232,6 +233,26 @@ export function CompanyEditForm({ company }: { company: EditableCompany }) {
             className="h-4 w-4 rounded border-slate-300"
           />
           Has employees (payroll)
+        </label>
+      </div>
+
+      <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+        <input type="hidden" name="monitored" value="false" />
+        <label className="flex items-start gap-2 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="monitored"
+            value="true"
+            defaultChecked={company.monitored}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            Monitor this company
+            <span className="block text-xs font-normal text-slate-500">
+              Uncheck to exclude it from closing, the overview and obligations — e.g. an
+              ex-partner&rsquo;s entity you don&rsquo;t control, even though it&rsquo;s in the group.
+            </span>
+          </span>
         </label>
       </div>
 

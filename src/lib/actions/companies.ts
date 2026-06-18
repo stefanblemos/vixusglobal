@@ -30,6 +30,7 @@ export async function createCompany(_prev: FormState, formData: FormData): Promi
       status: d.status,
       collectsSalesTax: d.collectsSalesTax,
       hasEmployees: d.hasEmployees,
+      monitored: d.monitored,
       notes: d.notes,
     },
   });
@@ -62,6 +63,7 @@ export async function updateCompany(_prev: FormState, formData: FormData): Promi
       status: d.status,
       collectsSalesTax: d.collectsSalesTax,
       hasEmployees: d.hasEmployees,
+      monitored: d.monitored,
       notes: d.notes,
     },
   });
