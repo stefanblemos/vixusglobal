@@ -464,7 +464,9 @@ export default async function LoanDetailPage({
                 <tbody className="divide-y divide-slate-100">
                   {txnRowsView.map(({ t, signed, running }) => (
                     <tr key={t.id}>
-                      <td className="px-4 py-3 text-slate-600">{isoDate(t.date)}</td>
+                      <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                        {isoDate(t.date)}
+                      </td>
                       <td className="px-4 py-3 text-slate-700">{TXN_LABEL[t.type]}</td>
                       <td className="px-4 py-3 text-slate-500">{t.memo ?? "—"}</td>
                       <td
