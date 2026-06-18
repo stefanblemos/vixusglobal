@@ -95,36 +95,60 @@ export default async function LoanDetailPage({
     now,
   );
 
-  // Reconciliação com o QBO: saldo da última BS do credor para este devedor.
-  const lenderBs = await prisma.qboImport.findFirst({
-    where: { companyId: loan.lenderCompanyId, reportKind: "BALANCE_SHEET" },
-    orderBy: { createdAt: "desc" },
-    include: { lines: true },
-  });
-  let qboBalance: number | null = null;
-  let qboPeriod: string | null = null;
-  if (lenderBs) {
-    const cands = [
-      {
-        id: loan.borrowerCompanyId,
-        legalName: loan.borrower.legalName,
-        tradeName: loan.borrower.tradeName,
-        aliases: loan.borrower.aliases,
-      },
-    ];
-    const line = lenderBs.lines.find(
-      (l) =>
-        l.lineType === "ACCOUNT" &&
-        l.sectionPath.some((s) => /loans?\s+to\s+others/i.test(s)) &&
-        matchCompany(l.label, cands) === loan.borrowerCompanyId,
-    );
-    if (line?.value != null) {
-      qboBalance = Number(line.value.toString());
-      qboPeriod = lenderBs.periodLabel;
-    }
-  }
+  // Conferência de 3 pontas: principal do ledger × BS do CREDOR (a receber) × BS do
+  // DEVEDOR (a pagar). Os três têm que ser iguais; se a L2 e a Truss divergem, falta
+  // lançamento numa ponta.
   const computedPrincipal = Number(bal.principalOutstanding.toString());
-  const reconciled = qboBalance != null && Math.abs(qboBalance - computedPrincipal) < 0.01;
+  const coCands = (c: {
+    id: string;
+    legalName: string;
+    tradeName: string | null;
+    aliases: string[];
+  }) => [{ id: c.id, legalName: c.legalName, tradeName: c.tradeName, aliases: c.aliases }];
+
+  // Acha a linha do empréstimo num Balance Sheet (conta nomeada pela contraparte, numa
+  // seção de empréstimo/nota/payable; com fallback para qualquer linha que case o nome).
+  const findLoanBalance = async (
+    companyId: string,
+    counterpartyId: string,
+    counterparty: { id: string; legalName: string; tradeName: string | null; aliases: string[] },
+    sectionRe: RegExp,
+  ): Promise<{ value: number; period: string } | null> => {
+    const bs = await prisma.qboImport.findFirst({
+      where: { companyId, reportKind: "BALANCE_SHEET" },
+      orderBy: { createdAt: "desc" },
+      include: { lines: true },
+    });
+    if (!bs) return null;
+    const cands = coCands(counterparty);
+    const named = bs.lines.filter(
+      (l) => l.lineType === "ACCOUNT" && l.value != null && matchCompany(l.label, cands) === counterpartyId,
+    );
+    const line = named.find((l) => l.sectionPath.some((s) => sectionRe.test(s))) ?? named[0];
+    return line?.value != null
+      ? { value: Math.abs(Number(line.value.toString())), period: bs.periodLabel }
+      : null;
+  };
+
+  const lenderSide = await findLoanBalance(
+    loan.lenderCompanyId,
+    loan.borrowerCompanyId,
+    loan.borrower,
+    /loan|note|receiv|due\s*from|advance/i,
+  );
+  const borrowerSide = await findLoanBalance(
+    loan.borrowerCompanyId,
+    loan.lenderCompanyId,
+    loan.lender,
+    /loan|note|payable|due\s*to|from\s+others/i,
+  );
+  const tol = 0.01;
+  const lenderMatch = lenderSide != null && Math.abs(lenderSide.value - computedPrincipal) < tol;
+  const borrowerMatch = borrowerSide != null && Math.abs(borrowerSide.value - computedPrincipal) < tol;
+  const sidesMismatch =
+    lenderSide != null && borrowerSide != null && Math.abs(lenderSide.value - borrowerSide.value) >= tol;
+  const periodsDiffer =
+    lenderSide != null && borrowerSide != null && lenderSide.period !== borrowerSide.period;
 
   return (
     <div className="space-y-8">
@@ -195,41 +219,91 @@ export default async function LoanDetailPage({
 
       {activeTab === "transactions" && (
       <section className="space-y-2">
-        <h2 className="text-lg font-medium text-slate-800">QBO reconciliation</h2>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          {qboBalance == null ? (
-            <p className="text-sm text-slate-500">
-              No QBO balance found — import the lender&apos;s Balance Sheet to reconcile.
-            </p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-6 text-sm">
-              <div>
-                <div className="text-xs text-slate-400">Computed (from transactions)</div>
-                <div className="tabular-nums text-slate-800">
+        <h2 className="text-lg font-medium text-slate-800">QBO reconciliation — both sides</h2>
+        <p className="text-sm text-slate-500">
+          The loan balance should match on both QBOs: the lender&apos;s receivable and the
+          borrower&apos;s payable. If they diverge, a movement is missing on one side.
+        </p>
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <tbody className="divide-y divide-slate-100">
+              <tr>
+                <td className="px-4 py-3 text-slate-700">This loan (ledger)</td>
+                <td className="px-4 py-3 text-right tabular-nums font-medium text-slate-900">
                   {formatMoney(computedPrincipal, loan.currency)}
-                </div>
-              </div>
-              <div>
-                <div className="text-xs text-slate-400">QBO balance ({qboPeriod})</div>
-                <div className="tabular-nums text-slate-800">
-                  {formatMoney(qboBalance, loan.currency)}
-                </div>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs ${
-                  reconciled ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                }`}
-              >
-                {reconciled ? "Reconciled" : "Mismatch"}
-              </span>
-              {!reconciled && loan.transactions.length === 0 && (
-                <span className="text-xs text-slate-500">
-                  Add the dated disbursement(s) below so interest can be computed.
-                </span>
-              )}
-            </div>
-          )}
+                </td>
+                <td className="px-4 py-3 text-right text-xs text-slate-400">register</td>
+                <td className="px-4 py-3" />
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-slate-700">
+                  {loan.lender.legalName} <span className="text-slate-400">— receivable</span>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-slate-800">
+                  {lenderSide ? formatMoney(lenderSide.value, loan.currency) : "—"}
+                </td>
+                <td className="px-4 py-3 text-right text-xs text-slate-400">
+                  {lenderSide?.period ?? "no BS"}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <ReconPill ok={lenderMatch} has={lenderSide != null} />
+                </td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-slate-700">
+                  {loan.borrower.legalName} <span className="text-slate-400">— payable</span>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums text-slate-800">
+                  {borrowerSide ? formatMoney(borrowerSide.value, loan.currency) : "—"}
+                </td>
+                <td className="px-4 py-3 text-right text-xs text-slate-400">
+                  {borrowerSide?.period ?? "no BS"}
+                </td>
+                <td className="px-4 py-3 text-right">
+                  <ReconPill ok={borrowerMatch} has={borrowerSide != null} />
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
+        {(() => {
+          if (!lenderSide && !borrowerSide)
+            return (
+              <p className="text-xs text-slate-500">
+                Import each side&apos;s QBO Balance Sheet (lender and borrower) to reconcile.
+              </p>
+            );
+          if (sidesMismatch) {
+            const diff = Math.abs(lenderSide!.value - borrowerSide!.value);
+            const lower = lenderSide!.value < borrowerSide!.value ? loan.lender : loan.borrower;
+            return (
+              <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                ⚠ The two sides differ by {formatMoney(diff, loan.currency)} — looks like a movement
+                is missing on <strong>{lower.legalName}</strong>&apos;s books.
+              </p>
+            );
+          }
+          if (lenderMatch && borrowerMatch)
+            return (
+              <p className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+                ✓ Reconciled on both sides.
+              </p>
+            );
+          const missing = !lenderSide ? loan.lender : !borrowerSide ? loan.borrower : null;
+          return (
+            <p className="text-sm text-amber-700">
+              {missing
+                ? `Import ${missing.legalName}'s QBO Balance Sheet to reconcile that side.`
+                : "A side doesn't match the ledger — check that side's QBO."}
+            </p>
+          );
+        })()}
+        {periodsDiffer && (
+          <p className="text-xs text-slate-400">
+            Note: comparing different periods ({lenderSide?.period} vs {borrowerSide?.period}) — a
+            difference may just be timing.
+          </p>
+        )}
       </section>
       )}
 
@@ -447,6 +521,20 @@ function YearInput({
         className={`${width} rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums outline-none focus:border-[#1f3a5f] focus:ring-1 focus:ring-[#1f3a5f]`}
       />
     </label>
+  );
+}
+
+function ReconPill({ ok, has }: { ok: boolean; has: boolean }) {
+  if (!has)
+    return (
+      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs text-slate-400">no BS</span>
+    );
+  return (
+    <span
+      className={`rounded-full px-2.5 py-1 text-xs ${ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}
+    >
+      {ok ? "matches ✓" : "differs"}
+    </span>
   );
 }
 
