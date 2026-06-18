@@ -1,0 +1,59 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { parseGeneralLedger } from "@/lib/qbo/general-ledger";
+import { importGeneralLedger } from "@/lib/qbo/gl-import";
+import { matchCompany } from "@/lib/qbo/match";
+
+export interface GlAnalyzeResult {
+  companyName: string;
+  periodLabel: string;
+  transactions: number;
+  accounts: string[];
+  matchedCompanyId: string | null;
+  companies: { id: string; legalName: string }[];
+  duplicateId: string | null; // GL já importado para esta empresa
+}
+
+export async function analyzeGl(text: string): Promise<GlAnalyzeResult> {
+  const gl = parseGeneralLedger(text);
+  const companies = await prisma.company.findMany({
+    select: { id: true, legalName: true, tradeName: true, aliases: true },
+    orderBy: { legalName: "asc" },
+  });
+  const matchedCompanyId = matchCompany(gl.companyName, companies);
+
+  const duplicate = matchedCompanyId
+    ? await prisma.qboImport.findFirst({
+        where: { companyId: matchedCompanyId, reportKind: "GENERAL_LEDGER" },
+      })
+    : null;
+
+  return {
+    companyName: gl.companyName,
+    periodLabel: gl.periodLabel,
+    transactions: gl.transactions.length,
+    accounts: gl.accounts,
+    matchedCompanyId,
+    companies: companies.map((c) => ({ id: c.id, legalName: c.legalName })),
+    duplicateId: duplicate?.id ?? null,
+  };
+}
+
+export async function saveGl(input: {
+  text: string;
+  companyId: string | null;
+  fileName: string;
+}): Promise<void> {
+  if (!input.companyId) {
+    // O GL é transacional e fica preso à empresa — exige vínculo explícito.
+    throw new Error("Selecione a empresa antes de salvar o General Ledger.");
+  }
+  await importGeneralLedger(prisma, input.text, input.fileName, { companyId: input.companyId });
+  revalidatePath("/import");
+  revalidatePath("/ledger");
+  revalidatePath("/closing");
+  redirect(`/ledger?company=${input.companyId}`);
+}

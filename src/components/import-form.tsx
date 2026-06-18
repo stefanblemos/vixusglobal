@@ -3,6 +3,14 @@
 import { useState, useTransition } from "react";
 import * as XLSX from "xlsx";
 import { analyzeQbo, saveQboImport, type AnalyzeResult } from "@/lib/actions/qbo";
+import { analyzeGl, saveGl, type GlAnalyzeResult } from "@/lib/actions/gl";
+
+// O GL é transacional (parser e tela diferentes do BS/P&L). Detecta pelo título
+// "General Ledger" nas primeiras linhas do CSV.
+function looksLikeGeneralLedger(csv: string): boolean {
+  const head = csv.split(/\r?\n/).slice(0, 8).join("\n").toLowerCase();
+  return head.includes("general ledger");
+}
 
 const fmtUSD = (v: string | null) =>
   v == null
@@ -19,6 +27,7 @@ export function ImportForm() {
   const [text, setText] = useState("");
   const [fileName, setFileName] = useState("");
   const [result, setResult] = useState<AnalyzeResult | null>(null);
+  const [glResult, setGlResult] = useState<GlAnalyzeResult | null>(null);
   const [companyId, setCompanyId] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
@@ -28,6 +37,7 @@ export function ImportForm() {
     if (!file) return;
     setFileName(file.name);
     setResult(null);
+    setGlResult(null);
     setError("");
     const reader = new FileReader();
     if (/\.xlsx?$/i.test(file.name)) {
@@ -50,11 +60,19 @@ export function ImportForm() {
 
   function analyze() {
     setError("");
+    setResult(null);
+    setGlResult(null);
     start(async () => {
       try {
-        const r = await analyzeQbo(text);
-        setResult(r);
-        setCompanyId(r.matchedCompanyId ?? "");
+        if (looksLikeGeneralLedger(text)) {
+          const r = await analyzeGl(text);
+          setGlResult(r);
+          setCompanyId(r.matchedCompanyId ?? "");
+        } else {
+          const r = await analyzeQbo(text);
+          setResult(r);
+          setCompanyId(r.matchedCompanyId ?? "");
+        }
       } catch {
         setError("Could not parse this file. Is it a QBO CSV report?");
       }
@@ -64,6 +82,17 @@ export function ImportForm() {
   function save() {
     start(async () => {
       await saveQboImport({ text, companyId: companyId || null, fileName });
+    });
+  }
+
+  function saveGeneralLedger() {
+    setError("");
+    start(async () => {
+      try {
+        await saveGl({ text, companyId: companyId || null, fileName });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Could not save the General Ledger.");
+      }
     });
   }
 
@@ -173,6 +202,78 @@ export function ImportForm() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {glResult && (
+        <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-6">
+          <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-4">
+            <Meta label="Source name" value={glResult.companyName} />
+            <Meta label="Report" value="General Ledger" />
+            <Meta label="Period" value={glResult.periodLabel || "—"} />
+            <Meta
+              label="Transactions"
+              value={`${glResult.transactions.toLocaleString("en-US")} · ${glResult.accounts.length} accounts`}
+            />
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+            <div className="min-w-64 flex-1">
+              <label className="mb-1 block text-xs font-medium text-slate-600">
+                Link to company <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              >
+                <option value="">— Select a company —</option>
+                {glResult.companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.legalName}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span
+              className={`rounded-full px-3 py-1 text-xs ${
+                glResult.matchedCompanyId
+                  ? "bg-green-50 text-green-700"
+                  : "bg-amber-50 text-amber-700"
+              }`}
+            >
+              {glResult.matchedCompanyId ? "Auto-matched by name/alias" : "No automatic match"}
+            </span>
+            <button
+              onClick={saveGeneralLedger}
+              disabled={pending || !companyId}
+              className="rounded-lg bg-[#8DC63F] px-4 py-2 text-sm font-medium text-[#173404] hover:bg-[#7eb536] disabled:opacity-50"
+            >
+              {pending ? "Importing…" : "Import General Ledger"}
+            </button>
+          </div>
+
+          {glResult.duplicateId && (
+            <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-700">
+              This company already has a General Ledger on file — importing will replace it.
+            </p>
+          )}
+
+          {glResult.accounts.length > 0 && (
+            <div className="border-t border-slate-100 pt-4">
+              <div className="mb-2 text-xs font-medium text-slate-500">Accounts detected</div>
+              <div className="flex flex-wrap gap-1.5">
+                {glResult.accounts.map((a) => (
+                  <span
+                    key={a}
+                    className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600"
+                  >
+                    {a}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

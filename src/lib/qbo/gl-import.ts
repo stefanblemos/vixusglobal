@@ -19,6 +19,7 @@ export async function importGeneralLedger(
   prisma: PrismaClient,
   csvText: string,
   fileName: string,
+  opts?: { companyId?: string | null },
 ): Promise<GlImportResult> {
   const gl = parseGeneralLedger(csvText);
 
@@ -26,7 +27,8 @@ export async function importGeneralLedger(
     select: { id: true, legalName: true, tradeName: true, aliases: true },
   });
   const parties = await prisma.party.findMany({ select: { id: true, name: true } });
-  const companyId = matchCompany(gl.companyName, companies);
+  // Empresa: respeita a escolha explícita do usuário; senão, auto-match pelo nome.
+  const companyId = opts?.companyId ?? matchCompany(gl.companyName, companies);
   if (!companyId) {
     return { matched: false, companyName: gl.companyName, transactions: 0, vendors: 0 };
   }

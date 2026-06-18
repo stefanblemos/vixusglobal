@@ -142,7 +142,8 @@ export default async function DocumentsPage() {
         <h1 className="text-2xl font-semibold text-slate-800">Documents</h1>
         <p className="text-sm text-slate-500">
           Every document on file, by company and year — QuickBooks reports, tax returns and bank
-          statements. Upload a QuickBooks Balance Sheet or Profit &amp; Loss (CSV or .xlsx).
+          statements. Upload a QuickBooks Balance Sheet, Profit &amp; Loss or General Ledger (CSV or
+          .xlsx).
         </p>
       </div>
 
