@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { computeLoanBalance } from "@/lib/loans/interest";
-import { buildLoanLedger } from "@/lib/loans/ledger";
+import { buildAnnualClosings } from "@/lib/loans/closings";
 import { formatMoney } from "@/lib/money";
 import { matchCompany } from "@/lib/qbo/match";
 import { LoanTermsForm } from "@/components/loan-terms-form";
@@ -35,18 +35,27 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
   });
   if (!loan) notFound();
 
-  // Razão ano a ano dos valores FORNECIDOS, com o juro capitalizado em conta separada.
-  const ledger = buildLoanLedger(
-    loan.principal.toString(),
-    loan.years.map((y) => ({
-      year: y.year,
-      annualRatePct: y.annualRatePct?.toString() ?? null,
-      principalAdded: y.principalAdded.toString(),
-      principalRepaid: y.principalRepaid.toString(),
-      interestAccrued: y.interestAccrued.toString(),
-      interestPaid: y.interestPaid.toString(),
-    })),
+  const now = new Date();
+
+  // Fechamento ANO A ANO: principal vem do register (transações); o app calcula juro (diário,
+  // pelo termo do ano) + origination fee por aporte, e capitaliza o não pago em conta separada.
+  const rateByYear = new Map(
+    loan.years.filter((y) => y.annualRatePct != null).map((y) => [y.year, Number(y.annualRatePct)]),
   );
+  const interestPaidByYear = new Map(loan.years.map((y) => [y.year, Number(y.interestPaid)]));
+  const closings = buildAnnualClosings({
+    startDate: loan.startDate,
+    asOf: now,
+    defaultRatePct: Number(loan.annualInterestRate) * 100,
+    rateByYear,
+    feeRate: Number(loan.originationFeeRate),
+    interestPaidByYear,
+    dayCountBasis: loan.dayCountBasis,
+    txns: loan.transactions.map((t) => ({ type: t.type, amount: Number(t.amount), date: t.date })),
+  });
+  const last = closings.at(-1) ?? null;
+  const currentYear = now.getUTCFullYear();
+  const currentRatePct = rateByYear.get(currentYear) ?? Number(loan.annualInterestRate) * 100;
   const yearIdByYear = new Map(loan.years.map((y) => [y.year, y.id]));
   const nextYear = (loan.years.at(-1)?.year ?? loan.startDate.getUTCFullYear() - 1) + 1;
 
@@ -58,7 +67,6 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
     return { t, signed, running: runBal };
   });
 
-  const now = new Date();
   const bal = computeLoanBalance(
     {
       annualInterestRate: loan.annualInterestRate.toString(),
@@ -110,19 +118,41 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
           {loan.lender.legalName} <span className="text-slate-400">→</span>{" "}
           {loan.borrower.legalName}
         </h1>
-        <p className="text-sm text-slate-500">
-          Principal {formatMoney(loan.principal, loan.currency)}
-        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-[#1f3a5f]/10 px-2 py-0.5 font-medium text-[#1f3a5f]">
+            Term in effect ({currentYear}): {currentRatePct}% · simple · {loan.currency}
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
+            Origination fee {Number(loan.originationFeeRate) * 100}%
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">
+            {loan.dayCountBasis.replace("_", "/")}
+          </span>
+          <span
+            className={`rounded-full px-2 py-0.5 ${loan.status === "ACTIVE" ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-500"}`}
+          >
+            {loan.status}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card
           label="Principal outstanding"
-          value={formatMoney(bal.principalOutstanding, loan.currency)}
+          value={formatMoney(last?.closingPrincipal ?? 0, loan.currency)}
         />
-        <Card label="Interest accrued" value={formatMoney(bal.interestAccrued, loan.currency)} />
-        <Card label="Interest paid" value={formatMoney(bal.interestPaid, loan.currency)} />
-        <Card label="Total outstanding" value={formatMoney(bal.totalOutstanding, loan.currency)} />
+        <Card
+          label="Capitalized interest (separate)"
+          value={formatMoney(last?.closingCapitalized ?? 0, loan.currency)}
+        />
+        <Card
+          label={`Interest accrued (${currentYear})`}
+          value={formatMoney(last?.interestAccrued ?? 0, loan.currency)}
+        />
+        <Card
+          label="Total owed"
+          value={formatMoney(last?.totalOutstanding ?? 0, loan.currency)}
+        />
       </div>
 
       <section className="space-y-2">
@@ -164,13 +194,16 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
       </section>
 
       <section className="space-y-2">
-        <h2 className="text-lg font-medium text-slate-800">Year by year — provided figures</h2>
+        <h2 className="text-lg font-medium text-slate-800">Annual closings</h2>
         <p className="text-sm text-slate-500">
-          The interest you enter (from the accountant / QBO). Unpaid interest at year-end rolls into
-          a <strong>separate capitalized-interest</strong> bucket the next year — kept apart from
-          principal so the principal still ties to QBO.
+          One closing per year. Principal comes from the register; the app computes the{" "}
+          <strong>interest</strong> (daily, at the year&apos;s term rate) and the{" "}
+          <strong>origination fee</strong> on each amount disbursed. What isn&apos;t paid by Dec 31 —
+          the <strong>added (unpaid)</strong> amount — rolls into a{" "}
+          <strong>separate capitalized</strong> bucket the next year, kept apart from principal.
+          Enter the year&apos;s rate and how much interest was paid below.
         </p>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
               <tr>
@@ -178,26 +211,32 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
                 <th className="px-3 py-2 text-right font-medium">Rate</th>
                 <th className="px-3 py-2 text-right font-medium">Principal (close)</th>
                 <th className="px-3 py-2 text-right font-medium">Interest accrued</th>
+                <th className="px-3 py-2 text-right font-medium">Orig. fee</th>
                 <th className="px-3 py-2 text-right font-medium">Interest paid</th>
-                <th className="px-3 py-2 text-right font-medium">Unpaid → capital</th>
+                <th className="px-3 py-2 text-right font-medium">Added (unpaid)</th>
                 <th className="px-3 py-2 text-right font-medium">Capitalized (sep.)</th>
                 <th className="px-3 py-2 text-right font-medium">Total owed</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {ledger.length === 0 ? (
+              {closings.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-3 py-4 text-sm text-slate-400">
-                    No years yet. Add one below.
+                  <td colSpan={10} className="px-3 py-4 text-sm text-slate-400">
+                    Import the register and set the term to see the closings.
                   </td>
                 </tr>
               ) : (
-                ledger.map((r) => (
-                  <tr key={r.year}>
-                    <td className="px-3 py-2 font-medium text-slate-700">{r.year}</td>
+                closings.map((r) => (
+                  <tr key={r.year} className={r.year === currentYear ? "bg-[#1f3a5f]/5" : ""}>
+                    <td className="px-3 py-2 font-medium text-slate-700">
+                      {r.year}
+                      {r.year === currentYear && (
+                        <span className="ml-1 text-xs text-slate-400">(current)</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-500">
-                      {r.annualRatePct == null ? "—" : `${r.annualRatePct.toString()}%`}
+                      {Number(r.ratePct)}%
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                       {formatMoney(r.closingPrincipal, loan.currency)}
@@ -205,11 +244,14 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                       {formatMoney(r.interestAccrued, loan.currency)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">
+                      {formatMoney(r.originationFees, loan.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-emerald-700">
                       {formatMoney(r.interestPaid, loan.currency)}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-amber-700">
-                      {formatMoney(r.interestUnpaid, loan.currency)}
+                    <td className="px-3 py-2 text-right font-medium tabular-nums text-amber-700">
+                      {formatMoney(r.unpaid, loan.currency)}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-indigo-700">
                       {formatMoney(r.closingCapitalized, loan.currency)}
@@ -218,11 +260,13 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
                       {formatMoney(r.totalOutstanding, loan.currency)}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <form action={deleteLoanYear}>
-                        <input type="hidden" name="yearId" value={yearIdByYear.get(r.year) ?? ""} />
-                        <input type="hidden" name="loanId" value={loan.id} />
-                        <button className="text-xs text-slate-400 hover:text-red-600">Remove</button>
-                      </form>
+                      {yearIdByYear.has(r.year) && (
+                        <form action={deleteLoanYear}>
+                          <input type="hidden" name="yearId" value={yearIdByYear.get(r.year) ?? ""} />
+                          <input type="hidden" name="loanId" value={loan.id} />
+                          <button className="text-xs text-slate-400 hover:text-red-600">reset</button>
+                        </form>
+                      )}
                     </td>
                   </tr>
                 ))
@@ -236,14 +280,15 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
         >
           <input type="hidden" name="loanId" value={loan.id} />
           <YearInput name="year" label="Year" defaultValue={String(nextYear)} width="w-20" />
-          <YearInput name="annualRatePct" label="Rate %" placeholder="8.5" width="w-20" />
-          <YearInput name="principalAdded" label="Principal added" placeholder="0" />
-          <YearInput name="principalRepaid" label="Principal repaid" placeholder="0" />
-          <YearInput name="interestAccrued" label="Interest accrued" placeholder="0" />
-          <YearInput name="interestPaid" label="Interest paid" placeholder="0" />
+          <YearInput name="annualRatePct" label="Rate % (term)" placeholder="6.5" width="w-24" />
+          <YearInput name="interestPaid" label="Interest paid this year" placeholder="0" />
           <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
             Save year
           </button>
+          <span className="basis-full text-xs text-slate-400">
+            Set the term rate for a year (defaults to the loan rate below) and the interest actually
+            paid. Principal and disbursements come from the register.
+          </span>
         </form>
       </section>
 
