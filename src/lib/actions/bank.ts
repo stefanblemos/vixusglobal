@@ -93,7 +93,12 @@ export async function getMatchCandidates(lineId: string): Promise<MatchCandidate
   const takenIds = new Set(taken.map((t) => t.matchedTxnId!));
 
   const txns = await prisma.ledgerTxn.findMany({
-    where: { companyId: line.statement.companyId, amount: { gte: lo, lte: hi } },
+    where: {
+      companyId: line.statement.companyId,
+      amount: { gte: lo, lte: hi },
+      // Só oferece lançamentos da conta-caixa mapeada (GL ≠ extrato).
+      ...(line.statement.glAccount ? { account: line.statement.glAccount } : {}),
+    },
     include: { vendor: true },
     take: 50,
   });
@@ -147,4 +152,26 @@ export async function resetLine(lineId: string): Promise<void> {
     data: { status: "UNREVIEWED", matchedTxnId: null, note: null, reviewedAt: null },
   });
   await refreshLine(lineId);
+}
+
+/**
+ * Mapeia o extrato à conta-caixa do GL e refaz o auto-match dentro desse escopo.
+ * Reseta apenas os matches automáticos (MATCHED sem reviewedAt) — decisões manuais
+ * (match manual, FLAGGED, IGNORED) são preservadas.
+ */
+export async function setStatementGlAccount(
+  statementId: string,
+  glAccount: string,
+): Promise<void> {
+  await prisma.bankStatement.update({
+    where: { id: statementId },
+    data: { glAccount: glAccount || null },
+  });
+  // Limpa matches automáticos para reavaliar no novo escopo.
+  await prisma.bankStatementLine.updateMany({
+    where: { statementId, status: "MATCHED", reviewedAt: null },
+    data: { status: "UNREVIEWED", matchedTxnId: null },
+  });
+  await reconcileStatement(prisma, statementId);
+  revalidatePath(`/bank/${statementId}`);
 }

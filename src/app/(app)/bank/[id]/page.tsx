@@ -3,9 +3,13 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { BankReview } from "@/components/bank-review";
+import { GlAccountMapper } from "@/components/bank-gl-mapper";
 import { resetLine } from "@/lib/actions/bank";
+import { buildBankReconSummary } from "@/lib/bank/summary";
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+const usd = (v: number) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   FLAGGED: { label: "Missing booking", cls: "bg-amber-50 text-amber-700" },
@@ -24,6 +28,9 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
   const toReview = st.lines.filter((l) => l.status === "UNREVIEWED");
   const reviewed = st.lines.filter((l) => l.status === "FLAGGED" || l.status === "IGNORED");
   const matchRate = st.lines.length ? Math.round((matched / st.lines.length) * 100) : 0;
+
+  const summary = await buildBankReconSummary(prisma, id);
+  const reconciles = summary != null && Math.abs(summary.difference) < 0.005;
 
   return (
     <div className="space-y-6">
@@ -48,6 +55,58 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
         <Stat label="Match rate" value={`${matchRate}%`} cls="text-slate-800" />
       </div>
 
+      {summary?.hasGl ? (
+        <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+          <div>
+            <h2 className="text-lg font-medium text-slate-800">Reconcile against the GL</h2>
+            <p className="text-sm text-slate-500">
+              Map this statement to its cash account in the General Ledger. Matching is then
+              restricted to that account — never A/R, inventory or A/P (GL ≠ statement).
+            </p>
+          </div>
+
+          <GlAccountMapper
+            statementId={id}
+            accounts={summary.glAccounts}
+            current={summary.mappedAccount}
+          />
+
+          {summary.mappedAccount ? (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+              <Stat label="Statement net" value={usd(summary.bankNet)} cls="text-slate-800" />
+              <Stat label="GL cash net (period)" value={usd(summary.glNet)} cls="text-slate-800" />
+              <div
+                className={`rounded-xl border p-4 ${
+                  reconciles ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"
+                }`}
+              >
+                <div className="text-xs text-slate-500">Difference</div>
+                <div
+                  className={`mt-1 text-2xl font-semibold ${
+                    reconciles ? "text-green-700" : "text-amber-700"
+                  }`}
+                >
+                  {usd(summary.difference)}
+                </div>
+                <div className={`text-xs ${reconciles ? "text-green-700" : "text-amber-700"}`}>
+                  {reconciles ? "Period reconciles ✓" : "Out of balance — see exceptions"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-700">
+              Not mapped yet — auto-match is currently comparing against the whole GL, which can
+              produce false matches. Pick the cash account above and re-match.
+            </p>
+          )}
+        </section>
+      ) : (
+        <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-500">
+          No General Ledger imported for this company yet — import the GL in Documents to enable
+          account-scoped reconciliation and the books-vs-bank check.
+        </p>
+      )}
+
       <section className="space-y-2">
         <h2 className="text-lg font-medium text-slate-800">To review ({toReview.length})</h2>
         <p className="text-sm text-slate-500">
@@ -69,6 +128,44 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
           />
         )}
       </section>
+
+      {summary?.mappedAccount && summary.bookedNotOnStatement.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium text-slate-800">
+            In the books, not on the statement ({summary.bookedNotOnStatement.length})
+          </h2>
+          <p className="text-sm text-slate-500">
+            Cash-account entries booked in the GL with no matching bank line in this period —
+            usually timing (uncleared), an internal transfer, or a booking that never hit the bank.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Date</th>
+                  <th className="px-3 py-2 font-medium">Type</th>
+                  <th className="px-3 py-2 font-medium">Name</th>
+                  <th className="px-3 py-2 font-medium">Split</th>
+                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {summary.bookedNotOnStatement.map((t) => (
+                  <tr key={t.id}>
+                    <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">{t.date}</td>
+                    <td className="px-3 py-1.5 text-slate-600">{t.type}</td>
+                    <td className="px-3 py-1.5 text-slate-700">{t.name ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-slate-500">{t.split ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                      {formatMoney(t.amount, "USD")}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       {reviewed.length > 0 && (
         <section className="space-y-2">

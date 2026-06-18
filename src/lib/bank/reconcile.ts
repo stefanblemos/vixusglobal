@@ -18,8 +18,11 @@ export async function reconcileStatement(
   });
   if (!st) return;
 
+  // Escopa o match à conta-caixa do GL quando o extrato está mapeado: um extrato
+  // só pode bater com lançamentos da conta bancária correspondente, nunca com
+  // A/R, estoque, A/P etc. (GL ≠ extrato). Sem mapeamento, mantém o comportamento antigo.
   const gl = await prisma.ledgerTxn.findMany({
-    where: { companyId: st.companyId },
+    where: { companyId: st.companyId, ...(st.glAccount ? { account: st.glAccount } : {}) },
     select: { id: true, date: true, amount: true },
   });
   const byAmount = new Map<string, { id: string; date: Date }[]>();

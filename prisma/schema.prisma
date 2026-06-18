@@ -400,6 +400,7 @@ model BankStatement {
   company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   bankId           String // "boa", etc.
   bankLabel        String
+  glAccount        String? // conta-caixa correspondente no GL (escopa a conciliação)
   fileName         String?
   periodStart      DateTime? @db.Date
   periodEnd        DateTime? @db.Date
