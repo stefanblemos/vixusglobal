@@ -324,10 +324,14 @@ export default async function CompanyYearPage({
     const expected = me?.allocatedIncome ?? null;
     if (expected == null) return { status: "noAlloc" as const, issuer, expected: null };
     const tol = Math.max(1, Math.abs(k.amount) * 0.01);
+    const matches = Math.abs(expected - k.amount) <= tol;
+    // Casa dentro de 1% → é o K-1 (mostra o valor do emissor). Não casa → é uma das
+    // distribuições de lucro lançadas junto na linha 10 (não é K-1); não repete o valor do
+    // emissor nem marca "differs" — sai em branco e fica pro painel de distribuições do QBO.
     return {
-      status: Math.abs(expected - k.amount) <= tol ? ("validated" as const) : ("differs" as const),
+      status: matches ? ("validated" as const) : ("distribution" as const),
       issuer,
-      expected,
+      expected: matches ? expected : null,
     };
   }
 
@@ -948,9 +952,12 @@ export default async function CompanyYearPage({
                       </table>
                     </div>
                     <p className="mt-1 text-xs text-slate-400">
-                      Each K-1 this company received from an investee, matched by EIN/name. &ldquo;
-                      Awaiting return&rdquo; = the investee&apos;s {year} tax return isn&apos;t on
-                      file yet to validate the amount — your checklist for closing the year.
+                      Each K-1 this company received from an investee, matched by EIN/name. The
+                      issuer&apos;s value is shown only where it matches (±1%); a row marked &ldquo;
+                      profit distribution&rdquo; doesn&apos;t match the issuer&apos;s K-1 — it&apos;s
+                      a profit distribution booked on the same line, reconciled in the &ldquo;Profit
+                      distributions (QBO)&rdquo; panel below. &ldquo;Awaiting return&rdquo; = the
+                      investee&apos;s {year} return isn&apos;t on file yet to validate the amount.
                     </p>
                   </div>
                 );
@@ -1118,6 +1125,7 @@ function K1Badge({ status, year }: { status: string; year: number }) {
   const map: Record<string, { label: string; cls: string }> = {
     validated: { label: "validated ✓", cls: "bg-green-50 text-green-700" },
     differs: { label: "differs", cls: "bg-red-50 text-red-700" },
+    distribution: { label: "profit distribution — see QBO", cls: "bg-slate-100 text-slate-500" },
     missing: { label: `awaiting ${year} return`, cls: "bg-amber-50 text-amber-700" },
     noAlloc: { label: "filer not on issuer's K-1", cls: "bg-amber-50 text-amber-700" },
     unregistered: { label: "not registered", cls: "bg-slate-100 text-slate-500" },
