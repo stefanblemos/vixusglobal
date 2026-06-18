@@ -12,6 +12,7 @@ import {
   booksIncomeNotOnReturnOf,
 } from "@/lib/ir/income-bridge";
 import { pnlTotals } from "@/lib/qbo/pnl";
+import { buildDistExtracts, reconcileDistributions } from "@/lib/qbo/distributions";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { YearCloseControls } from "@/components/year-close-controls";
 
@@ -390,6 +391,25 @@ export default async function CompanyYearPage({
       e.recipientId === id &&
       e.year === year &&
       (e.status === "missingOnRecipient" || e.status === "amountDiff"),
+  );
+
+  // Distribuições de lucro (fora do K-1) pelos relatórios do QBO: o que ESTA empresa lançou
+  // como "1099 - Not K1", correlacionado com o que a subsidiária deduziu no P&L dela.
+  const distImports = await prisma.qboImport.findMany({
+    where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
+    select: { id: true, companyId: true, periodLabel: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const distLines =
+    distImports.length > 0
+      ? await prisma.qboImportLine.findMany({
+          where: { importId: { in: distImports.map((i) => i.id) }, lineType: { in: ["ACCOUNT", "TOTAL"] } },
+          select: { importId: true, label: true, sectionPath: true, lineType: true, value: true },
+        })
+      : [];
+  const distExtracts = buildDistExtracts(distImports, distLines);
+  const distReceived = reconcileDistributions(distExtracts, companies).filter(
+    (e) => e.recipientId === id && e.year === year,
   );
 
   // Fechamento do ano (lock) + alertas: compara a verdade travada com o IR mais recente.
@@ -986,6 +1006,76 @@ export default async function CompanyYearPage({
           );
         })
       )}
+
+      {distReceived.length > 0 && (
+        <div>
+          <div className="mb-1 text-sm font-medium text-slate-700">
+            Profit distributions (QBO) — outside the K-1
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Investee (issuer)</th>
+                  <th className="px-4 py-2 text-right font-medium">Booked here (1099 — not K1)</th>
+                  <th className="px-4 py-2 text-right font-medium">
+                    Distributed per issuer&apos;s QBO
+                  </th>
+                  <th className="px-4 py-2 text-right font-medium">Check</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {distReceived.map((e, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-2 text-slate-700">
+                      {e.issuerId ? (
+                        <Link
+                          href={`/companies/${e.issuerId}/year/${year}`}
+                          className="text-[#1f3a5f] hover:underline"
+                        >
+                          {e.issuerName}
+                        </Link>
+                      ) : (
+                        e.issuerName
+                      )}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">
+                      {money(e.bookedByRecipient, ccy)}
+                    </td>
+                    <td className="px-4 py-2 text-right tabular-nums text-slate-500">
+                      {e.paidByIssuer != null ? money(e.paidByIssuer, ccy) : "—"}
+                    </td>
+                    <td className="px-4 py-2 text-right">
+                      <DistBadge status={e.status} year={year} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-slate-200 bg-slate-50/60">
+                <tr>
+                  <td className="px-4 py-2 font-medium text-slate-700">
+                    Total profit distributions received
+                  </td>
+                  <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                    {money(
+                      distReceived.reduce((s, e) => s + e.bookedByRecipient, 0),
+                      ccy,
+                    )}
+                  </td>
+                  <td colSpan={2} />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="mt-1 text-xs text-slate-400">
+            Profit the investee <strong>deducted on its own P&amp;L</strong> and paid out as a 1099
+            distribution (not a K-1) — clear in the QBO books, not in the return. The subsidiary
+            excluded it from your K-1, so booking it here as income is correct: <strong>not</strong>{" "}
+            a double-count. &ldquo;Matched&rdquo; = the issuer&apos;s QBO shows the same payment to
+            you.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -1031,6 +1121,18 @@ function K1Badge({ status, year }: { status: string; year: number }) {
     missing: { label: `awaiting ${year} return`, cls: "bg-amber-50 text-amber-700" },
     noAlloc: { label: "filer not on issuer's K-1", cls: "bg-amber-50 text-amber-700" },
     unregistered: { label: "not registered", cls: "bg-slate-100 text-slate-500" },
+  };
+  const m = map[status];
+  return m ? (
+    <span className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${m.cls}`}>{m.label}</span>
+  ) : null;
+}
+
+function DistBadge({ status, year }: { status: string; year: number }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    matched: { label: "matched ✓", cls: "bg-green-50 text-green-700" },
+    amountDiff: { label: "differs", cls: "bg-red-50 text-red-700" },
+    issuerNotLoaded: { label: `awaiting ${year} QBO`, cls: "bg-amber-50 text-amber-700" },
   };
   const m = map[status];
   return m ? (
