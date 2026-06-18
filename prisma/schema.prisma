@@ -379,8 +379,24 @@ model QboImport {
   columns           String[]
   createdAt         DateTime      @default(now())
 
-  lines      QboImportLine[]
-  ledgerTxns LedgerTxn[]
+  lines            QboImportLine[]
+  ledgerTxns       LedgerTxn[]
+  accountSummaries GlAccountSummary[]
+}
+
+// Saldo por conta extraído de um General Ledger (saldo inicial/final da seção).
+// Permite cruzar o razão com o Balance Sheet (saldo final) e o P&L (movimento).
+model GlAccountSummary {
+  id        String    @id @default(cuid())
+  importId  String
+  import    QboImport @relation(fields: [importId], references: [id], onDelete: Cascade)
+  companyId String
+  account   String
+  beginning Decimal?  @db.Decimal(20, 4)
+  ending    Decimal?  @db.Decimal(20, 4)
+
+  @@index([companyId])
+  @@index([importId])
 }
 
 // Contato (fornecedor/cliente/contraparte) — populado da coluna "Name" do GL.

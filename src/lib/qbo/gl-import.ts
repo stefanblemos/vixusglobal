@@ -85,6 +85,19 @@ export async function importGeneralLedger(
     await prisma.ledgerTxn.createMany({ data: data.slice(i, i + CHUNK) });
   }
 
+  // Saldos por conta — para cruzar com BS (saldo final) e P&L (movimento).
+  if (gl.accountBalances.length > 0) {
+    await prisma.glAccountSummary.createMany({
+      data: gl.accountBalances.map((b) => ({
+        importId: imp.id,
+        companyId,
+        account: b.account,
+        beginning: b.beginning,
+        ending: b.ending,
+      })),
+    });
+  }
+
   return {
     matched: true,
     companyName: gl.companyName,

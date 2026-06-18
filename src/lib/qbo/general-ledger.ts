@@ -15,11 +15,18 @@ export interface GlTransaction {
   amount: string | null; // decimal-string (sinalizado)
 }
 
+export interface GlAccountBalance {
+  account: string;
+  beginning: string | null; // saldo inicial (linha "Beginning Balance")
+  ending: string | null; // saldo final (última coluna Balance da seção)
+}
+
 export interface GeneralLedger {
   companyName: string;
   periodLabel: string;
   currency: string;
   accounts: string[];
+  accountBalances: GlAccountBalance[]; // saldos por conta — p/ cruzar com o BS
   transactions: GlTransaction[];
 }
 
@@ -74,12 +81,18 @@ export function parseGeneralLedger(csvText: string): GeneralLedger {
   const descIdx = find((c) => c.includes("memo") || c.includes("description")) ?? dateIdx + 4;
   const splitIdx = find((c) => c === "split") ?? dateIdx + 5;
   const amountIdx = find((c) => c === "amount") ?? dateIdx + 6;
+  const balanceIdx = find((c) => c === "balance"); // saldo corrido (p/ saldo final por conta)
   // Coluna que repete o nome da conta em cada linha (layout novo). Pode não existir.
   const acctIdx = find((c) => c.includes("distribution account") || c === "account");
 
   const transactions: GlTransaction[] = [];
   const accounts = new Set<string>();
+  const beginningMap = new Map<string, string | null>();
+  const endingMap = new Map<string, string | null>();
   let currentAccount = "";
+
+  const isBeginning = (row: string[]) =>
+    row.some((c) => (c ?? "").toLowerCase() === "beginning balance");
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -90,8 +103,15 @@ export function parseGeneralLedger(csvText: string): GeneralLedger {
     const isTxn = DATE_RE.test(date);
 
     if (!isTxn) {
-      // cabeçalho de conta (define a conta atual); total / "Beginning Balance" → ignora
-      if (c0 && !TOTAL_RE.test(c0) && !/^beginning balance$/i.test(c0)) {
+      // "Beginning Balance" → saldo inicial da conta atual.
+      if (isBeginning(row)) {
+        if (currentAccount && balanceIdx != null) {
+          beginningMap.set(currentAccount, parseQboNumber(row[balanceIdx]));
+        }
+        continue;
+      }
+      // cabeçalho de conta (define a conta atual); total → ignora
+      if (c0 && !TOTAL_RE.test(c0)) {
         currentAccount = c0;
         accounts.add(c0);
       }
@@ -102,6 +122,11 @@ export function parseGeneralLedger(csvText: string): GeneralLedger {
     const rowAccount = acctIdx != null ? (row[acctIdx] ?? "").trim() : "";
     const account = rowAccount || currentAccount;
     if (account) accounts.add(account);
+    // Saldo final = último saldo corrido visto na seção da conta.
+    if (account && balanceIdx != null) {
+      const bal = parseQboNumber(row[balanceIdx]);
+      if (bal != null) endingMap.set(account, bal);
+    }
 
     transactions.push({
       account,
@@ -115,11 +140,18 @@ export function parseGeneralLedger(csvText: string): GeneralLedger {
     });
   }
 
+  const accountBalances: GlAccountBalance[] = [...accounts].map((account) => ({
+    account,
+    beginning: beginningMap.get(account) ?? null,
+    ending: endingMap.get(account) ?? beginningMap.get(account) ?? null,
+  }));
+
   return {
     companyName,
     periodLabel,
     currency: detectCurrency(csvText),
     accounts: [...accounts],
+    accountBalances,
     transactions,
   };
 }
