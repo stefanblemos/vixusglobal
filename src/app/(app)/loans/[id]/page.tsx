@@ -8,6 +8,7 @@ import { matchCompany } from "@/lib/qbo/match";
 import { LoanTermsForm } from "@/components/loan-terms-form";
 import { AddTransactionForm } from "@/components/add-transaction-form";
 import { RegisterUpload } from "@/components/register-upload";
+import { TxnYearSelect } from "@/components/txn-year-select";
 import { deleteLoanTransaction, saveLoanYear, deleteLoanYear } from "@/lib/actions/loans";
 
 const TXN_LABEL: Record<string, string> = {
@@ -372,25 +373,8 @@ export default async function LoanDetailPage({
           </div>
         ) : (
           <>
-            {/* Filtro por ano (ou All) */}
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="mr-1 text-slate-400">Year:</span>
-              <Link
-                href={`/loans/${loan.id}?tab=transactions`}
-                className={`rounded-full px-2.5 py-1 ${selectedTxnYear == null ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-              >
-                All
-              </Link>
-              {txnYears.map((y) => (
-                <Link
-                  key={y}
-                  href={`/loans/${loan.id}?tab=transactions&txnYear=${y}`}
-                  className={`rounded-full px-2.5 py-1 ${selectedTxnYear === y ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
-                >
-                  {y}
-                </Link>
-              ))}
-            </div>
+            {/* Filtro por ano (select) */}
+            <TxnYearSelect loanId={loan.id} years={txnYears} selected={selectedTxnYear} />
             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-slate-500">
