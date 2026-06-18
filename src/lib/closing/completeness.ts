@@ -7,6 +7,7 @@ export type Cell = { ok: boolean; detail?: string };
 export type CompletenessRow = {
   companyId: string;
   companyName: string;
+  existed: boolean; // já constituída no ano? (senão, N/A)
   ir: Cell;
   pnl: Cell;
   bs: Cell;
@@ -61,21 +62,29 @@ export async function buildCompleteness(year: number): Promise<{
     banks.filter((b) => b.periodEnd && b.periodEnd.getUTCFullYear() === year).map((b) => b.companyId),
   );
 
-  const rows: CompletenessRow[] = companies
-    // Só empresas que já existiam no ano (do ano de abertura em diante).
-    .filter((c) => {
-      const fy = yearOf(c.formationDate);
-      return fy == null || fy <= year;
-    })
-    .map((c) => {
-      const ir = { ok: irSet.has(c.id) };
-      const pnl = { ok: pnlSet.has(c.id) };
-      const bs = { ok: bsSet.has(c.id) };
-      const gl = { ok: glSet.has(c.id) };
-      const bank = { ok: bankSet.has(c.id) };
-      const complete = [ir, pnl, bs, gl, bank].filter((x) => x.ok).length;
-      return { companyId: c.id, companyName: c.legalName, ir, pnl, bs, gl, bank, complete };
-    });
+  // Primeiro ano de cada empresa: data de abertura OU o ano mais antigo com dado (IR/QBO).
+  // Se esse ano for DEPOIS do analisado, a empresa ainda não existia → N/A.
+  const earliest = new Map<string, number>();
+  const seed = (id: string | null, y: number | null) => {
+    if (!id || !y) return;
+    const cur = earliest.get(id);
+    if (cur == null || y < cur) earliest.set(id, y);
+  };
+  for (const c of companies) seed(c.id, yearOf(c.formationDate));
+  for (const r of returns) seed(r.companyId, r.year);
+  for (const i of imports) seed(i.companyId, yearOf(i.periodLabel));
+
+  const rows: CompletenessRow[] = companies.map((c) => {
+    const first = earliest.get(c.id);
+    const existed = first == null || first <= year;
+    const ir = { ok: irSet.has(c.id) };
+    const pnl = { ok: pnlSet.has(c.id) };
+    const bs = { ok: bsSet.has(c.id) };
+    const gl = { ok: glSet.has(c.id) };
+    const bank = { ok: bankSet.has(c.id) };
+    const complete = existed ? [ir, pnl, bs, gl, bank].filter((x) => x.ok).length : 0;
+    return { companyId: c.id, companyName: c.legalName, existed, ir, pnl, bs, gl, bank, complete };
+  });
 
   return { rows, years: [...years].sort((a, b) => b - a) };
 }

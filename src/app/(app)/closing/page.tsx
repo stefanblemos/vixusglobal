@@ -26,10 +26,11 @@ export default async function ClosingPage({
   const year = wanted ?? (years.includes(currentYear - 1) ? currentYear - 1 : years[0]);
   const { rows } = wanted === year ? probe : await buildCompleteness(year);
 
-  const fullyComplete = rows.filter((r) => r.complete === COLS.length).length;
+  const existing = rows.filter((r) => r.existed);
+  const fullyComplete = existing.filter((r) => r.complete === COLS.length).length;
   const missingByCol = COLS.map((c) => ({
     label: c.label,
-    missing: rows.filter((r) => !r[c.key].ok).length,
+    missing: existing.filter((r) => !r[c.key].ok).length,
   }));
 
   return (
@@ -56,7 +57,7 @@ export default async function ClosingPage({
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label={`Complete (${year})`} value={`${fullyComplete} / ${rows.length}`} good={fullyComplete === rows.length} />
+        <Stat label={`Complete (${year})`} value={`${fullyComplete} / ${existing.length}`} good={existing.length > 0 && fullyComplete === existing.length} />
         {missingByCol
           .filter((m) => m.missing > 0)
           .slice(0, 3)
@@ -87,33 +88,51 @@ export default async function ClosingPage({
               </tr>
             ) : (
               rows.map((r) => (
-                <tr key={r.companyId} className="hover:bg-slate-50/60">
+                <tr
+                  key={r.companyId}
+                  className={r.existed ? "hover:bg-slate-50/60" : "bg-slate-50/40 text-slate-400"}
+                >
                   <td className="px-4 py-3">
-                    <Link
-                      href={`/companies/${r.companyId}/year/${year}`}
-                      className="font-medium text-[#1f3a5f] hover:underline"
-                    >
-                      {r.companyName}
-                    </Link>
+                    {r.existed ? (
+                      <Link
+                        href={`/companies/${r.companyId}/year/${year}`}
+                        className="font-medium text-[#1f3a5f] hover:underline"
+                      >
+                        {r.companyName}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-slate-400">{r.companyName}</span>
+                    )}
                   </td>
-                  {COLS.map((c) => (
-                    <td key={c.key} className="px-3 py-3 text-center">
-                      <Mark cell={r[c.key]} />
-                    </td>
-                  ))}
-                  <td className="px-3 py-3 text-center">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        r.complete === COLS.length
-                          ? "bg-green-50 text-green-700"
-                          : r.complete === 0
-                            ? "bg-red-50 text-red-700"
-                            : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {r.complete}/{COLS.length}
-                    </span>
-                  </td>
+                  {!r.existed ? (
+                    <>
+                      <td colSpan={COLS.length} className="px-3 py-3 text-center text-xs text-slate-400">
+                        N/A — not yet incorporated in {year}
+                      </td>
+                      <td className="px-3 py-3 text-center text-xs text-slate-400">N/A</td>
+                    </>
+                  ) : (
+                    <>
+                      {COLS.map((c) => (
+                        <td key={c.key} className="px-3 py-3 text-center">
+                          <Mark cell={r[c.key]} />
+                        </td>
+                      ))}
+                      <td className="px-3 py-3 text-center">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            r.complete === COLS.length
+                              ? "bg-green-50 text-green-700"
+                              : r.complete === 0
+                                ? "bg-red-50 text-red-700"
+                                : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {r.complete}/{COLS.length}
+                        </span>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))
             )}
