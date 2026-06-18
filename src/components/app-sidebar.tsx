@@ -18,6 +18,7 @@ import {
   ListChecks,
   FolderOpen,
   PiggyBank,
+  ClipboardCheck,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -67,6 +68,7 @@ const NAV: Entry[] = [
     label: "Audit & Review",
     icon: ListChecks,
     items: [
+      { href: "/closing", label: "Closing", icon: ClipboardCheck },
       { href: "/review", label: "Review", icon: ListChecks },
       { href: "/audit", label: "Audit", icon: Activity },
       { href: "/reports", label: "Reports", icon: PieChart },
