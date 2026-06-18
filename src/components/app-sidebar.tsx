@@ -21,6 +21,7 @@ import {
   ClipboardCheck,
   CalendarClock,
   GitCompare,
+  FileText,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -62,6 +63,7 @@ const NAV: Entry[] = [
     icon: ReceiptText,
     items: [
       { href: "/tax", label: "Tax", icon: ReceiptText },
+      { href: "/1099", label: "1099 worklist", icon: FileText },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
     ],
   },
