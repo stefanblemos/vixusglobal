@@ -22,8 +22,16 @@ const TXN_LABEL: Record<string, string> = {
 const pct = (v: { toString(): string }) => `${Number(v.toString()) * 100}`;
 const isoDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
 
-export default async function LoanDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function LoanDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const { tab } = await searchParams;
+  const activeTab = tab === "transactions" || tab === "terms" ? tab : "closings";
   const loan = await prisma.intercompanyLoan.findUnique({
     where: { id },
     include: {
@@ -155,6 +163,27 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
         />
       </div>
 
+      <div className="flex gap-1 border-b border-slate-200">
+        {[
+          { key: "closings", label: "Annual closings" },
+          { key: "transactions", label: "Transactions" },
+          { key: "terms", label: "Terms" },
+        ].map((t) => (
+          <Link
+            key={t.key}
+            href={`/loans/${loan.id}?tab=${t.key}`}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm ${
+              activeTab === t.key
+                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
+
+      {activeTab === "transactions" && (
       <section className="space-y-2">
         <h2 className="text-lg font-medium text-slate-800">QBO reconciliation</h2>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -192,7 +221,9 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
           )}
         </div>
       </section>
+      )}
 
+      {activeTab === "closings" && (
       <section className="space-y-2">
         <h2 className="text-lg font-medium text-slate-800">Annual closings</h2>
         <p className="text-sm text-slate-500">
@@ -291,7 +322,9 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
           </span>
         </form>
       </section>
+      )}
 
+      {activeTab === "terms" && (
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-800">Terms</h2>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -309,7 +342,9 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
           />
         </div>
       </section>
+      )}
 
+      {activeTab === "transactions" && (
       <section className="space-y-3">
         <h2 className="text-lg font-medium text-slate-800">Transactions (ledger)</h2>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -365,6 +400,7 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ id:
           <AddTransactionForm loanId={loan.id} />
         </div>
       </section>
+      )}
     </div>
   );
 }
