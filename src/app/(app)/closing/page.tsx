@@ -35,12 +35,28 @@ export default async function ClosingPage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Closing — completeness</h1>
-        <p className="text-sm text-slate-500">
-          What&rsquo;s on file to close each company&rsquo;s year — return, P&amp;L, balance sheet,
-          general ledger and bank statement. Red means it&rsquo;s missing.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Closing — completeness</h1>
+          <p className="text-sm text-slate-500">
+            What&rsquo;s on file to close each company&rsquo;s year — return, P&amp;L, balance sheet,
+            general ledger and bank statement. Red means it&rsquo;s missing.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link
+            href="/import"
+            className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"
+          >
+            Upload reports (P&amp;L / BS / GL)
+          </Link>
+          <Link
+            href="/tax"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            Upload returns
+          </Link>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
