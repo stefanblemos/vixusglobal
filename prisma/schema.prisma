@@ -171,6 +171,29 @@ model Company {
   corporateDocs   CorporateDoc[]
   yearNotes       CompanyYearNote[]
   obligationStatuses ObligationStatus[]
+  fixedAssets     FixedAsset[]
+}
+
+// Ativo fixo depreciável (US/MACRS). Guarda tipo, data em serviço, custo e as opções de
+// aceleração (§179 / bonus). A depreciação é CALCULADA pelo motor (macrs.ts), não armazenada.
+model FixedAsset {
+  id              String    @id @default(cuid())
+  companyId       String
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name            String
+  category        String // AUTO | COMPUTER | EQUIPMENT | FURNITURE | LAND_IMP | RESIDENTIAL_RE | COMMERCIAL_RE | OTHER
+  acquisitionDate DateTime  @db.Date // colocado em serviço
+  cost            Decimal   @db.Decimal(20, 4)
+  recoveryYears   Decimal   @db.Decimal(4, 1) // 5, 7, 15, 27.5, 39…
+  method          String // MACRS | SL_MM (real property = straight-line mid-month)
+  section179      Decimal   @default(0) @db.Decimal(20, 4) // deduzido no 1º ano
+  bonusPct        Decimal   @default(0) @db.Decimal(5, 2) // % de bonus depreciation (após §179)
+  disposalDate    DateTime? @db.Date
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([companyId])
 }
 
 // Status de uma instância de obrigação (empresa + obrigação + período). Ausência da linha

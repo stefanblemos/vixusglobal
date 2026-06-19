@@ -22,6 +22,7 @@ import {
   CalendarClock,
   GitCompare,
   FileText,
+  Boxes,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -64,6 +65,7 @@ const NAV: Entry[] = [
     items: [
       { href: "/tax", label: "Tax", icon: ReceiptText },
       { href: "/1099", label: "1099 worklist", icon: FileText },
+      { href: "/assets", label: "Assets & depreciation", icon: Boxes },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
     ],
   },
