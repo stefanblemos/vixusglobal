@@ -34,11 +34,28 @@ export function BankImportForm({ banks }: { banks: { id: string; label: string }
 
   function analyze() {
     setError("");
+    if (!text.trim()) {
+      setError("Choose a CSV file first (or wait for it to finish loading).");
+      return;
+    }
     start(async () => {
       try {
-        setResult(await analyzeBankStatement(text, bankId));
-      } catch {
-        setError("Could not parse with this bank's format. Try another bank.");
+        const r = await analyzeBankStatement(text, bankId);
+        if (r.statement.lines.length === 0) {
+          const label = banks.find((b) => b.id === bankId)?.label ?? "this bank";
+          setError(
+            `No transactions were recognized with the ${label} format. Check the bank you picked and that this is the bank's CSV export.`,
+          );
+          return;
+        }
+        setResult(r);
+      } catch (err) {
+        // Mostra o erro real (parse, permissão, rede) em vez de uma mensagem genérica enganosa.
+        setError(
+          err instanceof Error && err.message
+            ? `Import failed: ${err.message}`
+            : "Import failed — please try again.",
+        );
       }
     });
   }

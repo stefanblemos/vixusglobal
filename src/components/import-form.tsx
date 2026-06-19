@@ -62,6 +62,10 @@ export function ImportForm() {
     setError("");
     setResult(null);
     setGlResult(null);
+    if (!text.trim()) {
+      setError("Choose a CSV/Excel file first (or wait for it to finish loading).");
+      return;
+    }
     start(async () => {
       try {
         if (looksLikeGeneralLedger(text)) {
@@ -70,11 +74,19 @@ export function ImportForm() {
           setCompanyId(r.matchedCompanyId ?? "");
         } else {
           const r = await analyzeQbo(text);
+          if (r.report.lines.length === 0) {
+            setError("No report lines were recognized. Is this a QBO Balance Sheet / P&L / GL export?");
+            return;
+          }
           setResult(r);
           setCompanyId(r.matchedCompanyId ?? "");
         }
-      } catch {
-        setError("Could not parse this file. Is it a QBO CSV report?");
+      } catch (err) {
+        setError(
+          err instanceof Error && err.message
+            ? `Import failed: ${err.message}`
+            : "Import failed — please try again.",
+        );
       }
     });
   }

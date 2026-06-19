@@ -522,7 +522,8 @@ model BankStatementLine {
   description  String
   amount       Decimal        @db.Decimal(20, 4)
   balance      Decimal?       @db.Decimal(20, 4)
-  matchedTxnId String? // LedgerTxn reconciliada
+  matchedTxnId String? // LedgerTxn reconciliada (no split, o 1º dos lançamentos)
+  matchNote    String? // ex.: "split — 3 entries" (1 linha do banco = N lançamentos no GL)
   status       BankLineStatus @default(UNREVIEWED)
   note         String?
   reviewedAt   DateTime?
