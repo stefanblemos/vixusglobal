@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
+import { buildDepreciationVsIR } from "@/lib/assets/dep-vs-ir";
 import { AssetCreateForm } from "@/components/asset-create-form";
 import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
@@ -15,7 +16,10 @@ export default async function AssetsPage({
   const currentYear = new Date().getUTCFullYear();
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : currentYear;
 
-  const reg = await buildAssetRegister(year, company);
+  const [reg, vsIr] = await Promise.all([
+    buildAssetRegister(year, company),
+    buildDepreciationVsIR(year),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -31,7 +35,7 @@ export default async function AssetsPage({
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
         <span className="mr-1 text-slate-400">Year:</span>
-        {reg.years.map((y) => (
+        {vsIr.years.map((y) => (
           <Link
             key={y}
             href={`/assets?year=${y}${company ? `&company=${company}` : ""}`}
@@ -78,6 +82,72 @@ export default async function AssetsPage({
             </tbody>
           </table>
         </div>
+      )}
+
+      {vsIr.rows.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return — {year}</h2>
+          <p className="text-sm text-slate-500">
+            The computed MACRS depreciation against the depreciation reported on the income tax
+            return (Form 4562 line on the 1120/1065). A gap means the assets on file and the return
+            don&rsquo;t agree — investigate before relying on either.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Company</th>
+                  <th className="px-3 py-2 text-right font-medium">Computed (MACRS)</th>
+                  <th className="px-3 py-2 text-right font-medium">IR reported</th>
+                  <th className="px-3 py-2 text-right font-medium">Difference</th>
+                  <th className="px-3 py-2 text-center font-medium"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {vsIr.rows.map((r) => (
+                  <tr key={r.companyId} className={r.reported != null && !r.ok ? "bg-rose-50/40" : ""}>
+                    <td className="px-4 py-2">
+                      <Link href={`/companies/${r.companyId}`} className="font-medium text-[#1f3a5f] hover:underline">
+                        {r.name}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                      {formatMoney(r.computed, "USD")}
+                    </td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                      {r.reported == null ? (
+                        <span className="text-xs text-amber-600">no IR figure</span>
+                      ) : (
+                        formatMoney(r.reported, "USD")
+                      )}
+                    </td>
+                    <td
+                      className={`px-3 py-2 text-right tabular-nums ${
+                        r.diff == null ? "text-slate-300" : r.ok ? "text-slate-400" : "font-medium text-rose-600"
+                      }`}
+                    >
+                      {r.diff == null ? "—" : formatMoney(r.diff, "USD")}
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      {r.reported == null ? (
+                        <span className="text-slate-300">—</span>
+                      ) : r.ok ? (
+                        <span className="text-green-600">✓</span>
+                      ) : (
+                        <span className="text-rose-500">✗</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-slate-400">
+            ✓ within 1% or $1. &ldquo;No IR figure&rdquo; = no return on file for {year}, or the
+            return had no depreciation line extracted. The IR figure is the year&rsquo;s deduction;
+            accumulated computed is in the table above.
+          </p>
+        </section>
       )}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
