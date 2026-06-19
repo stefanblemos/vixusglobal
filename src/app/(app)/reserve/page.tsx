@@ -23,7 +23,7 @@ export default async function ReservePage({
   const fallbackYear = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
 
-  const [{ rows }, globalRateRow] = await Promise.all([
+  const [{ rows, flow }, globalRateRow] = await Promise.all([
     buildTaxReserve(year),
     prisma.taxReserveRate.findUnique({ where: { companyId: GLOBAL_RATE_KEY } }),
   ]);
@@ -32,6 +32,7 @@ export default async function ReservePage({
   // Total a reservar por moeda (não dá pra somar USD + BRL + EUR).
   const totals = new Map<string, number>();
   for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.reserve);
+  const anyAssets = rows.some((r) => r.hasAssets);
 
   return (
     <div className="space-y-6">
@@ -81,15 +82,18 @@ export default async function ReservePage({
         </div>
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-4 py-2 font-medium">P&amp;L period</th>
-                  <th className="px-4 py-2 text-right font-medium">Estimated profit</th>
-                  <th className="px-4 py-2 text-right font-medium">Rate</th>
-                  <th className="px-4 py-2 text-right font-medium">Reserve this period</th>
+                  <th className="px-3 py-2 text-right font-medium">Book profit</th>
+                  {anyAssets && (
+                    <th className="px-3 py-2 text-right font-medium">Depreciation book → tax</th>
+                  )}
+                  <th className="px-3 py-2 text-right font-medium">Taxable profit</th>
+                  <th className="px-3 py-2 text-right font-medium">Rate</th>
+                  <th className="px-4 py-2 text-right font-medium">Reserve</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -102,20 +106,42 @@ export default async function ReservePage({
                       >
                         {r.name}
                       </Link>
+                      <div className="text-xs text-slate-400">
+                        {r.importId ? (
+                          <Link href={`/import/${r.importId}`} className="hover:underline">
+                            {r.periodLabel}
+                          </Link>
+                        ) : (
+                          r.periodLabel
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-2 text-slate-500">
-                      {r.importId ? (
-                        <Link href={`/import/${r.importId}`} className="hover:underline">
-                          {r.periodLabel}
-                        </Link>
-                      ) : (
-                        r.periodLabel
-                      )}
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                       {money(r.profit, r.currency)}
                     </td>
-                    <td className="px-4 py-2 text-right">
+                    {anyAssets && (
+                      <td className="px-3 py-2 text-right text-xs tabular-nums">
+                        {r.hasAssets ? (
+                          <span title={`Book dep ${money(r.bookDep, r.currency)} − Tax dep ${money(r.taxDep, r.currency)}`}>
+                            <span className="text-slate-400">
+                              {money(r.bookDep, r.currency)} → {money(r.taxDep, r.currency)}
+                            </span>
+                            <span
+                              className={`ml-1 ${r.depAdjustment < 0 ? "text-rose-600" : "text-emerald-600"}`}
+                            >
+                              ({r.depAdjustment >= 0 ? "+" : ""}
+                              {money(r.depAdjustment, r.currency)})
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-800">
+                      {money(r.taxableProfit, r.currency)}
+                    </td>
+                    <td className="px-3 py-2 text-right">
                       <form action={setReserveRate} className="flex items-center justify-end gap-1">
                         <input type="hidden" name="companyId" value={r.companyId} />
                         <input
@@ -125,17 +151,16 @@ export default async function ReservePage({
                           step="0.5"
                           min="0"
                           max="100"
-                          className={`w-16 rounded border px-1.5 py-0.5 text-right text-xs ${
+                          className={`w-14 rounded border px-1.5 py-0.5 text-right text-xs ${
                             r.hasOverride ? "border-[#1f3a5f] text-[#1f3a5f]" : "border-slate-200"
                           }`}
                         />
-                        <span className="text-xs text-slate-400">%</span>
                         <button className="rounded border border-slate-300 px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100">
                           set
                         </button>
                       </form>
                     </td>
-                    <td className="px-4 py-2 text-right font-medium tabular-nums text-slate-800">
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
                       {money(r.reserve, r.currency)}
                     </td>
                   </tr>
@@ -144,7 +169,7 @@ export default async function ReservePage({
               <tfoot className="border-t-2 border-slate-200 bg-slate-50/60">
                 {[...totals.entries()].map(([ccy, total]) => (
                   <tr key={ccy}>
-                    <td className="px-4 py-2 font-medium text-slate-700" colSpan={4}>
+                    <td className="px-4 py-2 font-medium text-slate-700" colSpan={anyAssets ? 5 : 4}>
                       Total to move into the reserve account ({ccy})
                     </td>
                     <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
@@ -156,11 +181,50 @@ export default async function ReservePage({
             </table>
           </div>
 
+          {flow.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="text-lg font-medium text-slate-800">Profit flow to owners</h2>
+              <p className="text-sm text-slate-500">
+                Where each company&apos;s taxable profit lands by direct ownership — which entity or
+                person it passes through to.
+              </p>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Owner</th>
+                      <th className="px-4 py-2 font-medium">From</th>
+                      <th className="px-4 py-2 text-right font-medium">Attributed profit</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {flow.map((f) => (
+                      <tr key={f.name}>
+                        <td className="px-4 py-2 font-medium text-slate-700">{f.name}</td>
+                        <td className="px-4 py-2 text-xs text-slate-500">
+                          {f.from
+                            .map((x) => `${x.company} (${money(x.amount, "USD")})`)
+                            .join(" · ")}
+                        </td>
+                        <td className="px-4 py-2 text-right font-medium tabular-nums text-slate-800">
+                          {money(f.total, "USD")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
           <p className="text-xs text-slate-400">
-            Estimate based on the year&apos;s P&amp;L net income (annual report, or the sum of the
-            monthly ones) × the reserve rate; no reserve on a loss. It already includes booked
-            depreciation; tax depreciation is usually larger, so reserving on book profit errs on
-            the safe side. Reconciled against the actual tax return at year-end.
+            Taxable profit = book net income, swapping booked depreciation for the computed{" "}
+            <Link href="/assets" className="text-[#1f3a5f] hover:underline">
+              MACRS depreciation
+            </Link>{" "}
+            where assets are on file (book − tax). Reserve = taxable profit × rate; no reserve on a
+            loss. Profit flow uses direct ownership and is informational — pass-through depends on
+            the entity type. Reconcile against the actual return at year-end.
           </p>
         </>
       )}
