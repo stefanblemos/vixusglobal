@@ -261,21 +261,31 @@ export type QuarterlyRow = {
   name: string;
   currency: string;
   ratePct: number;
-  quarters: { profit: number | null; reserve: number }[]; // Q1..Q4
+  quarters: { profit: number | null; reserve: number; funded: number }[]; // Q1..Q4
   annualOnly: boolean; // só tem P&L anual (sem detalhe trimestral)
   fyProfit: number | null;
   fyReserve: number;
+  fyFunded: number; // aportado de fato na conta-reserva
+  fyGap: number; // necessário − aportado (positivo = falta provisionar)
 };
 
 export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
-  const [companies, pnls, { global, override }] = await Promise.all([
+  const [companies, pnls, { global, override }, deposits] = await Promise.all([
     prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true } }),
     prisma.qboImport.findMany({
       where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
       select: { id: true, companyId: true, periodLabel: true },
     }),
     rateConfig(),
+    prisma.reserveDeposit.findMany({ where: { year }, select: { companyId: true, quarter: true, amount: true } }),
   ]);
+
+  const fundedByCompany = new Map<string, number[]>(); // [Q1..Q4]
+  for (const d of deposits) {
+    const arr = fundedByCompany.get(d.companyId) ?? [0, 0, 0, 0];
+    if (d.quarter >= 1 && d.quarter <= 4) arr[d.quarter - 1] += Number(d.amount.toString());
+    fundedByCompany.set(d.companyId, arr);
+  }
 
   const byCompany = new Map<string, { id: string; periodLabel: string }[]>();
   for (const p of pnls) {
@@ -314,14 +324,17 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
       p != null && p > 0 ? Math.round(((p * ratePct) / 100) * 100) / 100 : 0;
 
     const annualOnly = !hasQuarterData && annualProfit != null;
-    const quarters = qProfit.map((p) => ({ profit: p, reserve: r(p) }));
+    const funded = fundedByCompany.get(c.id) ?? [0, 0, 0, 0];
+    const quarters = qProfit.map((p, i) => ({ profit: p, reserve: r(p), funded: funded[i] }));
     const fyProfit = hasQuarterData
       ? qProfit.reduce<number | null>((s, p) => (p == null ? s : (s ?? 0) + p), null)
       : annualProfit;
     const fyReserve = hasQuarterData
       ? quarters.reduce((s, q) => s + q.reserve, 0)
       : r(annualProfit);
+    const fyFunded = funded.reduce((s, v) => s + v, 0);
 
+    // Sem dados de aporte E sem necessidade → pula (não polui a tabela). Mantém se houver algo.
     rows.push({
       companyId: c.id,
       name: c.legalName,
@@ -331,6 +344,8 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
       annualOnly,
       fyProfit,
       fyReserve: Math.round(fyReserve * 100) / 100,
+      fyFunded: Math.round(fyFunded * 100) / 100,
+      fyGap: Math.round((fyReserve - fyFunded) * 100) / 100,
     });
   }
   rows.sort((a, b) => b.fyReserve - a.fyReserve);

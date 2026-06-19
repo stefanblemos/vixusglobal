@@ -172,6 +172,23 @@ model Company {
   yearNotes       CompanyYearNote[]
   obligationStatuses ObligationStatus[]
   fixedAssets     FixedAsset[]
+  reserveDeposits ReserveDeposit[]
+}
+
+// Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o
+// necessário (funded vs needed) por trimestre.
+model ReserveDeposit {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  year        Int
+  quarter     Int // 1-4
+  amount      Decimal   @db.Decimal(20, 4)
+  depositedAt DateTime? @db.Date
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  @@index([companyId, year])
 }
 
 // Ativo fixo depreciável (US/MACRS). Guarda tipo, data em serviço, custo e as opções de

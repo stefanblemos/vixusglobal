@@ -27,3 +27,34 @@ export async function setReserveRate(formData: FormData): Promise<void> {
   });
   revalidatePath("/reserve");
 }
+
+// Registra um aporte real na conta-reserva (funded). Quarter 1-4.
+export async function addReserveDeposit(formData: FormData): Promise<void> {
+  const companyId = String(formData.get("companyId") ?? "").trim();
+  const year = Number(String(formData.get("year") ?? ""));
+  const quarter = Number(String(formData.get("quarter") ?? ""));
+  const amount = Number(String(formData.get("amount") ?? "").replace(/[^0-9.\-]/g, ""));
+  const depositedRaw = String(formData.get("depositedAt") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+
+  if (!companyId || !Number.isInteger(year) || ![1, 2, 3, 4].includes(quarter)) return;
+  if (!Number.isFinite(amount) || amount <= 0) return;
+
+  await prisma.reserveDeposit.create({
+    data: {
+      companyId,
+      year,
+      quarter,
+      amount,
+      depositedAt: /^\d{4}-\d{2}-\d{2}$/.test(depositedRaw) ? new Date(`${depositedRaw}T00:00:00Z`) : null,
+      note: note || null,
+    },
+  });
+  revalidatePath("/reserve");
+}
+
+export async function deleteReserveDeposit(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (id) await prisma.reserveDeposit.delete({ where: { id } });
+  revalidatePath("/reserve");
+}
