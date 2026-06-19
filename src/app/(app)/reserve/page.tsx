@@ -9,6 +9,8 @@ import {
 import { setReserveRate } from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
 import { YearSelect } from "@/components/year-select";
+import { CompletenessModal } from "@/components/completeness-modal";
+import { buildGroupCompleteness } from "@/lib/tax/group-completeness";
 
 const money = (v: number | null, ccy = "USD") =>
   v == null
@@ -29,9 +31,10 @@ export default async function ReservePage({
   const fallbackYear = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
 
-  const [{ rows, flow }, { rows: qRows }, globalRateRow] = await Promise.all([
+  const [{ rows, flow }, { rows: qRows }, completeness, globalRateRow] = await Promise.all([
     buildTaxReserve(year),
     buildQuarterlyReserve(year),
+    buildGroupCompleteness(year),
     prisma.taxReserveRate.findUnique({ where: { companyId: GLOBAL_RATE_KEY } }),
   ]);
   const globalRate = Number(globalRateRow?.ratePct ?? 30);
@@ -55,7 +58,10 @@ export default async function ReservePage({
             when the bill comes.
           </p>
         </div>
-        {years.length > 0 && <YearSelect years={years} value={year} basePath="/reserve" />}
+        <div className="flex items-center gap-2">
+          <CompletenessModal data={completeness} />
+          {years.length > 0 && <YearSelect years={years} value={year} basePath="/reserve" />}
+        </div>
       </div>
 
       {/* Default rate */}
