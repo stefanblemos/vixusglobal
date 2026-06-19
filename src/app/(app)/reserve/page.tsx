@@ -6,7 +6,12 @@ import {
   QUARTER_DUE,
 } from "@/lib/tax/reserve";
 import { yearRates } from "@/lib/tax/reserve";
-import { setReserveRate, setTaxRateYear } from "@/lib/actions/reserve";
+import {
+  setReserveRate,
+  setTaxRateYear,
+  lockReserveYear,
+  unlockReserveYear,
+} from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
 import { YearSelect } from "@/components/year-select";
 import { CompletenessModal } from "@/components/completeness-modal";
@@ -65,6 +70,9 @@ export default async function ReservePage({
     note: d.note,
   }));
   const depositCompanies = qRows.map((q) => ({ id: q.companyId, name: q.name }));
+  const lock = await prisma.reserveLock.findUnique({ where: { year } });
+  const locked = !!lock;
+  const lockedDate = lock ? new Date(lock.lockedAt).toISOString().slice(0, 10) : null;
 
   // Total a reservar por moeda (não dá pra somar USD + BRL + EUR).
   const totals = new Map<string, number>();
@@ -107,6 +115,21 @@ export default async function ReservePage({
         ))}
       </div>
 
+      {locked && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>
+            <span className="font-medium">{year} locked</span> — provision snapshot taken{" "}
+            {lockedDate}. The figures are frozen as a record; unlock to edit.
+          </span>
+          <form action={unlockReserveYear} className="ml-auto">
+            <input type="hidden" name="year" value={year} />
+            <button className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100">
+              Unlock
+            </button>
+          </form>
+        </div>
+      )}
+
       {tab === "settings" && (
         <section className="space-y-3">
           <div>
@@ -127,7 +150,10 @@ export default async function ReservePage({
             <RateField name="flPct" label="Florida corporate" value={rates.flPct} suffix="%" />
             <RateField name="flExemption" label="Florida exemption" value={rates.flExemption} suffix="$" />
             <div className="col-span-2 md:col-span-4">
-              <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
+              <button
+                disabled={locked}
+                className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-50"
+              >
                 Save rates
               </button>
             </div>
@@ -136,6 +162,30 @@ export default async function ReservePage({
             Per-company overrides still apply on top (set them in the Annual tab&apos;s rate column).
             These rates only seed the current and prior year — older years are archived.
           </p>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-sm font-medium text-slate-700">Close &amp; lock {year}</div>
+                <p className="text-xs text-slate-500">
+                  Takes a provision snapshot and freezes the screen as a record. It&apos;s an
+                  estimate — you can unlock and reopen anytime.
+                </p>
+              </div>
+              {locked ? (
+                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
+                  Locked {lockedDate}
+                </span>
+              ) : (
+                <form action={lockReserveYear}>
+                  <input type="hidden" name="year" value={year} />
+                  <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
+                    Close &amp; lock {year}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
         </section>
       )}
 
@@ -154,7 +204,9 @@ export default async function ReservePage({
           <section className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-medium text-slate-800">Quarterly closing — needed vs funded</h2>
-              <ReserveDepositModal year={year} companies={depositCompanies} deposits={deposits} />
+              {!locked && (
+                <ReserveDepositModal year={year} companies={depositCompanies} deposits={deposits} />
+              )}
             </div>
             <p className="text-sm text-slate-500">
               Per quarter, the amount to set aside (aligned to the estimated-tax deadlines) and what

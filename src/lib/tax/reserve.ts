@@ -110,8 +110,18 @@ async function profitForYear(pnls: Pnl[], year: number) {
   };
 }
 
-// Anos que têm algum P&L (para o seletor).
+// A provisão só vale para o ano VIGENTE e o ANTERIOR, e nunca antes de 2025.
+// Anos mais antigos ficam arquivados (fora do seletor).
+export const RESERVE_MIN_YEAR = 2025;
+export function reserveScopeYears(): number[] {
+  const cur = new Date().getUTCFullYear();
+  return [cur, cur - 1].filter((y) => y >= RESERVE_MIN_YEAR);
+}
+
+// Anos do seletor: vigente + anterior (≥2025) que tenham P&L; o vigente sempre aparece.
 export async function reserveYears(): Promise<number[]> {
+  const cur = new Date().getUTCFullYear();
+  const allowed = reserveScopeYears();
   const pnls = await prisma.qboImport.findMany({
     where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
     select: { periodLabel: true },
@@ -121,7 +131,7 @@ export async function reserveYears(): Promise<number[]> {
     const y = yearOf(p.periodLabel);
     if (y) ys.add(y);
   }
-  return [...ys].sort((a, b) => b - a);
+  return allowed.filter((y) => y === cur || ys.has(y));
 }
 
 export type ReserveOwner = { name: string; pct: number; attributed: number };
@@ -333,6 +343,9 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
     fundedByCompany.set(d.companyId, arr);
   }
 
+  // Granularidade trimestral SÓ no ano vigente; anos anteriores entram como anual.
+  const showQuarters = year === new Date().getUTCFullYear();
+
   const byCompany = new Map<string, { id: string; periodLabel: string }[]>();
   for (const p of pnls) {
     if (!p.companyId || yearOf(p.periodLabel) !== year) continue;
@@ -354,12 +367,12 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
       const pm = periodMonths(imp.periodLabel);
       const ni = await netIncomeOf(imp.id);
       if (ni == null) continue;
-      if (pm && quarterOf(pm.start) === quarterOf(pm.end)) {
+      if (showQuarters && pm && quarterOf(pm.start) === quarterOf(pm.end)) {
         const q = quarterOf(pm.start) - 1;
         qProfit[q] = (qProfit[q] ?? 0) + ni;
         hasQuarterData = true;
       } else {
-        // Anual ou multi-trimestre: não dá pra fatiar → trata como anual.
+        // Anual, multi-trimestre, ou ano não-vigente → trata como anual.
         annualProfit = (annualProfit ?? 0) + ni;
       }
     }

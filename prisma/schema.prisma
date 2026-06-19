@@ -427,6 +427,14 @@ model TaxRateYear {
   updatedAt   DateTime @updatedAt
 }
 
+// Fechamento da provisão de um ANO: snapshot dos números no momento do fecho. Trava a tela
+// (somente leitura) — é provisão, pode reabrir, mas o snapshot fica como registro.
+model ReserveLock {
+  year     Int      @id
+  lockedAt DateTime @default(now())
+  snapshot Json
+}
+
 // ─────────────────────────────────────────────────────────────
 // Importações do QuickBooks (QBO) — relatórios em CSV
 // ─────────────────────────────────────────────────────────────

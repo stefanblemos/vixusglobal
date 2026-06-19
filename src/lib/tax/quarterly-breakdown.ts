@@ -66,6 +66,8 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
       yearRates(year),
     ]);
 
+  // Trimestre só no ano vigente; anos anteriores entram como anual.
+  const showQuarters = year === new Date().getUTCFullYear();
   const treatment = new Map<string, string>();
   for (const r of returns) if (r.companyId && !treatment.has(r.companyId)) treatment.set(r.companyId, r.taxTreatment ?? "");
   const override = new Map(overrideRows.map((o) => [o.companyId, Number(o.ratePct)]));
@@ -93,7 +95,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
       hasAnyPnl.add(cid);
       const pm = periodMonths(imp.periodLabel);
       fy += ni;
-      if (pm && quarterOf(pm.start) === quarterOf(pm.end)) {
+      if (showQuarters && pm && quarterOf(pm.start) === quarterOf(pm.end)) {
         const qi = quarterOf(pm.start) - 1;
         q[qi] = (q[qi] ?? 0) + ni;
         anyQ = true;
