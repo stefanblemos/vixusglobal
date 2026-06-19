@@ -59,6 +59,8 @@ export default async function ReservePage({
     company: d.company.legalName,
     quarter: d.quarter,
     amount: Number(d.amount.toString()),
+    purpose: d.purpose,
+    qboRef: d.qboRef,
     depositedAt: d.depositedAt ? d.depositedAt.toISOString().slice(0, 10) : null,
     note: d.note,
   }));

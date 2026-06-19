@@ -184,6 +184,8 @@ model ReserveDeposit {
   year        Int
   quarter     Int // 1-4
   amount      Decimal   @db.Decimal(20, 4)
+  purpose     String    @default("RESERVE") // RESERVE | LOAN_REPAYMENT | INTEREST | OTHER
+  qboRef      String? // onde aparece no QBO da empresa (rastreabilidade)
   depositedAt DateTime? @db.Date
   note        String?
   createdAt   DateTime  @default(now())

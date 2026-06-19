@@ -11,9 +11,18 @@ export interface DepositRow {
   company: string;
   quarter: number;
   amount: number;
+  purpose: string;
+  qboRef: string | null;
   depositedAt: string | null;
   note: string | null;
 }
+
+const PURPOSE_LABEL: Record<string, string> = {
+  RESERVE: "Reserve",
+  LOAN_REPAYMENT: "Loan repayment",
+  INTEREST: "Interest",
+  OTHER: "Other",
+};
 
 export function ReserveDepositModal({
   year,
@@ -83,15 +92,27 @@ export function ReserveDepositModal({
                 <option value="4">Q4</option>
               </select>
               <input name="amount" inputMode="decimal" placeholder="Amount" required className={input} />
+              <select name="purpose" className={input} defaultValue="RESERVE" title="Only 'Reserve' counts as funded">
+                <option value="RESERVE">Reserve</option>
+                <option value="LOAN_REPAYMENT">Loan repayment</option>
+                <option value="INTEREST">Interest</option>
+                <option value="OTHER">Other</option>
+              </select>
               <input name="depositedAt" type="date" className={input} />
+              <input name="qboRef" placeholder="QBO ref (where it shows in QBO)" className={`${input} col-span-2 md:col-span-3`} />
+              <input name="note" placeholder="Note (optional)" className={`${input} col-span-2 md:col-span-2`} />
               <button
                 type="submit"
                 className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"
               >
                 Add
               </button>
-              <input name="note" placeholder="Note (optional)" className={`${input} col-span-2 md:col-span-6`} />
             </form>
+            <p className="mt-2 text-xs text-slate-400">
+              Only deposits marked <span className="font-medium text-slate-600">Reserve</span> count
+              as funded — loan repayments, interest, etc. are recorded for traceability but don&apos;t
+              reduce the gap. Add the QBO reference so it ties to the company&apos;s books.
+            </p>
 
             <div className="mt-5 max-h-[50vh] overflow-auto">
               {deposits.length === 0 ? (
@@ -102,31 +123,44 @@ export function ReserveDepositModal({
                     <tr>
                       <th className="px-3 py-1.5 font-medium">Company</th>
                       <th className="px-3 py-1.5 font-medium">Qtr</th>
-                      <th className="px-3 py-1.5 font-medium">Date</th>
+                      <th className="px-3 py-1.5 font-medium">Purpose</th>
+                      <th className="px-3 py-1.5 font-medium">QBO ref</th>
                       <th className="px-3 py-1.5 text-right font-medium">Amount</th>
                       <th className="px-3 py-1.5"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {deposits.map((d) => (
-                      <tr key={d.id}>
-                        <td className="px-3 py-1.5 text-slate-700">
-                          {d.company}
-                          {d.note && <span className="ml-1 text-xs text-slate-400">· {d.note}</span>}
-                        </td>
-                        <td className="px-3 py-1.5 text-slate-500">Q{d.quarter}</td>
-                        <td className="px-3 py-1.5 text-slate-500">{d.depositedAt ?? "—"}</td>
-                        <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">{usd(d.amount)}</td>
-                        <td className="px-3 py-1.5 text-right">
-                          <form action={deleteReserveDeposit}>
-                            <input type="hidden" name="id" value={d.id} />
-                            <button className="text-xs text-slate-300 hover:text-red-600" title="Delete">
-                              ✕
-                            </button>
-                          </form>
-                        </td>
-                      </tr>
-                    ))}
+                    {deposits.map((d) => {
+                      const counts = d.purpose === "RESERVE";
+                      return (
+                        <tr key={d.id} className={counts ? "" : "text-slate-400"}>
+                          <td className="px-3 py-1.5 text-slate-700">
+                            {d.company}
+                            {d.note && <span className="ml-1 text-xs text-slate-400">· {d.note}</span>}
+                          </td>
+                          <td className="px-3 py-1.5 text-slate-500">Q{d.quarter}</td>
+                          <td className="px-3 py-1.5">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs ${
+                                counts ? "bg-green-50 text-green-700" : "bg-slate-100 text-slate-500"
+                              }`}
+                            >
+                              {PURPOSE_LABEL[d.purpose] ?? d.purpose}
+                            </span>
+                          </td>
+                          <td className="px-3 py-1.5 text-xs text-slate-500">{d.qboRef ?? "—"}</td>
+                          <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">{usd(d.amount)}</td>
+                          <td className="px-3 py-1.5 text-right">
+                            <form action={deleteReserveDeposit}>
+                              <input type="hidden" name="id" value={d.id} />
+                              <button className="text-xs text-slate-300 hover:text-red-600" title="Delete">
+                                ✕
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               )}

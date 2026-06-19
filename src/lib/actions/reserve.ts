@@ -36,6 +36,10 @@ export async function addReserveDeposit(formData: FormData): Promise<void> {
   const amount = Number(String(formData.get("amount") ?? "").replace(/[^0-9.\-]/g, ""));
   const depositedRaw = String(formData.get("depositedAt") ?? "").trim();
   const note = String(formData.get("note") ?? "").trim();
+  const PURPOSES = ["RESERVE", "LOAN_REPAYMENT", "INTEREST", "OTHER"];
+  const purposeRaw = String(formData.get("purpose") ?? "RESERVE");
+  const purpose = PURPOSES.includes(purposeRaw) ? purposeRaw : "RESERVE";
+  const qboRef = String(formData.get("qboRef") ?? "").trim();
 
   if (!companyId || !Number.isInteger(year) || ![1, 2, 3, 4].includes(quarter)) return;
   if (!Number.isFinite(amount) || amount <= 0) return;
@@ -46,6 +50,8 @@ export async function addReserveDeposit(formData: FormData): Promise<void> {
       year,
       quarter,
       amount,
+      purpose,
+      qboRef: qboRef || null,
       depositedAt: /^\d{4}-\d{2}-\d{2}$/.test(depositedRaw) ? new Date(`${depositedRaw}T00:00:00Z`) : null,
       note: note || null,
     },

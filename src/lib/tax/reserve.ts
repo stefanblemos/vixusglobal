@@ -308,7 +308,11 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
     }),
     rateConfig(),
     yearRates(year),
-    prisma.reserveDeposit.findMany({ where: { year }, select: { companyId: true, quarter: true, amount: true } }),
+    // Só aportes marcados como RESERVE contam como funded (outros: empréstimo, juros…).
+    prisma.reserveDeposit.findMany({
+      where: { year, purpose: "RESERVE" },
+      select: { companyId: true, quarter: true, amount: true },
+    }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null }, taxTreatment: { not: null } },
       select: { companyId: true, taxTreatment: true, year: true },
