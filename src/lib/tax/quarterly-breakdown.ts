@@ -10,13 +10,20 @@ import { yearRates } from "./reserve";
 // Avisa quando falta insumo para fechar a base.
 
 export interface QComp {
-  profit: number;
+  profit: number | null; // null = lucro do trimestre desconhecido (P&L anual)
   interestIn: number; // juros a receber (credor)
   interestOut: number; // juros a pagar (tomador)
   depreciation: number; // MACRS do período
   k1: number; // resultado vindo de investidas (±)
-  base: number;
-  tax: number;
+  base: number | null; // null quando o lucro do trimestre é desconhecido
+  tax: number | null;
+}
+
+// Contribuição de cada investida (pass-through) ao K-1 — aberto por empresa.
+export interface K1Item {
+  name: string;
+  quarters: number[]; // Q1..Q4
+  fy: number;
 }
 
 export interface QBreakdownRow {
@@ -24,9 +31,10 @@ export interface QBreakdownRow {
   name: string;
   currency: string;
   ratePct: number;
-  annualOnly: boolean; // só P&L anual → sem split por trimestre
-  quarters: (QComp | null)[]; // Q1..Q4 (null se sem dado do trimestre)
+  annualOnly: boolean; // lucro só anual (badge); juros/dep/K-1 ainda saem por trimestre
+  quarters: QComp[]; // Q1..Q4 (sempre)
   fy: QComp;
+  k1Items: K1Item[]; // K-1 aberto por investida
   missing: string[]; // insumos faltando para fechar a base
 }
 
@@ -166,6 +174,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     });
   }
 
+  const nameById = new Map(companies.map((c) => [c.id, c.legalName]));
   const rows: QBreakdownRow[] = [];
   for (const c of companies) {
     if (!pnlByCompany.has(c.id) && !ownedOf.has(c.id) && !intIn.has(c.id) && !intOut.has(c.id)) continue;
@@ -173,30 +182,41 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     const annualOnly = !hasQ.get(c.id);
     const owned = ownedOf.get(c.id) ?? [];
 
+    // Juros e depreciação saem por trimestre SEMPRE; o lucro só se houver P&L trimestral.
     const mkQuarter = (qi: number): QComp => {
-      const profit = profitQ.get(c.id)?.[qi] ?? 0;
-      const inn = intIn.get(c.id)?.[qi] ?? 0;
-      const out = intOut.get(c.id)?.[qi] ?? 0;
+      const profit = profitQ.get(c.id)?.[qi] ?? null; // null = lucro do trimestre desconhecido
+      const inn = r2(intIn.get(c.id)?.[qi] ?? 0);
+      const out = r2(intOut.get(c.id)?.[qi] ?? 0);
       const dep = r2(depQ(c.id));
       const k1 = r2(owned.reduce((s, o) => s + (standalone(o.ownedId, qi) * o.pct) / 100, 0));
-      const base = r2(profit + inn - out - dep + k1);
-      return { profit: r2(profit), interestIn: r2(inn), interestOut: r2(out), depreciation: dep, k1, base, tax: base > 0 ? r2((base * ratePct) / 100) : 0 };
+      const base = profit == null ? null : r2(profit + inn - out - dep + k1);
+      const tax = base == null ? null : base > 0 ? r2((base * ratePct) / 100) : 0;
+      return { profit: profit == null ? null : r2(profit), interestIn: inn, interestOut: out, depreciation: dep, k1, base, tax };
     };
+    const quarters: QComp[] = [0, 1, 2, 3].map(mkQuarter);
 
-    const quarters: (QComp | null)[] = annualOnly ? [null, null, null, null] : [0, 1, 2, 3].map(mkQuarter);
+    // K-1 aberto por investida (cada empresa pass-through detida).
+    const k1Items: K1Item[] = owned
+      .map((o) => ({
+        name: nameById.get(o.ownedId) ?? "investee",
+        quarters: [0, 1, 2, 3].map((qi) => r2((standalone(o.ownedId, qi) * o.pct) / 100)),
+        fy: r2((standaloneFY(o.ownedId) * o.pct) / 100),
+      }))
+      .filter((it) => it.fy !== 0 || it.quarters.some((q) => q !== 0))
+      .sort((a, b) => Math.abs(b.fy) - Math.abs(a.fy));
 
     // FY
-    const innFY = (intIn.get(c.id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0);
-    const outFY = (intOut.get(c.id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0);
-    const depFY = taxDep.get(c.id) ?? 0;
+    const innFY = r2((intIn.get(c.id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0));
+    const outFY = r2((intOut.get(c.id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0));
+    const depFY = r2(taxDep.get(c.id) ?? 0);
     const k1FY = r2(owned.reduce((s, o) => s + (standaloneFY(o.ownedId) * o.pct) / 100, 0));
-    const profitFYv = profitFY.get(c.id) ?? 0;
+    const profitFYv = r2(profitFY.get(c.id) ?? 0);
     const baseFY = r2(profitFYv + innFY - outFY - depFY + k1FY);
     const fy: QComp = {
-      profit: r2(profitFYv),
-      interestIn: r2(innFY),
-      interestOut: r2(outFY),
-      depreciation: r2(depFY),
+      profit: profitFYv,
+      interestIn: innFY,
+      interestOut: outFY,
+      depreciation: depFY,
       k1: k1FY,
       base: baseFY,
       tax: baseFY > 0 ? r2((baseFY * ratePct) / 100) : 0,
@@ -207,14 +227,13 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     if (loanMissing.has(c.id)) missing.push("empréstimo sem taxa — juros não calculados");
     for (const o of owned) {
       if (!hasAnyPnl.has(o.ownedId)) {
-        const oc = companies.find((x) => x.id === o.ownedId);
-        missing.push(`K-1 de ${oc?.legalName ?? "investida"} — investida sem P&L`);
+        missing.push(`K-1 de ${nameById.get(o.ownedId) ?? "investida"} — investida sem P&L`);
       }
     }
 
-    rows.push({ companyId: c.id, name: c.legalName, currency: c.baseCurrency, ratePct, annualOnly, quarters, fy, missing });
+    rows.push({ companyId: c.id, name: c.legalName, currency: c.baseCurrency, ratePct, annualOnly, quarters, fy, k1Items, missing });
   }
 
-  rows.sort((a, b) => b.fy.tax - a.fy.tax);
+  rows.sort((a, b) => (b.fy.tax ?? 0) - (a.fy.tax ?? 0));
   return { rows };
 }

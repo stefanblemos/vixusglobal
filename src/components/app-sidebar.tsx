@@ -23,6 +23,7 @@ import {
   GitCompare,
   FileText,
   Boxes,
+  Settings,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -68,6 +69,7 @@ const NAV: Entry[] = [
       { href: "/assets", label: "Assets & depreciation", icon: Boxes },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
       { href: "/florida", label: "Florida tax", icon: Landmark },
+      { href: "/tax-settings", label: "Tax settings", icon: Settings },
     ],
   },
   {

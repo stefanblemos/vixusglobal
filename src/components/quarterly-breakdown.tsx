@@ -1,17 +1,16 @@
 import { QUARTER_DUE } from "@/lib/tax/reserve";
-import type { QBreakdownRow, QComp } from "@/lib/tax/quarterly-breakdown";
+import type { QBreakdownRow } from "@/lib/tax/quarterly-breakdown";
 
-const money = (v: number, ccy = "USD") =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: ccy, maximumFractionDigits: 0 }).format(v);
+const money = (v: number | null, ccy = "USD") =>
+  v == null
+    ? null
+    : new Intl.NumberFormat("en-US", { style: "currency", currency: ccy, maximumFractionDigits: 0 }).format(v);
 
-const LINES: { label: string; get: (c: QComp) => number; emphasis?: boolean; muted?: boolean }[] = [
-  { label: "Period profit", get: (c) => c.profit },
-  { label: "+ Interest receivable", get: (c) => c.interestIn },
-  { label: "− Interest payable", get: (c) => c.interestOut, muted: true },
-  { label: "− Depreciation (MACRS)", get: (c) => c.depreciation, muted: true },
-  { label: "± K-1 from investees", get: (c) => c.k1 },
-  { label: "= Taxable base", get: (c) => c.base, emphasis: true },
-];
+const Cell = ({ v, ccy, cls = "" }: { v: number | null; ccy: string; cls?: string }) => (
+  <td className={`px-3 py-1.5 text-right tabular-nums ${cls}`}>
+    {v == null ? <span className="text-slate-300">—</span> : money(v, ccy)}
+  </td>
+);
 
 export function QuarterlyBreakdown({ rows }: { rows: QBreakdownRow[] }) {
   const shown = rows.filter((r) => r.fy.base !== 0 || r.missing.length > 0 || r.fy.profit !== 0);
@@ -22,7 +21,8 @@ export function QuarterlyBreakdown({ rows }: { rows: QBreakdownRow[] }) {
       <h2 className="text-lg font-medium text-slate-800">Base build-up — every variable per quarter</h2>
       <p className="text-sm text-slate-500">
         How each company&apos;s taxable base is built: profit, intercompany interest (in/out),
-        depreciation and K-1 from investees → base → tax. Open a company to see the quarters.
+        depreciation and K-1 from investees → base → tax. Interest and K-1 are shown per quarter even
+        when the profit is only annual; K-1 is broken out by investee.
       </p>
 
       {shown.map((r) => (
@@ -33,12 +33,10 @@ export function QuarterlyBreakdown({ rows }: { rows: QBreakdownRow[] }) {
               FY base {money(r.fy.base, r.currency)} · tax {money(r.fy.tax, r.currency)} @ {r.ratePct}%
             </span>
             {r.annualOnly && (
-              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">annual only</span>
+              <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">annual profit</span>
             )}
             {r.missing.length > 0 && (
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
-                base incomplete
-              </span>
+              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">base incomplete</span>
             )}
           </summary>
 
@@ -57,31 +55,63 @@ export function QuarterlyBreakdown({ rows }: { rows: QBreakdownRow[] }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {LINES.map((ln) => (
-                  <tr key={ln.label} className={ln.emphasis ? "bg-slate-50/60" : ""}>
-                    <td className={`px-4 py-1.5 ${ln.emphasis ? "font-medium text-slate-700" : ln.muted ? "text-slate-500" : "text-slate-600"}`}>
-                      {ln.label}
-                    </td>
-                    {r.quarters.map((q, i) => (
-                      <td key={i} className="px-3 py-1.5 text-right tabular-nums text-slate-600">
-                        {q == null ? <span className="text-slate-300">—</span> : money(ln.get(q), r.currency)}
-                      </td>
+                <tr>
+                  <td className="px-4 py-1.5 text-slate-600">Period profit</td>
+                  {r.quarters.map((q, i) => (
+                    <Cell key={i} v={q.profit} ccy={r.currency} cls="text-slate-600" />
+                  ))}
+                  <Cell v={r.fy.profit} ccy={r.currency} cls="text-slate-600" />
+                </tr>
+                <tr>
+                  <td className="px-4 py-1.5 text-slate-600">+ Interest receivable</td>
+                  {r.quarters.map((q, i) => (
+                    <Cell key={i} v={q.interestIn} ccy={r.currency} cls="text-slate-600" />
+                  ))}
+                  <Cell v={r.fy.interestIn} ccy={r.currency} cls="text-slate-600" />
+                </tr>
+                <tr>
+                  <td className="px-4 py-1.5 text-slate-500">− Interest payable</td>
+                  {r.quarters.map((q, i) => (
+                    <Cell key={i} v={q.interestOut} ccy={r.currency} cls="text-slate-500" />
+                  ))}
+                  <Cell v={r.fy.interestOut} ccy={r.currency} cls="text-slate-500" />
+                </tr>
+                <tr>
+                  <td className="px-4 py-1.5 text-slate-500">− Depreciation (MACRS)</td>
+                  {r.quarters.map((q, i) => (
+                    <Cell key={i} v={q.depreciation} ccy={r.currency} cls="text-slate-500" />
+                  ))}
+                  <Cell v={r.fy.depreciation} ccy={r.currency} cls="text-slate-500" />
+                </tr>
+                <tr>
+                  <td className="px-4 py-1.5 text-slate-600">± K-1 from investees</td>
+                  {r.quarters.map((q, i) => (
+                    <Cell key={i} v={q.k1} ccy={r.currency} cls="text-slate-600" />
+                  ))}
+                  <Cell v={r.fy.k1} ccy={r.currency} cls="text-slate-600" />
+                </tr>
+                {r.k1Items.map((it) => (
+                  <tr key={it.name} className="text-xs">
+                    <td className="py-1 pl-8 pr-4 text-slate-400">↳ {it.name}</td>
+                    {it.quarters.map((v, i) => (
+                      <Cell key={i} v={v} ccy={r.currency} cls="text-slate-400" />
                     ))}
-                    <td className={`px-4 py-1.5 text-right tabular-nums ${ln.emphasis ? "font-semibold text-slate-900" : "text-slate-600"}`}>
-                      {money(ln.get(r.fy), r.currency)}
-                    </td>
+                    <Cell v={it.fy} ccy={r.currency} cls="text-slate-400" />
                   </tr>
                 ))}
+                <tr className="bg-slate-50/60">
+                  <td className="px-4 py-1.5 font-medium text-slate-700">= Taxable base</td>
+                  {r.quarters.map((q, i) => (
+                    <Cell key={i} v={q.base} ccy={r.currency} cls="font-medium text-slate-800" />
+                  ))}
+                  <Cell v={r.fy.base} ccy={r.currency} cls="font-semibold text-slate-900" />
+                </tr>
                 <tr className="bg-[#1f3a5f]/[0.04]">
                   <td className="px-4 py-1.5 font-medium text-[#1f3a5f]">Tax ({r.ratePct}%)</td>
                   {r.quarters.map((q, i) => (
-                    <td key={i} className="px-3 py-1.5 text-right font-medium tabular-nums text-[#1f3a5f]">
-                      {q == null ? <span className="text-slate-300">—</span> : money(q.tax, r.currency)}
-                    </td>
+                    <Cell key={i} v={q.tax} ccy={r.currency} cls="font-medium text-[#1f3a5f]" />
                   ))}
-                  <td className="px-4 py-1.5 text-right font-semibold tabular-nums text-[#1f3a5f]">
-                    {money(r.fy.tax, r.currency)}
-                  </td>
+                  <Cell v={r.fy.tax} ccy={r.currency} cls="font-semibold text-[#1f3a5f]" />
                 </tr>
               </tbody>
             </table>

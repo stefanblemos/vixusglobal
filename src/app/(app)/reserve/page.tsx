@@ -5,13 +5,7 @@ import {
   reserveYears,
   QUARTER_DUE,
 } from "@/lib/tax/reserve";
-import { yearRates } from "@/lib/tax/reserve";
-import {
-  setReserveRate,
-  setTaxRateYear,
-  lockReserveYear,
-  unlockReserveYear,
-} from "@/lib/actions/reserve";
+import { setReserveRate, lockReserveYear, unlockReserveYear } from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
 import { YearSelect } from "@/components/year-select";
 import { CompletenessModal } from "@/components/completeness-modal";
@@ -42,10 +36,8 @@ export default async function ReservePage({
     { key: "quarterly", label: "Quarterly" },
     { key: "annual", label: "Annual" },
     { key: "owners", label: "Owners / K-1" },
-    { key: "settings", label: "Settings" },
   ];
   const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "quarterly";
-  const rates = await yearRates(year);
 
   const [{ rows, flow }, { rows: qRows }, { rows: breakdown }, completeness, depositList] =
     await Promise.all([
@@ -95,6 +87,17 @@ export default async function ReservePage({
         </div>
         <div className="flex items-center gap-2">
           <CompletenessModal data={completeness} />
+          {!locked && (
+            <form action={lockReserveYear}>
+              <input type="hidden" name="year" value={year} />
+              <button
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100"
+                title="Snapshot the provision and freeze the year"
+              >
+                Close &amp; lock {year}
+              </button>
+            </form>
+          )}
           {years.length > 0 && <YearSelect years={years} value={year} basePath="/reserve" />}
         </div>
       </div>
@@ -130,66 +133,7 @@ export default async function ReservePage({
         </div>
       )}
 
-      {tab === "settings" && (
-        <section className="space-y-3">
-          <div>
-            <h2 className="text-lg font-medium text-slate-800">Provision rates — {year}</h2>
-            <p className="text-sm text-slate-500">
-              Rates used to estimate the reserve. C-corps use the federal corporate rate;
-              pass-through entities and individuals use a blended provision rate. Florida corporate
-              tax applies to C-corps above the exemption. Set per year — adjust as the law changes.
-            </p>
-          </div>
-          <form
-            action={setTaxRateYear}
-            className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-white p-5 md:grid-cols-4"
-          >
-            <input type="hidden" name="year" value={year} />
-            <RateField name="corpPct" label="C-corp (federal)" value={rates.corpPct} suffix="%" />
-            <RateField name="passPct" label="LLC / pass-through / PF" value={rates.passPct} suffix="%" />
-            <RateField name="flPct" label="Florida corporate" value={rates.flPct} suffix="%" />
-            <RateField name="flExemption" label="Florida exemption" value={rates.flExemption} suffix="$" />
-            <div className="col-span-2 md:col-span-4">
-              <button
-                disabled={locked}
-                className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-50"
-              >
-                Save rates
-              </button>
-            </div>
-          </form>
-          <p className="text-xs text-slate-400">
-            Per-company overrides still apply on top (set them in the Annual tab&apos;s rate column).
-            These rates only seed the current and prior year — older years are archived.
-          </p>
-
-          <div className="rounded-xl border border-slate-200 bg-white p-5">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <div className="text-sm font-medium text-slate-700">Close &amp; lock {year}</div>
-                <p className="text-xs text-slate-500">
-                  Takes a provision snapshot and freezes the screen as a record. It&apos;s an
-                  estimate — you can unlock and reopen anytime.
-                </p>
-              </div>
-              {locked ? (
-                <span className="rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-                  Locked {lockedDate}
-                </span>
-              ) : (
-                <form action={lockReserveYear}>
-                  <input type="hidden" name="year" value={year} />
-                  <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
-                    Close &amp; lock {year}
-                  </button>
-                </form>
-              )}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {tab !== "settings" && rows.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           No Profit &amp; Loss on file yet. Import one in{" "}
           <Link href="/import" className="text-[#1f3a5f] hover:underline">
@@ -197,7 +141,7 @@ export default async function ReservePage({
           </Link>{" "}
           to see the reserve.
         </div>
-      ) : tab === "settings" ? null : (
+      ) : (
         <>
           {tab === "quarterly" && (
           <>
@@ -495,36 +439,6 @@ export default async function ReservePage({
           </p>
         </>
       )}
-    </div>
-  );
-}
-
-function RateField({
-  name,
-  label,
-  value,
-  suffix,
-}: {
-  name: string;
-  label: string;
-  value: number;
-  suffix: string;
-}) {
-  return (
-    <div>
-      <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
-      <div className="flex items-center gap-1">
-        {suffix === "$" && <span className="text-sm text-slate-400">$</span>}
-        <input
-          type="number"
-          name={name}
-          defaultValue={value}
-          step={suffix === "$" ? "1000" : "0.5"}
-          min="0"
-          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm"
-        />
-        {suffix === "%" && <span className="text-sm text-slate-400">%</span>}
-      </div>
     </div>
   );
 }
