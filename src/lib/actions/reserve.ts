@@ -58,3 +58,25 @@ export async function deleteReserveDeposit(formData: FormData): Promise<void> {
   if (id) await prisma.reserveDeposit.delete({ where: { id } });
   revalidatePath("/reserve");
 }
+
+// Alíquotas de provisão por ano (C-corp / pass-through / Florida + isenção).
+export async function setTaxRateYear(formData: FormData): Promise<void> {
+  const year = Number(String(formData.get("year") ?? ""));
+  if (!Number.isInteger(year)) return;
+  const num = (k: string, d: number) => {
+    const n = Number(String(formData.get(k) ?? "").replace(",", "."));
+    return Number.isFinite(n) && n >= 0 ? n : d;
+  };
+  const corpPct = Math.min(num("corpPct", 21), 100);
+  const passPct = Math.min(num("passPct", 30), 100);
+  const flPct = Math.min(num("flPct", 5.5), 100);
+  const flExemption = num("flExemption", 50000);
+
+  await prisma.taxRateYear.upsert({
+    where: { year },
+    update: { corpPct, passPct, flPct, flExemption },
+    create: { year, corpPct, passPct, flPct, flExemption },
+  });
+  revalidatePath("/reserve");
+  revalidatePath("/florida");
+}

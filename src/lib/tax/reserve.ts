@@ -49,6 +49,33 @@ async function rateConfig() {
   return { global, override };
 }
 
+// Alíquotas de provisão do ANO (defaults se não houver linha): C-corp 21%, demais 30%,
+// Florida 5,5% + isenção $50k.
+export interface YearRates {
+  corpPct: number;
+  passPct: number;
+  flPct: number;
+  flExemption: number;
+}
+export async function yearRates(year: number): Promise<YearRates> {
+  const row = await prisma.taxRateYear.findUnique({ where: { year } });
+  return {
+    corpPct: row ? Number(row.corpPct) : 21,
+    passPct: row ? Number(row.passPct) : DEFAULT_RATE,
+    flPct: row ? Number(row.flPct) : 5.5,
+    flExemption: row ? Number(row.flExemption) : 50000,
+  };
+}
+
+const isCorp = (t: string | null | undefined) => (t ?? "").toUpperCase() === "C_CORP";
+// Alíquota da empresa: override por empresa, senão a da classe (corp 21 / demais 30) do ano.
+const classRate = (
+  taxTreatment: string | null,
+  override: Map<string, number>,
+  companyId: string,
+  yr: YearRates,
+) => (override.has(companyId) ? override.get(companyId)! : isCorp(taxTreatment) ? yr.corpPct : yr.passPct);
+
 // Lucro do ano: usa o P&L anual se houver; senão soma os meses daquele ano.
 async function profitForYear(pnls: Pnl[], year: number) {
   const inYear = pnls.filter((p) => yearOf(p.periodLabel) === year);
@@ -132,14 +159,15 @@ export type OwnerFlow = {
 // e o fluxo de lucro para os donos, onde PREJUÍZOS COMPENSAM LUCROS (nível do dono).
 export async function buildTaxReserve(
   year: number,
-): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[]; global: number }> {
-  const [companies, pnls, { global, override }, assetReg, ownerships, returns] = await Promise.all([
+): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[] }> {
+  const [companies, pnls, { override }, yr, assetReg, ownerships, returns] = await Promise.all([
     prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true, state: true } }),
     prisma.qboImport.findMany({
       where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
       select: { id: true, companyId: true, periodLabel: true },
     }),
     rateConfig(),
+    yearRates(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
       where: { ownedCompanyId: { not: null }, endDate: null },
@@ -198,8 +226,9 @@ export async function buildTaxReserve(
     const depAdjustment = hasAssets ? Math.round((bookDep - taxDep) * 100) / 100 : 0;
     const taxableProfit = profit != null ? Math.round((profit + depAdjustment) * 100) / 100 : null;
 
+    const treatment = treatmentByCompany.get(c.id) ?? null;
     const hasOverride = override.has(c.id);
-    const ratePct = hasOverride ? override.get(c.id)! : global;
+    const ratePct = classRate(treatment, override, c.id, yr);
     const reserve =
       taxableProfit != null && taxableProfit > 0 ? (taxableProfit * ratePct) / 100 : 0;
 
@@ -223,7 +252,7 @@ export async function buildTaxReserve(
       name: c.legalName,
       currency: c.baseCurrency,
       state: c.state,
-      taxTreatment: treatmentByCompany.get(c.id) ?? null,
+      taxTreatment: treatment,
       periodLabel,
       importId,
       profit,
@@ -239,16 +268,17 @@ export async function buildTaxReserve(
     });
   }
   rows.sort((a, b) => b.reserve - a.reserve);
+  // No nível do dono (pass-through), aplica a alíquota de pass-through do ano.
   const flow: OwnerFlow[] = [...flowMap.values()]
     .map((f) => ({
       name: f.name,
       net: f.net,
-      ratePct: global,
-      reserve: f.net > 0 ? Math.round(((f.net * global) / 100) * 100) / 100 : 0,
+      ratePct: yr.passPct,
+      reserve: f.net > 0 ? Math.round(((f.net * yr.passPct) / 100) * 100) / 100 : 0,
       from: f.from,
     }))
     .sort((a, b) => b.net - a.net);
-  return { rows, flow, global };
+  return { rows, flow };
 }
 
 // ── Fechamento TRIMESTRAL (estimated tax) ───────────────────────────────────
@@ -270,15 +300,27 @@ export type QuarterlyRow = {
 };
 
 export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
-  const [companies, pnls, { global, override }, deposits] = await Promise.all([
+  const [companies, pnls, { override }, yr, deposits, returns] = await Promise.all([
     prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true } }),
     prisma.qboImport.findMany({
       where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
       select: { id: true, companyId: true, periodLabel: true },
     }),
     rateConfig(),
+    yearRates(year),
     prisma.reserveDeposit.findMany({ where: { year }, select: { companyId: true, quarter: true, amount: true } }),
+    prisma.taxReturn.findMany({
+      where: { companyId: { not: null }, taxTreatment: { not: null } },
+      select: { companyId: true, taxTreatment: true, year: true },
+      orderBy: { year: "desc" },
+    }),
   ]);
+  const treatmentByCompany = new Map<string, string>();
+  for (const r of returns) {
+    if (r.companyId && !treatmentByCompany.has(r.companyId)) {
+      treatmentByCompany.set(r.companyId, r.taxTreatment ?? "");
+    }
+  }
 
   const fundedByCompany = new Map<string, number[]>(); // [Q1..Q4]
   for (const d of deposits) {
@@ -318,8 +360,7 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
       }
     }
 
-    const hasOverride = override.has(c.id);
-    const ratePct = hasOverride ? override.get(c.id)! : global;
+    const ratePct = classRate(treatmentByCompany.get(c.id) ?? null, override, c.id, yr);
     const r = (p: number | null) =>
       p != null && p > 0 ? Math.round(((p * ratePct) / 100) * 100) / 100 : 0;
 

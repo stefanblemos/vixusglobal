@@ -414,6 +414,17 @@ model TaxReserveRate {
   updatedAt DateTime @updatedAt
 }
 
+// Alíquotas de provisão por ANO (mudam no tempo). C-corp = federal 21%; pass-through/PF = 30%;
+// Florida corporate 5,5% + isenção $50k. Override por empresa continua em TaxReserveRate.
+model TaxRateYear {
+  year        Int      @id
+  corpPct     Decimal  @default(21) @db.Decimal(5, 2)
+  passPct     Decimal  @default(30) @db.Decimal(5, 2)
+  flPct       Decimal  @default(5.5) @db.Decimal(5, 2)
+  flExemption Decimal  @default(50000) @db.Decimal(20, 2)
+  updatedAt   DateTime @updatedAt
+}
+
 // ─────────────────────────────────────────────────────────────
 // Importações do QuickBooks (QBO) — relatórios em CSV
 // ─────────────────────────────────────────────────────────────

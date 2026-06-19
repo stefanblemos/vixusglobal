@@ -3,10 +3,10 @@ import {
   buildTaxReserve,
   buildQuarterlyReserve,
   reserveYears,
-  GLOBAL_RATE_KEY,
   QUARTER_DUE,
 } from "@/lib/tax/reserve";
-import { setReserveRate } from "@/lib/actions/reserve";
+import { yearRates } from "@/lib/tax/reserve";
+import { setReserveRate, setTaxRateYear } from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
 import { YearSelect } from "@/components/year-select";
 import { CompletenessModal } from "@/components/completeness-modal";
@@ -25,14 +25,22 @@ const money = (v: number | null, ccy = "USD") =>
 export default async function ReservePage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; tab?: string }>;
 }) {
-  const { year: yearRaw } = await searchParams;
+  const { year: yearRaw, tab: tabRaw } = await searchParams;
   const years = await reserveYears();
   const fallbackYear = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
+  const TABS = [
+    { key: "quarterly", label: "Quarterly" },
+    { key: "annual", label: "Annual" },
+    { key: "owners", label: "Owners / K-1" },
+    { key: "settings", label: "Settings" },
+  ];
+  const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "quarterly";
+  const rates = await yearRates(year);
 
-  const [{ rows, flow }, { rows: qRows }, completeness, depositList, globalRateRow] = await Promise.all([
+  const [{ rows, flow }, { rows: qRows }, completeness, depositList] = await Promise.all([
     buildTaxReserve(year),
     buildQuarterlyReserve(year),
     buildGroupCompleteness(year),
@@ -41,7 +49,6 @@ export default async function ReservePage({
       include: { company: { select: { legalName: true } } },
       orderBy: [{ quarter: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.taxReserveRate.findUnique({ where: { companyId: GLOBAL_RATE_KEY } }),
   ]);
   const deposits: DepositRow[] = depositList.map((d) => ({
     id: d.id,
@@ -52,7 +59,6 @@ export default async function ReservePage({
     note: d.note,
   }));
   const depositCompanies = qRows.map((q) => ({ id: q.companyId, name: q.name }));
-  const globalRate = Number(globalRateRow?.ratePct ?? 30);
 
   // Total a reservar por moeda (não dá pra somar USD + BRL + EUR).
   const totals = new Map<string, number>();
@@ -79,31 +85,55 @@ export default async function ReservePage({
         </div>
       </div>
 
-      {/* Default rate */}
-      <form
-        action={setReserveRate}
-        className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3"
-      >
-        <span className="text-sm font-medium text-slate-700">Default reserve rate</span>
-        <span className="text-xs text-slate-500">applied to every company without an override</span>
-        <span className="ml-auto flex items-center gap-2">
-          <input
-            type="number"
-            name="ratePct"
-            defaultValue={globalRate}
-            step="0.5"
-            min="0"
-            max="100"
-            className="w-20 rounded-lg border border-slate-300 px-2 py-1 text-right text-sm"
-          />
-          <span className="text-sm text-slate-500">%</span>
-          <button className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16314f]">
-            Save
-          </button>
-        </span>
-      </form>
+      <div className="flex gap-1 border-b border-slate-200 text-sm">
+        {TABS.map((t) => (
+          <Link
+            key={t.key}
+            href={`/reserve?year=${year}&tab=${t.key}`}
+            className={`-mb-px border-b-2 px-3 py-2 ${
+              t.key === tab
+                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {t.label}
+          </Link>
+        ))}
+      </div>
 
-      {rows.length === 0 ? (
+      {tab === "settings" && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-medium text-slate-800">Provision rates — {year}</h2>
+            <p className="text-sm text-slate-500">
+              Rates used to estimate the reserve. C-corps use the federal corporate rate;
+              pass-through entities and individuals use a blended provision rate. Florida corporate
+              tax applies to C-corps above the exemption. Set per year — adjust as the law changes.
+            </p>
+          </div>
+          <form
+            action={setTaxRateYear}
+            className="grid grid-cols-2 gap-4 rounded-xl border border-slate-200 bg-white p-5 md:grid-cols-4"
+          >
+            <input type="hidden" name="year" value={year} />
+            <RateField name="corpPct" label="C-corp (federal)" value={rates.corpPct} suffix="%" />
+            <RateField name="passPct" label="LLC / pass-through / PF" value={rates.passPct} suffix="%" />
+            <RateField name="flPct" label="Florida corporate" value={rates.flPct} suffix="%" />
+            <RateField name="flExemption" label="Florida exemption" value={rates.flExemption} suffix="$" />
+            <div className="col-span-2 md:col-span-4">
+              <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
+                Save rates
+              </button>
+            </div>
+          </form>
+          <p className="text-xs text-slate-400">
+            Per-company overrides still apply on top (set them in the Annual tab&apos;s rate column).
+            These rates only seed the current and prior year — older years are archived.
+          </p>
+        </section>
+      )}
+
+      {tab !== "settings" && rows.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           No Profit &amp; Loss on file yet. Import one in{" "}
           <Link href="/import" className="text-[#1f3a5f] hover:underline">
@@ -111,8 +141,9 @@ export default async function ReservePage({
           </Link>{" "}
           to see the reserve.
         </div>
-      ) : (
+      ) : tab === "settings" ? null : (
         <>
+          {tab === "quarterly" && (
           <section className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-medium text-slate-800">Quarterly closing — needed vs funded</h2>
@@ -224,7 +255,10 @@ export default async function ReservePage({
               </table>
             </div>
           </section>
+          )}
 
+          {tab === "annual" && (
+          <>
           <h2 className="text-lg font-medium text-slate-800">
             Annual — depreciation-adjusted, with loss compensation
           </h2>
@@ -326,8 +360,10 @@ export default async function ReservePage({
               </tfoot>
             </table>
           </div>
+          </>
+          )}
 
-          {flow.length > 0 && (
+          {tab === "owners" && flow.length > 0 && (
             <section className="space-y-2">
               <h2 className="text-lg font-medium text-slate-800">
                 Profit flow to owners — with loss compensation
@@ -398,6 +434,36 @@ export default async function ReservePage({
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+function RateField({
+  name,
+  label,
+  value,
+  suffix,
+}: {
+  name: string;
+  label: string;
+  value: number;
+  suffix: string;
+}) {
+  return (
+    <div>
+      <label className="mb-1 block text-xs font-medium text-slate-600">{label}</label>
+      <div className="flex items-center gap-1">
+        {suffix === "$" && <span className="text-sm text-slate-400">$</span>}
+        <input
+          type="number"
+          name={name}
+          defaultValue={value}
+          step={suffix === "$" ? "1000" : "0.5"}
+          min="0"
+          className="w-full rounded-lg border border-slate-300 px-2 py-1.5 text-right text-sm"
+        />
+        {suffix === "%" && <span className="text-sm text-slate-400">%</span>}
+      </div>
     </div>
   );
 }

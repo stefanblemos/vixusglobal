@@ -1,11 +1,9 @@
-import { buildTaxReserve } from "./reserve";
+import { buildTaxReserve, yearRates } from "./reserve";
 
 // Previsão do Florida Corporate Income Tax (controle separado). Regras aplicadas:
 //  - Incide só sobre C-corp; pass-through (LLC/partnership/S-corp) não paga IR de renda estadual.
-//  - Alíquota 5.5%; isenção de $50.000; renda 100% Flórida (sem apportionment).
+//  - Alíquota e isenção vêm de Settings por ano (default 5.5% / $50.000); renda 100% Flórida.
 //  - Base = lucro tributável já ajustado pela depreciação (MACRS) e prejuízo.
-const FL_RATE = 5.5;
-const FL_EXEMPTION = 50000;
 
 export interface FloridaRow {
   companyId: string;
@@ -26,7 +24,8 @@ export interface FloridaForecast {
 }
 
 export async function buildFloridaForecast(year: number): Promise<FloridaForecast> {
-  const { rows } = await buildTaxReserve(year);
+  const [{ rows }, yr] = await Promise.all([buildTaxReserve(year), yearRates(year)]);
+  const { flPct: FL_RATE, flExemption: FL_EXEMPTION } = yr;
   const inFl = rows.filter((r) => (r.state ?? "").toUpperCase() === "FL");
   const isCcorp = (t: string | null) => (t ?? "").toUpperCase() === "C_CORP";
 
@@ -36,7 +35,7 @@ export async function buildFloridaForecast(year: number): Promise<FloridaForecas
       const tp = r.taxableProfit ?? 0;
       const exemptionApplied = tp > 0 ? Math.min(FL_EXEMPTION, tp) : 0;
       const flTaxable = Math.max(0, tp - FL_EXEMPTION);
-      const flTax = Math.round(flTaxable * FL_RATE) / 100; // flTaxable × 5.5%
+      const flTax = Math.round(flTaxable * FL_RATE) / 100; // flTaxable × alíquota
       return { companyId: r.companyId, name: r.name, taxableProfit: tp, exemptionApplied, flTaxable, flTax };
     })
     .sort((a, b) => b.flTax - a.flTax);
