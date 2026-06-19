@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { pnlTotals } from "@/lib/qbo/pnl";
-import { qboPeriodKey } from "@/lib/qbo/period";
+import { qboPeriodKey, periodMonths } from "@/lib/qbo/period";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
@@ -249,6 +249,92 @@ export async function buildTaxReserve(
     }))
     .sort((a, b) => b.net - a.net);
   return { rows, flow, global };
+}
+
+// ── Fechamento TRIMESTRAL (estimated tax) ───────────────────────────────────
+// Os trimestres mapeiam os vencimentos do estimated tax corporativo:
+export const QUARTER_DUE = ["Apr 15", "Jun 15", "Sep 15", "Dec 15"];
+const quarterOf = (m: number) => Math.ceil(m / 3); // 1..4
+
+export type QuarterlyRow = {
+  companyId: string;
+  name: string;
+  currency: string;
+  ratePct: number;
+  quarters: { profit: number | null; reserve: number }[]; // Q1..Q4
+  annualOnly: boolean; // só tem P&L anual (sem detalhe trimestral)
+  fyProfit: number | null;
+  fyReserve: number;
+};
+
+export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
+  const [companies, pnls, { global, override }] = await Promise.all([
+    prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true } }),
+    prisma.qboImport.findMany({
+      where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
+      select: { id: true, companyId: true, periodLabel: true },
+    }),
+    rateConfig(),
+  ]);
+
+  const byCompany = new Map<string, { id: string; periodLabel: string }[]>();
+  for (const p of pnls) {
+    if (!p.companyId || yearOf(p.periodLabel) !== year) continue;
+    const arr = byCompany.get(p.companyId) ?? [];
+    arr.push({ id: p.id, periodLabel: p.periodLabel });
+    byCompany.set(p.companyId, arr);
+  }
+
+  const rows: QuarterlyRow[] = [];
+  for (const c of companies) {
+    const imports = byCompany.get(c.id);
+    if (!imports) continue;
+
+    const qProfit: (number | null)[] = [null, null, null, null];
+    let annualProfit: number | null = null;
+    let hasQuarterData = false;
+
+    for (const imp of imports) {
+      const pm = periodMonths(imp.periodLabel);
+      const ni = await netIncomeOf(imp.id);
+      if (ni == null) continue;
+      if (pm && quarterOf(pm.start) === quarterOf(pm.end)) {
+        const q = quarterOf(pm.start) - 1;
+        qProfit[q] = (qProfit[q] ?? 0) + ni;
+        hasQuarterData = true;
+      } else {
+        // Anual ou multi-trimestre: não dá pra fatiar → trata como anual.
+        annualProfit = (annualProfit ?? 0) + ni;
+      }
+    }
+
+    const hasOverride = override.has(c.id);
+    const ratePct = hasOverride ? override.get(c.id)! : global;
+    const r = (p: number | null) =>
+      p != null && p > 0 ? Math.round(((p * ratePct) / 100) * 100) / 100 : 0;
+
+    const annualOnly = !hasQuarterData && annualProfit != null;
+    const quarters = qProfit.map((p) => ({ profit: p, reserve: r(p) }));
+    const fyProfit = hasQuarterData
+      ? qProfit.reduce<number | null>((s, p) => (p == null ? s : (s ?? 0) + p), null)
+      : annualProfit;
+    const fyReserve = hasQuarterData
+      ? quarters.reduce((s, q) => s + q.reserve, 0)
+      : r(annualProfit);
+
+    rows.push({
+      companyId: c.id,
+      name: c.legalName,
+      currency: c.baseCurrency,
+      ratePct,
+      quarters,
+      annualOnly,
+      fyProfit,
+      fyReserve: Math.round(fyReserve * 100) / 100,
+    });
+  }
+  rows.sort((a, b) => b.fyReserve - a.fyReserve);
+  return { rows };
 }
 
 // Estimativa de IR de UMA empresa num ano — para a aba da empresa.

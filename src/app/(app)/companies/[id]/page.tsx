@@ -820,7 +820,7 @@ export default async function CompanyDetailPage({
                         {labelForDocType(d.docType)}
                       </span>
                       <span className="font-medium text-slate-800">
-                        {d.year ?? ""} {d.matchedName ?? d.fileName}
+                        {d.label ? d.label : `${d.year ?? ""} ${d.matchedName ?? d.fileName}`}
                       </span>
                       {d.docNumber && (
                         <span className="text-xs text-slate-400">#{d.docNumber}</span>

@@ -12,6 +12,7 @@ export async function ingestCorporateDoc(
   buf: Buffer,
   docTypeHint?: string,
   companyIdOverride?: string,
+  docName?: string,
 ): Promise<CorpIngestResult> {
   const clamped = await clampPdfPages(buf, 100);
 
@@ -40,6 +41,7 @@ export async function ingestCorporateDoc(
       fileName,
       companyId,
       matchedName: s(data.companyName),
+      label: docName && docName.trim() ? docName.trim() : null,
       docType,
       year: data.year,
       jurisdiction: data.jurisdiction,

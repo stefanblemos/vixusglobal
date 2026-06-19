@@ -22,12 +22,14 @@ async function uploadFile(
   file: File,
   companyId: string,
   docType: string,
+  docName: string,
   onProgress: (sent: number, total: number) => void,
 ): Promise<UploadResult> {
   const base: Record<string, string> = {
     "content-type": "application/pdf",
     "x-filename": encodeURIComponent(file.name),
     "x-doc-type": docType,
+    "x-doc-name": encodeURIComponent(docName),
     "x-company-id": companyId,
   };
 
@@ -60,27 +62,34 @@ export function CorporateUpload({ companyId }: { companyId: string }) {
   const [pending, setPending] = useState(false);
   const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [docType, setDocType] = useState("");
+  const [docName, setDocName] = useState("");
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     const form = e.currentTarget;
     const input = form.elements.namedItem("file") as HTMLInputElement;
-    const typeSel = form.elements.namedItem("docType") as HTMLSelectElement;
     const file = input.files?.[0];
     if (!file) {
       setError("Choose a PDF file first.");
       return;
     }
+    if (docType === "OTHER" && !docName.trim()) {
+      setError("Give the document a name.");
+      return;
+    }
     setPending(true);
     setProgress(null);
     try {
-      const res = await uploadFile(file, companyId, typeSel.value, (sent, total) =>
+      const res = await uploadFile(file, companyId, docType, docName.trim(), (sent, total) =>
         setProgress({ sent, total }),
       );
       if (res.error) setError(res.error);
       else {
         form.reset();
+        setDocType("");
+        setDocName("");
         router.refresh();
       }
     } catch (err) {
@@ -104,13 +113,27 @@ export function CorporateUpload({ companyId }: { companyId: string }) {
         registered agent, managers/members, addresses and the registration number.
       </p>
       <div className="flex flex-wrap items-center gap-3">
-        <select name="docType" defaultValue="" className={inputClass}>
+        <select
+          name="docType"
+          value={docType}
+          onChange={(e) => setDocType(e.target.value)}
+          className={inputClass}
+        >
           {DOC_TYPES.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
             </option>
           ))}
         </select>
+        {docType === "OTHER" && (
+          <input
+            type="text"
+            value={docName}
+            onChange={(e) => setDocName(e.target.value)}
+            placeholder="Document name (e.g. Lease, Resolution)"
+            className={`${inputClass} min-w-56`}
+          />
+        )}
         <input
           type="file"
           name="file"

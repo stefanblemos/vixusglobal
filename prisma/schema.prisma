@@ -237,6 +237,7 @@ model CorporateDoc {
   companyId   String?
   company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
   matchedName String? // nome lido no documento
+  label       String? // nome dado pelo usuário (usado quando docType = OTHER, sem referência)
   docType     String // ARTICLES | OPERATING_AGREEMENT | ANNUAL_REPORT | CERTIFICATE | EIN_LETTER | OTHER
   year        Int? // ano do annual report / período
   jurisdiction String?

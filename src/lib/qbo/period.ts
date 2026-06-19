@@ -23,6 +23,20 @@ const MONTHS: Record<string, number> = {
   dez: 12,
 };
 
+// Mês inicial e final cobertos por um rótulo de período ("January - March, 2025" → 1..3;
+// "March 2025" → 3..3; "January-December, 2024" → 1..12). null se não achar mês.
+export function periodMonths(label: string): { start: number; end: number } | null {
+  const lower = label.toLowerCase();
+  const found: { idx: number; m: number }[] = [];
+  for (const [k, m] of Object.entries(MONTHS)) {
+    const idx = lower.indexOf(k);
+    if (idx >= 0) found.push({ idx, m });
+  }
+  if (found.length === 0) return null;
+  found.sort((a, b) => a.idx - b.idx);
+  return { start: found[0].m, end: found[found.length - 1].m };
+}
+
 export function qboPeriodKey(label: string): number {
   const lower = label.toLowerCase();
   const years = label.match(/(?:19|20)\d{2}/g);

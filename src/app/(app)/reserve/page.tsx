@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { buildTaxReserve, reserveYears, GLOBAL_RATE_KEY } from "@/lib/tax/reserve";
+import {
+  buildTaxReserve,
+  buildQuarterlyReserve,
+  reserveYears,
+  GLOBAL_RATE_KEY,
+  QUARTER_DUE,
+} from "@/lib/tax/reserve";
 import { setReserveRate } from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
 import { YearSelect } from "@/components/year-select";
@@ -23,8 +29,9 @@ export default async function ReservePage({
   const fallbackYear = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
 
-  const [{ rows, flow }, globalRateRow] = await Promise.all([
+  const [{ rows, flow }, { rows: qRows }, globalRateRow] = await Promise.all([
     buildTaxReserve(year),
+    buildQuarterlyReserve(year),
     prisma.taxReserveRate.findUnique({ where: { companyId: GLOBAL_RATE_KEY } }),
   ]);
   const globalRate = Number(globalRateRow?.ratePct ?? 30);
@@ -85,6 +92,93 @@ export default async function ReservePage({
         </div>
       ) : (
         <>
+          <section className="space-y-2">
+            <h2 className="text-lg font-medium text-slate-800">Quarterly closing — set aside per quarter</h2>
+            <p className="text-sm text-slate-500">
+              The amount to move into the reserve each quarter, aligned to the estimated-tax
+              deadlines. Companies with only an annual P&amp;L show the full year (no quarterly split).
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Company</th>
+                    {QUARTER_DUE.map((due, i) => (
+                      <th key={i} className="px-3 py-2 text-right font-medium">
+                        Q{i + 1}
+                        <span className="block text-[10px] font-normal text-slate-400">due {due}</span>
+                      </th>
+                    ))}
+                    <th className="px-4 py-2 text-right font-medium">FY reserve</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {qRows.map((q) => (
+                    <tr key={q.companyId} className="hover:bg-slate-50">
+                      <td className="px-4 py-2">
+                        <Link
+                          href={`/companies/${q.companyId}`}
+                          className="font-medium text-[#1f3a5f] hover:underline"
+                        >
+                          {q.name}
+                        </Link>
+                        {q.annualOnly && (
+                          <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                            annual only
+                          </span>
+                        )}
+                      </td>
+                      {q.quarters.map((cell, i) => (
+                        <td
+                          key={i}
+                          className="px-3 py-2 text-right tabular-nums text-slate-700"
+                          title={cell.profit != null ? `Profit ${money(cell.profit, q.currency)}` : undefined}
+                        >
+                          {q.annualOnly ? (
+                            <span className="text-slate-300">—</span>
+                          ) : cell.profit == null ? (
+                            <span className="text-slate-300">—</span>
+                          ) : (
+                            money(cell.reserve, q.currency)
+                          )}
+                        </td>
+                      ))}
+                      <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                        {money(q.fyReserve, q.currency)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t-2 border-slate-200 bg-slate-50/60">
+                  {[...totals.entries()].map(([ccy]) => {
+                    const qTot = [0, 1, 2, 3].map((i) =>
+                      qRows
+                        .filter((q) => q.currency === ccy && !q.annualOnly)
+                        .reduce((s, q) => s + q.quarters[i].reserve, 0),
+                    );
+                    const fy = qRows.filter((q) => q.currency === ccy).reduce((s, q) => s + q.fyReserve, 0);
+                    return (
+                      <tr key={ccy}>
+                        <td className="px-4 py-2 font-medium text-slate-700">Total ({ccy})</td>
+                        {qTot.map((t, i) => (
+                          <td key={i} className="px-3 py-2 text-right font-medium tabular-nums text-slate-700">
+                            {money(t, ccy)}
+                          </td>
+                        ))}
+                        <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                          {money(fy, ccy)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tfoot>
+              </table>
+            </div>
+          </section>
+
+          <h2 className="text-lg font-medium text-slate-800">
+            Annual — depreciation-adjusted, with loss compensation
+          </h2>
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
