@@ -34,6 +34,7 @@ export default async function EditCompanyPage({
           entityType: company.entityType,
           taxId: company.taxId,
           formationDate: company.formationDate,
+          closedDate: company.closedDate,
           fiscalYearEnd: company.fiscalYearEnd,
           baseCurrency: company.baseCurrency,
           relationship: company.relationship,

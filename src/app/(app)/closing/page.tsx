@@ -27,10 +27,12 @@ export default async function ClosingPage({
   const { rows } = wanted === year ? probe : await buildCompleteness(year);
 
   const existing = rows.filter((r) => r.existed);
-  const fullyComplete = existing.filter((r) => r.complete === COLS.length).length;
+  // Wind-down (ano do encerramento) só precisa do IR final; as colunas QBO são N/A.
+  const isDone = (r: (typeof rows)[number]) => (r.windDown ? r.ir.ok : r.complete === COLS.length);
+  const fullyComplete = existing.filter(isDone).length;
   const missingByCol = COLS.map((c) => ({
     label: c.label,
-    missing: existing.filter((r) => !r[c.key].ok).length,
+    missing: existing.filter((r) => !r[c.key].ok && !(r.windDown && c.key !== "ir")).length,
   }));
 
   return (
@@ -123,9 +125,35 @@ export default async function ClosingPage({
                   {!r.existed ? (
                     <>
                       <td colSpan={COLS.length} className="px-3 py-3 text-center text-xs text-slate-400">
-                        N/A — not yet incorporated in {year}
+                        {r.closingYear != null && year > r.closingYear
+                          ? `N/A — closed in ${r.closingYear}`
+                          : `N/A — not yet incorporated in ${year}`}
                       </td>
                       <td className="px-3 py-3 text-center text-xs text-slate-400">N/A</td>
+                    </>
+                  ) : r.windDown ? (
+                    <>
+                      {COLS.map((c) =>
+                        c.key === "ir" ? (
+                          <td key={c.key} className="px-3 py-3 text-center">
+                            <Mark cell={r.ir} />
+                          </td>
+                        ) : (
+                          <td key={c.key} className="px-3 py-3 text-center text-xs text-slate-400">
+                            N/A
+                          </td>
+                        ),
+                      )}
+                      <td className="px-3 py-3 text-center">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            r.ir.ok ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                          }`}
+                          title={`Closed ${r.closingYear} — only the final tax return is required`}
+                        >
+                          {r.ir.ok ? "final IR ✓" : "final IR missing"}
+                        </span>
+                      </td>
                     </>
                   ) : (
                     <>

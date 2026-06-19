@@ -19,6 +19,7 @@ export type EditableCompany = {
   entityType: string;
   taxId: string | null;
   formationDate: string | null;
+  closedDate: string | null;
   fiscalYearEnd: string;
   baseCurrency: string;
   relationship: string;
@@ -157,6 +158,25 @@ export function CompanyEditForm({ company }: { company: EditableCompany }) {
             <option value="ACTIVE">Active</option>
             <option value="INACTIVE">Inactive (closed)</option>
           </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label htmlFor="closedDate" className={labelClass}>
+            Closing date
+          </label>
+          <input
+            id="closedDate"
+            name="closedDate"
+            defaultValue={company.closedDate ?? ""}
+            placeholder="e.g. 12/31/2025 or 2025"
+            className={inputClass}
+          />
+          <p className="mt-1 text-xs text-slate-500">
+            After this year the company is N/A in Closing; the closing year requires only the final
+            tax return (no QBO). Auto-filled from the IR&rsquo;s &ldquo;Final return&rdquo; if blank.
+          </p>
         </div>
       </div>
 

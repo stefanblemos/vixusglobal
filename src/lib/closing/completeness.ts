@@ -7,13 +7,15 @@ export type Cell = { ok: boolean; detail?: string };
 export type CompletenessRow = {
   companyId: string;
   companyName: string;
-  existed: boolean; // já constituída no ano? (senão, N/A)
+  existed: boolean; // já constituída e ainda não encerrada nesse ano? (senão, N/A)
+  windDown: boolean; // ano do encerramento → só o IR final é exigido (QBO = N/A)
+  closingYear: number | null;
   ir: Cell;
   pnl: Cell;
   bs: Cell;
   gl: Cell;
   bank: Cell;
-  complete: number; // 0..5
+  complete: number; // existed normal: 0..5; wind-down: 0..1 (só IR)
 };
 
 const yearOf = (s: string | null) => {
@@ -28,12 +30,12 @@ export async function buildCompleteness(year: number): Promise<{
   const [companies, returns, imports, banks] = await Promise.all([
     prisma.company.findMany({
       where: { relationship: "GROUP_MEMBER", monitored: true },
-      select: { id: true, legalName: true, formationDate: true, status: true },
+      select: { id: true, legalName: true, formationDate: true, closedDate: true, status: true },
       orderBy: { legalName: "asc" },
     }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null } },
-      select: { companyId: true, year: true },
+      select: { companyId: true, year: true, isFinalReturn: true },
     }),
     prisma.qboImport.findMany({
       where: { companyId: { not: null } },
@@ -74,16 +76,33 @@ export async function buildCompleteness(year: number): Promise<{
   for (const r of returns) seed(r.companyId, r.year);
   for (const i of imports) seed(i.companyId, yearOf(i.periodLabel));
 
+  // Ano de encerramento por empresa: data manual OU o ano do "Final return" mais recente.
+  const closingYearByCompany = new Map<string, number>();
+  const setClosing = (id: string | null, y: number | null) => {
+    if (!id || !y) return;
+    const cur = closingYearByCompany.get(id);
+    if (cur == null || y > cur) closingYearByCompany.set(id, y);
+  };
+  for (const r of returns) if (r.isFinalReturn) setClosing(r.companyId, r.year);
+  for (const c of companies) {
+    const manual = yearOf(c.closedDate);
+    if (manual) closingYearByCompany.set(c.id, manual); // manual sobrepõe o auto
+  }
+
   const rows: CompletenessRow[] = companies.map((c) => {
     const first = earliest.get(c.id);
-    const existed = first == null || first <= year;
+    const closingYear = closingYearByCompany.get(c.id) ?? null;
+    const afterClose = closingYear != null && year > closingYear;
+    const existed = (first == null || first <= year) && !afterClose;
+    const windDown = existed && closingYear != null && year === closingYear;
     const ir = { ok: irSet.has(c.id) };
     const pnl = { ok: pnlSet.has(c.id) };
     const bs = { ok: bsSet.has(c.id) };
     const gl = { ok: glSet.has(c.id) };
     const bank = { ok: bankSet.has(c.id) };
-    const complete = existed ? [ir, pnl, bs, gl, bank].filter((x) => x.ok).length : 0;
-    return { companyId: c.id, companyName: c.legalName, existed, ir, pnl, bs, gl, bank, complete };
+    // Wind-down: só o IR final conta. Existed normal: as 5 colunas.
+    const complete = !existed ? 0 : windDown ? (ir.ok ? 1 : 0) : [ir, pnl, bs, gl, bank].filter((x) => x.ok).length;
+    return { companyId: c.id, companyName: c.legalName, existed, windDown, closingYear, ir, pnl, bs, gl, bank, complete };
   });
 
   return { rows, years: [...years].sort((a, b) => b - a) };

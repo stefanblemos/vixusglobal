@@ -24,6 +24,7 @@ export const companyCreateSchema = z
     entityType: z.enum(ALL_ENTITY_TYPE_VALUES),
     taxId: z.preprocess(emptyToNull, z.string().trim().nullable()),
     formationDate: z.preprocess(emptyToNull, z.string().trim().nullable()),
+    closedDate: z.preprocess(emptyToNull, z.string().trim().nullable()),
     status: z.enum(["ACTIVE", "INACTIVE"]).default("ACTIVE"),
     fiscalYearEnd: z
       .string()
