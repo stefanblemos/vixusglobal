@@ -12,7 +12,14 @@ export interface FloridaRow {
   exemptionApplied: number;
   flTaxable: number;
   flTax: number;
+  estimateRequired: boolean; // FL tax > $2.500 → estimados obrigatórios
+  installment: number; // parcela trimestral (FL tax / 4)
 }
+
+// Vencimentos dos estimados FL (F-1120ES) — último dia dos meses 4/6/9 e do ano (calendário).
+// ⚠️ confirmar datas exatas com o contador.
+export const FL_ESTIMATE_DUE = ["Apr 30", "Jun 30", "Sep 30", "Dec 31"];
+export const FL_ESTIMATE_THRESHOLD = 2500;
 
 export interface FloridaForecast {
   year: number;
@@ -36,7 +43,16 @@ export async function buildFloridaForecast(year: number): Promise<FloridaForecas
       const exemptionApplied = tp > 0 ? Math.min(FL_EXEMPTION, tp) : 0;
       const flTaxable = Math.max(0, tp - FL_EXEMPTION);
       const flTax = Math.round(flTaxable * FL_RATE) / 100; // flTaxable × alíquota
-      return { companyId: r.companyId, name: r.name, taxableProfit: tp, exemptionApplied, flTaxable, flTax };
+      return {
+        companyId: r.companyId,
+        name: r.name,
+        taxableProfit: tp,
+        exemptionApplied,
+        flTaxable,
+        flTax,
+        estimateRequired: flTax > FL_ESTIMATE_THRESHOLD,
+        installment: Math.round((flTax / 4) * 100) / 100,
+      };
     })
     .sort((a, b) => b.flTax - a.flTax);
 

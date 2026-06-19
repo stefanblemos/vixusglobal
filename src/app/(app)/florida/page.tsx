@@ -1,5 +1,9 @@
 import Link from "next/link";
-import { buildFloridaForecast } from "@/lib/tax/florida";
+import {
+  buildFloridaForecast,
+  FL_ESTIMATE_DUE,
+  FL_ESTIMATE_THRESHOLD,
+} from "@/lib/tax/florida";
 import { reserveYears } from "@/lib/tax/reserve";
 import { YearSelect } from "@/components/year-select";
 
@@ -96,6 +100,61 @@ export default async function FloridaPage({
             </tfoot>
           </table>
         </div>
+      )}
+
+      {f.rows.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium text-slate-800">
+            Quarterly estimated payments (F-1120ES)
+          </h2>
+          <p className="text-sm text-slate-500">
+            Florida requires estimated corporate tax when the year&apos;s tax exceeds{" "}
+            {money(FL_ESTIMATE_THRESHOLD)} — paid in four installments. Each installment is roughly a
+            quarter of the estimated tax.
+          </p>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Company</th>
+                  {FL_ESTIMATE_DUE.map((due, i) => (
+                    <th key={i} className="px-3 py-2 text-right font-medium">
+                      Inst. {i + 1}
+                      <span className="block text-[10px] font-normal text-slate-400">due {due}</span>
+                    </th>
+                  ))}
+                  <th className="px-4 py-2 text-right font-medium">FY tax</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {f.rows.map((r) => (
+                  <tr key={r.companyId} className={r.estimateRequired ? "" : "text-slate-400"}>
+                    <td className="px-4 py-2 font-medium text-slate-700">
+                      {r.name}
+                      {!r.estimateRequired && (
+                        <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
+                          under threshold
+                        </span>
+                      )}
+                    </td>
+                    {FL_ESTIMATE_DUE.map((_, i) => (
+                      <td key={i} className="px-3 py-2 text-right tabular-nums text-slate-700">
+                        {r.estimateRequired ? money(r.installment) : "—"}
+                      </td>
+                    ))}
+                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                      {money(r.flTax)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-xs text-amber-600">
+            ⚠️ Installment due dates are the standard last-day-of-month-4/6/9 and year-end pattern —
+            confirm the exact F-1120ES dates and the first-installment trigger with the accountant.
+          </p>
+        </section>
       )}
 
       {f.passThroughFl.length > 0 && (
