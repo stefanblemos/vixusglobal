@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ImportForm } from "@/components/import-form";
+import { ImageImportForm } from "@/components/image-import-form";
 import { deleteQboImport } from "@/lib/actions/qbo";
 import {
   CoverageMatrix,
@@ -148,6 +149,15 @@ export default async function DocumentsPage() {
       </div>
 
       <ImportForm />
+
+      <details className="rounded-xl border border-slate-200 bg-white">
+        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-700">
+          Import from an image / PDF (closed company, no QBO export)
+        </summary>
+        <div className="border-t border-slate-100 p-5">
+          <ImageImportForm />
+        </div>
+      </details>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric label="Companies with docs" value={rows.length} />
