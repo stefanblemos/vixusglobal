@@ -103,6 +103,8 @@ export type ReserveRow = {
   companyId: string;
   name: string;
   currency: string;
+  state: string | null;
+  taxTreatment: string | null;
   periodLabel: string | null;
   importId: string | null;
   profit: number | null; // lucro contábil (book) do P&L
@@ -110,22 +112,29 @@ export type ReserveRow = {
   taxDep: number; // depreciação fiscal calculada (MACRS)
   hasAssets: boolean; // há ativos cadastrados p/ ajustar?
   depAdjustment: number; // book − tax (entra no lucro tributável)
-  taxableProfit: number | null; // lucro ajustado
+  taxableProfit: number | null; // lucro ajustado (pode ser negativo → compensa no dono)
   ratePct: number;
   hasOverride: boolean;
-  reserve: number;
-  owners: ReserveOwner[]; // para quem o lucro flui (ownership direto)
+  reserve: number; // reserva da empresa (≥0), antes da compensação no dono
+  owners: ReserveOwner[]; // para quem o lucro/prejuízo flui (ownership direto)
 };
 
-export type OwnerFlow = { name: string; total: number; from: { company: string; amount: number }[] };
+// Fluxo por dono: prejuízos COMPENSAM lucros (net pode ser negativo); a reserva sai do net ≥ 0.
+export type OwnerFlow = {
+  name: string;
+  net: number; // base após compensar lucros e prejuízos
+  ratePct: number;
+  reserve: number; // max(0, net) × taxa
+  from: { company: string; amount: number }[]; // assinado (prejuízo negativo)
+};
 
 // Provisão de IR de todas as empresas para um ANO — com ajuste de depreciação (book→fiscal)
-// e o fluxo de lucro para os donos (ownership direto).
+// e o fluxo de lucro para os donos, onde PREJUÍZOS COMPENSAM LUCROS (nível do dono).
 export async function buildTaxReserve(
   year: number,
-): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[] }> {
-  const [companies, pnls, { global, override }, assetReg, ownerships] = await Promise.all([
-    prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true } }),
+): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[]; global: number }> {
+  const [companies, pnls, { global, override }, assetReg, ownerships, returns] = await Promise.all([
+    prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true, state: true } }),
     prisma.qboImport.findMany({
       where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
       select: { id: true, companyId: true, periodLabel: true },
@@ -141,9 +150,20 @@ export async function buildTaxReserve(
         ownerCompany: { select: { legalName: true } },
       },
     }),
+    prisma.taxReturn.findMany({
+      where: { companyId: { not: null }, taxTreatment: { not: null } },
+      select: { companyId: true, taxTreatment: true, year: true },
+      orderBy: { year: "desc" },
+    }),
   ]);
 
   const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
+  const treatmentByCompany = new Map<string, string>();
+  for (const r of returns) {
+    if (r.companyId && !treatmentByCompany.has(r.companyId)) {
+      treatmentByCompany.set(r.companyId, r.taxTreatment ?? "");
+    }
+  }
   const ownersByCompany = new Map<string, { name: string; pct: number }[]>();
   for (const o of ownerships) {
     if (!o.ownedCompanyId) continue;
@@ -163,7 +183,7 @@ export async function buildTaxReserve(
   }
 
   const rows: ReserveRow[] = [];
-  const flowMap = new Map<string, OwnerFlow>();
+  const flowMap = new Map<string, { name: string; net: number; from: { company: string; amount: number }[] }>();
 
   for (const c of companies) {
     const cp = byCompany.get(c.id);
@@ -183,18 +203,17 @@ export async function buildTaxReserve(
     const reserve =
       taxableProfit != null && taxableProfit > 0 ? (taxableProfit * ratePct) / 100 : 0;
 
-    const owners: ReserveOwner[] = (ownersByCompany.get(c.id) ?? []).map((o) => {
-      const attributed =
-        taxableProfit != null && taxableProfit > 0
-          ? Math.round(((taxableProfit * o.pct) / 100) * 100) / 100
-          : 0;
-      return { name: o.name, pct: o.pct, attributed };
-    });
+    // Atribuição ASSINADA: prejuízo entra negativo e compensa no dono.
+    const owners: ReserveOwner[] = (ownersByCompany.get(c.id) ?? []).map((o) => ({
+      name: o.name,
+      pct: o.pct,
+      attributed: taxableProfit != null ? Math.round(((taxableProfit * o.pct) / 100) * 100) / 100 : 0,
+    }));
 
     for (const o of owners) {
-      if (o.attributed <= 0) continue;
-      const f = flowMap.get(o.name) ?? { name: o.name, total: 0, from: [] };
-      f.total = Math.round((f.total + o.attributed) * 100) / 100;
+      if (o.attributed === 0) continue;
+      const f = flowMap.get(o.name) ?? { name: o.name, net: 0, from: [] };
+      f.net = Math.round((f.net + o.attributed) * 100) / 100;
       f.from.push({ company: c.legalName, amount: o.attributed });
       flowMap.set(o.name, f);
     }
@@ -203,6 +222,8 @@ export async function buildTaxReserve(
       companyId: c.id,
       name: c.legalName,
       currency: c.baseCurrency,
+      state: c.state,
+      taxTreatment: treatmentByCompany.get(c.id) ?? null,
       periodLabel,
       importId,
       profit,
@@ -218,8 +239,16 @@ export async function buildTaxReserve(
     });
   }
   rows.sort((a, b) => b.reserve - a.reserve);
-  const flow = [...flowMap.values()].sort((a, b) => b.total - a.total);
-  return { rows, flow };
+  const flow: OwnerFlow[] = [...flowMap.values()]
+    .map((f) => ({
+      name: f.name,
+      net: f.net,
+      ratePct: global,
+      reserve: f.net > 0 ? Math.round(((f.net * global) / 100) * 100) / 100 : 0,
+      from: f.from,
+    }))
+    .sort((a, b) => b.net - a.net);
+  return { rows, flow, global };
 }
 
 // Estimativa de IR de UMA empresa num ano — para a aba da empresa.

@@ -67,6 +67,7 @@ const NAV: Entry[] = [
       { href: "/1099", label: "1099 worklist", icon: FileText },
       { href: "/assets", label: "Assets & depreciation", icon: Boxes },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
+      { href: "/florida", label: "Florida tax", icon: Landmark },
     ],
   },
   {

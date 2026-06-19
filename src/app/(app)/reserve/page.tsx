@@ -33,6 +33,9 @@ export default async function ReservePage({
   const totals = new Map<string, number>();
   for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.reserve);
   const anyAssets = rows.some((r) => r.hasAssets);
+  // Comparação da compensação (em USD): reserva por empresa (sem abater) × net por dono.
+  const grossUsd = rows.filter((r) => r.currency === "USD").reduce((s, r) => s + r.reserve, 0);
+  const netUsd = flow.reduce((s, f) => s + f.reserve, 0);
 
   return (
     <div className="space-y-6">
@@ -183,18 +186,27 @@ export default async function ReservePage({
 
           {flow.length > 0 && (
             <section className="space-y-2">
-              <h2 className="text-lg font-medium text-slate-800">Profit flow to owners</h2>
+              <h2 className="text-lg font-medium text-slate-800">
+                Profit flow to owners — with loss compensation
+              </h2>
               <p className="text-sm text-slate-500">
-                Where each company&apos;s taxable profit lands by direct ownership — which entity or
-                person it passes through to.
+                Each company&apos;s taxable profit (or loss) attributed to its direct owners. Losses
+                offset profits at the owner level, so the reserve is on the net base — not on each
+                profit alone.
               </p>
+              <div className="grid grid-cols-3 gap-3">
+                <Stat label="Gross reserve (USD, no offset)" value={money(grossUsd, "USD")} muted />
+                <Stat label="After loss compensation" value={money(netUsd, "USD")} />
+                <Stat label="Saved by offsetting losses" value={money(grossUsd - netUsd, "USD")} good />
+              </div>
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
                       <th className="px-4 py-2 font-medium">Owner</th>
-                      <th className="px-4 py-2 font-medium">From</th>
-                      <th className="px-4 py-2 text-right font-medium">Attributed profit</th>
+                      <th className="px-4 py-2 font-medium">From (profit / loss)</th>
+                      <th className="px-4 py-2 text-right font-medium">Net base</th>
+                      <th className="px-4 py-2 text-right font-medium">Reserve ({flow[0]?.ratePct ?? 0}%)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -202,12 +214,24 @@ export default async function ReservePage({
                       <tr key={f.name}>
                         <td className="px-4 py-2 font-medium text-slate-700">{f.name}</td>
                         <td className="px-4 py-2 text-xs text-slate-500">
-                          {f.from
-                            .map((x) => `${x.company} (${money(x.amount, "USD")})`)
-                            .join(" · ")}
+                          {f.from.map((x, i) => (
+                            <span key={i}>
+                              {i > 0 && " · "}
+                              {x.company} (
+                              <span className={x.amount < 0 ? "text-rose-600" : "text-slate-500"}>
+                                {money(x.amount, "USD")}
+                              </span>
+                              )
+                            </span>
+                          ))}
                         </td>
-                        <td className="px-4 py-2 text-right font-medium tabular-nums text-slate-800">
-                          {money(f.total, "USD")}
+                        <td
+                          className={`px-4 py-2 text-right tabular-nums ${f.net < 0 ? "text-rose-600" : "text-slate-800"}`}
+                        >
+                          {money(f.net, "USD")}
+                        </td>
+                        <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
+                          {money(f.reserve, "USD")}
                         </td>
                       </tr>
                     ))}
@@ -222,12 +246,40 @@ export default async function ReservePage({
             <Link href="/assets" className="text-[#1f3a5f] hover:underline">
               MACRS depreciation
             </Link>{" "}
-            where assets are on file (book − tax). Reserve = taxable profit × rate; no reserve on a
-            loss. Profit flow uses direct ownership and is informational — pass-through depends on
-            the entity type. Reconcile against the actual return at year-end.
+            where assets are on file (book − tax). At the owner level, losses compensate profits, so
+            the reserve is on the net base (the company table shows each entity&apos;s standalone
+            figure). Direct ownership only, USD; reconcile against the actual return at year-end.{" "}
+            <Link href="/florida" className="text-[#1f3a5f] hover:underline">
+              Florida corporate tax →
+            </Link>
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  good,
+  muted,
+}: {
+  label: string;
+  value: string;
+  good?: boolean;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div
+        className={`mt-1 text-xl font-semibold ${
+          good ? "text-emerald-600" : muted ? "text-slate-400" : "text-slate-800"
+        }`}
+      >
+        {value}
+      </div>
     </div>
   );
 }
