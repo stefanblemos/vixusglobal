@@ -12,6 +12,8 @@ import { YearSelect } from "@/components/year-select";
 import { CompletenessModal } from "@/components/completeness-modal";
 import { buildGroupCompleteness } from "@/lib/tax/group-completeness";
 import { ReserveDepositModal, type DepositRow } from "@/components/reserve-deposit-modal";
+import { buildQuarterlyBreakdown } from "@/lib/tax/quarterly-breakdown";
+import { QuarterlyBreakdown } from "@/components/quarterly-breakdown";
 
 const money = (v: number | null, ccy = "USD") =>
   v == null
@@ -40,16 +42,18 @@ export default async function ReservePage({
   const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "quarterly";
   const rates = await yearRates(year);
 
-  const [{ rows, flow }, { rows: qRows }, completeness, depositList] = await Promise.all([
-    buildTaxReserve(year),
-    buildQuarterlyReserve(year),
-    buildGroupCompleteness(year),
-    prisma.reserveDeposit.findMany({
-      where: { year },
-      include: { company: { select: { legalName: true } } },
-      orderBy: [{ quarter: "asc" }, { createdAt: "asc" }],
-    }),
-  ]);
+  const [{ rows, flow }, { rows: qRows }, { rows: breakdown }, completeness, depositList] =
+    await Promise.all([
+      buildTaxReserve(year),
+      buildQuarterlyReserve(year),
+      buildQuarterlyBreakdown(year),
+      buildGroupCompleteness(year),
+      prisma.reserveDeposit.findMany({
+        where: { year },
+        include: { company: { select: { legalName: true } } },
+        orderBy: [{ quarter: "asc" }, { createdAt: "asc" }],
+      }),
+    ]);
   const deposits: DepositRow[] = depositList.map((d) => ({
     id: d.id,
     company: d.company.legalName,
@@ -144,6 +148,7 @@ export default async function ReservePage({
       ) : tab === "settings" ? null : (
         <>
           {tab === "quarterly" && (
+          <>
           <section className="space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-medium text-slate-800">Quarterly closing — needed vs funded</h2>
@@ -255,6 +260,8 @@ export default async function ReservePage({
               </table>
             </div>
           </section>
+          <QuarterlyBreakdown rows={breakdown} />
+          </>
           )}
 
           {tab === "annual" && (
