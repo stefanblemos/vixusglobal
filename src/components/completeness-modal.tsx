@@ -87,25 +87,39 @@ export function CompletenessModal({ data }: { data: GroupCompleteness }) {
                           {g.companies.map((c) => (
                             <tr
                               key={c.id}
-                              className={!c.pnl || !c.bs || !c.gl ? "bg-rose-50/30" : ""}
+                              className={
+                                !c.controlled
+                                  ? "text-slate-400"
+                                  : !c.pnl || !c.bs || !c.gl
+                                    ? "bg-rose-50/30"
+                                    : ""
+                              }
                             >
                               <td className="px-3 py-1.5">
                                 <Link
                                   href={`/companies/${c.id}?tab=financials`}
-                                  className="text-[#1f3a5f] hover:underline"
+                                  className={c.controlled ? "text-[#1f3a5f] hover:underline" : "hover:underline"}
                                 >
                                   {c.name}
                                 </Link>
                               </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <Mark ok={c.pnl} />
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <Mark ok={c.bs} />
-                              </td>
-                              <td className="px-3 py-1.5 text-center">
-                                <Mark ok={c.gl} />
-                              </td>
+                              {c.controlled ? (
+                                <>
+                                  <td className="px-3 py-1.5 text-center">
+                                    <Mark ok={c.pnl} />
+                                  </td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    <Mark ok={c.bs} />
+                                  </td>
+                                  <td className="px-3 py-1.5 text-center">
+                                    <Mark ok={c.gl} />
+                                  </td>
+                                </>
+                              ) : (
+                                <td colSpan={3} className="px-3 py-1.5 text-center text-xs text-slate-400">
+                                  external — controlled elsewhere (still a partner)
+                                </td>
+                              )}
                             </tr>
                           ))}
                         </tbody>

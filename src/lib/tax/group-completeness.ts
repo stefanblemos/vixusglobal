@@ -7,6 +7,7 @@ export interface CoCompleteness {
   id: string;
   name: string;
   relationship: string;
+  controlled: boolean; // false = não controlamos aqui (outra pessoa controla) → não é "missing"
   pnl: boolean;
   bs: boolean;
   gl: boolean;
@@ -33,7 +34,7 @@ export async function buildGroupCompleteness(year: number): Promise<GroupComplet
   const [companies, imports, ownerships] = await Promise.all([
     prisma.company.findMany({
       where: { status: "ACTIVE" },
-      select: { id: true, legalName: true, relationship: true },
+      select: { id: true, legalName: true, relationship: true, monitored: true },
     }),
     prisma.qboImport.findMany({
       where: { companyId: { not: null } },
@@ -72,13 +73,15 @@ export async function buildGroupCompleteness(year: number): Promise<GroupComplet
             id,
             name: c?.legalName ?? "—",
             relationship: c?.relationship ?? "",
+            controlled: c?.monitored ?? true,
             pnl: has(id, "PROFIT_AND_LOSS"),
             bs: has(id, "BALANCE_SHEET"),
             gl: has(id, "GENERAL_LEDGER"),
           };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
-      const missing = cos.filter((r) => !r.pnl || !r.bs || !r.gl).length;
+      // Só conta como falta o que É nosso controle; não-controladas são "external".
+      const missing = cos.filter((r) => r.controlled && (!r.pnl || !r.bs || !r.gl)).length;
       return { owner, companies: cos, missing };
     })
     .filter((g) => g.companies.length > 0)
