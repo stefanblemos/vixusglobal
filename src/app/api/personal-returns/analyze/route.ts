@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { ingestPersonalReturn } from "@/lib/personal/ingest";
+import { auth } from "@/auth";
 
 export const maxDuration = 300;
 
@@ -18,6 +19,7 @@ async function finalize(fileName: string, buf: Buffer, partyId: string): Promise
 }
 
 export async function POST(req: Request): Promise<Response> {
+  if (!(await auth())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const fileName = decodeURIComponent(req.headers.get("x-filename") || "document.pdf");
   const partyId = req.headers.get("x-party-id") || "";
   const total = parseInt(req.headers.get("x-total-chunks") || "1", 10);

@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { ingestCorporateDoc } from "@/lib/corporate/ingest";
+import { auth } from "@/auth";
 
 export const maxDuration = 300;
 
@@ -24,6 +25,7 @@ async function finalize(
 }
 
 export async function POST(req: Request): Promise<Response> {
+  if (!(await auth())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const fileName = decodeURIComponent(req.headers.get("x-filename") || "document.pdf");
   const docType = req.headers.get("x-doc-type") || "";
   const docName = decodeURIComponent(req.headers.get("x-doc-name") || "");

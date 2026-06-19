@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
+import { auth } from "@/auth";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!(await auth())) return new Response("Unauthorized", { status: 401 });
   const { id } = await params;
   const doc = await prisma.corporateDoc.findUnique({
     where: { id },

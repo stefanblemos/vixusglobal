@@ -159,8 +159,6 @@ model Company {
 
   ownerStakes     Ownership[]        @relation("OwnerCompany")
   ownedStakes     Ownership[]        @relation("OwnedCompany")
-  accounts        LedgerAccount[]
-  journalEntries  JournalEntry[]
   loansAsLender   IntercompanyLoan[] @relation("Lender")
   loansAsBorrower IntercompanyLoan[] @relation("Borrower")
   qboImports      QboImport[]
@@ -604,70 +602,6 @@ model Ownership {
   endDate       DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-}
-
-// ─────────────────────────────────────────────────────────────
-// Ledger — plano de contas e lançamentos (partida dobrada)
-// ─────────────────────────────────────────────────────────────
-
-enum AccountType {
-  ASSET
-  LIABILITY
-  EQUITY
-  REVENUE
-  EXPENSE
-}
-
-enum JournalSource {
-  MANUAL
-  QBO_IMPORT
-  LOAN
-}
-
-model LedgerAccount {
-  id        String         @id @default(cuid())
-  companyId String
-  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  code      String
-  name      String
-  type      AccountType
-  parentId  String?
-  parent    LedgerAccount? @relation("AccountTree", fields: [parentId], references: [id])
-  children  LedgerAccount[] @relation("AccountTree")
-  isActive  Boolean        @default(true)
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
-
-  lines JournalLine[]
-
-  @@unique([companyId, code])
-}
-
-model JournalEntry {
-  id          String        @id @default(cuid())
-  companyId   String
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  date        DateTime
-  description String?
-  source      JournalSource @default(MANUAL)
-  reference   String?
-  loanTxnId   String?       @unique // se originado de uma transação de empréstimo
-  createdAt   DateTime      @default(now())
-
-  lines JournalLine[]
-}
-
-model JournalLine {
-  id             String       @id @default(cuid())
-  journalEntryId String
-  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
-  accountId      String
-  account        LedgerAccount @relation(fields: [accountId], references: [id])
-  debit          Decimal      @default(0) @db.Decimal(20, 4)
-  credit         Decimal      @default(0) @db.Decimal(20, 4)
-  currency       String       @default("USD")
-  fxRate         Decimal?     @db.Decimal(18, 8)
-  memo           String?
 }
 
 // ─────────────────────────────────────────────────────────────

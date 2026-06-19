@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { ingestTaxReturn } from "@/lib/ir/ingest";
+import { auth } from "@/auth";
 
 export const maxDuration = 300; // análise de PDFs grandes pode demorar
 
@@ -17,6 +18,7 @@ async function finalize(fileName: string, buf: Buffer): Promise<Response> {
 }
 
 export async function POST(req: Request): Promise<Response> {
+  if (!(await auth())) return Response.json({ error: "Unauthorized" }, { status: 401 });
   const fileName = decodeURIComponent(req.headers.get("x-filename") || "tax-return.pdf");
   const total = parseInt(req.headers.get("x-total-chunks") || "1", 10);
   const body = Buffer.from(await req.arrayBuffer());

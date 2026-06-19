@@ -24,6 +24,7 @@ import {
   FileText,
   Boxes,
   Settings,
+  ShieldCheck,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -181,6 +182,15 @@ export function AppSidebar({ email, role }: { email?: string | null; role?: stri
             </div>
           );
         })}
+        {role === "ADMIN" && (
+          <Link href="/admin/users" className={linkClass(isActive("/admin/users"))}>
+            <ShieldCheck
+              size={18}
+              className={isActive("/admin/users") ? "text-[#8DC63F]" : "text-slate-400"}
+            />
+            Users &amp; access
+          </Link>
+        )}
       </nav>
 
       <div className="shrink-0 border-t border-slate-200 p-3">
