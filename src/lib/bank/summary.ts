@@ -67,9 +67,12 @@ export async function buildBankReconSummary(
     });
     glNet = cashTxns.reduce((s, t) => s + Number(t.amount.toString()), 0);
 
-    const matched = new Set(
-      st.lines.map((l) => l.matchedTxnId).filter((x): x is string => !!x),
-    );
+    // Considera TODOS os lançamentos casados — inclusive os componentes de um split.
+    const matched = new Set<string>();
+    for (const l of st.lines) {
+      if (l.matchedTxnId) matched.add(l.matchedTxnId);
+      for (const id of l.matchedTxnIds) matched.add(id);
+    }
     bookedNotOnStatement = cashTxns
       .filter((t) => !matched.has(t.id))
       .map((t) => ({

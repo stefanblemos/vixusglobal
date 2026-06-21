@@ -129,7 +129,7 @@ async function refreshLine(lineId: string) {
 export async function matchLine(lineId: string, txnId: string): Promise<void> {
   await prisma.bankStatementLine.update({
     where: { id: lineId },
-    data: { matchedTxnId: txnId, status: "MATCHED", reviewedAt: new Date() },
+    data: { matchedTxnId: txnId, matchedTxnIds: [txnId], matchNote: null, status: "MATCHED", reviewedAt: new Date() },
   });
   await refreshLine(lineId);
 }
@@ -141,7 +141,7 @@ export async function reviewLine(
 ): Promise<void> {
   await prisma.bankStatementLine.update({
     where: { id: lineId },
-    data: { status, note: note || null, matchedTxnId: null, reviewedAt: new Date() },
+    data: { status, note: note || null, matchedTxnId: null, matchedTxnIds: [], matchNote: null, reviewedAt: new Date() },
   });
   await refreshLine(lineId);
 }
@@ -149,7 +149,7 @@ export async function reviewLine(
 export async function resetLine(lineId: string): Promise<void> {
   await prisma.bankStatementLine.update({
     where: { id: lineId },
-    data: { status: "UNREVIEWED", matchedTxnId: null, note: null, reviewedAt: null },
+    data: { status: "UNREVIEWED", matchedTxnId: null, matchedTxnIds: [], matchNote: null, note: null, reviewedAt: null },
   });
   await refreshLine(lineId);
 }
@@ -170,7 +170,7 @@ export async function setStatementGlAccount(
   // Limpa matches automáticos para reavaliar no novo escopo.
   await prisma.bankStatementLine.updateMany({
     where: { statementId, status: "MATCHED", reviewedAt: null },
-    data: { status: "UNREVIEWED", matchedTxnId: null },
+    data: { status: "UNREVIEWED", matchedTxnId: null, matchedTxnIds: [], matchNote: null },
   });
   await reconcileStatement(prisma, statementId);
   revalidatePath(`/bank/${statementId}`);

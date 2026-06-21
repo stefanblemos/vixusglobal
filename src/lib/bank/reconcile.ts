@@ -82,10 +82,10 @@ export async function reconcileStatement(
     .filter((l) => l.status === "UNREVIEWED")
     .map((l) => ({ id: l.id, date: l.date.getTime(), amount: Math.round(Number(l.amount.toString()) * 100) / 100 }));
 
-  const mark = (lineId: string, txnId: string, note: string | null) =>
+  const mark = (lineId: string, txnIds: string[], note: string | null) =>
     prisma.bankStatementLine.update({
       where: { id: lineId },
-      data: { matchedTxnId: txnId, status: "MATCHED", matchNote: note },
+      data: { matchedTxnId: txnIds[0], matchedTxnIds: txnIds, status: "MATCHED", matchNote: note },
     });
 
   // Passe 1 e 2 — match exato único (janela curta, depois larga).
@@ -98,7 +98,7 @@ export async function reconcileStatement(
       if (hit) {
         used.add(hit.id);
         used.add("line:" + l.id);
-        await mark(l.id, hit.id, null);
+        await mark(l.id, [hit.id], null);
       }
     }
   }
@@ -110,7 +110,7 @@ export async function reconcileStatement(
     if (set) {
       for (const t of set) used.add(t.id);
       used.add("line:" + l.id);
-      await mark(l.id, set[0].id, `split — ${set.length} entries`);
+      await mark(l.id, set.map((t) => t.id), `split — ${set.length} entries`);
     }
   }
 }
