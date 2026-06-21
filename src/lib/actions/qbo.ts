@@ -92,6 +92,11 @@ export async function saveQboImport(input: {
     },
   });
 
+  // O QBO é a fonte da moeda da empresa — sincroniza baseCurrency (ex.: EUR para PT).
+  if (companyId && currency) {
+    await prisma.company.update({ where: { id: companyId }, data: { baseCurrency: currency } });
+  }
+
   revalidatePath("/import");
   redirect(`/import/${imp.id}`);
 }

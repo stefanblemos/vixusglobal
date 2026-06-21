@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
+import { buildPtAssetRegister } from "@/lib/assets/pt-register";
 import { buildDepreciationVsIR } from "@/lib/assets/dep-vs-ir";
 import { AssetCreateForm } from "@/components/asset-create-form";
 import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +18,15 @@ export default async function AssetsPage({
   const currentYear = new Date().getUTCFullYear();
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : currentYear;
 
-  const [reg, vsIr] = await Promise.all([
+  const [reg, ptReg, vsIr, formCompanies] = await Promise.all([
     buildAssetRegister(year, company),
+    buildPtAssetRegister(year, company),
     buildDepreciationVsIR(year),
+    prisma.company.findMany({
+      where: { status: "ACTIVE" },
+      select: { id: true, legalName: true, jurisdiction: true, baseCurrency: true },
+      orderBy: { legalName: "asc" },
+    }),
   ]);
 
   return (
@@ -31,7 +39,7 @@ export default async function AssetsPage({
         </p>
       </div>
 
-      <AssetCreateForm companies={reg.companies} />
+      <AssetCreateForm companies={formCompanies} />
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
         <span className="mr-1 text-slate-400">Year:</span>
@@ -215,6 +223,109 @@ export default async function AssetsPage({
         bonus are taken in year 1, then MACRS on the remaining basis. A control estimate — confirm
         conventions (mid-quarter, luxury-auto caps) with the accountant.
       </p>
+
+      {ptReg.companies.length > 0 && (
+        <section className="space-y-3 border-t border-slate-200 pt-6">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-800">Portugal — depreciação</h2>
+            <p className="text-sm text-slate-500">
+              Método das quotas constantes (Decreto Regulamentar 25/2009) — taxa anual fixa, na moeda
+              nativa da empresa. O terreno não deprecia; benfeitorias e IMT entram no custo.
+            </p>
+          </div>
+
+          {ptReg.byCompany.length > 0 ? (
+            <>
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-4 py-2 font-medium">Empresa</th>
+                      <th className="px-4 py-2 text-right font-medium">Depreciação {year}</th>
+                      <th className="px-4 py-2 text-right font-medium">Acumulada até {year}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ptReg.byCompany.map((c) => (
+                      <tr key={c.companyId}>
+                        <td className="px-4 py-2 font-medium text-slate-700">{c.companyName}</td>
+                        <td className="px-4 py-2 text-right tabular-nums text-slate-800">
+                          {formatMoney(c.yearDep, c.currency)}
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums text-slate-600">
+                          {formatMoney(c.accumulated, c.currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 text-left text-slate-500">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Ativo</th>
+                      <th className="px-3 py-2 font-medium">Empresa</th>
+                      <th className="px-3 py-2 font-medium">Tipo</th>
+                      <th className="px-3 py-2 font-medium whitespace-nowrap">Entrada</th>
+                      <th className="px-3 py-2 text-right font-medium">Custo</th>
+                      <th className="px-3 py-2 text-right font-medium">Terreno</th>
+                      <th className="px-3 py-2 text-right font-medium">Base</th>
+                      <th className="px-3 py-2 text-right font-medium">Dep {year}</th>
+                      <th className="px-3 py-2 text-right font-medium">Acum.</th>
+                      <th className="px-3 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ptReg.assets.map((a) => (
+                      <tr key={a.id} className="hover:bg-slate-50">
+                        <td className="px-3 py-2 font-medium text-slate-700">{a.name}</td>
+                        <td className="px-3 py-2 text-slate-600">{a.companyName}</td>
+                        <td className="px-3 py-2 text-xs text-slate-500">
+                          {a.categoryLabel}
+                          <span className="text-slate-400"> · {a.ratePct}%/ano</span>
+                        </td>
+                        <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                          {a.acquisitionDate}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                          {formatMoney(a.cost, a.currency)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-500">
+                          {a.landValue > 0 ? formatMoney(a.landValue, a.currency) : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                          {formatMoney(a.depreciableBasis, a.currency)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">
+                          {formatMoney(a.yearDep, a.currency)}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                          {formatMoney(a.accumulated, a.currency)}
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <form action={deleteAsset}>
+                            <input type="hidden" name="id" value={a.id} />
+                            <button className="text-xs text-slate-300 hover:text-red-600" title="Delete">
+                              ✕
+                            </button>
+                          </form>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
+              Nenhum ativo PT cadastrado. Selecione uma empresa de Portugal no formulário acima para
+              cadastrar (ex.: imóvel) — depreciação por quotas constantes.
+            </p>
+          )}
+        </section>
+      )}
     </div>
   );
 }

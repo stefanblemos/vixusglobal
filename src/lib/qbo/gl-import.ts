@@ -33,6 +33,11 @@ export async function importGeneralLedger(
     return { matched: false, companyName: gl.companyName, transactions: 0, vendors: 0 };
   }
 
+  // O QBO é a fonte da moeda da empresa — sincroniza baseCurrency (ex.: EUR para PT).
+  if (gl.currency) {
+    await prisma.company.update({ where: { id: companyId }, data: { baseCurrency: gl.currency } });
+  }
+
   // Vendors (coluna Name) — upsert por nome normalizado, ligando a empresa/party se casar.
   const names = [...new Set(gl.transactions.map((t) => t.name).filter((n): n is string => !!n))];
   const vendorMap = new Map<string, string>();

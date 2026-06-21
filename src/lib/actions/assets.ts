@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { categoryByKey } from "@/lib/assets/categories";
+import { ptCategoryByKey } from "@/lib/assets/pt-categories";
 
 export type AssetFormState = { error?: string } | undefined;
 
@@ -16,6 +17,7 @@ export async function createAsset(
   formData: FormData,
 ): Promise<AssetFormState> {
   const companyId = String(formData.get("companyId") ?? "");
+  const regime = String(formData.get("regime") ?? "US") === "PT" ? "PT" : "US";
   const name = String(formData.get("name") ?? "").trim();
   const category = String(formData.get("category") ?? "OTHER");
   const acquisitionDate = String(formData.get("acquisitionDate") ?? "").trim();
@@ -25,6 +27,32 @@ export async function createAsset(
   if (!name) return { error: "Name is required." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(acquisitionDate)) return { error: "Use a valid acquisition date." };
   if (cost <= 0) return { error: "Cost must be greater than zero." };
+
+  if (regime === "PT") {
+    // Portugal — quotas constantes (DR 25/2009). Taxa anual + parcela de terreno.
+    const cat = ptCategoryByKey(category);
+    const rateRaw = String(formData.get("ratePct") ?? "").trim();
+    const ratePct = rateRaw ? Number(rateRaw) : cat.ratePct;
+    if (!Number.isFinite(ratePct) || ratePct <= 0) return { error: "Set a valid annual rate (%)." };
+    const landValue = Math.max(0, Math.min(num(formData.get("landValue")), cost));
+    await prisma.fixedAsset.create({
+      data: {
+        companyId,
+        regime: "PT",
+        name,
+        category,
+        acquisitionDate: new Date(`${acquisitionDate}T00:00:00Z`),
+        cost,
+        recoveryYears: Math.round((100 / ratePct) * 10) / 10, // vida ≈ 100/taxa
+        method: "SL_PT",
+        ratePct,
+        landValue,
+        notes: String(formData.get("notes") ?? "").trim() || null,
+      },
+    });
+    revalidatePath("/assets");
+    return undefined;
+  }
 
   const cat = categoryByKey(category);
   // Vida/método: usa o override do formulário se vier, senão o padrão da categoria.
@@ -38,6 +66,7 @@ export async function createAsset(
   await prisma.fixedAsset.create({
     data: {
       companyId,
+      regime: "US",
       name,
       category,
       acquisitionDate: new Date(`${acquisitionDate}T00:00:00Z`),

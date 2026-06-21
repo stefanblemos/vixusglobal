@@ -171,7 +171,11 @@ export async function buildTaxReserve(
   year: number,
 ): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[] }> {
   const [companies, pnls, { override }, yr, assetReg, ownerships, returns] = await Promise.all([
-    prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true, state: true } }),
+    // Reserva de IR é lógica US (21%/30%) — só empresas em USD (não consolida EUR/BRL).
+    prisma.company.findMany({
+      where: { baseCurrency: "USD" },
+      select: { id: true, legalName: true, baseCurrency: true, state: true },
+    }),
     prisma.qboImport.findMany({
       where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
       select: { id: true, companyId: true, periodLabel: true },
@@ -311,7 +315,10 @@ export type QuarterlyRow = {
 
 export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
   const [companies, pnls, { override }, yr, deposits, returns] = await Promise.all([
-    prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true } }),
+    prisma.company.findMany({
+      where: { baseCurrency: "USD" },
+      select: { id: true, legalName: true, baseCurrency: true },
+    }),
     prisma.qboImport.findMany({
       where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
       select: { id: true, companyId: true, periodLabel: true },

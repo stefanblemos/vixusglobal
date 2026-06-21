@@ -66,24 +66,29 @@ export function parseGeneralLedger(csvText: string): GeneralLedger {
   // Cabeçalho de colunas = a linha que tem "Transaction Date" em alguma coluna.
   // O QBO exporta o GL em dois layouts — com e sem a coluna "Distribution account" —
   // então mapeamos cada coluna pelo RÓTULO, não por índice fixo (senão tudo desloca).
-  const headerIdx = rows.findIndex((r) =>
-    r.some((c) => (c ?? "").toLowerCase() === "transaction date"),
-  );
+  // Reconhece rótulos em inglês E português (PT) — o QBO exporta no idioma da empresa.
+  const isDateHeader = (c: string) => c === "transaction date" || c === "data de transação";
+  const headerIdx = rows.findIndex((r) => r.some((c) => isDateHeader((c ?? "").toLowerCase())));
   const header = headerIdx >= 0 ? rows[headerIdx] : [];
   const find = (pred: (c: string) => boolean) => {
     const i = header.findIndex((c) => pred((c ?? "").toLowerCase()));
     return i >= 0 ? i : null;
   };
-  const dateIdx = find((c) => c === "transaction date") ?? 1;
-  const typeIdx = find((c) => c === "transaction type") ?? dateIdx + 1;
-  const numIdx = find((c) => c === "num" || c === "#") ?? dateIdx + 2;
-  const nameIdx = find((c) => c === "name") ?? dateIdx + 3;
-  const descIdx = find((c) => c.includes("memo") || c.includes("description")) ?? dateIdx + 4;
-  const splitIdx = find((c) => c === "split") ?? dateIdx + 5;
-  const amountIdx = find((c) => c === "amount") ?? dateIdx + 6;
-  const balanceIdx = find((c) => c === "balance"); // saldo corrido (p/ saldo final por conta)
+  const dateIdx = find(isDateHeader) ?? 1;
+  const typeIdx = find((c) => c === "transaction type" || c === "tipo de transação") ?? dateIdx + 1;
+  const numIdx = find((c) => c === "num" || c === "#" || c === "número") ?? dateIdx + 2;
+  const nameIdx = find((c) => c === "name" || c === "nome") ?? dateIdx + 3;
+  const descIdx =
+    find((c) => c.includes("memo") || c.includes("description") || c.includes("descrição")) ??
+    dateIdx + 4;
+  const splitIdx = find((c) => c === "split" || c === "dividir") ?? dateIdx + 5;
+  const amountIdx = find((c) => c === "amount" || c === "montante") ?? dateIdx + 6;
+  // saldo corrido (p/ saldo final por conta)
+  const balanceIdx = find((c) => c === "balance" || c === "saldo");
   // Coluna que repete o nome da conta em cada linha (layout novo). Pode não existir.
-  const acctIdx = find((c) => c.includes("distribution account") || c === "account");
+  const acctIdx = find(
+    (c) => c.includes("distribution account") || c === "account" || c === "conta de distribuição",
+  );
 
   const transactions: GlTransaction[] = [];
   const accounts = new Set<string>();
@@ -92,7 +97,10 @@ export function parseGeneralLedger(csvText: string): GeneralLedger {
   let currentAccount = "";
 
   const isBeginning = (row: string[]) =>
-    row.some((c) => (c ?? "").toLowerCase() === "beginning balance");
+    row.some((c) => {
+      const v = (c ?? "").toLowerCase();
+      return v === "beginning balance" || v === "saldo inicial";
+    });
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const row = rows[i];

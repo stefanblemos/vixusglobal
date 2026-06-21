@@ -54,7 +54,8 @@ export async function buildAssetRegister(
       orderBy: { legalName: "asc" },
     }),
     prisma.fixedAsset.findMany({
-      where: companyFilter ? { companyId: companyFilter } : {},
+      // Só ativos US (MACRS) — os de Portugal (quotas constantes, €) têm registro à parte.
+      where: { regime: "US", ...(companyFilter ? { companyId: companyFilter } : {}) },
       include: { company: { select: { legalName: true } } },
       orderBy: { acquisitionDate: "asc" },
     }),

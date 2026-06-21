@@ -199,13 +199,16 @@ model FixedAsset {
   companyId       String
   company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name            String
-  category        String // AUTO | COMPUTER | EQUIPMENT | FURNITURE | LAND_IMP | RESIDENTIAL_RE | COMMERCIAL_RE | OTHER
-  acquisitionDate DateTime  @db.Date // colocado em serviço
+  regime          String    @default("US") // US (MACRS) | PT (quotas constantes, DR 25/2009)
+  category        String // US: AUTO|COMPUTER|EQUIPMENT|… ; PT: BUILDING_COMM|VEHICLE_LIGHT|…
+  acquisitionDate DateTime  @db.Date // colocado em serviço / entrada em uso
   cost            Decimal   @db.Decimal(20, 4)
-  recoveryYears   Decimal   @db.Decimal(4, 1) // 5, 7, 15, 27.5, 39…
-  method          String // MACRS | SL_MM (real property = straight-line mid-month)
-  section179      Decimal   @default(0) @db.Decimal(20, 4) // deduzido no 1º ano
-  bonusPct        Decimal   @default(0) @db.Decimal(5, 2) // % de bonus depreciation (após §179)
+  recoveryYears   Decimal   @db.Decimal(4, 1) // US: 5, 7, 15, 27.5, 39… ; PT: derivado da taxa
+  method          String // MACRS | SL_MM (real property) | SL_PT (quotas constantes)
+  ratePct         Decimal   @default(0) @db.Decimal(6, 3) // PT: taxa anual de depreciação (%)
+  landValue       Decimal   @default(0) @db.Decimal(20, 4) // PT: parcela de terreno (não deprecia)
+  section179      Decimal   @default(0) @db.Decimal(20, 4) // US: deduzido no 1º ano
+  bonusPct        Decimal   @default(0) @db.Decimal(5, 2) // US: % de bonus depreciation (após §179)
   disposalDate    DateTime? @db.Date
   notes           String?
   createdAt       DateTime  @default(now())

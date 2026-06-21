@@ -54,7 +54,10 @@ async function netIncomeOf(importId: string): Promise<number | null> {
 export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBreakdownRow[] }> {
   const [companies, pnls, returns, loans, assetReg, ownerships, overrideRows, yr] =
     await Promise.all([
-      prisma.company.findMany({ select: { id: true, legalName: true, baseCurrency: true } }),
+      prisma.company.findMany({
+        where: { baseCurrency: "USD" },
+        select: { id: true, legalName: true, baseCurrency: true },
+      }),
       prisma.qboImport.findMany({
         where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
         select: { id: true, companyId: true, periodLabel: true },
