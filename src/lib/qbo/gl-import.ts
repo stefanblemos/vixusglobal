@@ -26,7 +26,7 @@ export async function importGeneralLedger(
   const companies = await prisma.company.findMany({
     select: { id: true, legalName: true, tradeName: true, aliases: true },
   });
-  const parties = await prisma.party.findMany({ select: { id: true, name: true } });
+  const parties = await prisma.party.findMany({ select: { id: true, name: true, aliases: true } });
   // Empresa: respeita a escolha explícita do usuário; senão, auto-match pelo nome.
   const companyId = opts?.companyId ?? matchCompany(gl.companyName, companies);
   if (!companyId) {

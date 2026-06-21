@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { labelForJurisdiction, labelForPartyKind } from "@/lib/catalog";
 import { crossCheckPersonalReturn, looseNameMatch } from "@/lib/personal/reconcile";
+import { MergePartyInto } from "@/components/merge-party-into";
 
 export const dynamic = "force-dynamic";
 
@@ -37,9 +38,12 @@ export default async function PartyDetailPage({
       where: { ownerPartyId: id },
       orderBy: { percentage: "desc" },
     }),
-    prisma.party.findMany({ select: { id: true, name: true } }),
+    prisma.party.findMany({ select: { id: true, name: true, kind: true } }),
   ]);
   if (!party) notFound();
+
+  // Outros registros do mesmo tipo — candidatos a serem a mesma pessoa (merge manual).
+  const otherParties = parties.filter((p) => p.id !== id && p.kind === party.kind);
 
   const companyById = new Map(companies.map((c) => [c.id, c.legalName]));
   const companyNameById = companyById;
@@ -358,6 +362,32 @@ export default async function PartyDetailPage({
               </tbody>
             </table>
           </div>
+        </section>
+      )}
+
+      {/* Mesclar pessoa duplicada (nomes divergentes) */}
+      {party.kind === "PERSON" && (
+        <section className="space-y-2">
+          <h2 className="text-lg font-medium text-slate-800">Mesclar registro duplicado</h2>
+          <p className="text-sm text-slate-500">
+            Se a mesma pessoa está cadastrada com nome diferente, selecione o outro registro para
+            mesclá-lo nesta. Participações, declarações (1040) e vendores do razão passam para{" "}
+            <span className="font-medium text-slate-700">{party.name}</span>, o nome do duplicado
+            vira alias (imports futuros casam) e o registro extra é removido.
+          </p>
+          {party.aliases.length > 0 && (
+            <p className="text-xs text-slate-500">
+              <span className="text-slate-400">Também conhecida como:</span>{" "}
+              {party.aliases.join(" · ")}
+            </p>
+          )}
+          {otherParties.length > 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <MergePartyInto keepId={party.id} keepName={party.name} others={otherParties} />
+            </div>
+          ) : (
+            <p className="text-sm text-slate-400">Nenhum outro registro de pessoa para mesclar.</p>
+          )}
         </section>
       )}
     </div>

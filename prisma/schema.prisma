@@ -124,6 +124,7 @@ model Party {
   id              String       @id @default(cuid())
   kind            PartyKind
   name            String
+  aliases         String[]     @default([]) // nomes alternativos/divergentes (matching de import + merge)
   taxJurisdiction Jurisdiction @default(OTHER)
   taxId           String?
   notes           String?

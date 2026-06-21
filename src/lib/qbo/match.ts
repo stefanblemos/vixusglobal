@@ -43,15 +43,16 @@ export function matchCompany(
   return null;
 }
 
-/** Retorna o id da pessoa/entidade (Party) cujo nome normalizado bate, ou null. */
+/** Retorna o id da pessoa/entidade (Party) cujo nome (ou alias) normalizado bate, ou null. */
 export function matchParty(
   sourceName: string,
-  parties: { id: string; name: string }[],
+  parties: { id: string; name: string; aliases?: string[] }[],
 ): string | null {
   const target = normalizeName(stripLoanPrefix(sourceName));
   if (!target) return null;
   for (const p of parties) {
-    if (normalizeName(p.name) === target) return p.id;
+    const names = [p.name, ...(p.aliases ?? [])].filter(Boolean);
+    if (names.some((n) => normalizeName(n) === target)) return p.id;
   }
   return null;
 }
