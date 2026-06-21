@@ -66,7 +66,9 @@ const bankOfAmerica: BankAdapter = {
       const date = r[0] ?? "";
       if (!/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) continue;
       const amount = parseQboNumber(r[2]);
-      if (amount == null) continue; // linha de saldo inicial (sem valor)
+      // Pula linhas sem valor OU zeradas (ex.: fee waivers que se anulam) — não entram na
+      // reconciliação e não devem derrubar o match rate.
+      if (amount == null || Number(amount) === 0) continue;
       lines.push({
         date: toIso(date),
         description: r[1] ?? "",

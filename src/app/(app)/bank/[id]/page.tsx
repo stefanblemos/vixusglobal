@@ -24,10 +24,13 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
   });
   if (!st) notFound();
 
-  const matched = st.lines.filter((l) => l.status === "MATCHED").length;
-  const toReview = st.lines.filter((l) => l.status === "UNREVIEWED");
-  const reviewed = st.lines.filter((l) => l.status === "FLAGGED" || l.status === "IGNORED");
-  const matchRate = st.lines.length ? Math.round((matched / st.lines.length) * 100) : 0;
+  // Ignora linhas zeradas (ex.: fee waivers que se anulam) — não entram na reconciliação
+  // nem no match rate. (Imports novos já não as trazem; isto limpa os antigos.)
+  const lines = st.lines.filter((l) => Number(l.amount.toString()) !== 0);
+  const matched = lines.filter((l) => l.status === "MATCHED").length;
+  const toReview = lines.filter((l) => l.status === "UNREVIEWED");
+  const reviewed = lines.filter((l) => l.status === "FLAGGED" || l.status === "IGNORED");
+  const matchRate = lines.length ? Math.round((matched / lines.length) * 100) : 0;
 
   const summary = await buildBankReconSummary(prisma, id);
   const reconciles = summary != null && Math.abs(summary.difference) < 0.005;
