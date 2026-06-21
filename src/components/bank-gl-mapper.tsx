@@ -45,10 +45,14 @@ export function GlAccountMapper({
       </div>
       <button
         onClick={save}
-        disabled={pending || val === (current ?? "")}
+        disabled={pending || !val}
         className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-50"
       >
-        {pending ? "Re-matching…" : "Map & re-match"}
+        {pending
+          ? "Re-matching…"
+          : val === (current ?? "")
+            ? "Re-match"
+            : "Map & re-match"}
       </button>
     </div>
   );
