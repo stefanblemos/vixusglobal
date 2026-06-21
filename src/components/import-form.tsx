@@ -6,10 +6,18 @@ import { analyzeQbo, saveQboImport, type AnalyzeResult } from "@/lib/actions/qbo
 import { analyzeGl, saveGl, type GlAnalyzeResult } from "@/lib/actions/gl";
 
 // O GL é transacional (parser e tela diferentes do BS/P&L). Detecta pelo título
-// "General Ledger" nas primeiras linhas do CSV.
+// ("General Ledger" / "Livro razão" PT) ou pela assinatura de colunas do GL — o
+// QBO exporta no idioma da empresa, então o título sozinho não basta.
 function looksLikeGeneralLedger(csv: string): boolean {
   const head = csv.split(/\r?\n/).slice(0, 8).join("\n").toLowerCase();
-  return head.includes("general ledger");
+  return (
+    head.includes("general ledger") ||
+    head.includes("livro razão") ||
+    head.includes("livro razao") ||
+    // assinatura de colunas (linha de cabeçalho do GL): conta de distribuição + data
+    (head.includes("conta de distribuição") && head.includes("data de transação")) ||
+    (head.includes("distribution account") && head.includes("transaction date"))
+  );
 }
 
 const fmtUSD = (v: string | null) =>
