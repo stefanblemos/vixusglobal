@@ -152,6 +152,7 @@ model Company {
   collectsSalesTax Boolean          @default(false) // revende produtos → FL Sales & Use Tax
   hasEmployees     Boolean          @default(false) // folha → payroll (941/940/RT-6)
   monitored        Boolean          @default(true) // controlar no fechamento/overview? (false = ex-sócio etc.)
+  controlsTax      Boolean          @default(false) // tomamos conta do IR? (gerida fora do grupo entra no closing)
   closedDate    String? // data/ano de encerramento — anos depois = N/A; ano do fecho = só IR final
   notes         String?
   createdAt     DateTime            @default(now())

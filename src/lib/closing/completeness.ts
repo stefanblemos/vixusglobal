@@ -29,7 +29,8 @@ export async function buildCompleteness(year: number): Promise<{
 }> {
   const [companies, returns, imports, banks] = await Promise.all([
     prisma.company.findMany({
-      where: { relationship: "GROUP_MEMBER", monitored: true },
+      // Grupo + entidades geridas cujo IR tomamos conta (controlsTax) — ambas no fechamento.
+      where: { monitored: true, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
       select: { id: true, legalName: true, formationDate: true, closedDate: true, status: true },
       orderBy: { legalName: "asc" },
     }),

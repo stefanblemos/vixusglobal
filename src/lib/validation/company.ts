@@ -43,6 +43,8 @@ export const companyCreateSchema = z
       (v) => (v === undefined || v === null ? true : v === "on" || v === "true" || v === true),
       z.boolean(),
     ),
+    // Tomamos conta do IR? Liga para entidades geridas (fora do grupo) entrarem no closing.
+    controlsTax: z.preprocess((v) => v === "on" || v === "true" || v === true, z.boolean()),
     notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
   })
   .refine((d) => isEntityTypeValidFor(d.jurisdiction, d.entityType), {

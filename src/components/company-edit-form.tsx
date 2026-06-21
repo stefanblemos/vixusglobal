@@ -27,6 +27,7 @@ export type EditableCompany = {
   collectsSalesTax: boolean;
   hasEmployees: boolean;
   monitored: boolean;
+  controlsTax: boolean;
   notes: string | null;
 };
 
@@ -271,6 +272,21 @@ export function CompanyEditForm({ company }: { company: EditableCompany }) {
             <span className="block text-xs font-normal text-slate-500">
               Uncheck to exclude it from closing, the overview and obligations — e.g. an
               ex-partner&rsquo;s entity you don&rsquo;t control, even though it&rsquo;s in the group.
+            </span>
+          </span>
+        </label>
+        <label className="mt-3 flex items-start gap-2 border-t border-slate-200 pt-3 text-sm text-slate-700">
+          <input
+            type="checkbox"
+            name="controlsTax"
+            defaultChecked={company.controlsTax}
+            className="mt-0.5 h-4 w-4 rounded border-slate-300"
+          />
+          <span>
+            We handle the income tax (IR)
+            <span className="block text-xs font-normal text-slate-500">
+              Brings a managed entity (outside the group) into closing — e.g. a partner&rsquo;s
+              entity whose return we file. Group members are always included.
             </span>
           </span>
         </label>
