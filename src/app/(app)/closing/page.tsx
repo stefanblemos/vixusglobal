@@ -192,11 +192,17 @@ export default async function ClosingPage({
 }
 
 function Mark({ cell }: { cell: Cell }) {
-  return cell.ok ? (
-    <span className="font-medium text-green-600">✓</span>
-  ) : (
-    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-600">missing</span>
-  );
+  if (cell.ok) return <span className="font-medium text-green-600">✓</span>;
+  if (cell.partial)
+    return (
+      <span
+        className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700"
+        title="GL não cobre o ano inteiro (01/01–12/31) — falta uma parte do período"
+      >
+        partial
+      </span>
+    );
+  return <span className="rounded-full bg-rose-50 px-2 py-0.5 text-xs text-rose-600">missing</span>;
 }
 
 function Stat({ label, value, good }: { label: string; value: string; good: boolean }) {

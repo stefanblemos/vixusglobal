@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 // Matriz de completude por empresa, para um ano: o que está NA BASE para fechar o período —
 // IR, P&L, Balance Sheet, General Ledger e extrato bancário. Vermelho = falta.
 
-export type Cell = { ok: boolean; detail?: string };
+export type Cell = { ok: boolean; partial?: boolean; detail?: string };
 export type CompletenessRow = {
   companyId: string;
   companyName: string;
@@ -27,7 +27,9 @@ export async function buildCompleteness(year: number): Promise<{
   rows: CompletenessRow[];
   years: number[];
 }> {
-  const [companies, returns, imports, banks] = await Promise.all([
+  const yearStart = new Date(Date.UTC(year, 0, 1));
+  const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+  const [companies, returns, imports, banks, glSpans] = await Promise.all([
     prisma.company.findMany({
       // Grupo + entidades geridas cujo IR tomamos conta (controlsTax) — ambas no fechamento.
       where: { monitored: true, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
@@ -43,7 +45,17 @@ export async function buildCompleteness(year: number): Promise<{
       select: { companyId: true, reportKind: true, periodLabel: true },
     }),
     prisma.bankStatement.findMany({ select: { companyId: true, periodEnd: true } }),
+    // Intervalo real (1ª/última data) das transações do GL no ano — para julgar cobertura.
+    prisma.ledgerTxn.groupBy({
+      by: ["companyId"],
+      where: { date: { gte: yearStart, lte: yearEnd } },
+      _min: { date: true },
+      _max: { date: true },
+    }),
   ]);
+  const glSpanByCompany = new Map(
+    glSpans.map((g) => [g.companyId, { min: g._min.date, max: g._max.date }]),
+  );
 
   // Anos com qualquer dado (p/ o seletor).
   const years = new Set<number>();
@@ -99,7 +111,19 @@ export async function buildCompleteness(year: number): Promise<{
     const ir = { ok: irSet.has(c.id) };
     const pnl = { ok: pnlSet.has(c.id) };
     const bs = { ok: bsSet.has(c.id) };
-    const gl = { ok: glSet.has(c.id) };
+    // GL: ✓ só se cobrir o ANO INTEIRO (IR é anual). Cobertura = intervalo real das txns:
+    // tem de alcançar dezembro e começar em janeiro (com tolerância p/ aberta no meio do ano).
+    // Parcial (ex.: GL grande dividido em duas etapas, só uma subida) → "partial", não conta.
+    const gl = ((): Cell => {
+      if (!glSet.has(c.id)) return { ok: false };
+      const span = glSpanByCompany.get(c.id);
+      if (!span?.min || !span?.max) return { ok: false, partial: true };
+      const minM = span.min.getUTCMonth() + 1;
+      const maxM = span.max.getUTCMonth() + 1;
+      const formedThisYear = yearOf(c.formationDate) === year;
+      const full = maxM === 12 && (minM === 1 || formedThisYear);
+      return full ? { ok: true } : { ok: false, partial: true };
+    })();
     const bank = { ok: bankSet.has(c.id) };
     // Wind-down: só o IR final conta. Existed normal: as 5 colunas.
     const complete = !existed ? 0 : windDown ? (ir.ok ? 1 : 0) : [ir, pnl, bs, gl, bank].filter((x) => x.ok).length;
