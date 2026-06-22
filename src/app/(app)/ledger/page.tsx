@@ -9,9 +9,16 @@ const LIMIT = 200;
 export default async function LedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ company?: string; from?: string; to?: string; account?: string }>;
+  searchParams: Promise<{
+    company?: string;
+    from?: string;
+    to?: string;
+    account?: string;
+    added?: string;
+    skipped?: string;
+  }>;
 }) {
-  const { company, from, to, account } = await searchParams;
+  const { company, from, to, account, added, skipped } = await searchParams;
 
   const glImports = await prisma.qboImport.findMany({
     where: { reportKind: "GENERAL_LEDGER" },
@@ -114,6 +121,18 @@ export default async function LedgerPage({
             <a href={`/ledger?company=${company}`} className="text-slate-400 hover:text-slate-700">
               ✕
             </a>
+          </div>
+        )}
+        {added != null && (
+          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-800">
+            Import concluído: <strong>{Number(added).toLocaleString("en-US")}</strong> linha(s) nova(s)
+            {Number(skipped) > 0 && (
+              <>
+                {" "}
+                · <strong>{Number(skipped).toLocaleString("en-US")}</strong> duplicada(s) ignorada(s)
+              </>
+            )}
+            . Nada foi apagado.
           </div>
         )}
       </div>

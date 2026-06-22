@@ -29,6 +29,7 @@ export interface GlCrosscheck {
   year: number | null;
   hasGl: boolean;
   glPeriod: string | null;
+  availableYears: number[]; // anos com GL importado (para o seletor)
   pnl: CrosscheckReport | null;
   bs: CrosscheckReport | null;
 }
@@ -112,16 +113,27 @@ async function buildReport(
   };
 }
 
-export async function buildGlCrosscheck(companyId: string): Promise<GlCrosscheck> {
+export async function buildGlCrosscheck(
+  companyId: string,
+  selectedYear?: number | null,
+): Promise<GlCrosscheck> {
   const company = await prisma.company.findUnique({
     where: { id: companyId },
     select: { legalName: true },
   });
 
-  const glImport = await prisma.qboImport.findFirst({
+  // Todos os GLs da empresa (um por ano) — escolhe o do ano pedido, senão o mais recente.
+  const glImports = await prisma.qboImport.findMany({
     where: { companyId, reportKind: "GENERAL_LEDGER" },
     orderBy: { createdAt: "desc" },
   });
+  const availableYears = [
+    ...new Set(glImports.map((i) => yearOf(i.periodLabel)).filter((y): y is number => y != null)),
+  ].sort((a, b) => b - a);
+  const glImport =
+    (selectedYear != null
+      ? glImports.find((i) => yearOf(i.periodLabel) === selectedYear)
+      : undefined) ?? glImports[0];
 
   if (!glImport) {
     return {
@@ -130,6 +142,7 @@ export async function buildGlCrosscheck(companyId: string): Promise<GlCrosscheck
       year: null,
       hasGl: false,
       glPeriod: null,
+      availableYears,
       pnl: null,
       bs: null,
     };
@@ -172,6 +185,7 @@ export async function buildGlCrosscheck(companyId: string): Promise<GlCrosscheck
     year,
     hasGl: true,
     glPeriod: glImport.periodLabel,
+    availableYears,
     pnl,
     bs,
   };

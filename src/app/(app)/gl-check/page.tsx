@@ -8,9 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function GlCheckPage({
   searchParams,
 }: {
-  searchParams: Promise<{ company?: string }>;
+  searchParams: Promise<{ company?: string; year?: string }>;
 }) {
-  const { company } = await searchParams;
+  const { company, year: yearParam } = await searchParams;
+  const selectedYear = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : null;
 
   const glImports = await prisma.qboImport.findMany({
     where: { reportKind: "GENERAL_LEDGER" },
@@ -36,19 +37,22 @@ export default async function GlCheckPage({
           ) : (
             <table className="w-full text-sm">
               <tbody className="divide-y divide-slate-100">
-                {glImports.map((imp) => (
-                  <tr key={imp.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3">
-                      <Link
-                        href={`/gl-check?company=${imp.companyId}`}
-                        className="font-medium text-[#1f3a5f] hover:underline"
-                      >
-                        {imp.company?.legalName ?? imp.sourceCompanyName}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{imp.periodLabel}</td>
-                  </tr>
-                ))}
+                {glImports.map((imp) => {
+                  const y = imp.periodLabel.match(/20\d\d/)?.[0];
+                  return (
+                    <tr key={imp.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-3">
+                        <Link
+                          href={`/gl-check?company=${imp.companyId}${y ? `&year=${y}` : ""}`}
+                          className="font-medium text-[#1f3a5f] hover:underline"
+                        >
+                          {imp.company?.legalName ?? imp.sourceCompanyName}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-3 text-slate-500">{imp.periodLabel}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -57,7 +61,7 @@ export default async function GlCheckPage({
     );
   }
 
-  const x = await buildGlCrosscheck(company);
+  const x = await buildGlCrosscheck(company, selectedYear);
 
   return (
     <div className="space-y-6">
@@ -71,6 +75,24 @@ export default async function GlCheckPage({
           account by magnitude (sign conventions between reports and the ledger differ); ✓ within
           1% or $1.
         </p>
+        {x.availableYears.length > 1 && (
+          <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
+            <span className="mr-1 text-slate-400">Ano:</span>
+            {x.availableYears.map((y) => (
+              <Link
+                key={y}
+                href={`/gl-check?company=${company}&year=${y}`}
+                className={`rounded-full px-3 py-1 ${
+                  y === x.year
+                    ? "bg-[#1f3a5f] text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {y}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       {!x.hasGl ? null : (

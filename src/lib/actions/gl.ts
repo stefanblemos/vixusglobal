@@ -64,9 +64,11 @@ export async function saveGl(input: {
     // O GL é transacional e fica preso à empresa — exige vínculo explícito.
     throw new Error("Selecione a empresa antes de salvar o General Ledger.");
   }
-  await importGeneralLedger(prisma, gunzipB64(input.gz), input.fileName, { companyId: input.companyId });
+  const res = await importGeneralLedger(prisma, gunzipB64(input.gz), input.fileName, {
+    companyId: input.companyId,
+  });
   revalidatePath("/import");
   revalidatePath("/ledger");
   revalidatePath("/closing");
-  redirect(`/ledger?company=${input.companyId}`);
+  redirect(`/ledger?company=${input.companyId}&added=${res.added}&skipped=${res.skipped}`);
 }
