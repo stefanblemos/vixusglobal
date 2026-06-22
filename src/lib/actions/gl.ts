@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { parseGeneralLedger } from "@/lib/qbo/general-ledger";
 import { importGeneralLedger } from "@/lib/qbo/gl-import";
 import { matchCompany } from "@/lib/qbo/match";
+import { gunzipB64 } from "@/lib/util/gzip-server";
 
 export interface GlAnalyzeResult {
   companyName: string;
@@ -22,8 +23,8 @@ const yearOf = (s: string | null | undefined) => {
   return m ? Number(m[0]) : null;
 };
 
-export async function analyzeGl(text: string): Promise<GlAnalyzeResult> {
-  const gl = parseGeneralLedger(text);
+export async function analyzeGl(gz: string): Promise<GlAnalyzeResult> {
+  const gl = parseGeneralLedger(gunzipB64(gz));
   const companies = await prisma.company.findMany({
     select: { id: true, legalName: true, tradeName: true, aliases: true },
     orderBy: { legalName: "asc" },
@@ -55,7 +56,7 @@ export async function analyzeGl(text: string): Promise<GlAnalyzeResult> {
 }
 
 export async function saveGl(input: {
-  text: string;
+  gz: string;
   companyId: string | null;
   fileName: string;
 }): Promise<void> {
@@ -63,7 +64,7 @@ export async function saveGl(input: {
     // O GL é transacional e fica preso à empresa — exige vínculo explícito.
     throw new Error("Selecione a empresa antes de salvar o General Ledger.");
   }
-  await importGeneralLedger(prisma, input.text, input.fileName, { companyId: input.companyId });
+  await importGeneralLedger(prisma, gunzipB64(input.gz), input.fileName, { companyId: input.companyId });
   revalidatePath("/import");
   revalidatePath("/ledger");
   revalidatePath("/closing");

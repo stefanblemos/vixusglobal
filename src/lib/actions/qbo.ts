@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { parseQboReport, type QboReport } from "@/lib/qbo/parse";
 import { matchCompany } from "@/lib/qbo/match";
+import { gunzipB64 } from "@/lib/util/gzip-server";
 import { QboReportKind } from "@prisma/client";
 
 export interface AnalyzeResult {
@@ -14,8 +15,8 @@ export interface AnalyzeResult {
   duplicateId: string | null; // import já existente para (empresa, tipo, período)
 }
 
-export async function analyzeQbo(text: string): Promise<AnalyzeResult> {
-  const report = parseQboReport(text);
+export async function analyzeQbo(gz: string): Promise<AnalyzeResult> {
+  const report = parseQboReport(gunzipB64(gz));
   const companies = await prisma.company.findMany({
     select: { id: true, legalName: true, tradeName: true, aliases: true },
     orderBy: { legalName: "asc" },
@@ -47,11 +48,11 @@ export async function deleteQboImport(formData: FormData): Promise<void> {
 }
 
 export async function saveQboImport(input: {
-  text: string;
+  gz: string;
   companyId: string | null;
   fileName: string;
 }): Promise<void> {
-  const report = parseQboReport(input.text);
+  const report = parseQboReport(gunzipB64(input.gz));
   const companyId = input.companyId || null;
 
   const currency = report.currency;

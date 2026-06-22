@@ -64,20 +64,38 @@ export async function importGeneralLedger(
     await prisma.company.update({ where: { id: companyId }, data: { baseCurrency: gl.currency } });
   }
 
-  // Vendors (coluna Name) — upsert por nome normalizado, ligando a empresa/party se casar.
+  // Vendors (coluna Name) — upsert por CHAVE normalizada. Deduplica por chave (vários nomes
+  // crus podem normalizar igual) e processa em lotes paralelos — em GLs grandes (50k+ linhas)
+  // o loop sequencial estourava o tempo da função.
   const names = [...new Set(gl.transactions.map((t) => t.name).filter((n): n is string => !!n))];
-  const vendorMap = new Map<string, string>();
+  const byKey = new Map<string, string>(); // chave normalizada → 1 nome representativo
   for (const name of names) {
     const key = normalizeName(name);
-    if (!key) continue;
-    const mCompany = matchCompany(name, companies);
-    const mParty = mCompany ? null : matchParty(name, parties);
-    const v = await prisma.vendor.upsert({
-      where: { normalizedKey: key },
-      update: { matchedCompanyId: mCompany, matchedPartyId: mParty },
-      create: { name, normalizedKey: key, matchedCompanyId: mCompany, matchedPartyId: mParty },
-    });
-    vendorMap.set(name, v.id);
+    if (key && !byKey.has(key)) byKey.set(key, name);
+  }
+  const keyToVendor = new Map<string, string>();
+  const keyEntries = [...byKey.entries()];
+  const VCHUNK = 25;
+  for (let i = 0; i < keyEntries.length; i += VCHUNK) {
+    const batch = keyEntries.slice(i, i + VCHUNK);
+    const res = await Promise.all(
+      batch.map(async ([key, name]) => {
+        const mCompany = matchCompany(name, companies);
+        const mParty = mCompany ? null : matchParty(name, parties);
+        const v = await prisma.vendor.upsert({
+          where: { normalizedKey: key },
+          update: { matchedCompanyId: mCompany, matchedPartyId: mParty },
+          create: { name, normalizedKey: key, matchedCompanyId: mCompany, matchedPartyId: mParty },
+        });
+        return [key, v.id] as const;
+      }),
+    );
+    for (const [key, id] of res) keyToVendor.set(key, id);
+  }
+  const vendorMap = new Map<string, string>();
+  for (const name of names) {
+    const id = keyToVendor.get(normalizeName(name));
+    if (id) vendorMap.set(name, id);
   }
 
   // Ano do GL — do rótulo do período, senão do ano mais frequente entre as transações.

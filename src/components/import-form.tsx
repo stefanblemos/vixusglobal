@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import * as XLSX from "xlsx";
 import { analyzeQbo, saveQboImport, type AnalyzeResult } from "@/lib/actions/qbo";
 import { analyzeGl, saveGl, type GlAnalyzeResult } from "@/lib/actions/gl";
+import { gzipB64 } from "@/lib/util/gzip-client";
 
 // O GL é transacional (parser e tela diferentes do BS/P&L). Detecta pelo título
 // ("General Ledger" / "Livro razão" PT) ou pela assinatura de colunas do GL — o
@@ -77,12 +78,13 @@ export function ImportForm() {
     }
     start(async () => {
       try {
+        const gz = await gzipB64(text); // comprime (GL grande estoura o limite de corpo da Vercel)
         if (looksLikeGeneralLedger(text)) {
-          const r = await analyzeGl(text);
+          const r = await analyzeGl(gz);
           setGlResult(r);
           setCompanyId(r.matchedCompanyId ?? "");
         } else {
-          const r = await analyzeQbo(text);
+          const r = await analyzeQbo(gz);
           if (r.report.lines.length === 0) {
             setError("No report lines were recognized. Is this a QBO Balance Sheet / P&L / GL export?");
             return;
@@ -102,7 +104,8 @@ export function ImportForm() {
 
   function save() {
     start(async () => {
-      await saveQboImport({ text, companyId: companyId || null, fileName });
+      const gz = await gzipB64(text);
+      await saveQboImport({ gz, companyId: companyId || null, fileName });
     });
   }
 
@@ -110,7 +113,8 @@ export function ImportForm() {
     setError("");
     start(async () => {
       try {
-        await saveGl({ text, companyId: companyId || null, fileName });
+        const gz = await gzipB64(text);
+        await saveGl({ gz, companyId: companyId || null, fileName });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Could not save the General Ledger.");
       }

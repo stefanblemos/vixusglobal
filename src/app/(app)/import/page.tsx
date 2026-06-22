@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ImportForm } from "@/components/import-form";
+
+// GLs grandes (50k+ linhas) levam tempo para importar — eleva o limite de execução
+// da rota (Server Actions herdam o maxDuration do segmento). Vercel Pro permite até 300s.
+export const maxDuration = 300;
 import { ImageImportForm } from "@/components/image-import-form";
 import { deleteQboImport } from "@/lib/actions/qbo";
 import {

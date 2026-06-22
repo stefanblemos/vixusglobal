@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getAdapter, type ParsedStatement } from "@/lib/bank/adapters";
 import { reconcileStatement } from "@/lib/bank/reconcile";
+import { gunzipB64 } from "@/lib/util/gzip-server";
 import type { BankLineStatus } from "@prisma/client";
 
 export interface AnalyzeBankResult {
@@ -13,12 +14,12 @@ export interface AnalyzeBankResult {
 }
 
 export async function analyzeBankStatement(
-  text: string,
+  gz: string,
   bankId: string,
 ): Promise<AnalyzeBankResult> {
   const adapter = getAdapter(bankId);
   if (!adapter) throw new Error("Unknown bank");
-  const statement = adapter.parse(text);
+  const statement = adapter.parse(gunzipB64(gz));
   const companies = await prisma.company.findMany({
     select: { id: true, legalName: true },
     orderBy: { legalName: "asc" },
@@ -29,14 +30,14 @@ export async function analyzeBankStatement(
 const d = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
 
 export async function saveBankStatement(input: {
-  text: string;
+  gz: string;
   bankId: string;
   companyId: string;
   fileName: string;
 }): Promise<void> {
   const adapter = getAdapter(input.bankId);
   if (!adapter) throw new Error("Unknown bank");
-  const st = adapter.parse(input.text);
+  const st = adapter.parse(gunzipB64(input.gz));
 
   const created = await prisma.bankStatement.create({
     data: {

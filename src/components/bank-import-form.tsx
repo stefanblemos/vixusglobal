@@ -6,6 +6,7 @@ import {
   saveBankStatement,
   type AnalyzeBankResult,
 } from "@/lib/actions/bank";
+import { gzipB64 } from "@/lib/util/gzip-client";
 
 const usd = (v: string | null) =>
   v == null
@@ -40,7 +41,7 @@ export function BankImportForm({ banks }: { banks: { id: string; label: string }
     }
     start(async () => {
       try {
-        const r = await analyzeBankStatement(text, bankId);
+        const r = await analyzeBankStatement(await gzipB64(text), bankId);
         if (r.statement.lines.length === 0) {
           const label = banks.find((b) => b.id === bankId)?.label ?? "this bank";
           setError(
@@ -62,7 +63,8 @@ export function BankImportForm({ banks }: { banks: { id: string; label: string }
 
   function save() {
     start(async () => {
-      await saveBankStatement({ text, bankId, companyId, fileName });
+      const gz = await gzipB64(text);
+      await saveBankStatement({ gz, bankId, companyId, fileName });
     });
   }
 
