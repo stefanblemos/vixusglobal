@@ -11,6 +11,16 @@ export interface ReverseException {
   amount: string;
 }
 
+// Agrupamento do lado reverso pela conta de CONTRAPARTIDA (split). Se entrou e saiu da
+// mesma conta (ex.: Escrow) pelo mesmo valor, o líquido zera → benigno. Líquido ≠ 0 = investigar.
+export interface ReverseGroup {
+  account: string; // conta de contrapartida (split)
+  count: number;
+  inflow: number; // soma das entradas (+)
+  outflow: number; // soma das saídas (−)
+  net: number; // inflow + outflow
+}
+
 export interface BankReconSummary {
   glAccounts: string[]; // contas distintas do GL da empresa (para mapear)
   mappedAccount: string | null;
@@ -19,6 +29,7 @@ export interface BankReconSummary {
   glNet: number; // soma da conta-caixa no GL no mesmo período
   difference: number; // bankNet - glNet (≈0 = período fecha)
   bookedNotOnStatement: ReverseException[]; // GL caixa sem linha do extrato casada
+  reverseByAccount: ReverseGroup[]; // o reverso agrupado por contrapartida, com líquido
 }
 
 /**
@@ -85,6 +96,23 @@ export async function buildBankReconSummary(
       }));
   }
 
+  // Agrupa o reverso pela conta de contrapartida (split) e soma o líquido. Entradas/saídas
+  // que se anulam na mesma conta (ex.: dinheiro que entrou e saiu da Escrow) zeram → benignas.
+  const groupMap = new Map<string, ReverseGroup>();
+  for (const e of bookedNotOnStatement) {
+    const account = e.split ?? "—";
+    const amt = Number(e.amount);
+    const g = groupMap.get(account) ?? { account, count: 0, inflow: 0, outflow: 0, net: 0 };
+    g.count += 1;
+    if (amt >= 0) g.inflow += amt;
+    else g.outflow += amt;
+    g.net = Math.round((g.net + amt) * 100) / 100;
+    groupMap.set(account, g);
+  }
+  const reverseByAccount = [...groupMap.values()].sort(
+    (a, b) => Math.abs(b.net) - Math.abs(a.net),
+  );
+
   return {
     glAccounts,
     mappedAccount: st.glAccount,
@@ -93,5 +121,6 @@ export async function buildBankReconSummary(
     glNet,
     difference: bankNet - glNet,
     bookedNotOnStatement,
+    reverseByAccount,
   };
 }

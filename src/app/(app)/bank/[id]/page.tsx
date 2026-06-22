@@ -141,32 +141,84 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
             Cash-account entries booked in the GL with no matching bank line in this period —
             usually timing (uncleared), an internal transfer, or a booking that never hit the bank.
           </p>
+
+          {/* Agrupado pela conta de contrapartida (split): líquido ≈ 0 = entrou e saiu (benigno);
+              líquido ≠ 0 = o resíduo real a investigar. */}
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              By contra-account — <span className="text-emerald-600">net ≈ 0</span> means it went in
+              and out (benign); a <span className="text-amber-700">non-zero net</span> is the real
+              residual to investigate.
+            </div>
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
-                  <th className="px-3 py-2 font-medium">Date</th>
-                  <th className="px-3 py-2 font-medium">Type</th>
-                  <th className="px-3 py-2 font-medium">Name</th>
-                  <th className="px-3 py-2 font-medium">Split</th>
-                  <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  <th className="px-3 py-2 font-medium">Contra-account (split)</th>
+                  <th className="px-3 py-2 text-right font-medium">Entries</th>
+                  <th className="px-3 py-2 text-right font-medium">In</th>
+                  <th className="px-3 py-2 text-right font-medium">Out</th>
+                  <th className="px-3 py-2 text-right font-medium">Net</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {summary.bookedNotOnStatement.map((t) => (
-                  <tr key={t.id}>
-                    <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">{t.date}</td>
-                    <td className="px-3 py-1.5 text-slate-600">{t.type}</td>
-                    <td className="px-3 py-1.5 text-slate-700">{t.name ?? "—"}</td>
-                    <td className="px-3 py-1.5 text-slate-500">{t.split ?? "—"}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                      {formatMoney(t.amount, "USD")}
-                    </td>
-                  </tr>
-                ))}
+                {summary.reverseByAccount.map((g) => {
+                  const benign = Math.abs(g.net) < 0.005;
+                  return (
+                    <tr key={g.account} className={benign ? "" : "bg-amber-50/40"}>
+                      <td className="px-3 py-1.5 text-slate-700">{g.account}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{g.count}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
+                        {g.inflow ? formatMoney(g.inflow, "USD") : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
+                        {g.outflow ? formatMoney(g.outflow, "USD") : "—"}
+                      </td>
+                      <td
+                        className={`px-3 py-1.5 text-right tabular-nums font-medium ${
+                          benign ? "text-emerald-600" : "text-amber-700"
+                        }`}
+                      >
+                        {formatMoney(g.net, "USD")}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+
+          {/* Lista detalhada completa (não trunca) — recolhida por padrão. */}
+          <details className="rounded-xl border border-slate-200 bg-white">
+            <summary className="cursor-pointer px-3 py-2 text-sm text-slate-600">
+              Show all {summary.bookedNotOnStatement.length} entries
+            </summary>
+            <div className="overflow-hidden border-t border-slate-100">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Date</th>
+                    <th className="px-3 py-2 font-medium">Type</th>
+                    <th className="px-3 py-2 font-medium">Name</th>
+                    <th className="px-3 py-2 font-medium">Split</th>
+                    <th className="px-3 py-2 text-right font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {summary.bookedNotOnStatement.map((t) => (
+                    <tr key={t.id}>
+                      <td className="px-3 py-1.5 whitespace-nowrap text-slate-600">{t.date}</td>
+                      <td className="px-3 py-1.5 text-slate-600">{t.type}</td>
+                      <td className="px-3 py-1.5 text-slate-700">{t.name ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-slate-500">{t.split ?? "—"}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
+                        {formatMoney(t.amount, "USD")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </section>
       )}
 

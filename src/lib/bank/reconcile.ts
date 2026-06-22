@@ -2,10 +2,14 @@ import type { PrismaClient } from "@prisma/client";
 
 const DAY = 86_400_000;
 
+const normName = (s: string | null | undefined) =>
+  (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
 interface Txn {
   id: string;
   date: number; // ms
   amount: number; // cents-rounded
+  name: string; // contraparte normalizada (para agrupar batches do mesmo fornecedor/dia)
 }
 
 // Encontra um subconjunto (2..maxSize) de lançamentos não usados, dentro da janela e do mesmo
@@ -55,7 +59,8 @@ function findSplit(
  * Casa automaticamente as linhas AINDA não revisadas do extrato contra o razão, em passes:
  *  1) valor exato + data dentro da janela curta (5 dias);
  *  2) valor exato + janela larga (45 dias) — pega lançamento postado em data diferente (ex.: JE);
- *  3) SPLIT — soma de 2-4 lançamentos = a linha do banco (transferência/depósito dividido).
+ *  3) CONTRAPARTE+DATA — batch do mesmo fornecedor/dia que o banco debitou junto (seguro).
+ *  4) SPLIT por soma — soma de 2-4 lançamentos = a linha do banco (transferência/depósito dividido).
  *     Mais eficaz com o extrato MAPEADO à conta-caixa (pool menor, menos falso-positivo).
  * Respeita decisões manuais (status != UNREVIEWED). Idempotente.
  */
@@ -73,12 +78,13 @@ export async function reconcileStatement(
   // Escopa à conta-caixa do GL quando o extrato está mapeado (GL ≠ extrato).
   const glRaw = await prisma.ledgerTxn.findMany({
     where: { companyId: st.companyId, ...(st.glAccount ? { account: st.glAccount } : {}) },
-    select: { id: true, date: true, amount: true },
+    select: { id: true, date: true, amount: true, rawName: true, vendor: { select: { name: true } } },
   });
   const pool: Txn[] = glRaw.map((t) => ({
     id: t.id,
     date: t.date.getTime(),
     amount: Math.round(Number(t.amount.toString()) * 100) / 100,
+    name: normName(t.vendor?.name ?? t.rawName),
   }));
   const byAmount = new Map<string, Txn[]>();
   for (const t of pool) (byAmount.get(t.amount.toFixed(2)) ?? byAmount.set(t.amount.toFixed(2), []).get(t.amount.toFixed(2))!).push(t);
@@ -111,7 +117,34 @@ export async function reconcileStatement(
     }
   }
 
-  // Passe 3 — split (soma de 2-4 lançamentos), janela de 10 dias.
+  // Passe 3 — CONTRAPARTE + DATA: o banco agrupa vários lançamentos do MESMO fornecedor no
+  // MESMO dia numa linha só (ex.: 3 bills da Rowand Septic debitados juntos). Casa o grupo
+  // inteiro pela soma — seguro (mesmo nome + data), sem o risco de somar linhas quaisquer.
+  const groups = new Map<string, Txn[]>();
+  for (const t of pool) {
+    if (!t.name) continue;
+    const dayIso = new Date(t.date).toISOString().slice(0, 10);
+    const key = `${t.name}|${dayIso}|${Math.sign(t.amount)}`;
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(t);
+  }
+  const groupList = [...groups.values()].filter((g) => g.length >= 2);
+  for (const l of open) {
+    if (used.has("line:" + l.id)) continue;
+    for (const g of groupList) {
+      if (Math.sign(g[0].amount) !== Math.sign(l.amount)) continue;
+      if (Math.abs(g[0].date - l.date) > 5 * DAY) continue;
+      const avail = g.filter((t) => !used.has(t.id));
+      if (avail.length < 2) continue;
+      if (Math.abs(avail.reduce((s, t) => s + t.amount, 0) - l.amount) < 0.01) {
+        for (const t of avail) used.add(t.id);
+        used.add("line:" + l.id);
+        await mark(l.id, avail.map((t) => t.id), `split — ${avail.length} lançamentos (mesma contraparte/dia)`);
+        break;
+      }
+    }
+  }
+
+  // Passe 4 — split por SOMA (2-4 lançamentos quaisquer), janela de 10 dias.
   for (const l of open) {
     if (used.has("line:" + l.id)) continue;
     const set = findSplit(l.amount, l.date, 10 * DAY, pool, used);
