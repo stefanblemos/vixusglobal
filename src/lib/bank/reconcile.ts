@@ -16,7 +16,7 @@ function findSplit(
   windowMs: number,
   pool: Txn[],
   used: Set<string>,
-  maxSize = 3,
+  maxSize = 4,
 ): Txn[] | null {
   const cands = pool
     .filter(
@@ -27,16 +27,23 @@ function findSplit(
         Math.abs(t.amount) <= Math.abs(target) + 0.01,
     )
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
-    .slice(0, 30);
+    .slice(0, 32);
   const eq = (a: number, b: number) => Math.abs(a - b) < 0.01;
 
   for (let i = 0; i < cands.length; i++) {
     for (let j = i + 1; j < cands.length; j++) {
-      if (eq(cands[i].amount + cands[j].amount, target)) return [cands[i], cands[j]];
+      const s2 = cands[i].amount + cands[j].amount;
+      if (eq(s2, target)) return [cands[i], cands[j]];
       if (maxSize >= 3) {
         for (let k = j + 1; k < cands.length; k++) {
-          if (eq(cands[i].amount + cands[j].amount + cands[k].amount, target))
-            return [cands[i], cands[j], cands[k]];
+          const s3 = s2 + cands[k].amount;
+          if (eq(s3, target)) return [cands[i], cands[j], cands[k]];
+          if (maxSize >= 4) {
+            for (let m = k + 1; m < cands.length; m++) {
+              if (eq(s3 + cands[m].amount, target))
+                return [cands[i], cands[j], cands[k], cands[m]];
+            }
+          }
         }
       }
     }
@@ -48,7 +55,8 @@ function findSplit(
  * Casa automaticamente as linhas AINDA não revisadas do extrato contra o razão, em passes:
  *  1) valor exato + data dentro da janela curta (5 dias);
  *  2) valor exato + janela larga (45 dias) — pega lançamento postado em data diferente (ex.: JE);
- *  3) SPLIT — soma de 2-3 lançamentos = a linha do banco (uma transferência/depósito dividido).
+ *  3) SPLIT — soma de 2-4 lançamentos = a linha do banco (transferência/depósito dividido).
+ *     Mais eficaz com o extrato MAPEADO à conta-caixa (pool menor, menos falso-positivo).
  * Respeita decisões manuais (status != UNREVIEWED). Idempotente.
  */
 export async function reconcileStatement(
@@ -103,7 +111,7 @@ export async function reconcileStatement(
     }
   }
 
-  // Passe 3 — split (soma de 2-3 lançamentos), janela de 10 dias.
+  // Passe 3 — split (soma de 2-4 lançamentos), janela de 10 dias.
   for (const l of open) {
     if (used.has("line:" + l.id)) continue;
     const set = findSplit(l.amount, l.date, 10 * DAY, pool, used);
