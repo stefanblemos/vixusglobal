@@ -44,7 +44,9 @@ export async function buildCompleteness(year: number): Promise<{
       where: { companyId: { not: null } },
       select: { companyId: true, reportKind: true, periodLabel: true },
     }),
-    prisma.bankStatement.findMany({ select: { companyId: true, periodEnd: true } }),
+    prisma.bankStatement.findMany({
+      select: { companyId: true, periodStart: true, periodEnd: true },
+    }),
     // Intervalo real (1ª/última data) das transações do GL no ano — para julgar cobertura.
     prisma.ledgerTxn.groupBy({
       by: ["companyId"],
@@ -76,6 +78,21 @@ export async function buildCompleteness(year: number): Promise<{
   const bankSet = new Set(
     banks.filter((b) => b.periodEnd && b.periodEnd.getUTCFullYear() === year).map((b) => b.companyId),
   );
+
+  // Período coberto pelos extratos no ano (união) — referência alternativa de cobertura do GL:
+  // se o GL alcança o que o banco documenta, ele "coincide" e conta como completo.
+  const bankPeriod = new Map<string, { startMonth: number; endMonth: number }>();
+  for (const b of banks) {
+    if (!b.periodEnd || b.periodEnd.getUTCFullYear() !== year) continue;
+    const startMonth =
+      b.periodStart && b.periodStart.getUTCFullYear() === year ? b.periodStart.getUTCMonth() + 1 : 1;
+    const endMonth = b.periodEnd.getUTCMonth() + 1;
+    const cur = bankPeriod.get(b.companyId);
+    bankPeriod.set(b.companyId, {
+      startMonth: Math.min(cur?.startMonth ?? 12, startMonth),
+      endMonth: Math.max(cur?.endMonth ?? 1, endMonth),
+    });
+  }
 
   // Primeiro ano de cada empresa: data de abertura OU o ano mais antigo com dado (IR/QBO).
   // Se esse ano for DEPOIS do analisado, a empresa ainda não existia → N/A.
@@ -120,9 +137,14 @@ export async function buildCompleteness(year: number): Promise<{
       if (!span?.min || !span?.max) return { ok: false, partial: true };
       const minM = span.min.getUTCMonth() + 1;
       const maxM = span.max.getUTCMonth() + 1;
-      const formedThisYear = yearOf(c.formationDate) === year;
-      const full = maxM === 12 && (minM === 1 || formedThisYear);
-      return full ? { ok: true } : { ok: false, partial: true };
+      // Abriu neste ano? (data de abertura OU 1º ano com qualquer dado) → não precisa começar em jan.
+      const startedThisYear = yearOf(c.formationDate) === year || first === year;
+      const bp = bankPeriod.get(c.id);
+      // Começa cedo o bastante: janeiro · abriu no ano · ou casa com o início do extrato.
+      const startOk = minM === 1 || startedThisYear || (bp != null && minM <= bp.startMonth);
+      // Alcança o fim: dezembro · ou casa com o fim do extrato (quando o banco não vai até dez).
+      const endOk = maxM === 12 || (bp != null && maxM >= bp.endMonth);
+      return startOk && endOk ? { ok: true } : { ok: false, partial: true };
     })();
     const bank = { ok: bankSet.has(c.id) };
     // Wind-down: só o IR final conta. Existed normal: as 5 colunas.
