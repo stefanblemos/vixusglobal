@@ -120,6 +120,15 @@ export function BankImportForm({ banks }: { banks: { id: string; label: string }
             <Meta label="Transactions" value={String(result.statement.lines.length)} />
           </div>
 
+          {result.cards.length > 1 && (
+            <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-800">
+              <strong>{result.cards.length} cartões</strong> neste arquivo — será importado como{" "}
+              <strong>{result.cards.length} extratos separados</strong> (um por cartão), cada um
+              mapeável à sua conta no GL:{" "}
+              {result.cards.map((c) => `••${c.card} (${c.count})`).join(" · ")}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
             <div className="min-w-64 flex-1">
               <label className="mb-1 block text-xs font-medium text-slate-600">

@@ -11,6 +11,13 @@ import type { BankLineStatus } from "@prisma/client";
 export interface AnalyzeBankResult {
   statement: ParsedStatement;
   companies: { id: string; legalName: string }[];
+  cards: { card: string; count: number }[]; // export multi-cartão → vira 1 extrato por cartão
+}
+
+function cardsOf(st: ParsedStatement): { card: string; count: number }[] {
+  const counts = new Map<string, number>();
+  for (const l of st.lines) if (l.card) counts.set(l.card, (counts.get(l.card) ?? 0) + 1);
+  return [...counts.entries()].map(([card, count]) => ({ card, count })).sort((a, b) => a.card.localeCompare(b.card));
 }
 
 export async function analyzeBankStatement(
@@ -24,7 +31,7 @@ export async function analyzeBankStatement(
     select: { id: true, legalName: true },
     orderBy: { legalName: "asc" },
   });
-  return { statement, companies };
+  return { statement, companies, cards: cardsOf(statement) };
 }
 
 const d = (iso: string | null) => (iso ? new Date(`${iso}T00:00:00Z`) : null);
@@ -39,30 +46,43 @@ export async function saveBankStatement(input: {
   if (!adapter) throw new Error("Unknown bank");
   const st = adapter.parse(gunzipB64(input.gz));
 
-  const created = await prisma.bankStatement.create({
-    data: {
-      companyId: input.companyId,
-      bankId: input.bankId,
-      bankLabel: adapter.label,
-      fileName: input.fileName,
-      periodStart: d(st.periodStart),
-      periodEnd: d(st.periodEnd),
-      beginningBalance: st.beginningBalance,
-      endingBalance: st.endingBalance,
-      lines: {
-        create: st.lines.map((l) => ({
-          date: new Date(`${l.date}T00:00:00Z`),
-          description: l.description,
-          amount: l.amount,
-          balance: l.balance,
-        })),
-      },
-    },
-  });
+  // Multi-cartão: divide em um extrato por cartão (cada um mapeável à sua conta no GL).
+  const cards = cardsOf(st);
+  const groups =
+    cards.length > 1
+      ? cards.map((c) => ({ card: c.card, lines: st.lines.filter((l) => l.card === c.card) }))
+      : [{ card: null as string | null, lines: st.lines }];
 
-  await reconcileStatement(prisma, created.id);
+  let firstId = "";
+  for (const g of groups) {
+    const dates = g.lines.map((l) => l.date).sort();
+    const created = await prisma.bankStatement.create({
+      data: {
+        companyId: input.companyId,
+        bankId: input.bankId,
+        bankLabel: adapter.label,
+        fileName: g.card ? `${input.fileName} · ••${g.card}` : input.fileName,
+        periodStart: g.card ? d(dates[0] ?? null) : d(st.periodStart),
+        periodEnd: g.card ? d(dates[dates.length - 1] ?? null) : d(st.periodEnd),
+        beginningBalance: g.card ? null : st.beginningBalance,
+        endingBalance: g.card ? null : st.endingBalance,
+        lines: {
+          create: g.lines.map((l) => ({
+            date: new Date(`${l.date}T00:00:00Z`),
+            description: l.description,
+            amount: l.amount,
+            balance: l.balance,
+          })),
+        },
+      },
+    });
+    await reconcileStatement(prisma, created.id);
+    if (!firstId) firstId = created.id;
+  }
+
   revalidatePath("/bank");
-  redirect(`/bank/${created.id}`);
+  // Vários cartões → vai para a lista (vê todos); um só → abre o extrato.
+  redirect(groups.length > 1 ? "/bank" : `/bank/${firstId}`);
 }
 
 export interface MatchCandidate {

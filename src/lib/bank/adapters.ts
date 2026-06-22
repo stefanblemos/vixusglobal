@@ -7,6 +7,7 @@ export interface BankStatementLine {
   description: string;
   amount: string; // decimal-string, sinalizado (+ crédito, - débito)
   balance: string | null;
+  card?: string; // últimos 4 dígitos do cartão (export multi-cartão) — para dividir no import
 }
 
 export interface ParsedStatement {
@@ -105,6 +106,7 @@ const bankOfAmericaCard: BankAdapter = {
     const dateIdx = find((c) => c.includes("posting date"));
     const descIdx = find((c) => c === "description");
     const amtIdx = find((c) => c === "amount");
+    const cardIdx = find((c) => c.includes("card number") || c.includes("last 4"));
 
     const lines: BankStatementLine[] = [];
     let minDate: string | null = null;
@@ -118,7 +120,8 @@ const bankOfAmericaCard: BankAdapter = {
       const iso = toIso(date);
       if (minDate == null || iso < minDate) minDate = iso;
       if (maxDate == null || iso > maxDate) maxDate = iso;
-      lines.push({ date: iso, description: r[descIdx] ?? "", amount, balance: null });
+      const card = cardIdx >= 0 ? (r[cardIdx] ?? "").trim() || undefined : undefined;
+      lines.push({ date: iso, description: r[descIdx] ?? "", amount, balance: null, card });
     }
     return { beginningBalance: null, endingBalance: null, periodStart: minDate, periodEnd: maxDate, lines };
   },
