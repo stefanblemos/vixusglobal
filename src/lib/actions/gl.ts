@@ -14,8 +14,13 @@ export interface GlAnalyzeResult {
   accounts: string[];
   matchedCompanyId: string | null;
   companies: { id: string; legalName: string }[];
-  duplicateId: string | null; // GL já importado para esta empresa
+  sameYearPeriod: string | null; // GL já importado do MESMO ano (será somado, não substituído)
 }
+
+const yearOf = (s: string | null | undefined) => {
+  const m = (s ?? "").match(/(20\d\d)/);
+  return m ? Number(m[0]) : null;
+};
 
 export async function analyzeGl(text: string): Promise<GlAnalyzeResult> {
   const gl = parseGeneralLedger(text);
@@ -25,11 +30,18 @@ export async function analyzeGl(text: string): Promise<GlAnalyzeResult> {
   });
   const matchedCompanyId = matchCompany(gl.companyName, companies);
 
-  const duplicate = matchedCompanyId
-    ? await prisma.qboImport.findFirst({
+  // Só avisa se já houver GL do MESMO ano (esse será somado/atualizado). Outros anos
+  // coexistem (complementares) — nada é apagado.
+  const glYear =
+    yearOf(gl.periodLabel) ??
+    yearOf(gl.transactions.find((t) => yearOf(t.date))?.date ?? null);
+  const existing = matchedCompanyId
+    ? await prisma.qboImport.findMany({
         where: { companyId: matchedCompanyId, reportKind: "GENERAL_LEDGER" },
+        select: { periodLabel: true },
       })
-    : null;
+    : [];
+  const sameYear = glYear != null ? existing.find((i) => yearOf(i.periodLabel) === glYear) : undefined;
 
   return {
     companyName: gl.companyName,
@@ -38,7 +50,7 @@ export async function analyzeGl(text: string): Promise<GlAnalyzeResult> {
     accounts: gl.accounts,
     matchedCompanyId,
     companies: companies.map((c) => ({ id: c.id, legalName: c.legalName })),
-    duplicateId: duplicate?.id ?? null,
+    sameYearPeriod: sameYear?.periodLabel ?? null,
   };
 }
 

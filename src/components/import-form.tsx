@@ -274,9 +274,12 @@ export function ImportForm() {
             </button>
           </div>
 
-          {glResult.duplicateId && (
-            <p className="rounded-lg bg-amber-50 px-4 py-2 text-sm text-amber-700">
-              This company already has a General Ledger on file — importing will replace it.
+          {glResult.sameYearPeriod && (
+            <p className="rounded-lg bg-sky-50 px-4 py-2 text-sm text-sky-800">
+              Já existe um GL de {glResult.sameYearPeriod}. As linhas novas serão{" "}
+              <strong>somadas</strong> e as duplicadas (mesma data, valor, conta e memo){" "}
+              <strong>ignoradas</strong> — nada é apagado, e a reconciliação é preservada. GLs de
+              outros anos não são afetados.
             </p>
           )}
 
