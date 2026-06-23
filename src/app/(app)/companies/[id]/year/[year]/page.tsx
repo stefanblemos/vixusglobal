@@ -121,6 +121,11 @@ function buildCmpRows(
     figVal("NON_DEDUCTIBLE") ??
     figures.find((f) => /nondeduct|n[aã]o.?dedut/i.test(f.label))?.value ??
     null;
+  // Schedule M-1 linha 8 — deduções no IR que não estão no livro (depreciação extra,
+  // custos reclassificados). Junto com a linha 5 (nonDeductible) explica todo o gap de despesas.
+  const deductionsNotOnBooks = figVal("DEDUCTIONS_NOT_ON_BOOKS");
+  // Componentes itemizados do add-back (M-1 linha 5): "M-1: Federal income tax", etc.
+  const m1Items = figures.filter((f) => /^\s*m-1:/i.test(f.label));
   const irRevenue = figVal("GROSS_RECEIPTS");
   const irCogs = figVal("COST_OF_GOODS");
   const irGrossProfit = irRevenue != null ? irRevenue - (irCogs ?? 0) : null;
@@ -147,7 +152,8 @@ function buildCmpRows(
   const qboOrdinary =
     pnl.netIncome != null
       ? pnl.netIncome +
-        (nonDeductible ?? 0) +
+        (nonDeductible ?? 0) -
+        (deductionsNotOnBooks ?? 0) +
         (irPassThrough ?? 0) -
         (irSeparatelyStated ?? 0) -
         (booksNotOnReturn ?? 0)
@@ -162,9 +168,19 @@ function buildCmpRows(
       ir: figVal("TOTAL_DEDUCTIONS"),
       qbo: pnl.expenses,
       href: pnlHref,
-      // QBO inclui as despesas cheias; o IR já tira a não-dedutível → o gap É ela.
-      reconcilesWith: nonDeductible,
-      note: nonDeductible != null ? "gap = non-deductible add-back" : undefined,
+      // Identidade M-1: gap (despesa QBO − dedução IR) = add-back não-dedutível (ln 5)
+      //  − deduções reclassificadas para a declaração (ln 8)
+      //  − restatement do livro (net income QBO vs "per books" do retorno).
+      reconcilesWith:
+        nonDeductible != null
+          ? nonDeductible -
+            (deductionsNotOnBooks ?? 0) -
+            ((pnl.netIncome ?? 0) - (irBookNet ?? 0))
+          : null,
+      note:
+        nonDeductible != null
+          ? "gap = non-deductible add-backs (Schedule M-1) — see breakdown below"
+          : undefined,
     },
     {
       label: "Other income (operating + separately stated)",
@@ -198,7 +214,24 @@ function buildCmpRows(
       href: pnlHref,
       strong: true,
     },
-    { label: "+ Non-deductible expenses", ir: nonDeductible, qbo: null, taxOnly: true },
+    { label: "+ Non-deductible expenses (Schedule M-1, line 5)", ir: nonDeductible, qbo: null, taxOnly: true },
+    // Itemizado do add-back (M-1 linha 5): federal tax, state tax, 50% meals, charitable…
+    ...m1Items.map((f) => ({
+      label: `      ${f.label.replace(/^\s*m-1:\s*/i, "")}`,
+      ir: f.value,
+      qbo: null,
+      taxOnly: true as const,
+    })),
+    ...(deductionsNotOnBooks != null && deductionsNotOnBooks !== 0
+      ? [
+          {
+            label: "− Deductions on the return not in the books (Schedule M-1, line 8)",
+            ir: -deductionsNotOnBooks,
+            qbo: null,
+            taxOnly: true,
+          },
+        ]
+      : []),
     ...(irPassThrough != null && irPassThrough !== 0
       ? [
           {

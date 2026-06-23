@@ -24,7 +24,8 @@ export const FIGURE_KEYS = [
   "DEPRECIATION",
   "TAXABLE_INCOME",
   "NET_INCOME",
-  "NON_DEDUCTIBLE",
+  "NON_DEDUCTIBLE", // Schedule M-1 linha 5 (total): despesas no livro não deduzidas
+  "DEDUCTIONS_NOT_ON_BOOKS", // Schedule M-1 linha 8 (total): deduções no IR fora do livro
   "TOTAL_TAX",
   "ESTIMATED_PAYMENTS",
   "TAX_DUE",
@@ -110,11 +111,20 @@ Read this income tax return (IR) and extract, strictly from what the document sh
    the summary — every number must be a figures item. ORDINARY_INCOME is ONLY the ordinary
    BUSINESS income (1065 line 22 / 1120 taxable income line) — NOT income from other
    partnerships (1065 line 4), net gains, or other income (1065 line 7); those are
-   OTHER_INCOME. IMPORTANT: tag nondeductible
-   expenses (Schedule K line 18c "Nondeductible expenses", or the Schedule M-1 add-backs
-   for meals/entertainment, penalties, etc.) with key NON_DEDUCTIBLE — these reconcile
-   book income to taxable income. Tag NET_INCOME with "Net income per books" (Schedule
-   M-1 line 1).
+   OTHER_INCOME.
+   SCHEDULE M-1 (critical — this is the book→tax bridge that explains why book expenses
+   differ from tax deductions; read it AND its attached statements, e.g. "Statement N -
+   Schedule M-1 Line 5"):
+   • Tag NET_INCOME with "Net income (loss) per books" (M-1 line 1).
+   • Tag the TOTAL of M-1 line 5 "Expenses recorded on books this year not deducted on
+     this return" with key NON_DEDUCTIBLE. ALSO emit EACH component as a SEPARATE figure
+     with key OTHER and label "M-1: <component>" — e.g. "M-1: Federal income tax",
+     "M-1: State income tax", "M-1: 50% of meals / Travel and entertainment",
+     "M-1: Charitable", "M-1: Penalties". Include the Schedule K line 18c "Nondeductible
+     expenses" total here if that is how the form presents it.
+   • Tag the TOTAL of M-1 line 8 "Deductions on this return not charged against book income
+     this year" (depreciation, reclassified costs, etc.) with key DEDUCTIONS_NOT_ON_BOOKS.
+   These let us reconcile QBO book expenses to the return's deductions exactly.
 6) Who prepared the return (preparer firm/person + PTIN) and the responsible/signing
    party (e.g. Partnership Representative, President, responsável legal).
 7) The partners/shareholders (sócios): for each, name, their tax id (SSN/CPF/EIN) if
