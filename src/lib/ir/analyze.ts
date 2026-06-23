@@ -150,29 +150,65 @@ For any TEXT field not shown on the document, use an empty string "" (not null).
 only for numeric values that are not shown. Keep "summary" to ONE short sentence of context
 — the figures and fields carry the data, not the prose.`;
 
+// Repete em erros transitórios da API (5xx / overloaded / rate limit) com backoff.
+async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < tries; i++) {
+    try {
+      return await fn();
+    } catch (e: unknown) {
+      lastErr = e;
+      const status = (e as { status?: number })?.status;
+      const type = (e as { error?: { error?: { type?: string } } })?.error?.error?.type;
+      const retryable =
+        (typeof status === "number" && (status >= 500 || status === 429 || status === 408)) ||
+        type === "overloaded_error" ||
+        type === "api_error";
+      if (!retryable || i === tries - 1) throw e;
+      await new Promise((r) => setTimeout(r, 1500 * 2 ** i + Math.random() * 500));
+    }
+  }
+  throw lastErr;
+}
+
 export async function analyzeTaxReturnPdf(base64Pdf: string): Promise<IrExtraction> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("ANTHROPIC_API_KEY is not set. Add it to .env to enable IR analysis.");
   }
-  const client = new Anthropic();
-  const res = await client.messages.parse({
-    model: "claude-opus-4-8",
-    max_tokens: 8000,
-    thinking: { type: "adaptive" },
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
-          },
-          { type: "text", text: PROMPT },
-        ],
-      },
-    ],
-    output_config: { format: zodOutputFormat(irExtractionSchema) },
-  });
+  const client = new Anthropic({ maxRetries: 4 });
+  let res;
+  try {
+    res = await withRetry(() =>
+    client.messages.parse({
+      model: "claude-opus-4-8",
+      max_tokens: 16000, // returns longos (figures + M-1 itemizada) precisam de espaço
+      thinking: { type: "adaptive" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "document",
+              source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
+            },
+            { type: "text", text: PROMPT },
+          ],
+        },
+      ],
+      output_config: { format: zodOutputFormat(irExtractionSchema) },
+    }),
+    );
+  } catch (e: unknown) {
+    const status = (e as { status?: number })?.status;
+    const type = (e as { error?: { error?: { type?: string } } })?.error?.error?.type;
+    // Erros transitórios da Anthropic (sobrecarga/instabilidade) → mensagem clara, não o JSON cru.
+    if ((typeof status === "number" && status >= 500) || type === "overloaded_error") {
+      throw new Error(
+        "AI service temporarily unavailable (Anthropic API overloaded). This is on Anthropic's side, not your file — please try again in a few minutes.",
+      );
+    }
+    throw e;
+  }
 
   const data = res.parsed_output;
   if (!data) throw new Error("Could not extract data from this document.");
