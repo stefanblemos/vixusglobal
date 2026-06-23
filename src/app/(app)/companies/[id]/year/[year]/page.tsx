@@ -394,7 +394,7 @@ export default async function CompanyYearPage({
     orderBy: { createdAt: "desc" },
   });
   const pnlLines = pnlImport
-    ? await prisma.qboImportLine.findMany({ where: { importId: pnlImport.id, lineType: "TOTAL" } })
+    ? await prisma.qboImportLine.findMany({ where: { importId: pnlImport.id } })
     : [];
   const pnl = pnlTotals(pnlLines);
 
