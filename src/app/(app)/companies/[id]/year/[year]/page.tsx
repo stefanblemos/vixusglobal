@@ -14,6 +14,7 @@ import {
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { buildDistExtracts, reconcileDistributions } from "@/lib/qbo/distributions";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
+import { AccountantReport } from "@/components/accountant-report";
 import { YearCloseControls } from "@/components/year-close-controls";
 import { YearNoteField } from "@/components/year-note-field";
 
@@ -770,13 +771,12 @@ export default async function CompanyYearPage({
                         <th className="px-4 py-2 font-medium">Figure</th>
                         <th className="px-4 py-2 text-right font-medium">Per the IR</th>
                         <th className="px-4 py-2 text-right font-medium">Per the books (QBO)</th>
-                        <th className="px-4 py-2 text-right font-medium">Difference</th>
                         <th className="px-4 py-2 text-right font-medium">Check</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
                       {cmpRows.map((row) => {
-                        const { c, status } = rowEval(row);
+                        const { status } = rowEval(row);
                         return (
                           <tr
                             key={row.label}
@@ -808,9 +808,6 @@ export default async function CompanyYearPage({
                                 money(row.qbo, ccy)
                               )}
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums text-slate-500">
-                              {c && "diff" in c && c.diff != null ? money(c.diff, ccy) : "—"}
-                            </td>
                             <td className="px-4 py-2 text-right">
                               {row.flag ? (
                                 <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs whitespace-nowrap text-red-700">
@@ -836,6 +833,10 @@ export default async function CompanyYearPage({
                   &ldquo;reconciles ✓&rdquo; row means the difference is fully explained by a known
                   book-vs-tax item. Click a QBO value to open the source report.
                 </p>
+
+                <div className="mt-3">
+                  <AccountantReport companyId={id} year={year} />
+                </div>
 
                 {otherIncomeLines.length > 0 && (
                   <details className="mt-2 rounded-xl border border-slate-200 bg-white">
