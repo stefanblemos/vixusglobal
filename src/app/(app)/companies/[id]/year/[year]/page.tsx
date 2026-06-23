@@ -623,6 +623,15 @@ export default async function CompanyYearPage({
           const figures = (r.figures as Figure[] | null) ?? [];
           const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
           const cmpRows = buildCmpRows(figures, pnl, depTotal, id, pnlHref);
+          // 3 blocos: espelho (livro × declaração) e ponte M-1 (livro → tributável).
+          const isBridgeAdj = (r: (typeof cmpRows)[number]) =>
+            !!r.taxOnly || r.label.trimStart().startsWith("=");
+          const mirrorRows = cmpRows.filter((r) => !isBridgeAdj(r));
+          const netRow = cmpRows.find((r) => r.label.startsWith("Net income"));
+          const bridgeRows = [
+            ...(netRow ? [netRow] : []),
+            ...cmpRows.filter(isBridgeAdj),
+          ];
           const irOperatingOther = irOperatingOtherIncomeOf(figures);
           const irPassThrough = irPassThroughOf(figures);
           const irSeparatelyStated = irSeparatelyStatedIncomeOf(figures);
@@ -769,13 +778,13 @@ export default async function CompanyYearPage({
                     <thead className="bg-slate-50 text-left text-slate-500">
                       <tr>
                         <th className="px-4 py-2 font-medium">Figure</th>
-                        <th className="px-4 py-2 text-right font-medium">Per the IR</th>
+                        <th className="px-4 py-2 text-right font-medium">Per the return</th>
                         <th className="px-4 py-2 text-right font-medium">Per the books (QBO)</th>
                         <th className="px-4 py-2 text-right font-medium">Check</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {cmpRows.map((row) => {
+                      {mirrorRows.map((row) => {
                         const { status } = rowEval(row);
                         return (
                           <tr
@@ -827,11 +836,54 @@ export default async function CompanyYearPage({
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-1 text-xs text-slate-400">
-                  Net income (per books) should match between the IR and the QBO books; the gap to
-                  taxable income is the non-deductible add-back (Schedule M-1 / K line 18c). A
-                  &ldquo;reconciles ✓&rdquo; row means the difference is fully explained by a known
-                  book-vs-tax item. Click a QBO value to open the source report.
+
+                {bridgeRows.length > 1 && (
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4">
+                    <div className="text-sm font-medium text-slate-700">
+                      Book → tax bridge (Schedule M-1)
+                    </div>
+                    <p className="mb-2 text-xs text-slate-400">
+                      why taxable income differs from book income — ends at the return&rsquo;s taxable
+                      income
+                    </p>
+                    <div className="text-sm">
+                      {bridgeRows.map((row, i) => {
+                        const isBase = i === 0;
+                        const isResult = row.label.trimStart().startsWith("=");
+                        const isSub = /^\s{2,}/.test(row.label);
+                        const { status } = rowEval(row);
+                        return (
+                          <div
+                            key={row.label}
+                            className={`flex items-baseline justify-between gap-3 py-1.5 ${
+                              isResult || isBase
+                                ? "border-t border-slate-200 font-medium text-slate-800"
+                                : "text-slate-600"
+                            } ${isSub ? "pl-7 text-slate-500" : ""}`}
+                          >
+                            <span>
+                              {isBase ? "Net income per books (return)" : row.label.trim()}
+                              {row.note && (
+                                <span className="block text-xs font-normal text-slate-400">
+                                  {row.note}
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex items-center gap-2 whitespace-nowrap tabular-nums">
+                              {money(row.ir, ccy)}
+                              {isResult && status && <CmpBadge status={status} />}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <p className="mt-2 text-xs text-slate-400">
+                  Block 1 checks the books against the return; the M-1 bridge ties book net income to
+                  the return&rsquo;s taxable income via the add-backs. Click a QBO value to open the
+                  source report.
                 </p>
 
                 <div className="mt-3">
