@@ -23,6 +23,7 @@ import {
   GitCompare,
   FileText,
   Boxes,
+  Network,
   Settings,
   ShieldCheck,
   LogOut,
@@ -47,6 +48,7 @@ const NAV: Entry[] = [
     items: [
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/parties", label: "Owners", icon: Users },
+      { href: "/org-chart", label: "Organograma", icon: Network },
     ],
   },
   {

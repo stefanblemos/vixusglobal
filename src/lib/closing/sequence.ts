@@ -6,7 +6,7 @@ import { looseNameMatch } from "@/lib/personal/reconcile";
 const SUFFIX = /^(llc|l\.l\.c|inc|corp|co|ltd|lp|llp|pa|the|and|of)$/i;
 // Acrônimo curto p/ caber na tela (token com dígito é o mais identificador; sigla em CAIXA
 // já pronta é mantida; senão, iniciais das palavras significativas).
-function acronymOf(name: string, kind: "company" | "person"): string {
+export function acronymOf(name: string, kind: "company" | "person"): string {
   if (kind === "person") {
     const ini = name.split(/\s+/).filter((w) => /[a-z]/i.test(w)).map((w) => w[0].toUpperCase()).join("");
     return ini.slice(0, 3) || name.slice(0, 2).toUpperCase();
