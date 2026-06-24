@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect } from "react";
 import * as XLSX from "xlsx";
 import { analyzeQbo, saveQboImport, type AnalyzeResult } from "@/lib/actions/qbo";
-import { analyzeGl, saveGl, type GlAnalyzeResult } from "@/lib/actions/gl";
+import { analyzeGl, glPreFormation, saveGl, type GlAnalyzeResult, type GlPreFormation } from "@/lib/actions/gl";
 import { gzipB64 } from "@/lib/util/gzip-client";
 
 // O GL é transacional (parser e tela diferentes do BS/P&L). Detecta pelo título
@@ -39,8 +39,31 @@ export function ImportForm() {
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [glResult, setGlResult] = useState<GlAnalyzeResult | null>(null);
   const [companyId, setCompanyId] = useState("");
+  const [glWarn, setGlWarn] = useState<GlPreFormation | null>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+
+  // Checagem (no import): lançamentos do GL anteriores à abertura da empresa selecionada.
+  // Re-roda quando troca a empresa no preview. Não bloqueia o save, só alerta.
+  useEffect(() => {
+    if (!glResult || !companyId) {
+      setGlWarn(null);
+      return;
+    }
+    let ignore = false;
+    (async () => {
+      try {
+        const gz = await gzipB64(text);
+        const w = await glPreFormation(gz, companyId);
+        if (!ignore) setGlWarn(w);
+      } catch {
+        if (!ignore) setGlWarn(null);
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [glResult, companyId, text]);
 
   function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -277,6 +300,40 @@ export function ImportForm() {
               {pending ? "Importing…" : "Import General Ledger"}
             </button>
           </div>
+
+          {glWarn?.hasFormation && glWarn.count > 0 && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-medium">
+                ⚠ {glWarn.count} lançamento{glWarn.count > 1 ? "s" : ""} com data ANTERIOR à abertura
+                {glWarn.formationDate ? ` (${glWarn.formationDate})` : ""}.
+              </div>
+              <p className="mt-1 text-amber-800">
+                Confira: ou o GL é de outra empresa/período, ou a data de abertura cadastrada está
+                errada (a empresa pode ter aberto antes).
+              </p>
+              <ul className="mt-2 space-y-0.5 text-xs text-amber-800">
+                {glWarn.examples.map((e, i) => (
+                  <li key={i} className="tabular-nums">
+                    {e.date} · {e.account} ·{" "}
+                    {e.amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </li>
+                ))}
+                {glWarn.count > glWarn.examples.length && (
+                  <li className="text-amber-700">+ {glWarn.count - glWarn.examples.length} outro(s)…</li>
+                )}
+              </ul>
+              <p className="mt-1.5 text-xs text-amber-700">
+                Não bloqueia a importação — é só um alerta para você revisar.
+              </p>
+            </div>
+          )}
+
+          {glWarn && !glWarn.hasFormation && glWarn.earliestDate && (
+            <p className="rounded-lg bg-slate-50 px-4 py-2 text-xs text-slate-500">
+              Abertura não cadastrada nesta empresa — não dá para checar lançamentos pré-abertura. O
+              GL começa em {glWarn.earliestDate}. Cadastre a data de abertura para ativar o alerta.
+            </p>
+          )}
 
           {glResult.sameYearPeriod && (
             <p className="rounded-lg bg-sky-50 px-4 py-2 text-sm text-sky-800">
