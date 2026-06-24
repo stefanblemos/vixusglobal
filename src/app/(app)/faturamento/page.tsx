@@ -128,7 +128,7 @@ export default async function FaturamentoPage({
               </p>
               {data.coverage.unknownAccounts.length > 0 && (
                 <div>
-                  <span className="text-slate-400">Contas não classificadas (fora do P&L/BS — verifique se alguma é receita/despesa):</span>
+                  <span className="text-slate-400">Contas fora do P&L/BS (assumidas como despesa — confira se alguma é, na verdade, balanço ou receita):</span>
                   <ul className="mt-1 space-y-0.5 text-xs">
                     {data.coverage.unknownAccounts.map((u) => (
                       <li key={u.account} className="tabular-nums">

@@ -93,7 +93,11 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
 
   // Como o lucro será apurado.
   const netBasis: Faturamento["coverage"]["netBasis"] = bs && pnl ? "P&L+BS" : bs ? "BS" : pnl ? "P&L" : "nenhum";
-  const mode: "complement" | "pnl" | "none" = bs ? "complement" : pnl ? "pnl" : "none";
+  // Com P&L, a despesa vem das contas da seção Expenses do P&L (preciso). O complemento (tudo que
+  // não é receita nem balanço) só entra quando há BS mas não P&L — porque o QBO reusa nomes de
+  // conta entre P&L e BS (ex.: equipamento que é ativo no BS e sub-conta de manutenção no P&L), e
+  // o complemento jogaria a despesa de manutenção para o balanço, inflando o lucro.
+  const mode: "complement" | "pnl" | "none" = pnl ? "pnl" : bs ? "complement" : "none";
   const canComputeNet = mode !== "none";
 
   const allMonths = await prisma.$queryRaw<{ ym: string }[]>(
@@ -128,7 +132,10 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
     const n = norm(account);
     if (incomePnl.has(n) || isIncomeName(account)) return "income";
     if (mode === "complement") return balance.has(n) ? "balance" : "expense";
-    if (mode === "pnl") return expensePnl.has(n) ? "expense" : balance.has(n) ? "balance" : "unknown";
+    // Híbrido (há P&L): despesa do P&L tem prioridade sobre o balanço (resolve nomes reusados
+    // entre P&L e BS); o que não está em nenhum dos dois é assumido como despesa (P&L às vezes não
+    // lista toda sub-conta que aparece no GL) — essas ficam listadas no painel para conferência.
+    if (mode === "pnl") return expensePnl.has(n) ? "expense" : balance.has(n) ? "balance" : "expense";
     return "unknown"; // mode none → só receita
   };
 
@@ -136,7 +143,11 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
     const k = classify(r.account);
     const cell = monthly.get(r.ym) ?? { income: 0, expense: 0 };
     if (k === "income") { cell.income += r.s; classifiedAbs += Math.abs(r.s); incomeUsed.add(r.account); }
-    else if (k === "expense") { cell.expense += r.s; classifiedAbs += Math.abs(r.s); }
+    else if (k === "expense") {
+      cell.expense += r.s; classifiedAbs += Math.abs(r.s);
+      // despesa "assumida" (não está no P&L nem no BS) → lista para conferência
+      if (mode === "pnl" && !expensePnl.has(norm(r.account))) unknown.set(r.account, (unknown.get(r.account) ?? 0) + r.s);
+    }
     else if (k === "balance") { /* fora do P&L */ }
     else { unknown.set(r.account, (unknown.get(r.account) ?? 0) + r.s); unknownAbs += Math.abs(r.s); }
     monthly.set(r.ym, cell);
