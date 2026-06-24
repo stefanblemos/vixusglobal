@@ -84,6 +84,16 @@ export default async function FaturamentoPage({
               para liberar o lucro.
             </div>
           )}
+          {data.canComputeNet && !data.coverage.hasPnl && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <span className="font-medium">Sem P&L importado — receita e lucro podem não bater com o QBO.</span>{" "}
+              Sem o P&L, a receita é identificada pelo nome da conta (Sales/Income), então contas de
+              receita com outro nome (ex.: <strong>Services</strong>) ou contra-receita (ex.:{" "}
+              <strong>Discounts given</strong>) ficam de fora — e ainda entram como despesa, reduzindo
+              o lucro. <strong>Importe o P&L</strong> (anual serve) em Documents para a classificação
+              ficar igual à do QBO.
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             {data.blocks.map((b) => (
               <BlockCard key={b.key} b={b} currency={data.currency} fmt={fmt} />

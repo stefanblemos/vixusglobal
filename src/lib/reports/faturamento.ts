@@ -55,6 +55,7 @@ export interface Faturamento {
   canComputeNet: boolean;
   coverage: {
     netBasis: "P&L+BS" | "P&L" | "BS" | "nenhum";
+    hasPnl: boolean; // sem P&L a receita é só por heurística de nome (pode faltar conta)
     incomeAccounts: string[];
     classifiedPct: number;
     unknownAccounts: { account: string; amount: number }[];
@@ -103,7 +104,7 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
     return {
       companyId, companyName: company.legalName, currency: company.baseCurrency, months: [], refMonth: refMonthInput ?? "",
       blocks: [], canComputeNet,
-      coverage: { netBasis, incomeAccounts: [], classifiedPct: 0, unknownAccounts: [], glSpan: { min: null, max: null }, missingMonths: [] },
+      coverage: { netBasis, hasPnl: !!pnl, incomeAccounts: [], classifiedPct: 0, unknownAccounts: [], glSpan: { min: null, max: null }, missingMonths: [] },
     };
   }
   const refMonth = refMonthInput && months.includes(refMonthInput) ? refMonthInput : months[0];
@@ -190,6 +191,7 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
     companyId, companyName: company.legalName, currency: company.baseCurrency, months, refMonth, blocks, canComputeNet,
     coverage: {
       netBasis,
+      hasPnl: !!pnl,
       incomeAccounts: [...incomeUsed],
       classifiedPct: classifiedAbs + unknownAbs > 0 ? classifiedAbs / (classifiedAbs + unknownAbs) : 1,
       unknownAccounts,
