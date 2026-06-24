@@ -75,6 +75,15 @@ export default async function FaturamentoPage({
         </div>
       ) : (
         <>
+          {!data.canComputeNet && (
+            <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <span className="font-medium">Lucro indisponível para esta empresa.</span> Há GL, mas
+              sem P&L nem Balance Sheet importado — e o lucro precisa de um deles para separar despesas
+              de contas de balanço (ativos, empréstimos, intercompany) com segurança. O{" "}
+              <strong>faturamento abaixo já vem do GL</strong>; importe o P&L ou o BS em Documents
+              para liberar o lucro.
+            </div>
+          )}
           <div className="grid gap-4 md:grid-cols-2">
             {data.blocks.map((b) => (
               <BlockCard key={b.key} b={b} currency={data.currency} fmt={fmt} />
@@ -90,10 +99,11 @@ export default async function FaturamentoPage({
               <p>
                 <span className="text-slate-400">GL cobre:</span> {monthLabel(data.coverage.glSpan.min ?? "")} —{" "}
                 {monthLabel(data.coverage.glSpan.max ?? "")}.{" "}
-                {!data.coverage.hasPnl && (
-                  <span className="text-amber-700">
-                    Sem P&L importado — a classificação de contas pode estar incompleta.
-                  </span>
+                <span className="text-slate-400">Base do lucro:</span>{" "}
+                {data.coverage.netBasis === "nenhum" ? (
+                  <span className="text-amber-700">nenhuma (importe P&L ou BS) — só faturamento.</span>
+                ) : (
+                  <span>{data.coverage.netBasis}.</span>
                 )}
               </p>
               {data.coverage.missingMonths.length > 0 && (
@@ -154,7 +164,9 @@ function BlockCard({
       <div className="text-right">
         <div className="font-semibold tabular-nums text-slate-800">{fmt(f.income, currency)}</div>
         <div className="text-xs tabular-nums text-slate-500">
-          Lucro {fmt(f.net, currency)} · {f.margin == null ? "—" : `${(f.margin * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`}
+          {f.net == null
+            ? "Lucro —"
+            : `Lucro ${fmt(f.net, currency)} · ${f.margin == null ? "—" : `${(f.margin * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`}`}
         </div>
       </div>
     ) : (
