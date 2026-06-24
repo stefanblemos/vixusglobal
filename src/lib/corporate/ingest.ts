@@ -18,7 +18,7 @@ export async function ingestCorporateDoc(
 
   let data;
   try {
-    data = await analyzeCorporateDocPdf(clamped.buf.toString("base64"));
+    data = await analyzeCorporateDocPdf(clamped.buf);
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Analysis failed." };
   }

@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { buildPdfSource, cleanupPdfSource, pdfRequestOptions } from "@/lib/anthropic/pdf-source";
 
 // Extração de documentos societários/constitutivos (Articles, Operating Agreement,
 // Sunbiz Annual Report, etc.). Texto opcional usa "" (não null) p/ não estourar o
@@ -69,30 +70,36 @@ Be faithful to the document. Set confidence to "low" if anything is unclear. For
 not shown, use an empty string "" (not null). Use null only for the numeric year if absent. Keep
 "summary" to ONE short sentence.`;
 
-export async function analyzeCorporateDocPdf(base64Pdf: string): Promise<CorporateDocExtraction> {
+export async function analyzeCorporateDocPdf(buf: Buffer): Promise<CorporateDocExtraction> {
   if (!process.env.ANTHROPIC_API_KEY) {
     throw new Error("ANTHROPIC_API_KEY is not set. Add it to .env to enable document analysis.");
   }
   const client = new Anthropic();
-  const res = await client.messages.parse({
-    model: "claude-opus-4-8",
-    max_tokens: 8000,
-    thinking: { type: "adaptive" },
-    messages: [
+  const pdf = await buildPdfSource(client, buf);
+  try {
+    const res = await client.messages.parse(
       {
-        role: "user",
-        content: [
+        model: "claude-opus-4-8",
+        max_tokens: 8000,
+        thinking: { type: "adaptive" },
+        messages: [
           {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: base64Pdf },
+            role: "user",
+            content: [
+              // file_id é source beta (válido na GA com o header beta); tipos GA não o incluem.
+              { type: "document", source: pdf.source as unknown as Anthropic.Base64PDFSource },
+              { type: "text", text: PROMPT },
+            ],
           },
-          { type: "text", text: PROMPT },
         ],
+        output_config: { format: zodOutputFormat(corporateDocSchema) },
       },
-    ],
-    output_config: { format: zodOutputFormat(corporateDocSchema) },
-  });
-  const data = res.parsed_output;
-  if (!data) throw new Error("Could not extract data from this document.");
-  return data;
+      pdfRequestOptions(pdf),
+    );
+    const data = res.parsed_output;
+    if (!data) throw new Error("Could not extract data from this document.");
+    return data;
+  } finally {
+    await cleanupPdfSource(client, pdf);
+  }
 }
