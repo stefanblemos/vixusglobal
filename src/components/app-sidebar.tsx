@@ -49,7 +49,7 @@ const NAV: Entry[] = [
     items: [
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/parties", label: "Owners", icon: Users },
-      { href: "/org-chart", label: "Organograma", icon: Network },
+      { href: "/org-chart", label: "Org chart", icon: Network },
     ],
   },
   {
@@ -60,6 +60,7 @@ const NAV: Entry[] = [
       { href: "/loans", label: "Loans", icon: ArrowLeftRight },
       { href: "/bank", label: "Bank", icon: Landmark },
       { href: "/ledger", label: "Ledger", icon: BookOpen },
+      { href: "/faturamento", label: "Revenue & profit", icon: TrendingUp },
       { href: "/exposure", label: "Exposure", icon: Scale },
     ],
   },
@@ -81,7 +82,6 @@ const NAV: Entry[] = [
     label: "Audit & Review",
     icon: ListChecks,
     items: [
-      { href: "/faturamento", label: "Faturamento", icon: TrendingUp },
       { href: "/closing", label: "Closing", icon: ClipboardCheck },
       { href: "/closing-sequence", label: "Closing sequence", icon: ListChecks },
       { href: "/obligations", label: "Obligations", icon: CalendarClock },
