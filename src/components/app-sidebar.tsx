@@ -14,6 +14,7 @@ import {
   Landmark,
   ReceiptText,
   PieChart,
+  TrendingUp,
   Activity,
   ListChecks,
   FolderOpen,
@@ -80,6 +81,7 @@ const NAV: Entry[] = [
     label: "Audit & Review",
     icon: ListChecks,
     items: [
+      { href: "/faturamento", label: "Faturamento", icon: TrendingUp },
       { href: "/closing", label: "Closing", icon: ClipboardCheck },
       { href: "/closing-sequence", label: "Closing sequence", icon: ListChecks },
       { href: "/obligations", label: "Obligations", icon: CalendarClock },
