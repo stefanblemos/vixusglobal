@@ -18,7 +18,7 @@ export async function GET(req: Request) {
   return new Response(new Blob([new Uint8Array(pdf)], { type: "application/pdf" }), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="closing-${year}.pdf"`,
+      "Content-Disposition": `inline; filename="closing-${year}.pdf"`,
     },
   });
 }

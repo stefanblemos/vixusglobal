@@ -42,11 +42,9 @@ export function AccountantReport({ companyId, year }: { companyId: string; year:
     }
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `accountant-report-${year}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
+    window.open(url, "_blank", "noopener");
+    // libera depois de a aba carregar o blob
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   const btn =
@@ -93,7 +91,7 @@ export function AccountantReport({ companyId, year }: { companyId: string; year:
               {copied ? "Copied ✓" : "Copy email"}
             </button>
             <button onClick={downloadPdf} className={btn}>
-              Download PDF
+              Abrir PDF
             </button>
           </div>
         </>

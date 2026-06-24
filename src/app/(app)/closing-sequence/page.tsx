@@ -36,9 +36,11 @@ export default async function ClosingSequencePage({
         </div>
         <a
           href={`/api/closing-sequence/pdf?year=${year}`}
+          target="_blank"
+          rel="noopener"
           className="shrink-0 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
         >
-          Download PDF
+          Abrir PDF
         </a>
       </div>
 

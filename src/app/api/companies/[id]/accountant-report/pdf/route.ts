@@ -17,7 +17,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   return new Response(new Blob([new Uint8Array(pdf)], { type: "application/pdf" }), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="accountant-report-${body.year ?? ""}.pdf"`,
+      "Content-Disposition": `inline; filename="accountant-report-${body.year ?? ""}.pdf"`,
     },
   });
 }

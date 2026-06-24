@@ -48,9 +48,11 @@ export default async function ClosingPage({
         <div className="flex gap-2">
           <a
             href={`/api/closing/pdf?year=${year}`}
+            target="_blank"
+            rel="noopener"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
           >
-            Download PDF
+            Abrir PDF
           </a>
           <Link
             href="/import"
