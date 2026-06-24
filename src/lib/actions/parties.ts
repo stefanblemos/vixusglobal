@@ -28,6 +28,17 @@ export async function createParty(_prev: FormState, formData: FormData): Promise
   redirect("/parties");
 }
 
+// Liga/desliga "tomamos conta do IR (1040) desta pessoa". Desligado = fica fora da
+// sequência de fechamento (ex.: sócio externo cujo IR não fazemos).
+export async function setPartyControlsTax(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const controlsTax = formData.get("controlsTax") === "true";
+  await prisma.party.update({ where: { id }, data: { controlsTax } });
+  revalidatePath(`/parties/${id}`);
+  revalidatePath("/closing-sequence");
+}
+
 // Mescla um dono duplicado (drop) no canônico (keep). Núcleo em @/lib/parties/merge.
 export async function mergeParties(formData: FormData): Promise<void> {
   const keepId = String(formData.get("keepId") ?? "");

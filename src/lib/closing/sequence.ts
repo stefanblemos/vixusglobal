@@ -64,10 +64,18 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
   const asOf = new Date(Date.UTC(year, 11, 31));
   const [companies, parties, ownerships, taxReturns, personalReturns, yearCloses] =
     await Promise.all([
+      // Só entra na sequência quem está no escopo do fechamento: grupo + geridas cujo IR
+      // tomamos conta (controlsTax). Mesmo filtro do "closing completeness" — as duas telas batem.
+      // Quem não controlamos (ex.: monitored=false, ou pessoa externa) some, e o contador não
+      // pensa que pedimos o IR delas. Trocar o flag em Edit (empresa) / na ficha (pessoa) ajusta.
       prisma.company.findMany({
+        where: { monitored: true, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
         select: { id: true, legalName: true, tradeName: true, aliases: true, entityType: true },
       }),
-      prisma.party.findMany({ where: { kind: "PERSON" }, select: { id: true, name: true } }),
+      prisma.party.findMany({
+        where: { kind: "PERSON", controlsTax: true },
+        select: { id: true, name: true },
+      }),
       prisma.ownership.findMany({
         select: {
           ownerCompanyId: true,

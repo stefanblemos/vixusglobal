@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { labelForJurisdiction, labelForPartyKind } from "@/lib/catalog";
 import { crossCheckPersonalReturn, looseNameMatch } from "@/lib/personal/reconcile";
 import { MergePartyInto } from "@/components/merge-party-into";
+import { setPartyControlsTax } from "@/lib/actions/parties";
 
 export const dynamic = "force-dynamic";
 
@@ -92,6 +93,23 @@ export default async function PartyDetailPage({
             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
               SSN •••-••-{ssnLast4}
             </span>
+          )}
+          {party.kind === "PERSON" && (
+            <form action={setPartyControlsTax}>
+              <input type="hidden" name="id" value={party.id} />
+              <input type="hidden" name="controlsTax" value={party.controlsTax ? "false" : "true"} />
+              <button
+                type="submit"
+                title="Define se esta pessoa entra na sequência de fechamento do IR. Desligue para sócios externos cujo 1040 você não faz."
+                className={`rounded-full px-2 py-0.5 text-xs transition ${
+                  party.controlsTax
+                    ? "bg-green-50 text-green-700 hover:bg-green-100"
+                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                }`}
+              >
+                {party.controlsTax ? "IR: você controla ✓" : "IR: fora do escopo"}
+              </button>
+            </form>
           )}
         </div>
         <p className="mt-1 text-sm text-slate-500">

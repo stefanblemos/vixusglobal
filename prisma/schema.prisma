@@ -127,6 +127,7 @@ model Party {
   aliases         String[]     @default([]) // nomes alternativos/divergentes (matching de import + merge)
   taxJurisdiction Jurisdiction @default(OTHER)
   taxId           String?
+  controlsTax     Boolean      @default(true) // tomamos conta do 1040 desta pessoa? false = externo (ex-sócio, K-1 de fora) — fica fora da sequência de fechamento
   notes           String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
