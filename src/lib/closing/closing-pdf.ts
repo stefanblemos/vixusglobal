@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage, type PDFFont } from "pdf-lib";
 import { buildCompleteness, type CompletenessRow, type Cell } from "./completeness";
+import { embedLogo } from "@/lib/pdf/header";
 
 // PDF da matriz de fechamento (closing) — para enviar ao contador mostrando o que
 // ainda falta por empresa. Layout: paisagem Letter, uma linha por empresa.
@@ -51,6 +52,7 @@ export async function buildClosingPdf(year: number, generatedLabel?: string): Pr
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const logo = await embedLogo(doc);
 
   // posições x das colunas
   const xName = M;
@@ -90,8 +92,13 @@ export async function buildClosingPdf(year: number, generatedLabel?: string): Pr
   const newPage = () => {
     page = doc.addPage([PAGE_W, PAGE_H]);
     pageNum += 1;
-    // Cabeçalho do documento
-    page.drawText("VIXUS GLOBAL INVESTMENTS", { x: M, y: PAGE_H - M, size: 11, font: bold, color: NAVY });
+    // Cabeçalho do documento — logo Vixus (ou wordmark se faltar)
+    if (logo) {
+      const h = 20;
+      page.drawImage(logo, { x: M, y: PAGE_H - M - h + 8, width: (logo.width / logo.height) * h, height: h });
+    } else {
+      page.drawText("VIXUS GLOBAL INVESTMENTS", { x: M, y: PAGE_H - M, size: 11, font: bold, color: NAVY });
+    }
     page.drawText(`Closing — completeness  ·  ${year}`, { x: M, y: PAGE_H - M - 20, size: 16, font: bold, color: INK });
     const stamp = `${fullyComplete} / ${existing.length} complete   ·   ${missingByCol
       .filter((m) => m.missing > 0)

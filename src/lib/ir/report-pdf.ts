@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { drawPdfHeader } from "@/lib/pdf/header";
 
-// Renderiza um texto (o report ao contador) num PDF A4 simples, com quebra de linha.
+// Renderiza um texto (o report ao contador) num PDF A4 com a logo da Vixus no topo.
 export async function textToPdf(title: string, body: string): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -44,9 +45,13 @@ export async function textToPdf(title: string, body: string): Promise<Uint8Array
   };
 
   let page = doc.addPage([W, H]);
-  let y = H - M;
-  page.drawText(clean(title), { x: M, y, size: 13, font: bold, color: INK });
-  y -= 26;
+  let y = await drawPdfHeader(doc, page, { bold, font }, {
+    title: clean(title),
+    pageWidth: W,
+    pageHeight: H,
+    margin: M,
+  });
+  y -= 4;
 
   for (const line of wrap(body)) {
     if (y < M) {

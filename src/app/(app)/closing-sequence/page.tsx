@@ -25,13 +25,21 @@ export default async function ClosingSequencePage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Closing sequence</h1>
-        <p className="text-sm text-slate-500">
-          A ordem de fechar o IR seguindo a árvore pass-through: cada entidade só fecha depois das
-          investidas que lhe emitem K-1. Feche de cima para baixo (passo 1 → último). Pagador final
-          (final) = C-corp ou PF.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-800">Closing sequence</h1>
+          <p className="text-sm text-slate-500">
+            A ordem de fechar o IR seguindo a árvore pass-through: cada entidade só fecha depois das
+            investidas que lhe emitem K-1. Feche de cima para baixo (passo 1 → último). Pagador final
+            (final) = C-corp ou PF.
+          </p>
+        </div>
+        <a
+          href={`/api/closing-sequence/pdf?year=${year}`}
+          className="shrink-0 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+        >
+          Download PDF
+        </a>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
