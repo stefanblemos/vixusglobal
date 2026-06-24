@@ -79,6 +79,7 @@ const NAV: Entry[] = [
     icon: ListChecks,
     items: [
       { href: "/closing", label: "Closing", icon: ClipboardCheck },
+      { href: "/closing-sequence", label: "Closing sequence", icon: ListChecks },
       { href: "/obligations", label: "Obligations", icon: CalendarClock },
       { href: "/review", label: "Review", icon: ListChecks },
       { href: "/audit", label: "Audit", icon: Activity },
