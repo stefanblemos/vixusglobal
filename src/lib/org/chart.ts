@@ -144,21 +144,34 @@ export async function buildOrgChart(year: number): Promise<OrgChart> {
   let fallback = Math.max(0, ...layer.values()) + 1;
   for (const k of keys) if (!layer.has(k)) layer.set(k, fallback++); // ciclos
 
-  // Agrupa por camada e ordena (camada 0 por nome; demais por baricentro dos pais).
+  // Agrupa por camada e ordena para minimizar cruzamentos (heurística de baricentro tipo
+  // Sugiyama): inicializa pelos pais e depois alterna varreduras desce/sobe algumas vezes —
+  // cada nó busca a média das posições dos vizinhos, reduzindo o emaranhado de linhas.
   const maxLayer = Math.max(...layer.values());
   const byLayer: string[][] = Array.from({ length: maxLayer + 1 }, () => []);
   for (const k of keys) byLayer[layer.get(k)!].push(k);
   const order = new Map<string, number>(); // posição (coluna) do nó dentro da sua camada
+  const reindex = (L: number) => byLayer[L].forEach((k, i) => order.set(k, i));
+  const meanOf = (list: { key: string }[]) => {
+    const xs = list.filter((n) => order.has(n.key)).map((n) => order.get(n.key)!);
+    return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+  };
+  const sweep = (L: number, neighbors: Map<string, { key: string }[]>) => {
+    const cur = new Map(byLayer[L].map((k, i) => [k, i]));
+    byLayer[L].sort((a, b) => {
+      const ba = meanOf(neighbors.get(a) ?? []) ?? cur.get(a)!;
+      const bb = meanOf(neighbors.get(b) ?? []) ?? cur.get(b)!;
+      return ba - bb || cur.get(a)! - cur.get(b)!;
+    });
+    reindex(L);
+  };
+
   byLayer[0].sort((a, b) => meta.get(a)!.name.localeCompare(meta.get(b)!.name));
-  byLayer[0].forEach((k, i) => order.set(k, i));
-  for (let L = 1; L <= maxLayer; L++) {
-    const bary = (k: string) => {
-      const ps = (parentsOf.get(k) ?? []).filter((p) => order.has(p.key));
-      if (!ps.length) return 1e9; // sem pai posicionado (ciclo) → joga pro fim
-      return ps.reduce((s, p) => s + order.get(p.key)!, 0) / ps.length;
-    };
-    byLayer[L].sort((a, b) => bary(a) - bary(b) || meta.get(a)!.name.localeCompare(meta.get(b)!.name));
-    byLayer[L].forEach((k, i) => order.set(k, i));
+  reindex(0);
+  for (let L = 1; L <= maxLayer; L++) sweep(L, parentsOf); // posição inicial pelos pais
+  for (let iter = 0; iter < 4; iter++) {
+    for (let L = 1; L <= maxLayer; L++) sweep(L, parentsOf); // desce: alinha pelos donos
+    for (let L = maxLayer - 1; L >= 0; L--) sweep(L, childrenOf); // sobe: alinha pelas investidas
   }
 
   const maxCols = Math.max(...byLayer.map((l) => l.length));

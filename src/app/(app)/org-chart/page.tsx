@@ -1,11 +1,8 @@
 import Link from "next/link";
-import { buildOrgChart, ORG_BOX, type OrgNode } from "@/lib/org/chart";
+import { buildOrgChart } from "@/lib/org/chart";
+import { OrgChartSvg } from "./org-chart-svg";
 
 export const dynamic = "force-dynamic";
-
-const { BOXW, BOXH } = ORG_BOX;
-
-const ellipsize = (s: string, max: number) => (s.length > max ? s.slice(0, max - 1) + "…" : s);
 
 export default async function OrgChartPage({
   searchParams,
@@ -56,6 +53,7 @@ export default async function OrgChartPage({
           <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-white" /> C-corp (paga no nível)
         </span>
         <span className="text-slate-400">% na linha = participação do dono na investida.</span>
+        <span className="text-slate-400">Passe o mouse numa caixa para destacar a linhagem.</span>
       </div>
 
       {chart.nodes.length === 0 ? (
@@ -68,41 +66,12 @@ export default async function OrgChartPage({
         </div>
       ) : (
         <div className="overflow-auto rounded-xl border border-slate-200 bg-white p-2">
-          <svg
+          <OrgChartSvg
+            nodes={chart.nodes}
+            edges={chart.edges}
             width={chart.width}
             height={chart.height}
-            viewBox={`0 0 ${chart.width} ${chart.height}`}
-            className="min-w-full"
-          >
-            {/* arestas primeiro (atrás das caixas) */}
-            {chart.edges.map((e, i) => (
-              <g key={i}>
-                <line
-                  x1={e.x1}
-                  y1={e.y1}
-                  x2={e.x2}
-                  y2={e.y2}
-                  stroke="#cbd5e1"
-                  strokeWidth={1.3}
-                />
-                <rect x={e.lx - 17} y={e.ly - 8} width={34} height={15} rx={7} fill="#f1f5f9" />
-                <text
-                  x={e.lx}
-                  y={e.ly + 2.5}
-                  textAnchor="middle"
-                  fontSize={9.5}
-                  fontWeight={600}
-                  fill="#475569"
-                >
-                  {e.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%
-                </text>
-              </g>
-            ))}
-            {/* caixas */}
-            {chart.nodes.map((n) => (
-              <NodeBox key={n.key} n={n} />
-            ))}
-          </svg>
+          />
         </div>
       )}
 
@@ -112,42 +81,5 @@ export default async function OrgChartPage({
         x%&rdquo;.
       </p>
     </div>
-  );
-}
-
-function NodeBox({ n }: { n: OrgNode }) {
-  const person = n.kind === "person";
-  const fill = person ? "#1f3a5f" : "#ffffff";
-  const stroke = n.isCorp ? "#f59e0b" : person ? "#1f3a5f" : "#cbd5e1";
-  const strokeW = n.isCorp ? 2 : 1;
-  const nameColor = person ? "#ffffff" : "#1e293b";
-  const subColor = person ? "#c7d2e0" : "#64748b";
-
-  const box = (
-    <g>
-      <rect
-        x={n.x}
-        y={n.y}
-        width={BOXW}
-        height={BOXH}
-        rx={8}
-        fill={fill}
-        stroke={stroke}
-        strokeWidth={strokeW}
-      />
-      <text x={n.x + 10} y={n.y + 18} fontSize={11} fontWeight={700} fill={nameColor}>
-        {ellipsize(n.name, 24)}
-      </text>
-      <text x={n.x + 10} y={n.y + 33} fontSize={8.5} fill={subColor}>
-        {n.acronym} · {n.tag}
-        {n.ownedPct != null && n.ownedPct < 100 ? `  · donos: ${n.ownedPct}%` : ""}
-      </text>
-    </g>
-  );
-
-  return n.kind === "company" ? (
-    <a href={`/companies/${n.id}`}>{box}</a>
-  ) : (
-    <a href={`/parties/${n.id}`}>{box}</a>
   );
 }
