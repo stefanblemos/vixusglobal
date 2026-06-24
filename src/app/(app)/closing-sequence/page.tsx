@@ -107,10 +107,27 @@ function Row({ n }: { n: SeqNode }) {
             n.name
           )}
         </span>
+        <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
+          {n.acronym}
+        </span>
         {n.finalPayer && (
           <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
             {n.kind === "person" ? "1040" : "C-corp"} · final
           </span>
+        )}
+        {n.passesTo.length > 0 ? (
+          <span className="block text-xs text-slate-500">
+            ↑ repassa para{" "}
+            {n.passesTo.map((r, k) => (
+              <span key={r.acronym + k} title={r.name}>
+                {k > 0 && " · "}
+                <span className="font-mono text-slate-600">{r.acronym}</span>{" "}
+                {r.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%
+              </span>
+            ))}
+          </span>
+        ) : (
+          n.finalPayer && <span className="block text-xs text-slate-400">↑ pagador final (não repassa)</span>
         )}
         {n.deps.length > 0 && (
           <span className="block text-xs text-slate-400">

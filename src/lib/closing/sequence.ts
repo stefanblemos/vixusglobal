@@ -1,6 +1,23 @@
 import { prisma } from "@/lib/db";
+import { edgesFromOwnerships } from "@/lib/ownership/effective";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 import { looseNameMatch } from "@/lib/personal/reconcile";
+
+const SUFFIX = /^(llc|l\.l\.c|inc|corp|co|ltd|lp|llp|pa|the|and|of)$/i;
+// Acrônimo curto p/ caber na tela (token com dígito é o mais identificador; sigla em CAIXA
+// já pronta é mantida; senão, iniciais das palavras significativas).
+function acronymOf(name: string, kind: "company" | "person"): string {
+  if (kind === "person") {
+    const ini = name.split(/\s+/).filter((w) => /[a-z]/i.test(w)).map((w) => w[0].toUpperCase()).join("");
+    return ini.slice(0, 3) || name.slice(0, 2).toUpperCase();
+  }
+  const tokens = name.replace(/[.,&]/g, " ").split(/\s+/).filter(Boolean).filter((w) => !SUFFIX.test(w));
+  const numTok = tokens.find((w) => /\d/.test(w));
+  if (numTok) return numTok.toUpperCase().slice(0, 6);
+  const upper = tokens.find((w) => w.length >= 2 && w === w.toUpperCase());
+  if (upper) return upper.slice(0, 5);
+  return tokens.map((w) => w[0].toUpperCase()).join("").slice(0, 4) || name.slice(0, 3).toUpperCase();
+}
 
 // Sequência de fechamento do IR seguindo a árvore pass-through: cada entidade só pode
 // fechar DEPOIS das investidas que lhe emitem K-1 (senão a renda do K-1 some). A ordem é
@@ -14,13 +31,20 @@ export interface SeqDep {
   name: string;
   done: boolean;
 }
+export interface SeqRecipient {
+  name: string;
+  acronym: string;
+  pct: number;
+}
 export interface SeqNode {
   key: string;
   kind: "company" | "person";
   id: string;
   name: string;
+  acronym: string;
   form: string | null; // tributação/forma (C_CORP, PARTNERSHIP, 1040…)
   finalPayer: boolean; // C-corp ou PF — não passa para cima
+  passesTo: SeqRecipient[]; // donos que recebem a renda desta entidade (com %)
   tier: number; // 1..N (0 = ciclo / não resolvido)
   deps: SeqDep[];
   status: SeqStatus;
@@ -86,8 +110,10 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       kind: "company",
       id: c.id,
       name: c.legalName,
+      acronym: acronymOf(c.legalName, "company"),
       form: treatByCompany.get(c.id) ?? null,
       finalPayer: isCorp(c.id),
+      passesTo: [],
       tier: 0,
       deps: [],
       status: "blocked",
@@ -102,8 +128,10 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       kind: "person",
       id: pt.id,
       name: pt.name,
+      acronym: acronymOf(pt.name, "person"),
       form: "1040",
       finalPayer: true,
+      passesTo: [],
       tier: 0,
       deps: [],
       status: "blocked",
@@ -120,14 +148,17 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
     (deps.get(xKey) ?? deps.set(xKey, new Set()).get(xKey)!).add(yKey);
   };
 
-  // 1) Ownership: o dono X só fecha depois da possuída Y (pass-through = K-1; C-corp = dividendo).
-  //    Filtra só por SAÍDA (endDate ≤ fim do ano = já vendeu); ignora a data de ENTRADA, que nem
-  //    sempre é confiável (manuais ficam com a data de cadastro) e quebraria a árvore.
-  for (const r of ownerships) {
-    if (r.endDate && r.endDate <= asOf) continue;
-    if (!r.ownedCompanyId) continue; // só entidade fecha IR
-    const xKey = r.ownerPartyId ? pk(r.ownerPartyId) : r.ownerCompanyId ? ck(r.ownerCompanyId) : null;
-    if (xKey) addDep(xKey, ck(r.ownedCompanyId));
+  // 1) Ownership VIGENTE no ano (effectiveDate ≤ 31/12 e ainda não saiu): o dono X só fecha
+  //    depois da possuída Y (pass-through = K-1; C-corp = dividendo). Trocar o dono daquele ano
+  //    no cadastro reflete aqui. Também alimenta "passa para" (Y → seus donos, com %).
+  const passesToMap = new Map<string, { key: string; pct: number }[]>();
+  for (const e of edgesFromOwnerships(ownerships, asOf)) {
+    if (e.ownedType !== "company") continue;
+    const xKey = e.ownerType === "party" ? pk(e.ownerId) : ck(e.ownerId);
+    const yKey = ck(e.ownedId);
+    addDep(xKey, yKey);
+    if (nodes.has(xKey) && nodes.has(yKey))
+      (passesToMap.get(yKey) ?? passesToMap.set(yKey, []).get(yKey)!).push({ key: xKey, pct: e.percentage });
   }
 
   // 2) K-1 declarados no IR (autêntico): X recebeu K-1 de Y → X depende de Y.
@@ -169,6 +200,9 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
 
   // ── Preenche cada nó ──
   for (const n of nodes.values()) {
+    n.passesTo = (passesToMap.get(n.key) ?? [])
+      .map((r) => ({ name: nodes.get(r.key)!.name, acronym: nodes.get(r.key)!.acronym, pct: r.pct }))
+      .sort((a, b) => b.pct - a.pct);
     const d = [...(deps.get(n.key) ?? [])];
     n.deps = d.map((y) => ({ key: y, name: nodes.get(y)!.name, done: nodes.get(y)!.done })).sort((a, b) => a.name.localeCompare(b.name));
     n.inCycle = !tierOf.has(n.key);
