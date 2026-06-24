@@ -155,7 +155,17 @@ function Row({ n }: { n: SeqNode }) {
           <span className="block text-xs text-amber-600">⚠ posse circular — revisar o cadastro</span>
         )}
       </div>
-      <span className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${st.cls}`}>{st.label}</span>
+      <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+        <span className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${st.cls}`}>{st.label}</span>
+        {n.outOfOrder.length > 0 && (
+          <span
+            title={`Fechou antes de ${n.outOfOrder.join(", ")} — confira se o K-1 dessa(s) investida(s) entrou.`}
+            className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-amber-700"
+          >
+            ⚠ revisar
+          </span>
+        )}
+      </div>
     </div>
   );
 }

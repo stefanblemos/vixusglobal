@@ -84,8 +84,11 @@ export async function buildSequencePdf(year: number, generatedLabel?: string): P
       const tag = n.finalPayer ? `  [${n.kind === "person" ? "1040" : "C-corp"} - final]` : "";
       text(`${n.name}  (${n.acronym})${tag}`, M + 6, 10, bold, INK);
       const st = statusText[n.status] ?? n.status;
+      const review = n.outOfOrder.length > 0 ? "  REVISAR" : "";
       const stw = font.widthOfTextAtSize(st, 9);
-      page.drawText(st, { x: W - M - stw, y, size: 9, font, color: stColor });
+      const rvw = review ? bold.widthOfTextAtSize(review, 9) : 0;
+      page.drawText(st, { x: W - M - stw - rvw, y, size: 9, font, color: stColor });
+      if (review) page.drawText(review, { x: W - M - rvw, y, size: 9, font: bold, color: RED });
       y -= 13;
       if (n.passesTo.length) {
         const ptxt = "repassa para: " + n.passesTo.map((r) => `${r.acronym} ${r.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`).join(" · ");
