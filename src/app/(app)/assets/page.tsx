@@ -5,10 +5,9 @@ import { buildDepreciationVsIR } from "@/lib/assets/dep-vs-ir";
 import { detectAssetsFromQbo } from "@/lib/assets/detect";
 import { buildDepreciationReconciliation } from "@/lib/assets/reconcile-dep";
 import { DepReconcile } from "@/components/dep-reconcile";
-import { AssetCreateForm } from "@/components/asset-create-form";
-import { AssetDetect } from "@/components/asset-detect";
+import { AssetActions } from "@/components/asset-actions";
 import { AssetTimeline } from "@/components/asset-timeline";
-import { deleteAsset, dedupeAssets } from "@/lib/actions/assets";
+import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/db";
 
@@ -17,9 +16,9 @@ export const dynamic = "force-dynamic";
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; company?: string; detect?: string; recon?: string }>;
+  searchParams: Promise<{ year?: string; company?: string; detect?: string; recon?: string; tab?: string }>;
 }) {
-  const { year: yearParam, company, detect, recon } = await searchParams;
+  const { year: yearParam, company, detect, recon, tab: tabParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : currentYear;
 
@@ -41,6 +40,16 @@ export default async function AssetsPage({
   const reconCompanyId = recon && reconCompanies.some((c) => c.id === recon) ? recon : reconCompanies[0]?.id ?? "";
   const reconData = reconCompanyId ? await buildDepreciationReconciliation(reconCompanyId) : null;
 
+  const usCompanies = formCompanies.filter((c) => c.jurisdiction === "US");
+  const hasPt = ptReg.companies.length > 0;
+  const TABS = ["ativos", "conferencia", "portugal"] as const;
+  const tab: (typeof TABS)[number] =
+    tabParam && (TABS as readonly string[]).includes(tabParam)
+      ? (tabParam as (typeof TABS)[number])
+      : recon
+        ? "conferencia"
+        : "ativos";
+
   return (
     <div className="space-y-6">
       <div>
@@ -51,21 +60,12 @@ export default async function AssetsPage({
         </p>
       </div>
 
-      <AssetDetect
-        key={detect ?? "none"}
-        companies={formCompanies.filter((c) => c.jurisdiction === "US")}
-        detected={detected}
-        detectCompanyId={detect ?? ""}
-      />
-
-      <AssetCreateForm companies={formCompanies} />
-
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
         <span className="mr-1 text-slate-400">Year:</span>
         {vsIr.years.map((y) => (
           <Link
             key={y}
-            href={`/assets?year=${y}${company ? `&company=${company}` : ""}`}
+            href={`/assets?year=${y}&tab=${tab}${company ? `&company=${company}` : ""}`}
             className={`rounded-full px-3 py-1 ${
               y === year ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
             }`}
@@ -78,22 +78,37 @@ export default async function AssetsPage({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label={`Depreciation ${year}`} value={formatMoney(reg.totalYearDep, "USD")} />
         <Stat label="Assets" value={String(reg.assets.length)} />
-        <Stat
-          label="Companies with assets"
-          value={String(reg.byCompany.length)}
-        />
+        <Stat label="Companies with assets" value={String(reg.byCompany.length)} />
       </div>
 
-      {reg.assets.length > 0 && (
-        <form action={dedupeAssets} className="flex items-center gap-2 text-xs text-slate-500">
-          <button className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-100">
-            Remover ativos duplicados
-          </button>
-          <span>mantém um de cada (mesmo nome, data e custo).</span>
-        </form>
+      {/* Abas */}
+      <div className="flex gap-1 border-b border-slate-200 text-sm">
+        {([["ativos", "Ativos"], ["conferencia", "Conferência"], ...(hasPt ? [["portugal", "Portugal"]] : [])] as [string, string][]).map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/assets?tab=${key}&year=${year}`}
+            className={`-mb-px border-b-2 px-4 py-2 ${
+              tab === key ? "border-[#1f3a5f] font-medium text-[#1f3a5f]" : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      {/* Aba Ativos — ações + lista */}
+      {tab === "ativos" && (
+        <AssetActions
+          key={detect ?? "none"}
+          formCompanies={formCompanies}
+          usCompanies={usCompanies}
+          detected={detected}
+          detectCompanyId={detect ?? ""}
+          hasAssets={reg.assets.length > 0}
+        />
       )}
 
-      {reg.byCompany.length > 0 && (
+      {tab === "conferencia" && reg.byCompany.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
@@ -120,7 +135,7 @@ export default async function AssetsPage({
         </div>
       )}
 
-      {vsIr.rows.length > 0 && (
+      {tab === "conferencia" && vsIr.rows.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-lg font-medium text-slate-800">Computed vs tax return — {year}</h2>
           <p className="text-sm text-slate-500">
@@ -186,19 +201,22 @@ export default async function AssetsPage({
         </section>
       )}
 
-      <AssetTimeline assets={reg.assets} year={year} />
+      {tab === "ativos" && (
+        <>
+          <AssetTimeline assets={reg.assets} year={year} />
+          <p className="text-xs text-slate-400">
+            MACRS GDS half-year tables (Pub. 946); real property is straight-line mid-month. §179 and
+            bonus are taken in year 1, then MACRS on the remaining basis. A control estimate — confirm
+            conventions (mid-quarter, luxury-auto caps) with the accountant.
+          </p>
+        </>
+      )}
 
-      <p className="text-xs text-slate-400">
-        MACRS GDS half-year tables (Pub. 946); real property is straight-line mid-month. §179 and
-        bonus are taken in year 1, then MACRS on the remaining basis. A control estimate — confirm
-        conventions (mid-quarter, luxury-auto caps) with the accountant.
-      </p>
-
-      {reconCompanies.length > 0 && (
+      {tab === "conferencia" && reconCompanies.length > 0 && (
         <DepReconcile companies={reconCompanies} data={reconData} reconCompanyId={reconCompanyId} />
       )}
 
-      {ptReg.companies.length > 0 && (
+      {tab === "portugal" && ptReg.companies.length > 0 && (
         <section className="space-y-3 border-t border-slate-200 pt-6">
           <div>
             <h2 className="text-xl font-semibold text-slate-800">Portugal — depreciação</h2>

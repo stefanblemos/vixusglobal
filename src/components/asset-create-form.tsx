@@ -24,7 +24,7 @@ export function AssetCreateForm({ companies }: { companies: Co[] }) {
   const ptCat = ptCategoryByKey(ptCategory);
 
   return (
-    <form action={action} className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+    <form action={action} className="space-y-4">
       <input type="hidden" name="regime" value={regime} />
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>

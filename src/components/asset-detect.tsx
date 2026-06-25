@@ -18,7 +18,6 @@ export function AssetDetect({
   detected: Detected | null;
   detectCompanyId: string;
 }) {
-  const [open, setOpen] = useState(!!detected);
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     (detected?.assets ?? []).map((a) => ({ ...a, include: !a.alreadyRegistered })),
   );
@@ -31,14 +30,7 @@ export function AssetDetect({
   const inputCls = "rounded border border-slate-300 px-2 py-1 text-xs";
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white">
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-center justify-between px-4 py-3 text-left">
-        <span className="text-sm font-medium text-slate-700">Detectar ativos do QBO</span>
-        <span className="text-xs text-slate-400">{open ? "ocultar" : "abrir"}</span>
-      </button>
-
-      {open && (
-        <div className="space-y-3 border-t border-slate-100 p-4">
+    <div className="space-y-3">
           <p className="text-sm text-slate-500">
             Lê a seção <em>Fixed Assets</em> do Balance Sheet (custo) e a 1ª transação de cada conta no
             General Ledger (data da compra), e chuta a categoria pelo nome. Você confere e cadastra.
@@ -141,8 +133,6 @@ export function AssetDetect({
               )}
             </>
           )}
-        </div>
-      )}
     </div>
   );
 }
