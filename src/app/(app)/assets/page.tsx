@@ -3,6 +3,8 @@ import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { buildPtAssetRegister } from "@/lib/assets/pt-register";
 import { buildDepreciationVsIR } from "@/lib/assets/dep-vs-ir";
 import { detectAssetsFromQbo } from "@/lib/assets/detect";
+import { buildDepreciationReconciliation } from "@/lib/assets/reconcile-dep";
+import { DepReconcile } from "@/components/dep-reconcile";
 import { AssetCreateForm } from "@/components/asset-create-form";
 import { AssetDetect } from "@/components/asset-detect";
 import { AssetTimeline } from "@/components/asset-timeline";
@@ -15,9 +17,9 @@ export const dynamic = "force-dynamic";
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; company?: string; detect?: string }>;
+  searchParams: Promise<{ year?: string; company?: string; detect?: string; recon?: string }>;
 }) {
-  const { year: yearParam, company, detect } = await searchParams;
+  const { year: yearParam, company, detect, recon } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : currentYear;
 
@@ -33,6 +35,11 @@ export default async function AssetsPage({
       orderBy: { legalName: "asc" },
     }),
   ]);
+
+  // Conferência da depreciação por empresa (multi-ano): empresas com ativos registrados.
+  const reconCompanies = reg.byCompany.map((c) => ({ id: c.companyId, legalName: c.companyName }));
+  const reconCompanyId = recon && reconCompanies.some((c) => c.id === recon) ? recon : reconCompanies[0]?.id ?? "";
+  const reconData = reconCompanyId ? await buildDepreciationReconciliation(reconCompanyId) : null;
 
   return (
     <div className="space-y-6">
@@ -186,6 +193,10 @@ export default async function AssetsPage({
         bonus are taken in year 1, then MACRS on the remaining basis. A control estimate — confirm
         conventions (mid-quarter, luxury-auto caps) with the accountant.
       </p>
+
+      {reconCompanies.length > 0 && (
+        <DepReconcile companies={reconCompanies} data={reconData} reconCompanyId={reconCompanyId} />
+      )}
 
       {ptReg.companies.length > 0 && (
         <section className="space-y-3 border-t border-slate-200 pt-6">
