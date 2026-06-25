@@ -83,6 +83,44 @@ export async function createAsset(
   return undefined;
 }
 
+// Cadastra em lote os ativos confirmados na revisão (US/MACRS). Form action (FormData) — padrão
+// robusto; a detecção em si roda no server component da página (via ?detect=).
+export async function createDetectedAssets(formData: FormData): Promise<void> {
+  const companyId = String(formData.get("companyId") ?? "");
+  const assetsJson = String(formData.get("assets") ?? "[]");
+  if (!companyId) return;
+  let list: { name: string; cost: number; acquisitionDate: string; category: string; recoveryYears: number; disposalDate?: string }[];
+  try {
+    list = JSON.parse(assetsJson);
+  } catch {
+    return;
+  }
+  const data = list
+    .filter((a) => a.name && Number(a.cost) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(a.acquisitionDate))
+    .map((a) => {
+      const cat = categoryByKey(a.category);
+      return {
+        companyId,
+        regime: "US",
+        name: String(a.name).slice(0, 200),
+        category: a.category,
+        acquisitionDate: new Date(`${a.acquisitionDate}T00:00:00Z`),
+        cost: Number(a.cost),
+        recoveryYears: Number(a.recoveryYears) || cat.recoveryYears,
+        method: cat.method,
+        section179: 0,
+        bonusPct: 0,
+        disposalDate:
+          a.disposalDate && /^\d{4}-\d{2}-\d{2}$/.test(a.disposalDate)
+            ? new Date(`${a.disposalDate}T00:00:00Z`)
+            : null,
+        notes: "from-qbo",
+      };
+    });
+  if (data.length) await prisma.fixedAsset.createMany({ data });
+  revalidatePath("/assets");
+}
+
 export async function deleteAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.fixedAsset.delete({ where: { id } });

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { buildPtAssetRegister } from "@/lib/assets/pt-register";
 import { buildDepreciationVsIR } from "@/lib/assets/dep-vs-ir";
+import { detectAssetsFromQbo } from "@/lib/assets/detect";
 import { AssetCreateForm } from "@/components/asset-create-form";
+import { AssetDetect } from "@/components/asset-detect";
 import { AssetTimeline } from "@/components/asset-timeline";
 import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
@@ -13,11 +15,13 @@ export const dynamic = "force-dynamic";
 export default async function AssetsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; company?: string }>;
+  searchParams: Promise<{ year?: string; company?: string; detect?: string }>;
 }) {
-  const { year: yearParam, company } = await searchParams;
+  const { year: yearParam, company, detect } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
   const year = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : currentYear;
+
+  const detected = detect ? await detectAssetsFromQbo(detect) : null;
 
   const [reg, ptReg, vsIr, formCompanies] = await Promise.all([
     buildAssetRegister(year, company),
@@ -39,6 +43,13 @@ export default async function AssetsPage({
           computed accumulated depreciation is the basis to compare against the tax return.
         </p>
       </div>
+
+      <AssetDetect
+        key={detect ?? "none"}
+        companies={formCompanies.filter((c) => c.jurisdiction === "US")}
+        detected={detected}
+        detectCompanyId={detect ?? ""}
+      />
 
       <AssetCreateForm companies={formCompanies} />
 
