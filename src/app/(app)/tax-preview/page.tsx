@@ -104,7 +104,12 @@ export default async function TaxPreviewPage({
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.kind === "person" ? "—" : m(r.bookNet)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.nonDeductible ? m(r.nonDeductible) : "—"}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${r.depAdj < 0 ? "text-emerald-600" : "text-slate-600"}`}>{r.depAdj ? m(r.depAdj) : "—"}</td>
+                  <td className={`px-3 py-2 text-right tabular-nums ${r.depAdj < 0 ? "text-emerald-600" : "text-slate-600"}`}>
+                    {r.depAdj ? m(r.depAdj) : "—"}
+                    {r.kind === "company" && r.hasPnl && !r.depFromMacrs && (
+                      <div className="text-[10px] text-amber-600">livro (cadastre ativos p/ MACRS)</div>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.k1In ? m(r.k1In) : "—"}</td>
                   <td className={`px-3 py-2 text-right tabular-nums font-medium ${r.taxable < 0 ? "text-red-600" : "text-slate-800"}`}>{m(r.taxable)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
@@ -132,10 +137,13 @@ export default async function TaxPreviewPage({
 
       <p className="text-xs text-slate-400">
         Não dedutíveis detectados do P&L: 50% de refeições, multas/penalidades, seguro de vida,
-        imposto federal, contribuições políticas/clube. Depreciação usa o MACRS do app (ajuste = livro
-        − MACRS). K-1 repassa a base tributável das pass-through pela % de participação (árvore de
-        ownership). PF: faixas federais MFJ 2024 com dedução padrão, só federal, sem créditos — é um
-        teto aproximado. Confirme tudo com o contador (estado, créditos, limites, Form 3115).
+        imposto federal, contribuições políticas/clube. Depreciação: a do livro (P&L) é{" "}
+        <strong>substituída</strong> pela MACRS (ajuste = livro − MACRS, conta uma vez só) —{" "}
+        <strong>apenas se a empresa tiver ativos cadastrados</strong>; sem cadastro, mantém a do livro
+        e marca &ldquo;livro&rdquo; (cadastre os ativos para conferir). K-1 repassa a base tributável
+        das pass-through pela % de participação (árvore de ownership). PF: faixas federais MFJ 2024
+        com dedução padrão, só federal, sem créditos — teto aproximado. Confirme com o contador
+        (estado, créditos, limites, Form 3115).
       </p>
     </div>
   );

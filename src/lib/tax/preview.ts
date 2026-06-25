@@ -23,6 +23,7 @@ export interface TaxPreviewRow {
   bookNet: number; // lucro líquido do P&L (0 p/ pessoa)
   nonDeductible: number; // add-backs do M-1
   depAdj: number; // livro − MACRS (>0 = livro depreciou demais, soma à base)
+  depFromMacrs: boolean; // o ajuste foi feito contra a MACRS? (false = sem ativos cadastrados → mantém o livro)
   k1In: number; // K-1 recebido das investidas
   taxable: number;
   tax: number; // 0 p/ pass-through (repassa)
@@ -123,16 +124,19 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     n.kind === "person" ? "PF" : n.finalPayer ? "C-corp" : "Pass-through";
 
   // Base própria de cada entidade.
-  const self = new Map<string, { bookNet: number; nonDed: number; depAdj: number; hasPnl: boolean }>();
+  const self = new Map<string, { bookNet: number; nonDed: number; depAdj: number; hasPnl: boolean; depFromMacrs: boolean }>();
   const missingPnl: string[] = [];
   for (const n of nodes) {
-    if (n.kind !== "company") { self.set(n.key, { bookNet: 0, nonDed: 0, depAdj: 0, hasPnl: false }); continue; }
+    if (n.kind !== "company") { self.set(n.key, { bookNet: 0, nonDed: 0, depAdj: 0, hasPnl: false, depFromMacrs: false }); continue; }
     const lines = pnlByCompany.get(n.id);
-    if (!lines) { self.set(n.key, { bookNet: 0, nonDed: 0, depAdj: 0, hasPnl: false }); missingPnl.push(n.name); continue; }
+    if (!lines) { self.set(n.key, { bookNet: 0, nonDed: 0, depAdj: 0, hasPnl: false, depFromMacrs: false }); missingPnl.push(n.name); continue; }
     const bookNet = pnlTotals(lines).netIncome ?? 0;
     const nonDed = nonDeductibleFromPnl(lines);
-    const depAdj = r2(bookDepFromPnl(lines) - (macrsByCompany.get(n.id) ?? 0)); // livro − MACRS
-    self.set(n.key, { bookNet: r2(bookNet), nonDed, depAdj, hasPnl: true });
+    // Só substitui livro→MACRS se a empresa TEM ativos cadastrados. Sem cadastro não dá para
+    // calcular a MACRS, então mantém a depreciação do livro (ajuste 0) — não tira a dedução à toa.
+    const hasAssets = macrsByCompany.has(n.id);
+    const depAdj = hasAssets ? r2(bookDepFromPnl(lines) - macrsByCompany.get(n.id)!) : 0;
+    self.set(n.key, { bookNet: r2(bookNet), nonDed, depAdj, hasPnl: true, depFromMacrs: hasAssets });
   }
 
   // K-1 acumulado de baixo para cima.
@@ -157,7 +161,7 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     const tax = t === "C-corp" ? r2(Math.max(0, taxable) * 0.21) : t === "PF" ? federalPF(taxable) : 0;
     return {
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
-      hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, depAdj: s.depAdj,
+      hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, depAdj: s.depAdj, depFromMacrs: s.depFromMacrs,
       k1In: r2(k1In.get(n.key) ?? 0), taxable, tax, passesTo: n.passesTo, tier: n.tier,
     };
   });
