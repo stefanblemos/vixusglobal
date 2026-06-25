@@ -85,8 +85,9 @@ export function DepReconcile({
                   <th className="px-4 py-2 font-medium">Ano</th>
                   <th className="px-3 py-2 text-right font-medium">MACRS (ano)</th>
                   <th className="px-3 py-2 text-right font-medium">MACRS acumulada</th>
-                  <th className="px-3 py-2 text-right font-medium">IR lançado</th>
-                  <th className="px-3 py-2 text-right font-medium">Diferença</th>
+                  <th className="px-3 py-2 text-right font-medium">IR (ano)</th>
+                  <th className="px-3 py-2 text-right font-medium">IR acum.</th>
+                  <th className="px-3 py-2 text-right font-medium">Diferença acum.</th>
                   <th className="px-3 py-2 text-center font-medium">Situação</th>
                 </tr>
               </thead>
@@ -100,7 +101,10 @@ export function DepReconcile({
                       <td className="px-3 py-2 text-right tabular-nums">{r.macrs ? formatMoney(r.macrs, "USD") : "—"}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatMoney(r.macrsAccum, "USD")}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{r.ir == null ? "—" : formatMoney(r.ir, "USD")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.diff == null ? "—" : formatMoney(r.diff, "USD")}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatMoney(r.irAccum, "USD")}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(r.accumDiff) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
+                        {formatMoney(r.accumDiff, "USD")}
+                      </td>
                       <td className="px-3 py-2 text-center">
                         <span className={`rounded-full px-2 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
                       </td>
@@ -111,10 +115,12 @@ export function DepReconcile({
             </table>
           </div>
           <p className="text-xs text-slate-400">
-            &ldquo;não lançou&rdquo; = MACRS pede depreciação mas o IR do ano não teve (ex.: ano
-            esquecido). &ldquo;sem IR&rdquo; = não há retorno do ano na base. O catch-up assume os
-            anos sem IR como não lançados — confira com o contador antes de deduzir tudo de uma vez
-            (pode haver limite/forma própria de recuperar depreciação omitida, ex.: Form 3115).
+            <strong>Diferença acum.</strong> = MACRS acumulado − IR acumulado (quanto, no total,
+            ainda falta lançar até aquele ano — não é a diferença de um ano só). &ldquo;não
+            lançou&rdquo; = MACRS pedia depreciação mas o IR do ano teve zero (ano esquecido).
+            &ldquo;sem IR&rdquo; = não há retorno do ano na base — conta como não lançado no catch-up.
+            Confira com o contador antes de deduzir tudo de uma vez (pode haver forma própria de
+            recuperar depreciação omitida, ex.: Form 3115).
           </p>
         </>
       )}

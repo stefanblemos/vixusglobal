@@ -12,7 +12,8 @@ export interface ReconYearRow {
   macrs: number; // depreciação MACRS do ano (deveria)
   macrsAccum: number; // acumulada MACRS até o ano
   ir: number | null; // depreciação lançada no IR do ano (null = sem IR do ano)
-  diff: number | null; // macrs − ir
+  irAccum: number; // IR lançado acumulado até o ano (null vira 0)
+  accumDiff: number; // diferença ACUMULADA = MACRS acum − IR acum (>0 = falta lançar)
   status: ReconStatus;
 }
 
@@ -91,13 +92,15 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
   // Linhas por ano (do 1º ano de ativo até o corrente).
   const rows: ReconYearRow[] = [];
   let accum = 0;
+  let irAccum = 0;
   let irToDate = 0;
   const irYearsMissing: number[] = [];
   for (let y = minYear; y <= currentYear; y++) {
     const macrs = r2(macrsByYear.get(y) ?? 0);
     accum = r2(accum + macrs);
     const ir = irByYear.has(y) ? r2(irByYear.get(y)!) : null;
-    const diff = ir == null ? null : r2(macrs - ir);
+    irAccum = r2(irAccum + (ir ?? 0));
+    const accumDiff = r2(accum - irAccum); // >0 = MACRS à frente (falta lançar/acumular)
 
     let status: ReconStatus;
     if (macrs <= 0.005) status = "na";
@@ -110,7 +113,7 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
       if (ir != null) irToDate = r2(irToDate + ir);
       else irYearsMissing.push(y);
     }
-    rows.push({ year: y, macrs, macrsAccum: accum, ir, diff, status });
+    rows.push({ year: y, macrs, macrsAccum: accum, ir, irAccum, accumDiff, status });
   }
 
   const macrsAccumThrough = r2(rows.filter((r) => r.year <= throughYear).pop()?.macrsAccum ?? 0);
