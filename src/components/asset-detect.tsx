@@ -74,6 +74,9 @@ export function AssetDetect({
                     <span className="text-slate-400">Seções no BS:</span>{" "}
                     {detected.diag.sectionsPresent.length ? detected.diag.sectionsPresent.join(" · ") : "(nenhuma — o BS pode ter sido importado por imagem/PDF, sem estrutura de seção)"}
                   </div>
+                  <div className="mt-1">
+                    <span className="text-slate-400">BS importados:</span> {detected.diag.availableBs.join(" · ") || "—"}
+                  </div>
                 </div>
               )}
 

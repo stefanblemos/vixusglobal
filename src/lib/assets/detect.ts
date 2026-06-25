@@ -35,40 +35,63 @@ const yearFromName = (name: string): number | null => {
 };
 
 export interface DetectDiag {
-  sectionsPresent: string[]; // seções distintas no BS importado
-  accountCount: number; // linhas ACCOUNT no BS
-  faLineCount: number; // linhas com "fixed asset" no caminho
+  sectionsPresent: string[]; // seções distintas no BS escolhido
+  accountCount: number; // linhas ACCOUNT no BS escolhido
+  faLineCount: number; // linhas em seção de ativo fixo
+  availableBs: string[]; // todos os BS importados (período) — para ver qual ano tem ativo
 }
+
+// Seção de ativo fixo: "Fixed Asset(s)" e variações (Property/Plant/Equipment/Machinery/
+// Vehicles/Furniture/Leasehold/Building) — exclui ativo circulante/passivo/patrimônio.
+const isFixedAssetSection = (path: string[]) =>
+  path.some((s) => /fixed asset/i.test(s)) ||
+  (path.some((s) => /property|plant|equipment|machinery|vehicle|furniture|leasehold|building|long[- ]?term asset/i.test(s)) &&
+    !path.some((s) => /current asset|bank|receivable|inventory|prepaid|payable|liabilit|equity|deposit/i.test(s)));
 
 export async function detectAssetsFromQbo(
   companyId: string,
 ): Promise<{ assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean; diag: DetectDiag | null }> {
-  const bs = await prisma.qboImport.findFirst({
+  // Pode haver vários BS importados (anos diferentes, ou um import quebrado). Escolhe o que tem
+  // MAIS contas de ativo fixo — não o mais recente por createdAt (que pode ser um BS antigo/vazio).
+  const bsImports = await prisma.qboImport.findMany({
     where: { companyId, reportKind: "BALANCE_SHEET" },
     orderBy: { createdAt: "desc" },
     select: { id: true, periodLabel: true },
   });
-  if (!bs) return { assets: [], bsLabel: null, hasGl: false, diag: null };
+  if (bsImports.length === 0) return { assets: [], bsLabel: null, hasGl: false, diag: null };
 
-  const lines = await prisma.qboImportLine.findMany({
-    where: { importId: bs.id },
-    select: { label: true, value: true, lineType: true, sectionPath: true },
+  const allLines = await prisma.qboImportLine.findMany({
+    where: { importId: { in: bsImports.map((b) => b.id) } },
+    select: { importId: true, label: true, value: true, lineType: true, sectionPath: true },
   });
+  const linesByImport = new Map<string, typeof allLines>();
+  for (const l of allLines) {
+    (linesByImport.get(l.importId) ?? linesByImport.set(l.importId, []).get(l.importId)!).push(l);
+  }
+  const faCostCount = (ls: typeof allLines) =>
+    ls.filter((l) => l.lineType === "ACCOUNT" && isFixedAssetSection(l.sectionPath) && l.value != null && Number(l.value) > 0 && !/depreciat/i.test(l.label)).length;
+  const yearOf = (s: string) => Number((s.match(/(20\d\d)/) ?? [])[1] ?? 0);
 
-  // Diagnóstico (para entender BSs que não casam): seções presentes e contagens.
+  let bs = bsImports[0];
+  let lines = linesByImport.get(bs.id) ?? [];
+  let bestScore = faCostCount(lines);
+  for (const b of bsImports) {
+    const ls = linesByImport.get(b.id) ?? [];
+    const score = faCostCount(ls);
+    if (score > bestScore || (score === bestScore && yearOf(b.periodLabel) > yearOf(bs.periodLabel))) {
+      bs = b;
+      lines = ls;
+      bestScore = score;
+    }
+  }
+
   const diag: DetectDiag = {
     sectionsPresent: [...new Set(lines.flatMap((l) => l.sectionPath))].slice(0, 40),
     accountCount: lines.filter((l) => l.lineType === "ACCOUNT").length,
     faLineCount: lines.filter((l) => l.sectionPath.some((s) => /fixed asset/i.test(s))).length,
+    availableBs: bsImports.map((b) => b.periodLabel),
   };
 
-  // Contas de ativo (custo): ACCOUNT de seção de ativo fixo, valor positivo, não-depreciação.
-  // Aceita "Fixed Asset(s)" e variações comuns (Property/Plant/Equipment/Machinery/Vehicles/
-  // Furniture/Leasehold) — exclui seções de ativo circulante/passivo/patrimônio.
-  const isFixedAssetSection = (path: string[]) =>
-    path.some((s) => /fixed asset/i.test(s)) ||
-    (path.some((s) => /property|plant|equipment|machinery|vehicle|furniture|leasehold|building|long[- ]?term asset/i.test(s)) &&
-      !path.some((s) => /current asset|bank|receivable|inventory|prepaid|payable|liabilit|equity|deposit/i.test(s)));
   const costLines = lines.filter(
     (l) =>
       l.lineType === "ACCOUNT" &&
