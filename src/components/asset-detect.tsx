@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { createDetectedAssets } from "@/lib/actions/assets";
 import { ASSET_CATEGORIES } from "@/lib/assets/categories";
-import type { DetectedAsset } from "@/lib/assets/detect";
+import type { DetectedAsset, DetectDiag } from "@/lib/assets/detect";
 
 type Draft = DetectedAsset & { include: boolean };
-type Detected = { assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean };
+type Detected = { assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean; diag: DetectDiag | null };
 
 export function AssetDetect({
   companies,
@@ -61,10 +61,21 @@ export function AssetDetect({
               <p className="text-xs text-slate-500">
                 {detected.assets.length === 0
                   ? detected.bsLabel
-                    ? "Nenhum ativo na seção Fixed Assets do BS importado."
+                    ? "Nenhum ativo de ativo fixo encontrado no BS importado."
                     : "Sem Balance Sheet importado para esta empresa — importe o BS em Documents."
                   : `${detected.assets.length} ativos detectados do BS ${detected.bsLabel ? `(${detected.bsLabel})` : ""}. ${detected.hasGl ? "Datas vindas do GL onde possível." : "Sem GL — datas vêm do nome/ano."}`}
               </p>
+
+              {detected.assets.length === 0 && detected.diag && (
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                  <div className="mb-1 font-medium text-slate-700">Diagnóstico do BS ({detected.bsLabel}):</div>
+                  <div>Linhas de conta: {detected.diag.accountCount} · em &ldquo;Fixed Assets&rdquo;: {detected.diag.faLineCount}</div>
+                  <div className="mt-1">
+                    <span className="text-slate-400">Seções no BS:</span>{" "}
+                    {detected.diag.sectionsPresent.length ? detected.diag.sectionsPresent.join(" · ") : "(nenhuma — o BS pode ter sido importado por imagem/PDF, sem estrutura de seção)"}
+                  </div>
+                </div>
+              )}
 
               {drafts.length > 0 && (
                 <>

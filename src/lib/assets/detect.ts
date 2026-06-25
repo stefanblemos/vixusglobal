@@ -34,26 +34,45 @@ const yearFromName = (name: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
+export interface DetectDiag {
+  sectionsPresent: string[]; // seções distintas no BS importado
+  accountCount: number; // linhas ACCOUNT no BS
+  faLineCount: number; // linhas com "fixed asset" no caminho
+}
+
 export async function detectAssetsFromQbo(
   companyId: string,
-): Promise<{ assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean }> {
+): Promise<{ assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean; diag: DetectDiag | null }> {
   const bs = await prisma.qboImport.findFirst({
     where: { companyId, reportKind: "BALANCE_SHEET" },
     orderBy: { createdAt: "desc" },
     select: { id: true, periodLabel: true },
   });
-  if (!bs) return { assets: [], bsLabel: null, hasGl: false };
+  if (!bs) return { assets: [], bsLabel: null, hasGl: false, diag: null };
 
   const lines = await prisma.qboImportLine.findMany({
     where: { importId: bs.id },
     select: { label: true, value: true, lineType: true, sectionPath: true },
   });
 
-  // Contas de ativo (custo): ACCOUNT sob "Fixed Asset", valor positivo, não-depreciação.
+  // Diagnóstico (para entender BSs que não casam): seções presentes e contagens.
+  const diag: DetectDiag = {
+    sectionsPresent: [...new Set(lines.flatMap((l) => l.sectionPath))].slice(0, 40),
+    accountCount: lines.filter((l) => l.lineType === "ACCOUNT").length,
+    faLineCount: lines.filter((l) => l.sectionPath.some((s) => /fixed asset/i.test(s))).length,
+  };
+
+  // Contas de ativo (custo): ACCOUNT de seção de ativo fixo, valor positivo, não-depreciação.
+  // Aceita "Fixed Asset(s)" e variações comuns (Property/Plant/Equipment/Machinery/Vehicles/
+  // Furniture/Leasehold) — exclui seções de ativo circulante/passivo/patrimônio.
+  const isFixedAssetSection = (path: string[]) =>
+    path.some((s) => /fixed asset/i.test(s)) ||
+    (path.some((s) => /property|plant|equipment|machinery|vehicle|furniture|leasehold|building|long[- ]?term asset/i.test(s)) &&
+      !path.some((s) => /current asset|bank|receivable|inventory|prepaid|payable|liabilit|equity|deposit/i.test(s)));
   const costLines = lines.filter(
     (l) =>
       l.lineType === "ACCOUNT" &&
-      l.sectionPath.some((s) => /fixed asset/i.test(s)) &&
+      isFixedAssetSection(l.sectionPath) &&
       l.value != null &&
       Number(l.value) > 0 &&
       !/depreciat/i.test(l.label),
@@ -108,5 +127,5 @@ export async function detectAssetsFromQbo(
     })
     .sort((a, b) => b.cost - a.cost);
 
-  return { assets, bsLabel: bs.periodLabel, hasGl };
+  return { assets, bsLabel: bs.periodLabel, hasGl, diag };
 }
