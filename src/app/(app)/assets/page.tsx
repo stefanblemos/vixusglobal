@@ -40,6 +40,23 @@ export default async function AssetsPage({
   const reconCompanyId = recon && reconCompanies.some((c) => c.id === recon) ? recon : reconCompanies[0]?.id ?? "";
   const reconData = reconCompanyId ? await buildDepreciationReconciliation(reconCompanyId) : null;
 
+  // Empresas que têm ativos (para o select "Todas / por empresa").
+  const assetCoIds = (
+    await prisma.fixedAsset.findMany({ where: { regime: "US" }, distinct: ["companyId"], select: { companyId: true } })
+  ).map((r) => r.companyId);
+  const assetCompanies = await prisma.company.findMany({
+    where: { id: { in: assetCoIds } },
+    select: { id: true, legalName: true },
+    orderBy: { legalName: "asc" },
+  });
+
+  // Lista só com ativos EM USO no ano: já adquiridos (entrada ≤ ano) e ainda não baixados.
+  const listAssets = reg.assets.filter((a) => {
+    const ay = Number(a.acquisitionDate.slice(0, 4));
+    const dy = a.disposalDate ? Number(a.disposalDate.slice(0, 4)) : null;
+    return ay <= year && (dy == null || dy >= year);
+  });
+
   const usCompanies = formCompanies.filter((c) => c.jurisdiction === "US");
   const hasPt = ptReg.companies.length > 0;
   const TABS = ["ativos", "conferencia", "portugal"] as const;
@@ -60,24 +77,39 @@ export default async function AssetsPage({
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="mr-1 text-slate-400">Year:</span>
-        {vsIr.years.map((y) => (
-          <Link
-            key={y}
-            href={`/assets?year=${y}&tab=${tab}${company ? `&company=${company}` : ""}`}
-            className={`rounded-full px-3 py-1 ${
-              y === year ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-            }`}
-          >
-            {y}
-          </Link>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-slate-400">Year:</span>
+          {vsIr.years.map((y) => (
+            <Link
+              key={y}
+              href={`/assets?year=${y}&tab=${tab}${company ? `&company=${company}` : ""}`}
+              className={`rounded-full px-3 py-1 ${
+                y === year ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+              }`}
+            >
+              {y}
+            </Link>
+          ))}
+        </div>
+        {assetCompanies.length > 1 && (
+          <form action="/assets" className="flex items-center gap-2">
+            <input type="hidden" name="year" value={year} />
+            <input type="hidden" name="tab" value={tab} />
+            <select name="company" defaultValue={company ?? ""} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
+              <option value="">Todas as empresas</option>
+              {assetCompanies.map((c) => (
+                <option key={c.id} value={c.id}>{c.legalName}</option>
+              ))}
+            </select>
+            <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100">Ver</button>
+          </form>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label={`Depreciation ${year}`} value={formatMoney(reg.totalYearDep, "USD")} />
-        <Stat label="Assets" value={String(reg.assets.length)} />
+        <Stat label={`Ativos em uso (${year})`} value={String(listAssets.length)} />
         <Stat label="Companies with assets" value={String(reg.byCompany.length)} />
       </div>
 
@@ -203,7 +235,14 @@ export default async function AssetsPage({
 
       {tab === "ativos" && (
         <>
-          <AssetTimeline assets={reg.assets} year={year} />
+          {listAssets.length === 0 && reg.assets.length > 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+              Nenhum ativo em uso em {year} — os {reg.assets.length} ativos cadastrados entraram em
+              serviço depois. Selecione um ano a partir da aquisição.
+            </div>
+          ) : (
+            <AssetTimeline assets={listAssets} year={year} />
+          )}
           <p className="text-xs text-slate-400">
             MACRS GDS half-year tables (Pub. 946); real property is straight-line mid-month. §179 and
             bonus are taken in year 1, then MACRS on the remaining basis. A control estimate — confirm
