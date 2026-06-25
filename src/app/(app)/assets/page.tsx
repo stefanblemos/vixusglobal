@@ -92,7 +92,7 @@ export default async function AssetsPage({
             </Link>
           ))}
         </div>
-        {assetCompanies.length > 1 && (
+        {assetCompanies.length > 0 && (
           <form action="/assets" className="flex items-center gap-2">
             <input type="hidden" name="year" value={year} />
             <input type="hidden" name="tab" value={tab} />
