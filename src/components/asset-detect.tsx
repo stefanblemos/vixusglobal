@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useFormStatus } from "react-dom";
 import { createDetectedAssets } from "@/lib/actions/assets";
 import { ASSET_CATEGORIES } from "@/lib/assets/categories";
 import type { DetectedAsset, DetectDiag } from "@/lib/assets/detect";
@@ -134,9 +135,7 @@ export function AssetDetect({
                     <input type="hidden" name="companyId" value={detectCompanyId} />
                     <input type="hidden" name="assets" value={JSON.stringify(selected)} />
                     <span className="text-xs text-slate-500">{selected.length} selecionado(s)</span>
-                    <button disabled={selected.length === 0} className="rounded-lg bg-[#8DC63F] px-4 py-2 text-sm font-medium text-[#173404] hover:bg-[#7eb536] disabled:opacity-50">
-                      Cadastrar {selected.length} ativo(s)
-                    </button>
+                    <SubmitButton count={selected.length} />
                   </form>
                 </>
               )}
@@ -145,5 +144,17 @@ export function AssetDetect({
         </div>
       )}
     </div>
+  );
+}
+
+function SubmitButton({ count }: { count: number }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      disabled={count === 0 || pending}
+      className="rounded-lg bg-[#8DC63F] px-4 py-2 text-sm font-medium text-[#173404] hover:bg-[#7eb536] disabled:opacity-50"
+    >
+      {pending ? "Cadastrando…" : `Cadastrar ${count} ativo(s)`}
+    </button>
   );
 }

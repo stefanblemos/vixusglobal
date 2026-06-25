@@ -95,8 +95,24 @@ export async function createDetectedAssets(formData: FormData): Promise<void> {
   } catch {
     return;
   }
+  // Idempotente: ignora ativos que já existem (mesma empresa + nome + data + custo). Assim, um
+  // duplo-clique ou re-submit não cria duplicados.
+  const key = (name: string, isoDate: string, cost: number) =>
+    `${name.toLowerCase().trim()}|${isoDate}|${Math.round(cost * 100)}`;
+  const existing = await prisma.fixedAsset.findMany({
+    where: { companyId },
+    select: { name: true, acquisitionDate: true, cost: true },
+  });
+  const seen = new Set(existing.map((e) => key(e.name, e.acquisitionDate.toISOString().slice(0, 10), Number(e.cost))));
+
   const data = list
     .filter((a) => a.name && Number(a.cost) > 0 && /^\d{4}-\d{2}-\d{2}$/.test(a.acquisitionDate))
+    .filter((a) => {
+      const k = key(a.name, a.acquisitionDate, Number(a.cost));
+      if (seen.has(k)) return false;
+      seen.add(k); // evita duplicado dentro do próprio lote também
+      return true;
+    })
     .map((a) => {
       const cat = categoryByKey(a.category);
       return {
@@ -118,6 +134,25 @@ export async function createDetectedAssets(formData: FormData): Promise<void> {
       };
     });
   if (data.length) await prisma.fixedAsset.createMany({ data });
+  revalidatePath("/assets");
+}
+
+// Remove ativos duplicados (mesma empresa + nome + data + custo), mantendo o mais antigo.
+export async function dedupeAssets(formData: FormData): Promise<void> {
+  const companyId = String(formData.get("companyId") ?? "") || undefined;
+  const assets = await prisma.fixedAsset.findMany({
+    where: companyId ? { companyId } : {},
+    select: { id: true, companyId: true, name: true, acquisitionDate: true, cost: true, createdAt: true },
+    orderBy: { createdAt: "asc" }, // o 1º de cada grupo é mantido
+  });
+  const seen = new Set<string>();
+  const toDelete: string[] = [];
+  for (const a of assets) {
+    const k = `${a.companyId}|${a.name.toLowerCase().trim()}|${a.acquisitionDate.toISOString().slice(0, 10)}|${Math.round(Number(a.cost) * 100)}`;
+    if (seen.has(k)) toDelete.push(a.id);
+    else seen.add(k);
+  }
+  if (toDelete.length) await prisma.fixedAsset.deleteMany({ where: { id: { in: toDelete } } });
   revalidatePath("/assets");
 }
 

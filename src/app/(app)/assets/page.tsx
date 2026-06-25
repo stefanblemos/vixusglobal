@@ -6,7 +6,7 @@ import { detectAssetsFromQbo } from "@/lib/assets/detect";
 import { AssetCreateForm } from "@/components/asset-create-form";
 import { AssetDetect } from "@/components/asset-detect";
 import { AssetTimeline } from "@/components/asset-timeline";
-import { deleteAsset } from "@/lib/actions/assets";
+import { deleteAsset, dedupeAssets } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/db";
 
@@ -76,6 +76,15 @@ export default async function AssetsPage({
           value={String(reg.byCompany.length)}
         />
       </div>
+
+      {reg.assets.length > 0 && (
+        <form action={dedupeAssets} className="flex items-center gap-2 text-xs text-slate-500">
+          <button className="rounded-lg border border-slate-300 px-3 py-1.5 hover:bg-slate-100">
+            Remover ativos duplicados
+          </button>
+          <span>mantém um de cada (mesmo nome, data e custo).</span>
+        </form>
+      )}
 
       {reg.byCompany.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
