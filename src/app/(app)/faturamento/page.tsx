@@ -116,6 +116,13 @@ export default async function FaturamentoPage({
                   <span>{data.coverage.netBasis}.</span>
                 )}
               </p>
+              {data.coverage.depreciationByYear.length > 0 && (
+                <p>
+                  <span className="text-slate-400">Depreciação diluída (1/12 ao mês):</span>{" "}
+                  {data.coverage.depreciationByYear.map((d) => `${d.year}: ${fmt(d.total, data.currency)}`).join(" · ")}.
+                  Evita o &ldquo;tombo de dezembro&rdquo;; o total do ano não muda.
+                </p>
+              )}
               {data.coverage.missingMonths.length > 0 && (
                 <p className="text-amber-700">
                   ⚠ Faltam meses no GL para o comparativo completo: {data.coverage.missingMonths.map(monthLabel).join(", ")}.

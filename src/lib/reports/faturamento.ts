@@ -31,6 +31,12 @@ const norm = (s: string) => s.toLowerCase().replace(/[.,]/g, "").replace(/\s+/g,
 const isIncomeName = (s: string) =>
   /\b(sales|revenue|income|receita|faturamento)\b/i.test(s) && !/receivable|payable|deferred|unearned|a\/r|a\/p/i.test(s);
 
+// Depreciação/amortização (despesa) — lançada normalmente uma vez no fim do ano. Para não
+// afundar dezembro, é diluída 1/12 por mês. "Accumulated depreciation" é balanço (BS), não entra.
+const isDepreciation = (s: string) =>
+  /deprecia|amortiza/i.test(s) && !/accumulated|acumulad/i.test(s);
+const yearOf = (ym: string) => Number(ym.slice(0, 4));
+
 export interface PeriodFig {
   label: string;
   income: number;
@@ -61,6 +67,7 @@ export interface Faturamento {
     unknownAccounts: { account: string; amount: number }[];
     glSpan: { min: string | null; max: string | null };
     missingMonths: string[];
+    depreciationByYear: { year: number; total: number }[]; // diluída 1/12 ao mês
   };
 }
 
@@ -108,7 +115,7 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
     return {
       companyId, companyName: company.legalName, currency: company.baseCurrency, months: [], refMonth: refMonthInput ?? "",
       blocks: [], canComputeNet,
-      coverage: { netBasis, hasPnl: !!pnl, incomeAccounts: [], classifiedPct: 0, unknownAccounts: [], glSpan: { min: null, max: null }, missingMonths: [] },
+      coverage: { netBasis, hasPnl: !!pnl, incomeAccounts: [], classifiedPct: 0, unknownAccounts: [], glSpan: { min: null, max: null }, missingMonths: [], depreciationByYear: [] },
     };
   }
   const refMonth = refMonthInput && months.includes(refMonthInput) ? refMonthInput : months[0];
@@ -125,6 +132,7 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
 
   const monthly = new Map<string, { income: number; expense: number }>();
   const unknown = new Map<string, number>();
+  const deprByYear = new Map<number, number>(); // depreciação total por ano-calendário (raw)
   let classifiedAbs = 0, unknownAbs = 0;
   const incomeUsed = new Set<string>();
 
@@ -144,9 +152,15 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
     const cell = monthly.get(r.ym) ?? { income: 0, expense: 0 };
     if (k === "income") { cell.income += r.s; classifiedAbs += Math.abs(r.s); incomeUsed.add(r.account); }
     else if (k === "expense") {
-      cell.expense += r.s; classifiedAbs += Math.abs(r.s);
-      // despesa "assumida" (não está no P&L nem no BS) → lista para conferência
-      if (mode === "pnl" && !expensePnl.has(norm(r.account))) unknown.set(r.account, (unknown.get(r.account) ?? 0) + r.s);
+      classifiedAbs += Math.abs(r.s);
+      if (isDepreciation(r.account)) {
+        // não joga no mês do lançamento — acumula por ano e dilui depois
+        deprByYear.set(yearOf(r.ym), (deprByYear.get(yearOf(r.ym)) ?? 0) + r.s);
+      } else {
+        cell.expense += r.s;
+        // despesa "assumida" (não está no P&L nem no BS) → lista para conferência
+        if (mode === "pnl" && !expensePnl.has(norm(r.account))) unknown.set(r.account, (unknown.get(r.account) ?? 0) + r.s);
+      }
     }
     else if (k === "balance") { /* fora do P&L */ }
     else { unknown.set(r.account, (unknown.get(r.account) ?? 0) + r.s); unknownAbs += Math.abs(r.s); }
@@ -162,7 +176,9 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
   const figMonth = (ym: string): { income: number; net: number | null } => {
     const c = monthly.get(ym) ?? { income: 0, expense: 0 };
     const inc = c.income * incSign;
-    return { income: inc, net: canComputeNet ? inc - c.expense * expSign : null };
+    // depreciação diluída: 1/12 do total do ano-calendário deste mês
+    const deprM = ((deprByYear.get(yearOf(ym)) ?? 0) / 12) * expSign;
+    return { income: inc, net: canComputeNet ? inc - c.expense * expSign - deprM : null };
   };
   const figTrailing = (endYm: string): { income: number; net: number | null } => {
     let income = 0, net = 0;
@@ -208,6 +224,9 @@ export async function buildFaturamento(companyId: string, refMonthInput?: string
       unknownAccounts,
       glSpan: { min: months[months.length - 1] ?? null, max: months[0] ?? null },
       missingMonths,
+      depreciationByYear: [...deprByYear.entries()]
+        .map(([year, total]) => ({ year, total: total * expSign }))
+        .sort((a, b) => b.year - a.year),
     },
   };
 }
