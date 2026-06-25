@@ -20,12 +20,17 @@ export interface DetectedAsset {
 
 const norm = (s: string) => s.toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
 
-function guessCategory(name: string): { category: string; recoveryYears: number } {
+// Chute de categoria pelo nome. isParent = conta-pai de custo (ex.: "Original Cost" do imóvel) —
+// nesse caso, na falta de palavra específica, assume imóvel (a construção, não o terreno).
+function guessCategory(name: string, isParent = false): { category: string; recoveryYears: number } {
   const n = name.toLowerCase();
+  if (/improvement|\bpool\b|backyard|landscap|\bfence\b|paving|driveway|patio|sprinkler/.test(n)) return { category: "LAND_IMP", recoveryYears: 15 };
+  if (/\bland\b/.test(n)) return { category: "LAND", recoveryYears: 0 }; // terreno — não deprecia
   if (/comput|laptop|server|monitor|printer|camera|alarm|software|electronic/.test(n)) return { category: "COMPUTER", recoveryYears: 5 };
   if (/trailer|dumproller|vehicle|truck|\bcar\b|\bvan\b|forklift/.test(n)) return { category: "AUTO", recoveryYears: 5 };
-  if (/furnitur|fixture|desk|chair|cabinet|shelv/.test(n)) return { category: "FURNITURE", recoveryYears: 7 };
-  if (/building|real estate|land improv|fence|paving/.test(n)) return { category: "LAND_IMP", recoveryYears: 15 };
+  if (/furnitur|fixture|\bdesk\b|\bchair\b|cabinet|shelv/.test(n)) return { category: "FURNITURE", recoveryYears: 7 };
+  if (/building|\bhouse\b|dwelling|residential|real estate|rental/.test(n)) return { category: "RESIDENTIAL_RE", recoveryYears: 27.5 };
+  if (isParent) return { category: "RESIDENTIAL_RE", recoveryYears: 27.5 }; // custo-pai de imóvel
   return { category: "EQUIPMENT", recoveryYears: 7 };
 }
 
@@ -48,6 +53,16 @@ const isFixedAssetSection = (path: string[]) =>
   (path.some((s) => /property|plant|equipment|machinery|vehicle|furniture|leasehold|building|long[- ]?term asset/i.test(s)) &&
     !path.some((s) => /current asset|bank|receivable|inventory|prepaid|payable|liabilit|equity|deposit/i.test(s)));
 
+// Candidato a ativo (custo): conta-folha (ACCOUNT) OU conta-pai com saldo próprio (SECTION com
+// valor — ex.: a casa fica no "Original Cost" que tem a filha "Closing Cost"); valor > 0, não-deprec.
+type FaLine = { lineType: string; label: string; value: unknown; sectionPath: string[] };
+const isCostCandidate = (l: FaLine) =>
+  (l.lineType === "ACCOUNT" || l.lineType === "SECTION") &&
+  isFixedAssetSection(l.sectionPath) &&
+  l.value != null &&
+  Number(l.value) > 0 &&
+  !/depreciat/i.test(l.label);
+
 export async function detectAssetsFromQbo(
   companyId: string,
 ): Promise<{ assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean; diag: DetectDiag | null }> {
@@ -68,8 +83,7 @@ export async function detectAssetsFromQbo(
   for (const l of allLines) {
     (linesByImport.get(l.importId) ?? linesByImport.set(l.importId, []).get(l.importId)!).push(l);
   }
-  const faCostCount = (ls: typeof allLines) =>
-    ls.filter((l) => l.lineType === "ACCOUNT" && isFixedAssetSection(l.sectionPath) && l.value != null && Number(l.value) > 0 && !/depreciat/i.test(l.label)).length;
+  const faCostCount = (ls: typeof allLines) => ls.filter(isCostCandidate).length;
   const yearOf = (s: string) => Number((s.match(/(20\d\d)/) ?? [])[1] ?? 0);
 
   let bs = bsImports[0];
@@ -92,14 +106,7 @@ export async function detectAssetsFromQbo(
     availableBs: bsImports.map((b) => b.periodLabel),
   };
 
-  const costLines = lines.filter(
-    (l) =>
-      l.lineType === "ACCOUNT" &&
-      isFixedAssetSection(l.sectionPath) &&
-      l.value != null &&
-      Number(l.value) > 0 &&
-      !/depreciat/i.test(l.label),
-  );
+  const costLines = lines.filter(isCostCandidate);
   // Acumulada por ativo (quando existe a linha individual).
   const accLines = lines.filter(
     (l) => l.lineType === "ACCOUNT" && /accumulated deprecia/i.test(l.label) && l.value != null,
@@ -145,7 +152,7 @@ export async function detectAssetsFromQbo(
         acqSource = "default";
       }
 
-      const { category, recoveryYears } = guessCategory(name);
+      const { category, recoveryYears } = guessCategory(name, l.lineType === "SECTION");
       return { name, cost, accumulated, acquisitionDate, acqSource, category, recoveryYears, alreadyRegistered: existingSet.has(n) };
     })
     .sort((a, b) => b.cost - a.cost);

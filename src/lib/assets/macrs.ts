@@ -20,7 +20,7 @@ export interface AssetInput {
   section179: number;
   bonusPct: number;
   recoveryYears: number;
-  method: "MACRS" | "SL_MM";
+  method: "MACRS" | "SL_MM" | "NONE";
   acquisitionYear: number;
   acquisitionMonth: number; // 1-12 (para mid-month)
 }
@@ -42,6 +42,10 @@ export interface AssetSchedule {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export function depreciationSchedule(a: AssetInput): AssetSchedule {
+  // Terreno e afins: não deprecia — fica no custo, schedule vazio.
+  if (a.method === "NONE") {
+    return { cost: a.cost, section179: 0, bonus: 0, depreciableBasis: a.cost, schedule: [], total: 0 };
+  }
   const s179 = Math.min(Math.max(a.section179, 0), a.cost);
   const afterS179 = a.cost - s179;
   const bonus = round2(afterS179 * (Math.max(0, Math.min(a.bonusPct, 100)) / 100));

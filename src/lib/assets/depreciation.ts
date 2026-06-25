@@ -69,7 +69,7 @@ export async function buildAssetRegister(
       section179: Number(a.section179.toString()),
       bonusPct: Number(a.bonusPct.toString()),
       recoveryYears: Number(a.recoveryYears.toString()),
-      method: a.method === "SL_MM" ? "SL_MM" : "MACRS",
+      method: a.method === "SL_MM" ? "SL_MM" : a.method === "NONE" ? "NONE" : "MACRS",
       acquisitionYear: a.acquisitionDate.getUTCFullYear(),
       acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
     });
