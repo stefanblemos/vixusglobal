@@ -15,6 +15,7 @@ import {
   ReceiptText,
   PieChart,
   TrendingUp,
+  Calculator,
   Activity,
   ListChecks,
   FolderOpen,
@@ -70,6 +71,7 @@ const NAV: Entry[] = [
     icon: ReceiptText,
     items: [
       { href: "/tax", label: "Tax", icon: ReceiptText },
+      { href: "/tax-preview", label: "Tax preview", icon: Calculator },
       { href: "/1099", label: "1099 worklist", icon: FileText },
       { href: "/assets", label: "Assets & depreciation", icon: Boxes },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
