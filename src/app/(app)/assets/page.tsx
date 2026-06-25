@@ -3,6 +3,7 @@ import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { buildPtAssetRegister } from "@/lib/assets/pt-register";
 import { buildDepreciationVsIR } from "@/lib/assets/dep-vs-ir";
 import { AssetCreateForm } from "@/components/asset-create-form";
+import { AssetTimeline } from "@/components/asset-timeline";
 import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/db";
@@ -158,65 +159,7 @@ export default async function AssetsPage({
         </section>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th className="px-3 py-2 font-medium">Asset</th>
-              <th className="px-3 py-2 font-medium">Company</th>
-              <th className="px-3 py-2 font-medium">Type</th>
-              <th className="px-3 py-2 font-medium whitespace-nowrap">Acquired</th>
-              <th className="px-3 py-2 text-right font-medium">Cost</th>
-              <th className="px-3 py-2 text-right font-medium">§179 / bonus</th>
-              <th className="px-3 py-2 text-right font-medium">Dep {year}</th>
-              <th className="px-3 py-2 text-right font-medium">Accum.</th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {reg.assets.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="px-4 py-4 text-sm text-slate-400">
-                  No assets yet. Add one above.
-                </td>
-              </tr>
-            ) : (
-              reg.assets.map((a) => (
-                <tr key={a.id} className="hover:bg-slate-50">
-                  <td className="px-3 py-2 font-medium text-slate-700">{a.name}</td>
-                  <td className="px-3 py-2 text-slate-600">{a.companyName}</td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {a.categoryLabel}
-                    <span className="text-slate-400"> · {a.recoveryYears}yr</span>
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{a.acquisitionDate}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                    {formatMoney(a.cost, "USD")}
-                  </td>
-                  <td className="px-3 py-2 text-right text-xs text-slate-500">
-                    {a.section179 > 0 ? formatMoney(a.section179, "USD") : "—"}
-                    {a.bonusPct > 0 ? ` / ${a.bonusPct}%` : ""}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">
-                    {formatMoney(a.yearDep, "USD")}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                    {formatMoney(a.accumulated, "USD")}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <form action={deleteAsset}>
-                      <input type="hidden" name="id" value={a.id} />
-                      <button className="text-xs text-slate-300 hover:text-red-600" title="Delete">
-                        ✕
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <AssetTimeline assets={reg.assets} year={year} />
 
       <p className="text-xs text-slate-400">
         MACRS GDS half-year tables (Pub. 946); real property is straight-line mid-month. §179 and

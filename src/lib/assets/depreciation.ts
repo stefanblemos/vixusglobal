@@ -15,6 +15,7 @@ export interface AssetView {
   category: string;
   categoryLabel: string;
   acquisitionDate: string; // ISO
+  disposalDate: string | null; // baixa/venda (se houver)
   cost: number;
   recoveryYears: number;
   method: string;
@@ -81,6 +82,7 @@ export async function buildAssetRegister(
       category: a.category,
       categoryLabel: categoryByKey(a.category).label,
       acquisitionDate: a.acquisitionDate.toISOString().slice(0, 10),
+      disposalDate: a.disposalDate ? a.disposalDate.toISOString().slice(0, 10) : null,
       cost,
       recoveryYears: Number(a.recoveryYears.toString()),
       method: a.method,
