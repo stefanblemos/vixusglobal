@@ -74,6 +74,7 @@ export async function buildAssetRegister(
       acquisitionYear: a.acquisitionDate.getUTCFullYear(),
       acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
       fullyDepreciatedYear: a.fullyDepreciatedYear,
+      disposalYear: a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
     });
     const accumulated = accumulatedThrough(sched, year);
     return {

@@ -2,36 +2,32 @@
 
 import { useEffect, useState } from "react";
 import type { AssetView } from "@/lib/assets/depreciation";
-import { deleteAsset, renameAsset, setFullyDepreciated } from "@/lib/actions/assets";
+import { deleteAsset, renameAsset, setFullyDepreciated, setDisposal } from "@/lib/actions/assets";
 
 // Ficha por ativo: abre ao clicar na lista e mostra a linha do tempo da depreciação
-// (depreciação no ano · acumulada · saldo restante). A baixa/venda é uma simulação ao vivo
-// (half-year no ano da baixa) — persistir + alimentar o Faturamento é o próximo passo.
+// (depreciação no ano · acumulada · saldo restante). Baixa/venda e "totalmente depreciado no livro"
+// são persistidos (o motor já embute na linha do tempo) — confirmados pelo usuário.
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Math.round(n));
 
+const disposalYearOf = (a: AssetView): number | null => (a.disposalDate ? Number(a.disposalDate.slice(0, 4)) : null);
+
 type Row = { year: number; amt: number; acc: number; rem: number };
 
-function scheduleRows(a: AssetView, disposalYear?: number): Row[] {
+// A baixa/venda já vem embutida em a.schedule (motor) — aqui só acumulamos.
+function scheduleRows(a: AssetView): Row[] {
   const out: Row[] = [];
   let acc = 0;
   for (const y of a.schedule) {
-    if (disposalYear && y.year > disposalYear) break;
-    const amt = disposalYear && y.year === disposalYear ? y.amount * 0.5 : y.amount;
-    acc += amt;
-    out.push({ year: y.year, amt, acc, rem: Math.max(0, a.cost - acc) });
+    acc += y.amount;
+    out.push({ year: y.year, amt: y.amount, acc, rem: Math.max(0, a.cost - acc) });
   }
   return out;
 }
 
 export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: number }) {
   const [selId, setSelId] = useState<string | null>(null);
-  const [disp, setDisp] = useState<Record<string, number | undefined>>(() =>
-    Object.fromEntries(
-      assets.filter((a) => a.disposalDate).map((a) => [a.id, Number(a.disposalDate!.slice(0, 4))]),
-    ),
-  );
 
   // Fecha o modal com Esc.
   useEffect(() => {
@@ -68,8 +64,9 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
           </thead>
           <tbody className="divide-y divide-slate-100">
             {assets.map((a) => {
-              const rows = scheduleRows(a, disp[a.id]);
-              // Valores do ano selecionado (com a baixa simulada, se houver).
+              const rows = scheduleRows(a);
+              const dispYr = disposalYearOf(a);
+              // Valores do ano selecionado (baixa já embutida no schedule).
               const accCur = [...rows].filter((r) => r.year <= year).pop()?.acc ?? 0;
               const remCur = Math.max(0, a.cost - accCur);
               const depCur = rows.find((r) => r.year === year)?.amt ?? 0;
@@ -89,8 +86,8 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="font-medium text-slate-800">{a.name}</span>
                       {tag && <span className={`rounded-full px-2 py-0.5 text-[11px] ${tag.c}`}>{tag.t}</span>}
-                      {disp[a.id] && (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">baixado {disp[a.id]}</span>
+                      {dispYr && (
+                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">baixado {dispYr}</span>
                       )}
                     </div>
                     <div className="text-xs text-slate-500">{a.companyName} · {a.categoryLabel} · {a.recoveryYears}yr</div>
@@ -115,13 +112,7 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
           onClick={() => setSelId(null)}
         >
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <AssetDetail
-              a={sel}
-              year={year}
-              disposalYear={disp[sel.id]}
-              onDisposal={(y) => setDisp((p) => ({ ...p, [sel.id]: y }))}
-              onClose={() => setSelId(null)}
-            />
+            <AssetDetail a={sel} year={year} onClose={() => setSelId(null)} />
           </div>
         </div>
       )}
@@ -129,24 +120,19 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
   );
 }
 
-function AssetDetail({
-  a,
-  year,
-  disposalYear,
-  onDisposal,
-  onClose,
-}: {
-  a: AssetView;
-  year: number;
-  disposalYear?: number;
-  onDisposal: (y: number | undefined) => void;
-  onClose?: () => void;
-}) {
-  const rows = scheduleRows(a, disposalYear);
+function AssetDetail({ a, year, onClose }: { a: AssetView; year: number; onClose?: () => void }) {
+  const rows = scheduleRows(a);
+  const disposalYear = disposalYearOf(a);
   const accCur = [...rows].filter((r) => r.year <= year).pop()?.acc ?? 0;
   const remCur = Math.max(0, a.cost - accCur);
   const depCur = rows.find((r) => r.year === year)?.amt ?? 0;
   const max = Math.max(1, ...rows.map((r) => r.amt));
+  // Anos candidatos para a baixa (aquisição → projeção). a.schedule pode estar truncado, então
+  // garantimos pelo menos do ano de aquisição até o ano corrente + 1.
+  const acqYear = Number(a.acquisitionDate.slice(0, 4));
+  const lastSched = a.schedule.length ? a.schedule[a.schedule.length - 1].year : acqYear;
+  const disposalYears: number[] = [];
+  for (let y = acqYear; y <= Math.max(lastSched, year, disposalYear ?? 0); y++) disposalYears.push(y);
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
@@ -218,56 +204,70 @@ function AssetDetail({
         );
       })}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2.5 border-t border-slate-100 pt-3">
-        <label className="flex items-center gap-2 text-xs text-slate-700">
-          <input
-            type="checkbox"
-            checked={disposalYear != null}
-            onChange={(e) => onDisposal(e.target.checked ? (disposalYear ?? year) : undefined)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          vendido / baixado
-        </label>
-        <select
-          value={disposalYear ?? ""}
-          disabled={disposalYear == null}
-          onChange={(e) => onDisposal(Number(e.target.value))}
-          className="rounded-lg border border-slate-300 px-2 py-1 text-xs disabled:opacity-50"
-        >
-          {a.schedule.map((y) => (
-            <option key={y.year} value={y.year}>{y.year}</option>
-          ))}
-        </select>
-        <span className="text-xs text-slate-500">
-          no ano da baixa: metade da cota (half-year) e para depois. Simulação — persistir é o próximo passo.
-        </span>
-      </div>
+      {/* Situação do ativo — dois ajustes manuais, cada um confirmado pelo usuário. */}
+      <div className="mt-4 border-t border-slate-100 pt-3">
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Situação do ativo</div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {/* Card 1 — Vendido / baixado */}
+          <form action={setDisposal} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <input type="hidden" name="id" value={a.id} />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Vendido / baixado</span>
+              {disposalYear != null && (
+                <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">baixado {disposalYear}</span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              O ativo saiu da empresa. No ano da baixa entra metade da cota (half-year) e <strong>para
+              de depreciar</strong> depois.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="text-[11px] text-slate-600">Ano da baixa</label>
+              <select
+                name="disposalYear"
+                defaultValue={disposalYear ?? ""}
+                className="rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums focus:border-sky-400 focus:outline-none"
+              >
+                <option value="">— não vendido —</option>
+                {disposalYears.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+              <button className="rounded-lg bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]">
+                Confirmar
+              </button>
+            </div>
+          </form>
 
-      {/* Totalmente depreciado no livro: o contador zerou o ativo até um ano (tudo no ano de aquisição
-          ou catch-up acelerado). Setado → o motor para de projetar depreciação futura. */}
-      <form action={setFullyDepreciated} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
-        <input type="hidden" name="id" value={a.id} />
-        <span className="text-xs font-medium text-slate-700">Totalmente depreciado no livro até o ano</span>
-        <input
-          name="fullyDepreciatedYear"
-          type="number"
-          placeholder="ex.: 2023"
-          defaultValue={a.fullyDepreciatedYear ?? ""}
-          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums focus:border-sky-400 focus:outline-none"
-        />
-        <button className="rounded-lg bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]">
-          {a.fullyDepreciatedYear != null ? "Atualizar" : "Confirmar"}
-        </button>
-        {a.fullyDepreciatedYear != null && (
-          <button name="fullyDepreciatedYear" value="" className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-200">
-            Limpar (voltar à MACRS)
-          </button>
-        )}
-        <span className="basis-full text-[11px] text-slate-400">
-          Confirma que o contador depreciou tudo no livro até esse ano — o app para de projetar
-          depreciação futura desse ativo. Deixe vazio para a MACRS normal.
-        </span>
-      </form>
+          {/* Card 2 — Totalmente depreciado no livro */}
+          <form action={setFullyDepreciated} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <input type="hidden" name="id" value={a.id} />
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-slate-700">Totalmente depreciado no livro</span>
+              {a.fullyDepreciatedYear != null && (
+                <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">livro {a.fullyDepreciatedYear}</span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              O contador já zerou o ativo no livro (tudo num ano). O app <strong>para de projetar</strong>{" "}
+              depreciação futura. Deixe vazio para a MACRS normal.
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <label className="text-[11px] text-slate-600">Zerado até o ano</label>
+              <input
+                name="fullyDepreciatedYear"
+                type="number"
+                placeholder="ex.: 2023"
+                defaultValue={a.fullyDepreciatedYear ?? ""}
+                className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums focus:border-sky-400 focus:outline-none"
+              />
+              <button className="rounded-lg bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]">
+                Confirmar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-3 text-[11px] text-slate-400">

@@ -120,7 +120,7 @@ export default async function AssetsPage({
         {([["ativos", "Ativos"], ["conferencia", "Conferência"], ...(hasPt ? [["portugal", "Portugal"]] : [])] as [string, string][]).map(([key, label]) => (
           <Link
             key={key}
-            href={`/assets?tab=${key}&year=${year}`}
+            href={`/assets?tab=${key}&year=${year}${company ? `&company=${company}` : ""}`}
             className={`-mb-px border-b-2 px-4 py-2 ${
               tab === key ? "border-[#1f3a5f] font-medium text-[#1f3a5f]" : "border-transparent text-slate-500 hover:text-slate-800"
             }`}

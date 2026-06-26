@@ -25,6 +25,8 @@ export interface AssetInput {
   acquisitionMonth: number; // 1-12 (para mid-month)
   // Contador depreciou tudo no livro até este ano → acumulada = custo aqui, $0 depois.
   fullyDepreciatedYear?: number | null;
+  // Vendido/baixado neste ano → metade da cota no ano da baixa (half-year) e $0 depois.
+  disposalYear?: number | null;
 }
 
 export interface YearDep {
@@ -89,6 +91,14 @@ export function depreciationSchedule(a: AssetInput): AssetSchedule {
     const cumBefore = round2(kept.reduce((s, y) => s + y.amount, 0));
     const remainder = round2(a.cost - cumBefore);
     schedule = remainder > 0.005 ? [...kept, { year: Y, amount: remainder }] : kept;
+  }
+
+  // Vendido/baixado no ano D: metade da cota no ano da baixa (half-year) e nada depois.
+  const D = a.disposalYear;
+  if (D != null && D >= a.acquisitionYear) {
+    schedule = schedule
+      .filter((s) => s.year <= D)
+      .map((s) => (s.year === D ? { year: s.year, amount: round2(s.amount * 0.5) } : s));
   }
 
   return {

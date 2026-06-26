@@ -177,6 +177,20 @@ export async function setFullyDepreciated(formData: FormData): Promise<void> {
   revalidatePath("/assets");
 }
 
+// Confirma (ou limpa) a venda/baixa do ativo num ano. Setado → o motor toma metade da cota no ano
+// da baixa (half-year) e para de depreciar depois. Persiste como disposalDate (meio do ano).
+export async function setDisposal(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const raw = String(formData.get("disposalYear") ?? "").trim();
+  const year = /^\d{4}$/.test(raw) ? Number(raw) : null;
+  await prisma.fixedAsset.update({
+    where: { id },
+    data: { disposalDate: year ? new Date(`${year}-07-01T00:00:00Z`) : null },
+  });
+  revalidatePath("/assets");
+}
+
 export async function deleteAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.fixedAsset.delete({ where: { id } });
