@@ -6,7 +6,7 @@ import { createDetectedAssets } from "@/lib/actions/assets";
 import { ASSET_CATEGORIES } from "@/lib/assets/categories";
 import type { DetectedAsset, DetectDiag } from "@/lib/assets/detect";
 
-type Draft = DetectedAsset & { include: boolean };
+type Draft = DetectedAsset & { include: boolean; fullyDepreciatedYear: number | null };
 type Detected = { assets: DetectedAsset[]; bsLabel: string | null; hasGl: boolean; diag: DetectDiag | null };
 
 export function AssetDetect({
@@ -19,7 +19,11 @@ export function AssetDetect({
   detectCompanyId: string;
 }) {
   const [drafts, setDrafts] = useState<Draft[]>(() =>
-    (detected?.assets ?? []).map((a) => ({ ...a, include: !a.alreadyRegistered })),
+    (detected?.assets ?? []).map((a) => ({
+      ...a,
+      include: !a.alreadyRegistered,
+      fullyDepreciatedYear: a.suggestFullyDepreciated ? a.suggestedFullYear : null,
+    })),
   );
 
   function patch(i: number, p: Partial<Draft>) {
@@ -84,6 +88,7 @@ export function AssetDetect({
                           <th className="px-2 py-2 text-right font-medium">Custo</th>
                           <th className="px-2 py-2 font-medium">Entrada em uso</th>
                           <th className="px-2 py-2 font-medium">Categoria / vida</th>
+                          <th className="px-2 py-2 font-medium">Já zerado no livro?</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -116,6 +121,35 @@ export function AssetDetect({
                                   <option key={c.key} value={c.key}>{c.label} ({c.recoveryYears}yr)</option>
                                 ))}
                               </select>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              <label className="flex items-center gap-1.5">
+                                <input
+                                  type="checkbox"
+                                  checked={d.fullyDepreciatedYear != null}
+                                  onChange={(e) =>
+                                    patch(i, {
+                                      fullyDepreciatedYear: e.target.checked
+                                        ? (d.suggestedFullYear ?? (Number(d.acquisitionDate.slice(0, 4)) || null))
+                                        : null,
+                                    })
+                                  }
+                                  className="h-4 w-4 rounded border-slate-300"
+                                />
+                                {d.fullyDepreciatedYear != null ? (
+                                  <input
+                                    type="number"
+                                    value={d.fullyDepreciatedYear}
+                                    onChange={(e) => patch(i, { fullyDepreciatedYear: Number(e.target.value) || null })}
+                                    className={`${inputCls} w-16 tabular-nums`}
+                                  />
+                                ) : (
+                                  <span className="text-slate-400">não</span>
+                                )}
+                              </label>
+                              {d.suggestFullyDepreciated && (
+                                <div className="text-[10px] text-amber-600">acum ≈ custo — confirme</div>
+                              )}
                             </td>
                           </tr>
                         ))}

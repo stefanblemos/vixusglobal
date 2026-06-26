@@ -16,6 +16,7 @@ export interface AssetView {
   categoryLabel: string;
   acquisitionDate: string; // ISO
   disposalDate: string | null; // baixa/venda (se houver)
+  fullyDepreciatedYear: number | null; // contador zerou no livro até este ano (sem projeção depois)
   cost: number;
   recoveryYears: number;
   method: string;
@@ -72,6 +73,7 @@ export async function buildAssetRegister(
       method: a.method === "SL_MM" ? "SL_MM" : a.method === "NONE" ? "NONE" : "MACRS",
       acquisitionYear: a.acquisitionDate.getUTCFullYear(),
       acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
+      fullyDepreciatedYear: a.fullyDepreciatedYear,
     });
     const accumulated = accumulatedThrough(sched, year);
     return {
@@ -83,6 +85,7 @@ export async function buildAssetRegister(
       categoryLabel: categoryByKey(a.category).label,
       acquisitionDate: a.acquisitionDate.toISOString().slice(0, 10),
       disposalDate: a.disposalDate ? a.disposalDate.toISOString().slice(0, 10) : null,
+      fullyDepreciatedYear: a.fullyDepreciatedYear ?? null,
       cost,
       recoveryYears: Number(a.recoveryYears.toString()),
       method: a.method,

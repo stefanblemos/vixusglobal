@@ -16,6 +16,10 @@ export interface DetectedAsset {
   category: string;
   recoveryYears: number;
   alreadyRegistered: boolean;
+  // Sugestão: a depreciação acumulada do QBO ≈ custo → o contador já zerou no livro. O usuário
+  // confirma na revisão; se confirmado, vira fullyDepreciatedYear (o motor para de projetar).
+  suggestFullyDepreciated: boolean;
+  suggestedFullYear: number | null; // ano do BS (ou aquisição) — a usar se confirmado
 }
 
 const norm = (s: string) => s.toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
@@ -125,6 +129,7 @@ export async function detectAssetsFromQbo(
   const existingSet = new Set(existing.map((e) => norm(e.name)));
 
   const lastYear = new Date().getUTCFullYear() - 1;
+  const bsYear = yearOf(bs.periodLabel) || null;
 
   const assets: DetectedAsset[] = costLines
     .map((l) => {
@@ -153,7 +158,10 @@ export async function detectAssetsFromQbo(
       }
 
       const { category, recoveryYears } = guessCategory(name, l.lineType === "SECTION");
-      return { name, cost, accumulated, acquisitionDate, acqSource, category, recoveryYears, alreadyRegistered: existingSet.has(n) };
+      // Acumulada do livro ≈ custo → o contador já zerou o ativo (sugere totalmente depreciado).
+      const suggestFullyDepreciated = accumulated != null && cost > 0 && accumulated >= cost * 0.99;
+      const suggestedFullYear = suggestFullyDepreciated ? (bsYear ?? new Date(`${acquisitionDate}T00:00:00Z`).getUTCFullYear()) : null;
+      return { name, cost, accumulated, acquisitionDate, acqSource, category, recoveryYears, alreadyRegistered: existingSet.has(n), suggestFullyDepreciated, suggestedFullYear };
     })
     .sort((a, b) => b.cost - a.cost);
 

@@ -23,6 +23,8 @@ export interface AssetInput {
   method: "MACRS" | "SL_MM" | "NONE";
   acquisitionYear: number;
   acquisitionMonth: number; // 1-12 (para mid-month)
+  // Contador depreciou tudo no livro até este ano → acumulada = custo aqui, $0 depois.
+  fullyDepreciatedYear?: number | null;
 }
 
 export interface YearDep {
@@ -73,10 +75,21 @@ export function depreciationSchedule(a: AssetInput): AssetSchedule {
     for (const pct of table) yearly.push(round2((depreciableBasis * pct) / 100));
   }
 
-  const schedule: YearDep[] = yearly.map((amt, i) => ({
+  let schedule: YearDep[] = yearly.map((amt, i) => ({
     year: a.acquisitionYear + i,
     amount: round2(amt + (i === 0 ? s179 + bonus : 0)),
   }));
+
+  // Totalmente depreciado no livro até o ano Y: mantém as cotas dos anos < Y, colapsa o que falta
+  // (custo − acumulada até Y-1) no ano Y, e zera tudo depois. Cobre os dois casos: tudo no ano de
+  // aquisição (Y = ano de aquisição → cota única = custo) ou catch-up acelerado em ano posterior.
+  const Y = a.fullyDepreciatedYear;
+  if (Y != null && Y >= a.acquisitionYear) {
+    const kept = schedule.filter((s) => s.year < Y);
+    const cumBefore = round2(kept.reduce((s, y) => s + y.amount, 0));
+    const remainder = round2(a.cost - cumBefore);
+    schedule = remainder > 0.005 ? [...kept, { year: Y, amount: remainder }] : kept;
+  }
 
   return {
     cost: a.cost,

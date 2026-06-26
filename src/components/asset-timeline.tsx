@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AssetView } from "@/lib/assets/depreciation";
-import { deleteAsset, renameAsset } from "@/lib/actions/assets";
+import { deleteAsset, renameAsset, setFullyDepreciated } from "@/lib/actions/assets";
 
 // Ficha por ativo: abre ao clicar na lista e mostra a linha do tempo da depreciação
 // (depreciação no ano · acumulada · saldo restante). A baixa/venda é uma simulação ao vivo
@@ -61,11 +61,13 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
           // nesse caso não há mais previsão (saldo zerado), só o marcador.
           const lastY = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
           const tag =
-            a.schedule.length === 0
-              ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
-              : lastY !== null && lastY < year
-                ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
-                : null;
+            a.fullyDepreciatedYear != null
+              ? { t: `totalmente depreciado (livro ${a.fullyDepreciatedYear})`, c: "bg-emerald-50 text-emerald-700" }
+              : a.schedule.length === 0
+                ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
+                : lastY !== null && lastY < year
+                  ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
+                  : null;
           return (
             <button
               key={a.id}
@@ -230,6 +232,32 @@ function AssetDetail({
           no ano da baixa: metade da cota (half-year) e para depois. Simulação — persistir é o próximo passo.
         </span>
       </div>
+
+      {/* Totalmente depreciado no livro: o contador zerou o ativo até um ano (tudo no ano de aquisição
+          ou catch-up acelerado). Setado → o motor para de projetar depreciação futura. */}
+      <form action={setFullyDepreciated} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
+        <input type="hidden" name="id" value={a.id} />
+        <span className="text-xs font-medium text-slate-700">Totalmente depreciado no livro até o ano</span>
+        <input
+          name="fullyDepreciatedYear"
+          type="number"
+          placeholder="ex.: 2023"
+          defaultValue={a.fullyDepreciatedYear ?? ""}
+          className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums focus:border-sky-400 focus:outline-none"
+        />
+        <button className="rounded-lg bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]">
+          {a.fullyDepreciatedYear != null ? "Atualizar" : "Confirmar"}
+        </button>
+        {a.fullyDepreciatedYear != null && (
+          <button name="fullyDepreciatedYear" value="" className="rounded-lg px-2 py-1 text-xs text-slate-500 hover:bg-slate-200">
+            Limpar (voltar à MACRS)
+          </button>
+        )}
+        <span className="basis-full text-[11px] text-slate-400">
+          Confirma que o contador depreciou tudo no livro até esse ano — o app para de projetar
+          depreciação futura desse ativo. Deixe vazio para a MACRS normal.
+        </span>
+      </form>
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-3 text-[11px] text-slate-400">

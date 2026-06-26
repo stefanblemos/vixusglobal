@@ -89,7 +89,7 @@ export async function createDetectedAssets(formData: FormData): Promise<void> {
   const companyId = String(formData.get("companyId") ?? "");
   const assetsJson = String(formData.get("assets") ?? "[]");
   if (!companyId) return;
-  let list: { name: string; cost: number; acquisitionDate: string; category: string; recoveryYears: number; disposalDate?: string }[];
+  let list: { name: string; cost: number; acquisitionDate: string; category: string; recoveryYears: number; disposalDate?: string; fullyDepreciatedYear?: number | null }[];
   try {
     list = JSON.parse(assetsJson);
   } catch {
@@ -130,6 +130,8 @@ export async function createDetectedAssets(formData: FormData): Promise<void> {
           a.disposalDate && /^\d{4}-\d{2}-\d{2}$/.test(a.disposalDate)
             ? new Date(`${a.disposalDate}T00:00:00Z`)
             : null,
+        fullyDepreciatedYear:
+          a.fullyDepreciatedYear && /^\d{4}$/.test(String(a.fullyDepreciatedYear)) ? Number(a.fullyDepreciatedYear) : null,
         notes: "from-qbo",
       };
     });
@@ -161,6 +163,17 @@ export async function renameAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (id && name) await prisma.fixedAsset.update({ where: { id }, data: { name: name.slice(0, 200) } });
+  revalidatePath("/assets");
+}
+
+// Confirma (ou limpa) que o contador depreciou o ativo TOTALMENTE no livro até um ano. Setado →
+// o motor para de projetar depreciação futura desse ativo. Limpar = volta à MACRS normal.
+export async function setFullyDepreciated(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const raw = String(formData.get("fullyDepreciatedYear") ?? "").trim();
+  const year = /^\d{4}$/.test(raw) ? Number(raw) : null;
+  await prisma.fixedAsset.update({ where: { id }, data: { fullyDepreciatedYear: year } });
   revalidatePath("/assets");
 }
 

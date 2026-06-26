@@ -236,6 +236,10 @@ model FixedAsset {
   landValue       Decimal   @default(0) @db.Decimal(20, 4) // PT: parcela de terreno (não deprecia)
   section179      Decimal   @default(0) @db.Decimal(20, 4) // US: deduzido no 1º ano
   bonusPct        Decimal   @default(0) @db.Decimal(5, 2) // US: % de bonus depreciation (após §179)
+  // Contador depreciou o ativo TOTALMENTE no livro até este ano (ex.: tudo no ano de aquisição, ou
+  // catch-up acelerado em ano posterior). Quando setado, o motor trunca: acumulada = custo até este
+  // ano, e $0 depois (sem projeção futura). Confirmado pelo usuário — nunca aplicado sozinho.
+  fullyDepreciatedYear Int?
   disposalDate    DateTime? @db.Date
   notes           String?
   createdAt       DateTime  @default(now())
