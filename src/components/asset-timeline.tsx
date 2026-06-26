@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AssetView } from "@/lib/assets/depreciation";
-import { deleteAsset } from "@/lib/actions/assets";
+import { deleteAsset, renameAsset } from "@/lib/actions/assets";
 
 // Ficha por ativo: abre ao clicar na lista e mostra a linha do tempo da depreciação
 // (depreciação no ano · acumulada · saldo restante). A baixa/venda é uma simulação ao vivo
@@ -57,6 +57,15 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
         {assets.map((a, i) => {
           const rows = scheduleRows(a, disp[a.id]);
           const r = rows.find((x) => x.year === year);
+          // Status: terreno (não deprecia) ou já totalmente depreciado antes do ano selecionado —
+          // nesse caso não há mais previsão (saldo zerado), só o marcador.
+          const lastY = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
+          const tag =
+            a.schedule.length === 0
+              ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
+              : lastY !== null && lastY < year
+                ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
+                : null;
           return (
             <button
               key={a.id}
@@ -69,6 +78,9 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
                   {a.companyName} · {a.categoryLabel} · {a.recoveryYears}yr · entrada {a.acquisitionDate} · {money(a.cost)}
                 </div>
               </div>
+              {tag && (
+                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${tag.c}`}>{tag.t}</span>
+              )}
               <div className="shrink-0 text-right tabular-nums">
                 <div className="text-sm text-slate-800">{r ? money(r.amt) : "—"}</div>
                 <div className="text-[11px] text-slate-500">dep {year}</div>
@@ -127,9 +139,20 @@ function AssetDetail({
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div>
-          <div className="text-base font-medium text-slate-800">{a.name}</div>
-          <div className="mt-0.5 text-xs text-slate-500">
+        <div className="min-w-0 flex-1">
+          <form action={renameAsset} className="flex items-center gap-1.5">
+            <input type="hidden" name="id" value={a.id} />
+            <input
+              name="name"
+              defaultValue={a.name}
+              className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 text-base font-medium text-slate-800 hover:border-slate-200 focus:border-sky-300 focus:bg-white focus:outline-none"
+              title="Editar nome do ativo"
+            />
+            <button className="shrink-0 rounded-lg px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-sky-700" title="Salvar nome">
+              salvar
+            </button>
+          </form>
+          <div className="mt-0.5 px-1.5 text-xs text-slate-500">
             {a.categoryLabel} · {a.method === "SL_MM" ? "Straight-line mid-month" : `MACRS ${a.recoveryYears}yr (half-year)`} · entrada {a.acquisitionDate} · custo {money(a.cost)}
             {a.section179 > 0 ? ` · §179 ${money(a.section179)}` : ""}
             {a.bonusPct > 0 ? ` · bonus ${a.bonusPct}%` : ""}

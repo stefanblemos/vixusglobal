@@ -93,8 +93,8 @@ export function AssetDetect({
                               <input type="checkbox" checked={d.include} onChange={(e) => patch(i, { include: e.target.checked })} className="h-4 w-4 rounded border-slate-300" />
                             </td>
                             <td className="px-2 py-1.5">
-                              <div className="font-medium text-slate-700">{d.name}</div>
-                              {d.alreadyRegistered && <span className="text-[10px] text-amber-600">já cadastrado</span>}
+                              <input value={d.name} onChange={(e) => patch(i, { name: e.target.value })} className={`${inputCls} w-48`} />
+                              {d.alreadyRegistered && <div className="text-[10px] text-amber-600">já cadastrado</div>}
                             </td>
                             <td className="px-2 py-1.5 text-right">
                               <input value={d.cost} onChange={(e) => patch(i, { cost: Number(e.target.value) || 0 })} className={`${inputCls} w-24 text-right tabular-nums`} />

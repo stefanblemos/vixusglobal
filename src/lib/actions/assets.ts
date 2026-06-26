@@ -156,6 +156,14 @@ export async function dedupeAssets(formData: FormData): Promise<void> {
   revalidatePath("/assets");
 }
 
+// Renomeia um ativo já cadastrado (nomes do QBO às vezes não ajudam).
+export async function renameAsset(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  const name = String(formData.get("name") ?? "").trim();
+  if (id && name) await prisma.fixedAsset.update({ where: { id }, data: { name: name.slice(0, 200) } });
+  revalidatePath("/assets");
+}
+
 export async function deleteAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.fixedAsset.delete({ where: { id } });
