@@ -52,50 +52,60 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
 
   return (
     <>
-      {/* Lista de ativos (clicável) — clique abre a ficha em modal */}
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        {assets.map((a, i) => {
-          const rows = scheduleRows(a, disp[a.id]);
-          const r = rows.find((x) => x.year === year);
-          // Status: terreno (não deprecia) ou já totalmente depreciado antes do ano selecionado —
-          // nesse caso não há mais previsão (saldo zerado), só o marcador.
-          const lastY = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
-          const tag =
-            a.fullyDepreciatedYear != null
-              ? { t: `totalmente depreciado (livro ${a.fullyDepreciatedYear})`, c: "bg-emerald-50 text-emerald-700" }
-              : a.schedule.length === 0
-                ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
-                : lastY !== null && lastY < year
-                  ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
-                  : null;
-          return (
-            <button
-              key={a.id}
-              onClick={() => setSelId(a.id)}
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left ${i > 0 ? "border-t border-slate-100" : ""} hover:bg-slate-50`}
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-medium text-slate-800">{a.name}</div>
-                <div className="text-xs text-slate-500">
-                  {a.companyName} · {a.categoryLabel} · {a.recoveryYears}yr · entrada {a.acquisitionDate} · {money(a.cost)}
-                </div>
-              </div>
-              {tag && (
-                <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] ${tag.c}`}>{tag.t}</span>
-              )}
-              <div className="shrink-0 text-right tabular-nums">
-                <div className="text-sm text-slate-800">{r ? money(r.amt) : "—"}</div>
-                <div className="text-[11px] text-slate-500">dep {year}</div>
-              </div>
-              {disp[a.id] && (
-                <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
-                  baixado {disp[a.id]}
-                </span>
-              )}
-              <span className="shrink-0 text-slate-300">›</span>
-            </button>
-          );
-        })}
+      {/* Lista de ativos em tabela (clicável) — clique na linha abre a ficha em modal */}
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-slate-500">
+            <tr>
+              <th className="px-4 py-2 font-medium">Ativo</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Valor original</th>
+              <th className="px-3 py-2 font-medium whitespace-nowrap">Entrada</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Deprec. acumulada</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Saldo a depreciar</th>
+              <th className="px-3 py-2 text-right font-medium whitespace-nowrap">Previsão {year}</th>
+              <th className="px-2 py-2"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {assets.map((a) => {
+              const rows = scheduleRows(a, disp[a.id]);
+              // Valores do ano selecionado (com a baixa simulada, se houver).
+              const accCur = [...rows].filter((r) => r.year <= year).pop()?.acc ?? 0;
+              const remCur = Math.max(0, a.cost - accCur);
+              const depCur = rows.find((r) => r.year === year)?.amt ?? 0;
+              // Marcador: terreno (não deprecia) / totalmente depreciado (livro ou cronograma).
+              const lastY = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
+              const tag =
+                a.fullyDepreciatedYear != null
+                  ? { t: `totalmente depreciado (livro ${a.fullyDepreciatedYear})`, c: "bg-emerald-50 text-emerald-700" }
+                  : a.schedule.length === 0
+                    ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
+                    : lastY !== null && lastY < year
+                      ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
+                      : null;
+              return (
+                <tr key={a.id} onClick={() => setSelId(a.id)} className="cursor-pointer hover:bg-slate-50">
+                  <td className="px-4 py-2">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-medium text-slate-800">{a.name}</span>
+                      {tag && <span className={`rounded-full px-2 py-0.5 text-[11px] ${tag.c}`}>{tag.t}</span>}
+                      {disp[a.id] && (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">baixado {disp[a.id]}</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500">{a.companyName} · {a.categoryLabel} · {a.recoveryYears}yr</div>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(a.cost)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">{a.acquisitionDate}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(accCur)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(remCur)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-medium text-slate-800">{depCur ? money(depCur) : "—"}</td>
+                  <td className="px-2 py-2 text-right text-slate-300">›</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
       {/* Modal da ficha */}

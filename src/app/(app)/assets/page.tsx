@@ -7,6 +7,7 @@ import { buildDepreciationReconciliation } from "@/lib/assets/reconcile-dep";
 import { DepReconcile } from "@/components/dep-reconcile";
 import { AssetActions } from "@/components/asset-actions";
 import { AssetTimeline } from "@/components/asset-timeline";
+import { YearSelect } from "@/components/year-select";
 import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/db";
@@ -78,33 +79,31 @@ export default async function AssetsPage({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-slate-400">Year:</span>
-          {vsIr.years.map((y) => (
-            <Link
-              key={y}
-              href={`/assets?year=${y}&tab=${tab}${company ? `&company=${company}` : ""}`}
-              className={`rounded-full px-3 py-1 ${
-                y === year ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-              }`}
-            >
-              {y}
-            </Link>
-          ))}
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Ano:</span>
+          <YearSelect
+            years={vsIr.years}
+            value={year}
+            basePath="/assets"
+            params={{ tab, ...(company ? { company } : {}) }}
+          />
         </div>
-        {assetCompanies.length > 0 && (
-          <form action="/assets" className="flex items-center gap-2">
-            <input type="hidden" name="year" value={year} />
-            <input type="hidden" name="tab" value={tab} />
-            <select name="company" defaultValue={company ?? ""} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
-              <option value="">Todas as empresas</option>
-              {assetCompanies.map((c) => (
-                <option key={c.id} value={c.id}>{c.legalName}</option>
-              ))}
-            </select>
-            <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100">Ver</button>
-          </form>
-        )}
+        <form action="/assets" className="flex items-center gap-2">
+          <input type="hidden" name="year" value={year} />
+          <input type="hidden" name="tab" value={tab} />
+          <select name="company" defaultValue={company ?? ""} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
+            <option value="">Todas as empresas</option>
+            {usCompanies.map((c) => {
+              const hasAssets = assetCompanies.some((a) => a.id === c.id);
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.legalName}{hasAssets ? "" : " (sem ativos)"}
+                </option>
+              );
+            })}
+          </select>
+          <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100">Ver</button>
+        </form>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
