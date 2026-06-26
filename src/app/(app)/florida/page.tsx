@@ -14,15 +14,18 @@ const money = (v: number) =>
 
 export const dynamic = "force-dynamic";
 
+const TABS = ["forecast", "apuracao"] as const;
+
 export default async function FloridaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; tab?: string }>;
 }) {
-  const { year: yearRaw } = await searchParams;
+  const { year: yearRaw, tab: tabRaw } = await searchParams;
   const years = await reserveYears();
   const fallback = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallback;
+  const tab: (typeof TABS)[number] = tabRaw === "apuracao" ? "apuracao" : "forecast";
 
   const [f, stateTax] = await Promise.all([
     buildFloridaForecast(year),
@@ -33,16 +36,37 @@ export default async function FloridaPage({
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-800">Florida corporate tax — forecast</h1>
+          <h1 className="text-2xl font-semibold text-slate-800">Florida corporate tax</h1>
           <p className="text-sm text-slate-500">
-            Florida Corporate Income Tax (F-1120) on C-corporations only — {f.rate}% of Florida net
-            income above the {money(f.exemption)} exemption. Based on the depreciation-adjusted
-            taxable profit; income assumed 100% Florida.
+            {tab === "forecast"
+              ? `Florida Corporate Income Tax (F-1120) on C-corporations only — ${f.rate}% of Florida net income above the ${money(f.exemption)} exemption.`
+              : "Apuração & pagamento real do imposto estadual (principal · multa · juros) por ano — base do add-back do Schedule M-1."}
           </p>
         </div>
-        {years.length > 0 && <YearSelect years={years} value={year} basePath="/florida" />}
+        {tab === "forecast" && years.length > 0 && (
+          <YearSelect years={years} value={year} basePath="/florida" params={{ tab: "forecast" }} />
+        )}
       </div>
 
+      {/* Abas */}
+      <div className="flex gap-1 border-b border-slate-200 text-sm">
+        {([["forecast", "Forecast"], ["apuracao", "Apuração & pagamento"]] as [string, string][]).map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/florida?tab=${key}`}
+            className={`-mb-px border-b-2 px-4 py-2 ${
+              tab === key ? "border-[#1f3a5f] font-medium text-[#1f3a5f]" : "border-transparent text-slate-500 hover:text-slate-800"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
+      {tab === "apuracao" && <StateTaxControl data={stateTax} />}
+
+      {tab === "forecast" && (
+      <>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label={`C-corps in FL (${year})`} value={String(f.rows.length)} />
         <Stat label="Estimated FL tax" value={money(f.totalTax)} strong />
@@ -174,15 +198,13 @@ export default async function FloridaPage({
         </div>
       )}
 
-      <div className="border-t border-slate-200 pt-6">
-        <StateTaxControl data={stateTax} />
-      </div>
-
       <p className="text-xs text-slate-400">
         Estimate only. Florida starts from federal taxable income with state additions/subtractions
         and apportionment; here income is taken 100% to Florida and the standard {f.rate}% rate is
         used. Confirm the rate for the year, NOL rules, and apportionment with the accountant.
       </p>
+      </>
+      )}
     </div>
   );
 }

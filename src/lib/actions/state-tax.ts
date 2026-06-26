@@ -2,6 +2,42 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { extractStateTaxReceipt, type StateTaxReceipt } from "@/lib/tax/receipt-extract";
+
+export type ReceiptReadResult =
+  | { ok: true; data: StateTaxReceipt; companyId: string | null }
+  | { ok: false; error: string };
+
+// Lê um recibo/notice estadual (PDF) e extrai principal/multa/juros/ano via Claude. Não grava
+// nada — só devolve os campos para o formulário confirmar. Tenta casar a empresa pelo nome.
+export async function readStateTaxReceipt(formData: FormData): Promise<ReceiptReadResult> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Selecione um PDF do recibo." };
+  if (file.size > 20 * 1024 * 1024) return { ok: false, error: "PDF muito grande (máx. 20MB)." };
+  try {
+    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const data = await extractStateTaxReceipt(base64);
+
+    let companyId: string | null = null;
+    const name = data.companyName.trim();
+    if (name) {
+      const norm = (s: string) => s.toLowerCase().replace(/[.,]/g, "").replace(/\s+/g, " ").trim();
+      const n = norm(name);
+      const companies = await prisma.company.findMany({
+        where: { jurisdiction: "US" },
+        select: { id: true, legalName: true, aliases: true },
+      });
+      const hit =
+        companies.find((c) => norm(c.legalName) === n) ??
+        companies.find((c) => norm(c.legalName).includes(n) || n.includes(norm(c.legalName))) ??
+        companies.find((c) => c.aliases.some((a) => norm(a) === n || norm(a).includes(n)));
+      companyId = hit?.id ?? null;
+    }
+    return { ok: true, data, companyId };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Falha ao ler o recibo." };
+  }
+}
 
 const num = (v: FormDataEntryValue | null) => {
   const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));

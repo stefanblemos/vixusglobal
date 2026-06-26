@@ -1,9 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import type { StateTaxControl } from "@/lib/tax/state-tax";
-import { saveStateTaxFiling, deleteStateTaxFiling } from "@/lib/actions/state-tax";
+import { saveStateTaxFiling, deleteStateTaxFiling, readStateTaxReceipt } from "@/lib/actions/state-tax";
+
+type Prefill = {
+  companyId: string;
+  jurisdiction: string;
+  taxYear: string;
+  principal: string;
+  penalty: string;
+  interest: string;
+  paidDate: string;
+  source: string;
+  fromReceipt: boolean;
+};
+const blankPrefill = (): Prefill => ({
+  companyId: "", jurisdiction: "FL", taxYear: "", principal: "", penalty: "", interest: "", paidDate: "", source: "", fromReceipt: false,
+});
 
 const money = (n: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Math.round(n));
@@ -15,7 +30,52 @@ const inputCls =
 
 export function StateTaxControl({ data }: { data: StateTaxControl }) {
   const [open, setOpen] = useState(false);
+  const [prefill, setPrefill] = useState<Prefill>(blankPrefill);
+  const [reading, setReading] = useState(false);
+  const [readError, setReadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const { companies, companyOptions, totals } = data;
+
+  const openManual = () => {
+    setPrefill(blankPrefill());
+    setReadError(null);
+    setOpen(true);
+  };
+
+  const onPickFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // permite reescolher o mesmo arquivo
+    if (!file) return;
+    setReading(true);
+    setReadError(null);
+    try {
+      const fd = new FormData();
+      fd.set("file", file);
+      const res = await readStateTaxReceipt(fd);
+      if (!res.ok) {
+        setReadError(res.error);
+        return;
+      }
+      const d = res.data;
+      const numStr = (n: number | null | undefined) => (n != null ? String(n) : "");
+      setPrefill({
+        companyId: res.companyId ?? "",
+        jurisdiction: (d.jurisdiction || "FL").toUpperCase(),
+        taxYear: d.taxYear != null ? String(d.taxYear) : "",
+        principal: numStr(d.principal),
+        penalty: numStr(d.penalty),
+        interest: numStr(d.interest),
+        paidDate: d.paidDate || "",
+        source: d.source || "Recibo (PDF)",
+        fromReceipt: true,
+      });
+      setOpen(true);
+    } catch (err) {
+      setReadError(err instanceof Error ? err.message : "Falha ao ler o recibo.");
+    } finally {
+      setReading(false);
+    }
+  };
 
   return (
     <section className="space-y-3">
@@ -29,13 +89,26 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
             que explica o add-back de “State income tax” no Schedule M-1 do ano seguinte.
           </p>
         </div>
-        <button
-          onClick={() => setOpen(true)}
-          className="shrink-0 rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#16304f]"
-        >
-          Adicionar apuração
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <input ref={fileRef} type="file" accept="application/pdf" className="hidden" onChange={onPickFile} />
+          <button
+            onClick={() => fileRef.current?.click()}
+            disabled={reading}
+            className="rounded-lg border border-[#1f3a5f] px-3 py-1.5 text-sm font-medium text-[#1f3a5f] hover:bg-slate-50 disabled:opacity-50"
+          >
+            {reading ? "Lendo recibo…" : "Ler recibo (PDF)"}
+          </button>
+          <button
+            onClick={openManual}
+            className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#16304f]"
+          >
+            Adicionar apuração
+          </button>
+        </div>
       </div>
+      {readError && (
+        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{readError}</div>
+      )}
 
       {companies.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
@@ -141,10 +214,16 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
               <h3 className="text-base font-medium text-slate-800">Apuração estadual (F-1120)</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100">✕</button>
             </div>
-            <form action={saveStateTaxFiling} onSubmit={() => setTimeout(() => setOpen(false), 50)} className="grid grid-cols-2 gap-3">
+            {prefill.fromReceipt && (
+              <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
+                Pré-preenchido do recibo — confira os valores antes de salvar.
+                {!prefill.companyId && " Não consegui casar a empresa automaticamente; selecione abaixo."}
+              </div>
+            )}
+            <form key={prefill.source + prefill.taxYear} action={saveStateTaxFiling} onSubmit={() => setTimeout(() => setOpen(false), 50)} className="grid grid-cols-2 gap-3">
               <label className="col-span-2 flex flex-col gap-1 text-xs text-slate-600">
                 Empresa
-                <select name="companyId" required className={inputCls}>
+                <select name="companyId" required defaultValue={prefill.companyId} className={inputCls}>
                   <option value="">Selecione…</option>
                   {companyOptions.map((c) => (
                     <option key={c.id} value={c.id}>{c.legalName}</option>
@@ -153,31 +232,31 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
                 Estado
-                <input name="jurisdiction" defaultValue="FL" className={inputCls} />
+                <input name="jurisdiction" defaultValue={prefill.jurisdiction} className={inputCls} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
                 Ano de competência
-                <input name="taxYear" type="number" placeholder="2024" required className={inputCls} />
+                <input name="taxYear" type="number" placeholder="2024" required defaultValue={prefill.taxYear} className={inputCls} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
                 Principal (imposto)
-                <input name="principal" inputMode="decimal" placeholder="21765.00" required className={`${inputCls} text-right tabular-nums`} />
+                <input name="principal" inputMode="decimal" placeholder="21765.00" required defaultValue={prefill.principal} className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
                 Multa
-                <input name="penalty" inputMode="decimal" placeholder="7679.05" className={`${inputCls} text-right tabular-nums`} />
+                <input name="penalty" inputMode="decimal" placeholder="7679.05" defaultValue={prefill.penalty} className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
                 Juros
-                <input name="interest" inputMode="decimal" placeholder="1791.78" className={`${inputCls} text-right tabular-nums`} />
+                <input name="interest" inputMode="decimal" placeholder="1791.78" defaultValue={prefill.interest} className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
                 Pago em
-                <input name="paidDate" type="date" className={inputCls} />
+                <input name="paidDate" type="date" defaultValue={prefill.paidDate} className={inputCls} />
               </label>
               <label className="col-span-2 flex flex-col gap-1 text-xs text-slate-600">
                 Origem (opcional)
-                <input name="source" placeholder="F-1120 notice / recibo" className={inputCls} />
+                <input name="source" placeholder="F-1120 notice / recibo" defaultValue={prefill.source} className={inputCls} />
               </label>
               <div className="col-span-2 flex justify-end gap-2 pt-1">
                 <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">Cancelar</button>
