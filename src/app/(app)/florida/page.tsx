@@ -5,6 +5,8 @@ import {
   FL_ESTIMATE_THRESHOLD,
 } from "@/lib/tax/florida";
 import { reserveYears } from "@/lib/tax/reserve";
+import { buildStateTaxControl } from "@/lib/tax/state-tax";
+import { StateTaxControl } from "@/components/state-tax-control";
 import { YearSelect } from "@/components/year-select";
 
 const money = (v: number) =>
@@ -22,7 +24,10 @@ export default async function FloridaPage({
   const fallback = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallback;
 
-  const f = await buildFloridaForecast(year);
+  const [f, stateTax] = await Promise.all([
+    buildFloridaForecast(year),
+    buildStateTaxControl(),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -168,6 +173,10 @@ export default async function FloridaPage({
           </p>
         </div>
       )}
+
+      <div className="border-t border-slate-200 pt-6">
+        <StateTaxControl data={stateTax} />
+      </div>
 
       <p className="text-xs text-slate-400">
         Estimate only. Florida starts from federal taxable income with state additions/subtractions

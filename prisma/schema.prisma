@@ -175,6 +175,7 @@ model Company {
   obligationStatuses ObligationStatus[]
   fixedAssets     FixedAsset[]
   reserveDeposits ReserveDeposit[]
+  stateTaxFilings StateTaxFiling[]
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o
@@ -193,6 +194,29 @@ model ReserveDeposit {
   createdAt   DateTime  @default(now())
 
   @@index([companyId, year])
+}
+
+// Imposto estadual de renda apurado/pago (ex.: Florida F-1120), por empresa e ano de competência.
+// Separa principal (dedutível no ano de competência), multa (não dedutível §162(f)) e juros
+// (dedutíveis p/ C-corp §163). A data de pagamento define em que ano o principal+multa entram como
+// add-back no Schedule M-1 (foram deduzidos/lançados em anos diferentes). É a fonte que explica o
+// add-back de "State income tax" sem precisar perguntar ao contador.
+model StateTaxFiling {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jurisdiction String    @default("FL") // estado (FL, etc.)
+  taxYear      Int // ano de competência (ex.: 2024 = F-1120 de 2024)
+  principal    Decimal   @db.Decimal(20, 2) // imposto (dedutível no federal no ano de competência)
+  penalty      Decimal   @default(0) @db.Decimal(20, 2) // multa — não dedutível
+  interest     Decimal   @default(0) @db.Decimal(20, 2) // juros — dedutíveis p/ C-corp
+  paidDate     DateTime? @db.Date // quando foi pago (define o ano do add-back no M-1)
+  source       String? // origem do registro (ex.: "F-1120 notice", recibo)
+  note         String?
+  createdAt    DateTime  @default(now())
+
+  @@unique([companyId, jurisdiction, taxYear])
+  @@index([companyId])
 }
 
 // Ativo fixo depreciável (US/MACRS). Guarda tipo, data em serviço, custo e as opções de
