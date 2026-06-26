@@ -254,13 +254,16 @@ function AssetDetail({ a, year, onClose }: { a: AssetView; year: number; onClose
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <label className="text-[11px] text-slate-600">Zerado até o ano</label>
-              <input
+              <select
                 name="fullyDepreciatedYear"
-                type="number"
-                placeholder="ex.: 2023"
                 defaultValue={a.fullyDepreciatedYear ?? ""}
-                className="w-24 rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums focus:border-sky-400 focus:outline-none"
-              />
+                className="rounded-lg border border-slate-300 px-2 py-1 text-xs tabular-nums focus:border-sky-400 focus:outline-none"
+              >
+                <option value="">— MACRS normal —</option>
+                {disposalYears.map((y) => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
               <button className="rounded-lg bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]">
                 Confirmar
               </button>

@@ -1,15 +1,8 @@
 import { formatMoney } from "@/lib/money";
-import type { DepReconciliation, ReconStatus } from "@/lib/assets/reconcile-dep";
+import type { DepReconciliation } from "@/lib/assets/reconcile-dep";
+import { DepReconcileTable, type AssetForRecon } from "./dep-reconcile-table";
 
-const STATUS: Record<ReconStatus, { label: string; cls: string }> = {
-  ok: { label: "ok", cls: "bg-green-50 text-green-700" },
-  faltou: { label: "não lançou", cls: "bg-red-50 text-red-700" },
-  diferente: { label: "diverge", cls: "bg-amber-50 text-amber-700" },
-  "sem-ir": { label: "sem IR", cls: "bg-slate-100 text-slate-500" },
-  na: { label: "—", cls: "text-slate-300" },
-};
-
-export function DepReconcile({ data }: { data: DepReconciliation | null }) {
+export function DepReconcile({ data, assets }: { data: DepReconciliation | null; assets: AssetForRecon[] }) {
   return (
     <section className="space-y-3">
       <div>
@@ -59,51 +52,8 @@ export function DepReconcile({ data }: { data: DepReconciliation | null }) {
             </p>
           )}
 
-          {/* Tabela por ano */}
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Ano</th>
-                  <th className="px-3 py-2 text-right font-medium">MACRS (ano)</th>
-                  <th className="px-3 py-2 text-right font-medium">MACRS acumulada</th>
-                  <th className="px-3 py-2 text-right font-medium">IR (ano)</th>
-                  <th className="px-3 py-2 text-right font-medium">IR acum.</th>
-                  <th className="px-3 py-2 text-right font-medium">Diferença acum.</th>
-                  <th className="px-3 py-2 text-center font-medium">Situação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {data.rows.map((r) => {
-                  const st = STATUS[r.status];
-                  const future = r.year > data.throughYear;
-                  return (
-                    <tr key={r.year} className={r.status === "faltou" ? "bg-red-50/40" : future ? "text-slate-400" : ""}>
-                      <td className="px-4 py-2 font-medium">{r.year}{future ? " (proj.)" : ""}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.macrs ? formatMoney(r.macrs, "USD") : "—"}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatMoney(r.macrsAccum, "USD")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums">{r.ir == null ? "—" : formatMoney(r.ir, "USD")}</td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-500">{formatMoney(r.irAccum, "USD")}</td>
-                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(r.accumDiff) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
-                        {formatMoney(r.accumDiff, "USD")}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-xs text-slate-400">
-            <strong>Diferença acum.</strong> = MACRS acumulado − IR acumulado (quanto, no total,
-            ainda falta lançar até aquele ano — não é a diferença de um ano só). &ldquo;não
-            lançou&rdquo; = MACRS pedia depreciação mas o IR do ano teve zero (ano esquecido).
-            &ldquo;sem IR&rdquo; = não há retorno do ano na base — conta como não lançado no catch-up.
-            Confira com o contador antes de deduzir tudo de uma vez (pode haver forma própria de
-            recuperar depreciação omitida, ex.: Form 3115).
-          </p>
+          {/* Tabela por ano — linhas clicáveis abrem o detalhe por ativo (client). */}
+          <DepReconcileTable rows={data.rows} throughYear={data.throughYear} assets={assets} />
         </>
       )}
     </section>

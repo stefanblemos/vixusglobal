@@ -40,6 +40,29 @@ export default async function AssetsPage({
   // Conferência da depreciação por ano: segue a empresa do select global (company). Só quando uma
   // empresa está selecionada — em "Todas" mostramos a visão agregada.
   const reconData = company ? await buildDepreciationReconciliation(company) : null;
+  // Payload por ativo para o modal "depreciação por ativo no ano": cronograma MACRS + depreciação
+  // real registrada (AssetYearDepreciation) por ano.
+  const actualRows = company
+    ? await prisma.assetYearDepreciation.findMany({
+        where: { asset: { companyId: company } },
+        select: { assetId: true, year: true, amount: true },
+      })
+    : [];
+  const actualByAsset = new Map<string, Record<string, number>>();
+  for (const r of actualRows) {
+    const mp = actualByAsset.get(r.assetId) ?? {};
+    mp[String(r.year)] = Number(r.amount.toString());
+    actualByAsset.set(r.assetId, mp);
+  }
+  const reconAssets = company
+    ? reg.assets.map((a) => ({
+        id: a.id,
+        name: a.name,
+        cost: a.cost,
+        schedule: a.schedule,
+        actualByYear: actualByAsset.get(a.id) ?? {},
+      }))
+    : [];
   // "Computed vs tax return" (acumulado): filtra para a empresa selecionada, se houver.
   const vsRows = company ? vsIr.rows.filter((r) => r.companyId === company) : vsIr.rows;
 
@@ -251,7 +274,7 @@ export default async function AssetsPage({
 
       {tab === "conferencia" && (
         company ? (
-          <DepReconcile data={reconData} />
+          <DepReconcile data={reconData} assets={reconAssets} />
         ) : (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
             Selecione uma empresa no seletor acima para ver a conferência da depreciação ano a ano

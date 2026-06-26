@@ -191,6 +191,26 @@ export async function setDisposal(formData: FormData): Promise<void> {
   revalidatePath("/assets");
 }
 
+// Registra (ou limpa) a depreciação REAL lançada no livro de um ativo num ano. Vazio = remove o
+// registro daquele ano. É a fonte oficial do "valor depreciado" por ativo, para comparar com a MACRS.
+export async function setAssetYearDepreciation(formData: FormData): Promise<void> {
+  const assetId = String(formData.get("assetId") ?? "");
+  const year = Math.trunc(num(formData.get("year")));
+  if (!assetId || !year) return;
+  const raw = String(formData.get("amount") ?? "").trim();
+  if (raw === "") {
+    await prisma.assetYearDepreciation.deleteMany({ where: { assetId, year } });
+  } else {
+    const amount = num(formData.get("amount"));
+    await prisma.assetYearDepreciation.upsert({
+      where: { assetId_year: { assetId, year } },
+      create: { assetId, year, amount },
+      update: { amount },
+    });
+  }
+  revalidatePath("/assets");
+}
+
 export async function deleteAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.fixedAsset.delete({ where: { id } });

@@ -244,8 +244,24 @@ model FixedAsset {
   notes           String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
+  yearDepreciations AssetYearDepreciation[]
 
   @@index([companyId])
+}
+
+// Depreciação REAL lançada nos livros, por ativo e ano (o que de fato foi depreciado). Entrada
+// manual (confirmada pelo usuário) — usada para comparar com a MACRS "deveria", ativo a ativo.
+model AssetYearDepreciation {
+  id        String     @id @default(cuid())
+  assetId   String
+  asset     FixedAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  year      Int
+  amount    Decimal    @db.Decimal(20, 2)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([assetId, year])
+  @@index([assetId])
 }
 
 // Status de uma instância de obrigação (empresa + obrigação + período). Ausência da linha
