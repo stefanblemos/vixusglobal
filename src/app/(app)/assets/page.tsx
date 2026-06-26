@@ -8,6 +8,7 @@ import { DepReconcile } from "@/components/dep-reconcile";
 import { AssetActions } from "@/components/asset-actions";
 import { AssetTimeline } from "@/components/asset-timeline";
 import { YearSelect } from "@/components/year-select";
+import { CompanySelect } from "@/components/company-select";
 import { deleteAsset } from "@/lib/actions/assets";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/db";
@@ -60,6 +61,14 @@ export default async function AssetsPage({
   });
 
   const usCompanies = formCompanies.filter((c) => c.jurisdiction === "US");
+  // Opções do seletor de empresa: todas as US, marcando as que não têm ativos.
+  const companyOptions = [
+    { value: "", label: "Todas as empresas" },
+    ...usCompanies.map((c) => ({
+      value: c.id,
+      label: c.legalName + (assetCompanies.some((a) => a.id === c.id) ? "" : " (sem ativos)"),
+    })),
+  ];
   const hasPt = ptReg.companies.length > 0;
   const TABS = ["ativos", "conferencia", "portugal"] as const;
   const tab: (typeof TABS)[number] =
@@ -79,7 +88,7 @@ export default async function AssetsPage({
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
           <span className="text-slate-400">Ano:</span>
           <YearSelect
@@ -89,22 +98,15 @@ export default async function AssetsPage({
             params={{ tab, ...(company ? { company } : {}) }}
           />
         </div>
-        <form action="/assets" className="flex items-center gap-2">
-          <input type="hidden" name="year" value={year} />
-          <input type="hidden" name="tab" value={tab} />
-          <select name="company" defaultValue={company ?? ""} className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm">
-            <option value="">Todas as empresas</option>
-            {usCompanies.map((c) => {
-              const hasAssets = assetCompanies.some((a) => a.id === c.id);
-              return (
-                <option key={c.id} value={c.id}>
-                  {c.legalName}{hasAssets ? "" : " (sem ativos)"}
-                </option>
-              );
-            })}
-          </select>
-          <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-slate-600 hover:bg-slate-100">Ver</button>
-        </form>
+        <div className="flex items-center gap-2">
+          <span className="text-slate-400">Empresa:</span>
+          <CompanySelect
+            options={companyOptions}
+            value={company ?? ""}
+            basePath="/assets"
+            params={{ tab, year: String(year) }}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
