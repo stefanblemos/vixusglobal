@@ -36,10 +36,11 @@ export default async function AssetsPage({
     }),
   ]);
 
-  // Conferência da depreciação por empresa (multi-ano): empresas com ativos registrados.
-  const reconCompanies = reg.byCompany.map((c) => ({ id: c.companyId, legalName: c.companyName }));
-  const reconCompanyId = recon && reconCompanies.some((c) => c.id === recon) ? recon : reconCompanies[0]?.id ?? "";
-  const reconData = reconCompanyId ? await buildDepreciationReconciliation(reconCompanyId) : null;
+  // Conferência da depreciação por ano: segue a empresa do select global (company). Só quando uma
+  // empresa está selecionada — em "Todas" mostramos a visão agregada.
+  const reconData = company ? await buildDepreciationReconciliation(company) : null;
+  // "Computed vs tax return" (acumulado): filtra para a empresa selecionada, se houver.
+  const vsRows = company ? vsIr.rows.filter((r) => r.companyId === company) : vsIr.rows;
 
   // Empresas que têm ativos (para o select "Todas / por empresa").
   const assetCoIds = (
@@ -139,7 +140,8 @@ export default async function AssetsPage({
         />
       )}
 
-      {tab === "conferencia" && reg.byCompany.length > 0 && (
+      {/* Visão agregada (só em "Todas as empresas") — fica sem sentido com 1 empresa selecionada. */}
+      {tab === "conferencia" && !company && reg.byCompany.length > 0 && (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-slate-500">
@@ -166,58 +168,53 @@ export default async function AssetsPage({
         </div>
       )}
 
-      {tab === "conferencia" && vsIr.rows.length > 0 && (
+      {tab === "conferencia" && vsRows.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return — {year}</h2>
+          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return (acumulado) — até {year}</h2>
           <p className="text-sm text-slate-500">
-            The computed MACRS depreciation against the depreciation reported on the income tax
-            return (Form 4562 line on the 1120/1065). A gap means the assets on file and the return
-            don&rsquo;t agree — investigate before relying on either.
+            A MACRS <strong>acumulada</strong> calculada contra a depreciação <strong>acumulada</strong>{" "}
+            lançada no IR (Form 4562). A diferença é o <strong>catch-up</strong> — o mesmo número da
+            conferência por ano abaixo (não a diferença de um ano só, que engana quando o contador
+            lança um catch-up de uma vez).
           </p>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-3 py-2 text-right font-medium">Computed (MACRS)</th>
-                  <th className="px-3 py-2 text-right font-medium">IR reported</th>
-                  <th className="px-3 py-2 text-right font-medium">Difference</th>
+                  <th className="px-3 py-2 text-right font-medium">Computed acum. (MACRS)</th>
+                  <th className="px-3 py-2 text-right font-medium">IR acum.</th>
+                  <th className="px-3 py-2 text-right font-medium">Catch-up</th>
                   <th className="px-3 py-2 text-center font-medium"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {vsIr.rows.map((r) => (
-                  <tr key={r.companyId} className={r.reported != null && !r.ok ? "bg-rose-50/40" : ""}>
+                {vsRows.map((r) => (
+                  <tr key={r.companyId} className={!r.ok ? "bg-rose-50/40" : ""}>
                     <td className="px-4 py-2">
                       <Link href={`/companies/${r.companyId}`} className="font-medium text-[#1f3a5f] hover:underline">
                         {r.name}
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                      {formatMoney(r.computed, "USD")}
+                      {formatMoney(r.accumulated, "USD")}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                      {r.reported == null ? (
+                      {r.reportedAccum == null ? (
                         <span className="text-xs text-amber-600">no IR figure</span>
                       ) : (
-                        formatMoney(r.reported, "USD")
+                        formatMoney(r.reportedAccum, "USD")
                       )}
                     </td>
                     <td
                       className={`px-3 py-2 text-right tabular-nums ${
-                        r.diff == null ? "text-slate-300" : r.ok ? "text-slate-400" : "font-medium text-rose-600"
+                        Math.abs(r.catchUp) <= 1 ? "text-slate-400" : "font-medium text-amber-700"
                       }`}
                     >
-                      {r.diff == null ? "—" : formatMoney(r.diff, "USD")}
+                      {formatMoney(r.catchUp, "USD")}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r.reported == null ? (
-                        <span className="text-slate-300">—</span>
-                      ) : r.ok ? (
-                        <span className="text-green-600">✓</span>
-                      ) : (
-                        <span className="text-rose-500">✗</span>
-                      )}
+                      {r.ok ? <span className="text-green-600">✓</span> : <span className="text-rose-500">✗</span>}
                     </td>
                   </tr>
                 ))}
@@ -225,9 +222,9 @@ export default async function AssetsPage({
             </table>
           </div>
           <p className="text-xs text-slate-400">
-            ✓ within 1% or $1. &ldquo;No IR figure&rdquo; = no return on file for {year}, or the
-            return had no depreciation line extracted. The IR figure is the year&rsquo;s deduction;
-            accumulated computed is in the table above.
+            ✓ alinhado (catch-up dentro de 1%). <strong>Catch-up</strong> = MACRS acumulada − IR
+            acumulado (o que, no total, ainda falta lançar até {year}). &ldquo;no IR figure&rdquo; =
+            nenhum IR com linha de depreciação até {year} — conta como não lançado.
           </p>
         </section>
       )}
@@ -250,8 +247,15 @@ export default async function AssetsPage({
         </>
       )}
 
-      {tab === "conferencia" && reconCompanies.length > 0 && (
-        <DepReconcile companies={reconCompanies} data={reconData} reconCompanyId={reconCompanyId} />
+      {tab === "conferencia" && (
+        company ? (
+          <DepReconcile data={reconData} />
+        ) : (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
+            Selecione uma empresa no seletor acima para ver a conferência da depreciação ano a ano
+            (MACRS × IR) e o catch-up.
+          </p>
+        )
       )}
 
       {tab === "portugal" && ptReg.companies.length > 0 && (
