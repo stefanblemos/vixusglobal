@@ -21,7 +21,9 @@ export interface TaxPreviewRow {
   entityType: EntityType;
   hasPnl: boolean;
   bookNet: number; // lucro líquido do P&L (0 p/ pessoa)
-  nonDeductible: number; // add-backs do M-1
+  nonDeductible: number; // add-backs do M-1 detectados do P&L
+  stateTaxAddBack: number; // add-back do estadual pago no ano (principal + multa) — do controle /florida
+  stateTaxInterest: number; // juros do estadual pago no ano — dedutíveis, NÃO somados (só p/ nota)
   depAdj: number; // livro − MACRS (>0 = livro depreciou demais, soma à base)
   depFromMacrs: boolean; // o ajuste foi feito contra a MACRS? (false = sem ativos cadastrados → mantém o livro)
   k1In: number; // K-1 recebido das investidas
@@ -86,7 +88,7 @@ const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/
 
 export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [seq, assetReg, ownerships, pnlImports] = await Promise.all([
+  const [seq, assetReg, ownerships, pnlImports, stateFilings] = await Promise.all([
     buildClosingSequence(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
@@ -96,6 +98,9 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
       where: { reportKind: "PROFIT_AND_LOSS" },
       orderBy: { createdAt: "desc" },
       select: { id: true, companyId: true, periodLabel: true, lines: { select: { lineType: true, label: true, value: true } } },
+    }),
+    prisma.stateTaxFiling.findMany({
+      select: { companyId: true, principal: true, penalty: true, interest: true, paidDate: true },
     }),
   ]);
 
@@ -107,6 +112,21 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   }
 
   const macrsByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
+
+  // Imposto estadual PAGO no ano (do controle /florida): no ano do pagamento, os livros lançaram a
+  // despesa do estadual do ano anterior — então o principal (já deduzido antes) + a multa (não
+  // dedutível) voltam como add-back no M-1. Os juros são dedutíveis p/ C-corp → ficam de fora.
+  const stateByCompany = new Map<string, { addBack: number; interest: number }>();
+  for (const f of stateFilings) {
+    if (!f.paidDate || f.paidDate.getUTCFullYear() !== year) continue;
+    const principal = Number(f.principal.toString());
+    const penalty = Number(f.penalty.toString());
+    const interest = Number(f.interest.toString());
+    const g = stateByCompany.get(f.companyId) ?? { addBack: 0, interest: 0 };
+    g.addBack += principal + penalty;
+    g.interest += interest;
+    stateByCompany.set(f.companyId, g);
+  }
 
   // Donos por possuída (para repassar K-1): ownedKey → [{ownerKey, pct}].
   const ck = (id: string) => `c:${id}`;
@@ -124,19 +144,23 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     n.kind === "person" ? "PF" : n.finalPayer ? "C-corp" : "Pass-through";
 
   // Base própria de cada entidade.
-  const self = new Map<string, { bookNet: number; nonDed: number; depAdj: number; hasPnl: boolean; depFromMacrs: boolean }>();
+  const self = new Map<string, { bookNet: number; nonDed: number; stateAddBack: number; stateInterest: number; depAdj: number; hasPnl: boolean; depFromMacrs: boolean }>();
   const missingPnl: string[] = [];
   for (const n of nodes) {
-    if (n.kind !== "company") { self.set(n.key, { bookNet: 0, nonDed: 0, depAdj: 0, hasPnl: false, depFromMacrs: false }); continue; }
+    if (n.kind !== "company") { self.set(n.key, { bookNet: 0, nonDed: 0, stateAddBack: 0, stateInterest: 0, depAdj: 0, hasPnl: false, depFromMacrs: false }); continue; }
     const lines = pnlByCompany.get(n.id);
-    if (!lines) { self.set(n.key, { bookNet: 0, nonDed: 0, depAdj: 0, hasPnl: false, depFromMacrs: false }); missingPnl.push(n.name); continue; }
+    if (!lines) { self.set(n.key, { bookNet: 0, nonDed: 0, stateAddBack: 0, stateInterest: 0, depAdj: 0, hasPnl: false, depFromMacrs: false }); missingPnl.push(n.name); continue; }
     const bookNet = pnlTotals(lines).netIncome ?? 0;
     const nonDed = nonDeductibleFromPnl(lines);
+    // Add-back do estadual pago no ano (o P&L lançou essa despesa, então reverte principal+multa).
+    const st = stateByCompany.get(n.id);
+    const stateAddBack = st ? r2(st.addBack) : 0;
+    const stateInterest = st ? r2(st.interest) : 0;
     // Só substitui livro→MACRS se a empresa TEM ativos cadastrados. Sem cadastro não dá para
     // calcular a MACRS, então mantém a depreciação do livro (ajuste 0) — não tira a dedução à toa.
     const hasAssets = macrsByCompany.has(n.id);
     const depAdj = hasAssets ? r2(bookDepFromPnl(lines) - macrsByCompany.get(n.id)!) : 0;
-    self.set(n.key, { bookNet: r2(bookNet), nonDed, depAdj, hasPnl: true, depFromMacrs: hasAssets });
+    self.set(n.key, { bookNet: r2(bookNet), nonDed, stateAddBack, stateInterest, depAdj, hasPnl: true, depFromMacrs: hasAssets });
   }
 
   // K-1 acumulado de baixo para cima.
@@ -144,7 +168,7 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   const taxableByKey = new Map<string, number>();
   for (const n of nodes) {
     const s = self.get(n.key)!;
-    const taxable = r2(s.bookNet + s.nonDed + s.depAdj + (k1In.get(n.key) ?? 0));
+    const taxable = r2(s.bookNet + s.nonDed + s.stateAddBack + s.depAdj + (k1In.get(n.key) ?? 0));
     taxableByKey.set(n.key, taxable);
     const t = typeOf(n);
     if (t === "Pass-through") {
@@ -161,7 +185,9 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     const tax = t === "C-corp" ? r2(Math.max(0, taxable) * 0.21) : t === "PF" ? federalPF(taxable) : 0;
     return {
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
-      hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, depAdj: s.depAdj, depFromMacrs: s.depFromMacrs,
+      hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed,
+      stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest,
+      depAdj: s.depAdj, depFromMacrs: s.depFromMacrs,
       k1In: r2(k1In.get(n.key) ?? 0), taxable, tax, passesTo: n.passesTo, tier: n.tier,
     };
   });

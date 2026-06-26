@@ -103,7 +103,15 @@ export default async function TaxPreviewPage({
                     {!r.hasPnl && r.kind === "company" && <span className="ml-1 text-[10px] text-amber-600">sem P&L</span>}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.kind === "person" ? "—" : m(r.bookNet)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.nonDeductible ? m(r.nonDeductible) : "—"}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                    {r.nonDeductible + r.stateTaxAddBack ? m(r.nonDeductible + r.stateTaxAddBack) : "—"}
+                    {r.stateTaxAddBack > 0 && (
+                      <div className="text-[10px] text-sky-700">
+                        inclui estadual {m(r.stateTaxAddBack)} (principal+multa)
+                        {r.stateTaxInterest > 0 && <> · juros {m(r.stateTaxInterest)} dedutíveis</>}
+                      </div>
+                    )}
+                  </td>
                   <td className={`px-3 py-2 text-right tabular-nums ${r.depAdj < 0 ? "text-emerald-600" : "text-slate-600"}`}>
                     {r.depAdj ? m(r.depAdj) : "—"}
                     {r.kind === "company" && r.hasPnl && !r.depFromMacrs && (
@@ -137,7 +145,9 @@ export default async function TaxPreviewPage({
 
       <p className="text-xs text-slate-400">
         Não dedutíveis detectados do P&L: 50% de refeições, multas/penalidades, seguro de vida,
-        imposto federal, contribuições políticas/clube. Depreciação: a do livro (P&L) é{" "}
+        imposto federal, contribuições políticas/clube. Imposto estadual: o add-back do ano vem do
+        controle em <strong>Florida → Apuração</strong> (principal + multa do que foi pago no ano;
+        os juros são dedutíveis p/ C-corp e ficam de fora). Depreciação: a do livro (P&L) é{" "}
         <strong>substituída</strong> pela MACRS (ajuste = livro − MACRS, conta uma vez só) —{" "}
         <strong>apenas se a empresa tiver ativos cadastrados</strong>; sem cadastro, mantém a do livro
         e marca &ldquo;livro&rdquo; (cadastre os ativos para conferir). K-1 repassa a base tributável
