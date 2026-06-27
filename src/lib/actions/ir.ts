@@ -42,6 +42,63 @@ export async function applyTaxReturnOwnership(formData: FormData): Promise<void>
   redirect(`/tax?msg=owners-${res.created}`);
 }
 
+type ManualFigure = { key: string; label: string; value: number; line: string; note: string; addedAt: string };
+
+// Registra (ou remove, se valor vazio) um ajuste MANUAL e auditável numa figura do IR — ex.: a
+// depreciação que estava no retorno mas não foi destacada/extraída. Sobrepõe a figura lida por key.
+export async function setManualIrFigure(formData: FormData): Promise<void> {
+  const returnId = String(formData.get("returnId") ?? "");
+  const key = String(formData.get("key") ?? "").trim();
+  if (!returnId || !key) return;
+  const tr = await prisma.taxReturn.findUnique({
+    where: { id: returnId },
+    select: { manualFigures: true, companyId: true, year: true },
+  });
+  if (!tr) return;
+  const raw = String(formData.get("value") ?? "").replace(/[^0-9.\-]/g, "");
+  const value = raw === "" ? null : Number(raw);
+  const LABELS: Record<string, string> = {
+    DEPRECIATION: "Depreciation",
+    COST_OF_GOODS: "Cost of goods sold",
+    NON_DEDUCTIBLE: "Non-deductible (M-1)",
+    OTHER_INCOME: "Other income",
+    TOTAL_DEDUCTIONS: "Total deductions",
+    NET_INCOME: "Net income (per books)",
+  };
+  const label = String(formData.get("label") ?? "").trim() || LABELS[key] || key;
+  const line = String(formData.get("line") ?? "").trim();
+  const note = String(formData.get("note") ?? "").trim();
+  const existing = ((tr.manualFigures as ManualFigure[] | null) ?? []).filter((f) => f.key !== key);
+  const next =
+    value == null || !Number.isFinite(value)
+      ? existing
+      : [...existing, { key, label, value, line, note, addedAt: new Date().toISOString() }];
+  await prisma.taxReturn.update({ where: { id: returnId }, data: { manualFigures: next } });
+  if (tr.companyId) {
+    revalidatePath(`/companies/${tr.companyId}`);
+    if (tr.year) revalidatePath(`/companies/${tr.companyId}/year/${tr.year}`);
+  }
+  revalidatePath("/tax");
+}
+
+export async function removeManualIrFigure(formData: FormData): Promise<void> {
+  const returnId = String(formData.get("returnId") ?? "");
+  const key = String(formData.get("key") ?? "").trim();
+  if (!returnId || !key) return;
+  const tr = await prisma.taxReturn.findUnique({
+    where: { id: returnId },
+    select: { manualFigures: true, companyId: true, year: true },
+  });
+  if (!tr) return;
+  const next = ((tr.manualFigures as ManualFigure[] | null) ?? []).filter((f) => f.key !== key);
+  await prisma.taxReturn.update({ where: { id: returnId }, data: { manualFigures: next } });
+  if (tr.companyId) {
+    revalidatePath(`/companies/${tr.companyId}`);
+    if (tr.year) revalidatePath(`/companies/${tr.companyId}/year/${tr.year}`);
+  }
+  revalidatePath("/tax");
+}
+
 // Apaga um IR analisado (limpeza de testes).
 export async function deleteTaxReturn(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");

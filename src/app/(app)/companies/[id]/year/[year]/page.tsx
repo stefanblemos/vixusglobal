@@ -13,6 +13,7 @@ import {
 } from "@/lib/ir/income-bridge";
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { bookDepFromLines } from "@/lib/assets/book-tax-dep";
+import { setManualIrFigure, removeManualIrFigure } from "@/lib/actions/ir";
 import { buildDistExtracts, reconcileDistributions } from "@/lib/qbo/distributions";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { AccountantReport } from "@/components/accountant-report";
@@ -28,6 +29,13 @@ type Owner = {
 };
 
 type Figure = { key: string; label: string; value: number | null; line: string | null };
+type ManualFigure = Figure & { note?: string; addedAt?: string };
+// Mescla figuras lidas + ajustes manuais (manual sobrepõe por key).
+function mergeFigures(parsed: Figure[], manual: ManualFigure[]): Figure[] {
+  if (!manual.length) return parsed;
+  const keys = new Set(manual.map((m) => m.key));
+  return [...parsed.filter((f) => !keys.has(f.key)), ...manual];
+}
 type Pnl = ReturnType<typeof pnlTotals>;
 type CmpRow = {
   label: string;
@@ -486,7 +494,10 @@ export default async function CompanyYearPage({
       : [];
   // Quantas linhas do espelho IR×QBO seguem divergentes (não explicadas) — hint do lock.
   const primaryRows = latestIr
-    ? buildCmpRows((latestIr.figures as Figure[] | null) ?? [], pnl, depTotal, depSource, id, pnlHref)
+    ? buildCmpRows(
+        mergeFigures((latestIr.figures as Figure[] | null) ?? [], (latestIr.manualFigures as ManualFigure[] | null) ?? []),
+        pnl, depTotal, depSource, id, pnlHref,
+      )
     : [];
   const unreconciledCount = primaryRows.filter(
     (r) => !r.taxOnly && rowEval(r).status === "diff",
@@ -632,7 +643,8 @@ export default async function CompanyYearPage({
       ) : (
         taxReturns.map((r) => {
           const owners = (r.owners as Owner[] | null) ?? [];
-          const figures = (r.figures as Figure[] | null) ?? [];
+          const manualFigs = (r.manualFigures as ManualFigure[] | null) ?? [];
+          const figures = mergeFigures((r.figures as Figure[] | null) ?? [], manualFigs);
           const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
           const cmpRows = buildCmpRows(figures, pnl, depTotal, depSource, id, pnlHref);
           // 3 blocos: espelho (livro × declaração) e ponte M-1 (livro → tributável).
@@ -897,6 +909,60 @@ export default async function CompanyYearPage({
                   the return&rsquo;s taxable income via the add-backs. Click a QBO value to open the
                   source report.
                 </p>
+
+                {/* Ajustes manuais e auditáveis no IR — para figuras que estavam no retorno mas não
+                    foram destacadas/extraídas (ex.: depreciação dentro do total). */}
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-sm font-medium text-slate-700">Ajustes manuais no IR (auditável)</div>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    Registra uma figura que <strong>estava no IR mas não foi destacada/extraída</strong>{" "}
+                    (ex.: depreciação dentro do total de deduções, sem Form 4562). Sobrepõe o valor lido,
+                    fica marcado como <strong>manual</strong> com a nota e a data.
+                  </p>
+
+                  {manualFigs.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      {manualFigs.map((mf) => (
+                        <div key={mf.key} className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-50 px-3 py-1.5 text-xs">
+                          <span className="rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">manual</span>
+                          <span className="font-medium text-slate-700">{mf.label}</span>
+                          <span className="tabular-nums text-slate-800">{money(mf.value, ccy)}</span>
+                          {mf.note && <span className="text-slate-500">— {mf.note}</span>}
+                          {mf.addedAt && <span className="text-[10px] text-slate-400">({mf.addedAt.slice(0, 10)})</span>}
+                          <form action={removeManualIrFigure} className="ml-auto">
+                            <input type="hidden" name="returnId" value={r.id} />
+                            <input type="hidden" name="key" value={mf.key} />
+                            <button className="text-slate-400 hover:text-red-600" title="Remover ajuste">✕</button>
+                          </form>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <form action={setManualIrFigure} className="mt-2 flex flex-wrap items-end gap-2">
+                    <input type="hidden" name="returnId" value={r.id} />
+                    <label className="flex flex-col gap-0.5 text-[11px] text-slate-500">
+                      Figura
+                      <select name="key" defaultValue="DEPRECIATION" className="rounded border border-slate-300 px-2 py-1 text-xs">
+                        <option value="DEPRECIATION">Depreciation</option>
+                        <option value="COST_OF_GOODS">Cost of goods sold</option>
+                        <option value="NON_DEDUCTIBLE">Non-deductible (M-1)</option>
+                        <option value="OTHER_INCOME">Other income</option>
+                        <option value="TOTAL_DEDUCTIONS">Total deductions</option>
+                        <option value="NET_INCOME">Net income (per books)</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-0.5 text-[11px] text-slate-500">
+                      Valor {depTotal != null && <span className="text-slate-400">(livro: {money(depTotal, ccy)})</span>}
+                      <input name="value" inputMode="decimal" defaultValue={depTotal != null ? String(Math.round(depTotal * 100) / 100) : ""} placeholder="0.00" className="w-32 rounded border border-slate-300 px-2 py-1 text-right text-xs tabular-nums" />
+                    </label>
+                    <label className="flex flex-1 flex-col gap-0.5 text-[11px] text-slate-500">
+                      Nota (por que / onde estava no IR)
+                      <input name="note" placeholder="ex.: depreciação dentro do total de deduções, sem Form 4562" className="min-w-0 rounded border border-slate-300 px-2 py-1 text-xs" />
+                    </label>
+                    <button className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16304f]">Registrar</button>
+                  </form>
+                </div>
 
                 <div className="mt-3">
                   <AccountantReport companyId={id} year={year} />

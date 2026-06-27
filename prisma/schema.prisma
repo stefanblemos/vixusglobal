@@ -412,6 +412,8 @@ model TaxReturn {
   incorporationDate String?
   address           String?
   figures      Json? // linhas do IR: [{ key, label, value, line }]
+  manualFigures Json? // ajustes MANUAIS auditáveis: [{ key, label, value, line, note, addedAt }] —
+  // ex.: depreciação que estava no IR mas não destacada/extraída. Sobrepõe `figures` por key.
   confidence   String?
   summary      String?
   owners       Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
