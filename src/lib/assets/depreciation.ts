@@ -17,6 +17,7 @@ export interface AssetView {
   acquisitionDate: string; // ISO
   disposalDate: string | null; // baixa/venda (se houver)
   fullyDepreciatedYear: number | null; // contador zerou no livro até este ano (sem projeção depois)
+  bookDepletedYear: number | null; // ano em que a depreciação REAL lançada no livro (AssetYearDepreciation) zerou o ativo (acumulado ≥ custo), mesmo sem a flag
   cost: number;
   recoveryYears: number;
   method: string;
@@ -96,6 +97,15 @@ export async function buildAssetRegister(
       disposalYear: pure ? null : a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
     });
     const accumulated = accumulatedThrough(sched, year);
+    // Ano em que a depreciação REAL do livro (entradas AssetYearDepreciation, da conferência) zerou
+    // o ativo — acumulado ≥ custo. Captura o caso "contador expensou 100%" sem a flag fullyDep.
+    const bookEntries = (aydByAsset.get(a.id) ?? []).slice().sort((x, y) => x.year - y.year);
+    let bookAcc = 0;
+    let bookDepletedYear: number | null = null;
+    for (const e of bookEntries) {
+      bookAcc += e.amount;
+      if (bookDepletedYear == null && bookAcc >= cost - 0.01) bookDepletedYear = e.year;
+    }
     return {
       id: a.id,
       companyId: a.companyId,
@@ -106,6 +116,7 @@ export async function buildAssetRegister(
       acquisitionDate: a.acquisitionDate.toISOString().slice(0, 10),
       disposalDate: a.disposalDate ? a.disposalDate.toISOString().slice(0, 10) : null,
       fullyDepreciatedYear: a.fullyDepreciatedYear ?? null,
+      bookDepletedYear: pure ? null : bookDepletedYear,
       cost,
       recoveryYears: Number(a.recoveryYears.toString()),
       method: a.method,

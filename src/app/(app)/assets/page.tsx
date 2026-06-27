@@ -90,12 +90,15 @@ export default async function AssetsPage({
     orderBy: { legalName: "asc" },
   });
 
-  // Lista só com ativos EM USO no ano: já adquiridos (entrada ≤ ano) e ainda não baixados.
-  const listAssets = reg.assets.filter((a) => {
+  // A aba "Ativos" é o REGISTRO: mostra TODOS os ativos cadastrados (o ano dirige as colunas e as
+  // tags). Assim um ativo recém-criado com entrada futura ao ano selecionado não some da lista.
+  const listAssets = reg.assets;
+  // Contagem "em uso no ano" (para o card): já adquiridos (entrada ≤ ano) e ainda não baixados.
+  const inUseCount = reg.assets.filter((a) => {
     const ay = Number(a.acquisitionDate.slice(0, 4));
     const dy = a.disposalDate ? Number(a.disposalDate.slice(0, 4)) : null;
     return ay <= year && (dy == null || dy >= year);
-  });
+  }).length;
 
   const usCompanies = formCompanies.filter((c) => c.jurisdiction === "US");
   // Opções do seletor de empresa: todas as US, marcando as que não têm ativos.
@@ -148,7 +151,7 @@ export default async function AssetsPage({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label={`Depreciation ${year}`} value={formatMoney(reg.totalYearDep, "USD")} />
-        <Stat label={`Ativos em uso (${year})`} value={String(listAssets.length)} />
+        <Stat label={`Ativos em uso (${year})`} value={String(inUseCount)} />
         <Stat label="Companies with assets" value={String(reg.byCompany.length)} />
       </div>
 
@@ -270,26 +273,19 @@ export default async function AssetsPage({
 
       {tab === "ativos" && (
         <>
-          {listAssets.length === 0 && reg.assets.length > 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
-              Nenhum ativo em uso em {year} — os {reg.assets.length} ativos cadastrados entraram em
-              serviço depois. Selecione um ano a partir da aquisição.
-            </div>
-          ) : (
-            <AssetTimeline
-              assets={listAssets}
-              year={year}
-              allAssets={reg.assets.map((a) => ({
-                id: a.id,
-                companyId: a.companyId,
-                name: a.name,
-                cost: a.cost,
-                acquisitionDate: a.acquisitionDate,
-                method: a.method,
-                recoveryYears: a.recoveryYears,
-              }))}
-            />
-          )}
+          <AssetTimeline
+            assets={listAssets}
+            year={year}
+            allAssets={reg.assets.map((a) => ({
+              id: a.id,
+              companyId: a.companyId,
+              name: a.name,
+              cost: a.cost,
+              acquisitionDate: a.acquisitionDate,
+              method: a.method,
+              recoveryYears: a.recoveryYears,
+            }))}
+          />
           <p className="text-xs text-slate-400">
             MACRS GDS half-year tables (Pub. 946); real property is straight-line mid-month. §179 and
             bonus are taken in year 1, then MACRS on the remaining basis. A control estimate — confirm

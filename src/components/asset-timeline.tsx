@@ -58,11 +58,15 @@ export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]
 
   const sel = selId ? (assets.find((a) => a.id === selId) ?? null) : null;
 
-  // 100% depreciado em ANO ANTERIOR: o cronograma terminou antes do ano selecionado (saldo 0, sem
-  // previsão). Terreno (schedule vazio) não conta. Ocultos por padrão; checkbox mostra, com a contagem.
+  // 100% depreciado em ANO ANTERIOR: ou o cronograma MACRS terminou antes do ano, ou o livro já
+  // zerou o ativo antes do ano (depreciação real lançada na conferência ≥ custo — pega o caso do
+  // contador que expensou 100% sem marcar a flag). Terreno (schedule vazio) não conta. Ocultos por
+  // padrão; checkbox mostra, com a contagem.
   const isDepleted = (a: AssetView) => {
     const last = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
-    return last != null && last < year;
+    const scheduleDone = last != null && last < year;
+    const bookDone = a.bookDepletedYear != null && a.bookDepletedYear < year;
+    return scheduleDone || bookDone;
   };
   const depletedCount = assets.filter(isDepleted).length;
   const visible = showDepleted ? assets : assets.filter((a) => !isDepleted(a));
@@ -108,16 +112,22 @@ export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]
               const accCur = [...rows].filter((r) => r.year <= year).pop()?.acc ?? 0;
               const remCur = Math.max(0, a.cost - accCur);
               const depCur = rows.find((r) => r.year === year)?.amt ?? 0;
-              // Marcador: terreno (não deprecia) / totalmente depreciado (livro ou cronograma).
+              // Marcador: futuro (entra depois do ano) / terreno / totalmente depreciado (flag, livro
+              // real ou cronograma MACRS).
+              const acqY = Number(a.acquisitionDate.slice(0, 4));
               const lastY = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
               const tag =
-                a.fullyDepreciatedYear != null
-                  ? { t: `totalmente depreciado (livro ${a.fullyDepreciatedYear})`, c: "bg-emerald-50 text-emerald-700" }
-                  : a.schedule.length === 0
-                    ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
-                    : lastY !== null && lastY < year
-                      ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
-                      : null;
+                acqY > year
+                  ? { t: `entra em ${acqY}`, c: "bg-sky-50 text-sky-700" }
+                  : a.fullyDepreciatedYear != null
+                    ? { t: `totalmente depreciado (livro ${a.fullyDepreciatedYear})`, c: "bg-emerald-50 text-emerald-700" }
+                    : a.bookDepletedYear != null && a.bookDepletedYear <= year
+                      ? { t: `totalmente depreciado (livro ${a.bookDepletedYear})`, c: "bg-emerald-50 text-emerald-700" }
+                      : a.schedule.length === 0
+                        ? { t: "não deprecia", c: "bg-slate-100 text-slate-500" }
+                        : lastY !== null && lastY < year
+                          ? { t: "totalmente depreciado", c: "bg-emerald-50 text-emerald-700" }
+                          : null;
               return (
                 <tr key={a.id} onClick={() => setSelId(a.id)} className="cursor-pointer hover:bg-slate-50">
                   <td className="px-4 py-2">
