@@ -158,16 +158,23 @@ export async function dedupeAssets(formData: FormData): Promise<void> {
   revalidatePath("/assets");
 }
 
-// Edita um ativo já cadastrado: nome (os do QBO às vezes não ajudam) e data de entrada em serviço
-// (cadastros com data errada deslocam toda a projeção MACRS). Cada campo é opcional/independente.
+// Edita um ativo já cadastrado: nome (os do QBO às vezes não ajudam), data de entrada em serviço
+// (cadastros com data errada deslocam toda a projeção MACRS) e valor de entrada/custo (quando o
+// contador alocou errado nos livros, ajusta-se o custo aqui para fechar com o livro). Cada campo é
+// opcional/independente. O custo é a BASE da depreciação — mudá-lo recalcula toda a projeção MACRS.
 export async function renameAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   const name = String(formData.get("name") ?? "").trim();
   const acq = String(formData.get("acquisitionDate") ?? "").trim();
-  const data: { name?: string; acquisitionDate?: Date } = {};
+  const costRaw = String(formData.get("cost") ?? "").trim();
+  const data: { name?: string; acquisitionDate?: Date; cost?: number } = {};
   if (name) data.name = name.slice(0, 200);
   if (/^\d{4}-\d{2}-\d{2}$/.test(acq)) data.acquisitionDate = new Date(`${acq}T00:00:00Z`);
+  if (costRaw) {
+    const cost = Number(costRaw.replace(/[^0-9.-]/g, ""));
+    if (Number.isFinite(cost) && cost >= 0) data.cost = cost;
+  }
   if (Object.keys(data).length > 0) await prisma.fixedAsset.update({ where: { id }, data });
   revalidatePath("/assets");
 }

@@ -200,7 +200,19 @@ function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: numb
               className="shrink-0 rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-slate-600 hover:border-slate-200 focus:border-sky-300 focus:bg-white focus:outline-none"
               title="Editar data de entrada em serviço"
             />
-            <button className="shrink-0 rounded-lg px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-sky-700" title="Salvar nome e data de entrada">
+            <div className="flex shrink-0 items-center gap-0.5 text-xs text-slate-600">
+              <span className="text-slate-400">$</span>
+              <input
+                type="number"
+                name="cost"
+                step="0.01"
+                min="0"
+                defaultValue={a.cost}
+                className="w-24 rounded-lg border border-transparent bg-transparent px-1 py-0.5 text-right text-xs text-slate-600 hover:border-slate-200 focus:border-sky-300 focus:bg-white focus:outline-none"
+                title="Editar valor de entrada (base da depreciação)"
+              />
+            </div>
+            <button className="shrink-0 rounded-lg px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-sky-700" title="Salvar nome, data de entrada e custo">
               salvar
             </button>
           </form>
