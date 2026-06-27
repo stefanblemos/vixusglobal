@@ -411,7 +411,10 @@ model TaxReturn {
   businessActivity  String?
   incorporationDate String?
   address           String?
-  figures      Json? // linhas do IR: [{ key, label, value, line }]
+  // ⚠️ NÃO ler `figures` direto em telas/cálculos — use effectiveFiguresOf(ret) de @/lib/ir/figures
+  // (mescla `figures` + `manualFigures`). Ler só `figures` ignora os ajustes manuais = fonte de verdade
+  // divergente. Ver o helper para a lista de consumidores.
+  figures      Json? // linhas LIDAS do IR (IA): [{ key, label, value, line }]
   manualFigures Json? // ajustes MANUAIS auditáveis: [{ key, label, value, line, note, addedAt }] —
   // ex.: depreciação que estava no IR mas não destacada/extraída. Sobrepõe `figures` por key.
   confidence   String?
