@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { formatMoney } from "@/lib/money";
 import type { ReconYearRow, ReconStatus } from "@/lib/assets/reconcile-dep";
-import { setAssetYearDepreciation } from "@/lib/actions/assets";
+import { setAssetYearDepreciation, distributeYearDepreciation } from "@/lib/actions/assets";
 
 export type AssetForRecon = {
   id: string;
@@ -155,6 +155,26 @@ function YearModal({
   const matchDiff = irForYear == null ? null : Math.round((irForYear - totDepreciado) * 100) / 100;
   const matched = matchDiff != null && Math.abs(matchDiff) <= 1;
 
+  // Distribuir saldo: rateia o que falta alocar entre os ativos AINDA sem valor, proporcional à
+  // MACRS (Deveria) deles. O último recebe o resto, para fechar exatamente no saldo.
+  const remaining = matchDiff ?? 0;
+  const candidates = rowsForYear.filter((r) => r.depreciado == null && r.deveria > 0.005);
+  const sumCandDeveria = candidates.reduce((s, r) => s + r.deveria, 0);
+  const canDistribute = remaining > 0.5 && candidates.length > 0 && sumCandDeveria > 0.005;
+  const allocations = canDistribute
+    ? (() => {
+        let acc = 0;
+        return candidates.map((r, i) => {
+          const amount =
+            i === candidates.length - 1
+              ? Math.round((remaining - acc) * 100) / 100
+              : Math.round(((remaining * r.deveria) / sumCandDeveria) * 100) / 100;
+          acc += amount;
+          return { assetId: r.a.id, amount };
+        });
+      })()
+    : [];
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center" onClick={onClose}>
       <div className="w-full max-w-4xl rounded-xl border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
@@ -294,13 +314,27 @@ function YearModal({
                 Registrado no livro: <span className="font-semibold text-slate-800">{m(totDepreciado)}</span>
               </span>
             </div>
-            <div className={`font-medium ${matched ? "text-emerald-700" : "text-amber-700"}`}>
-              {matched ? (
-                "✓ bate com o IR declarado"
-              ) : (
-                <>
-                  {matchDiff! > 0 ? "falta alocar" : "alocado a mais"} {m(Math.abs(matchDiff!))}
-                </>
+            <div className="flex items-center gap-3">
+              <div className={`font-medium ${matched ? "text-emerald-700" : "text-amber-700"}`}>
+                {matched ? (
+                  "✓ bate com o IR declarado"
+                ) : (
+                  <>
+                    {matchDiff! > 0 ? "falta alocar" : "alocado a mais"} {m(Math.abs(matchDiff!))}
+                  </>
+                )}
+              </div>
+              {canDistribute && (
+                <form action={distributeYearDepreciation}>
+                  <input type="hidden" name="year" value={year} />
+                  <input type="hidden" name="allocations" value={JSON.stringify(allocations)} />
+                  <button
+                    className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16304f]"
+                    title={`Preenche os ${candidates.length} ativos sem valor, proporcional à MACRS (Deveria), até bater com o IR declarado. Você pode ajustar cada um no lápis depois.`}
+                  >
+                    Distribuir {m(remaining)} proporcional
+                  </button>
+                </form>
               )}
             </div>
           </div>

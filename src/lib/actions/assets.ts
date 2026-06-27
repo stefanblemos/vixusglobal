@@ -211,6 +211,29 @@ export async function setAssetYearDepreciation(formData: FormData): Promise<void
   revalidatePath("/assets");
 }
 
+// Distribui um saldo (ex.: IR declarado − já registrado) entre vários ativos de um ano, de uma vez.
+// O cálculo proporcional é feito no cliente (proporcional à MACRS); aqui só gravamos os valores.
+export async function distributeYearDepreciation(formData: FormData): Promise<void> {
+  const year = Math.trunc(num(formData.get("year")));
+  if (!year) return;
+  let allocs: { assetId: string; amount: number }[];
+  try {
+    allocs = JSON.parse(String(formData.get("allocations") ?? "[]"));
+  } catch {
+    return;
+  }
+  for (const a of allocs) {
+    if (!a.assetId || !Number.isFinite(a.amount) || a.amount <= 0) continue;
+    const amount = Math.round(a.amount * 100) / 100;
+    await prisma.assetYearDepreciation.upsert({
+      where: { assetId_year: { assetId: a.assetId, year } },
+      create: { assetId: a.assetId, year, amount },
+      update: { amount },
+    });
+  }
+  revalidatePath("/assets");
+}
+
 export async function deleteAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.fixedAsset.delete({ where: { id } });
