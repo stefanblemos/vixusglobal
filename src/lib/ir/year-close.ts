@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { normalizeName } from "@/lib/qbo/match";
 import { effectiveFiguresOf } from "@/lib/ir/figures";
+import { pickExactTreatment } from "@/lib/tax/treatment";
 
 // Números-chave do IR que entram no snapshot (comparáveis entre reenvios).
 const SNAPSHOT_FIGURE_KEYS = [
@@ -85,7 +86,7 @@ export async function buildYearSnapshot(companyId: string, year: number): Promis
 
   return {
     owners: owners.length > 0 ? owners : irOwners,
-    taxTreatment: taxStatus?.taxTreatment ?? latestIr?.taxTreatment ?? null,
+    taxTreatment: pickExactTreatment(taxStatus?.taxTreatment ?? null, latestIr?.taxTreatment ?? null).treatment,
     entityType: (taxStatus?.entityType as string | undefined) ?? latestIr?.entityType ?? null,
     taxForm: latestIr?.taxForm ?? null,
     figures,

@@ -3,6 +3,7 @@ import { pnlTotals } from "@/lib/qbo/pnl";
 import { qboPeriodKey, periodMonths } from "@/lib/qbo/period";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
+import { buildTreatmentResolver, isCorpTreatment, type TreatmentResolver } from "@/lib/tax/treatment";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
 const DEFAULT_RATE = 30;
@@ -64,14 +65,14 @@ export async function yearRates(year: number): Promise<YearRates> {
   };
 }
 
-const isCorp = (t: string | null | undefined) => (t ?? "").toUpperCase() === "C_CORP";
 // Alíquota da empresa: override por empresa, senão a da classe (corp 21 / demais 30) do ano.
+// A classe corp/pass vem do resolver único (lib/tax/treatment) — cadastro do ano > IR do ano.
 const classRate = (
   taxTreatment: string | null,
   override: Map<string, number>,
   companyId: string,
   yr: YearRates,
-) => (override.has(companyId) ? override.get(companyId)! : isCorp(taxTreatment) ? yr.corpPct : yr.passPct);
+) => (override.has(companyId) ? override.get(companyId)! : isCorpTreatment(taxTreatment) ? yr.corpPct : yr.passPct);
 
 // Lucro do ano: usa o P&L anual se houver; senão soma os meses daquele ano.
 async function profitForYear(pnls: Pnl[], year: number) {
@@ -168,7 +169,7 @@ export type OwnerFlow = {
 export async function buildTaxReserve(
   year: number,
 ): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[] }> {
-  const [companies, pnls, { override }, yr, assetReg, ownerships, returns] = await Promise.all([
+  const [companies, pnls, { override }, yr, assetReg, ownerships, returns, taxStatuses] = await Promise.all([
     // Reserva de IR é lógica US (21%/30%) — só empresas em USD (não consolida EUR/BRL).
     prisma.company.findMany({
       where: { baseCurrency: "USD" },
@@ -192,18 +193,17 @@ export async function buildTaxReserve(
     }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null }, taxTreatment: { not: null } },
-      select: { companyId: true, taxTreatment: true, year: true },
-      orderBy: { year: "desc" },
+      select: { companyId: true, taxTreatment: true, year: true, createdAt: true },
     }),
+    prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
   ]);
 
   const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
-  const treatmentByCompany = new Map<string, string>();
-  for (const r of returns) {
-    if (r.companyId && !treatmentByCompany.has(r.companyId)) {
-      treatmentByCompany.set(r.companyId, r.taxTreatment ?? "");
-    }
-  }
+  // Classe corp/pass por (empresa, ano): cadastro do ano > IR do ano > último conhecido (resolver único).
+  const resolveTreatment: TreatmentResolver = buildTreatmentResolver(
+    taxStatuses,
+    returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
+  );
   const ownersByCompany = new Map<string, { name: string; pct: number }[]>();
   for (const o of ownerships) {
     if (!o.ownedCompanyId) continue;
@@ -240,7 +240,7 @@ export async function buildTaxReserve(
     const macrsApplied = macrsAppliedToBase(bookDep, taxDep, hasAssets);
     const taxableProfit = profit != null ? Math.round((profit + depAdjustment) * 100) / 100 : null;
 
-    const treatment = treatmentByCompany.get(c.id) ?? null;
+    const treatment = resolveTreatment(c.id, year).treatment;
     const hasOverride = override.has(c.id);
     const ratePct = classRate(treatment, override, c.id, yr);
     const reserve =
@@ -315,7 +315,7 @@ export type QuarterlyRow = {
 };
 
 export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
-  const [companies, pnls, { override }, yr, deposits, returns, assetReg] = await Promise.all([
+  const [companies, pnls, { override }, yr, deposits, returns, assetReg, taxStatuses] = await Promise.all([
     prisma.company.findMany({
       where: { baseCurrency: "USD" },
       select: { id: true, legalName: true, baseCurrency: true },
@@ -333,18 +333,16 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
     }),
     prisma.taxReturn.findMany({
       where: { companyId: { not: null }, taxTreatment: { not: null } },
-      select: { companyId: true, taxTreatment: true, year: true },
-      orderBy: { year: "desc" },
+      select: { companyId: true, taxTreatment: true, year: true, createdAt: true },
     }),
     buildAssetRegister(year),
+    prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
   ]);
   const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
-  const treatmentByCompany = new Map<string, string>();
-  for (const r of returns) {
-    if (r.companyId && !treatmentByCompany.has(r.companyId)) {
-      treatmentByCompany.set(r.companyId, r.taxTreatment ?? "");
-    }
-  }
+  const resolveTreatment: TreatmentResolver = buildTreatmentResolver(
+    taxStatuses,
+    returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
+  );
 
   const fundedByCompany = new Map<string, number[]>(); // [Q1..Q4]
   for (const d of deposits) {
@@ -399,7 +397,7 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
       if (annualProfit != null) annualProfit += depAdj;
     }
 
-    const ratePct = classRate(treatmentByCompany.get(c.id) ?? null, override, c.id, yr);
+    const ratePct = classRate(resolveTreatment(c.id, year).treatment, override, c.id, yr);
     const r = (p: number | null) =>
       p != null && p > 0 ? Math.round(((p * ratePct) / 100) * 100) / 100 : 0;
 

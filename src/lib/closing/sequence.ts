@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { edgesFromOwnerships } from "@/lib/ownership/effective";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 import { looseNameMatch } from "@/lib/personal/reconcile";
+import { buildTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
 
 const SUFFIX = /^(llc|l\.l\.c|inc|corp|co|ltd|lp|llp|pa|the|and|of)$/i;
 // Acrônimo curto p/ caber na tela (token com dígito é o mais identificador; sigla em CAIXA
@@ -62,7 +63,7 @@ export interface ClosingSequence {
 
 export async function buildClosingSequence(year: number): Promise<ClosingSequence> {
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [companies, parties, ownerships, taxReturns, personalReturns, yearCloses] =
+  const [companies, parties, ownerships, taxReturns, personalReturns, yearCloses, taxStatuses] =
     await Promise.all([
       // Só entra na sequência quem está no escopo do fechamento: grupo + geridas cujo IR
       // tomamos conta (controlsTax). Mesmo filtro do "closing completeness" — as duas telas batem.
@@ -89,10 +90,11 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       }),
       prisma.taxReturn.findMany({
         where: { companyId: { not: null } },
-        select: { companyId: true, year: true, taxTreatment: true, taxForm: true, k1sReceived: true },
+        select: { companyId: true, year: true, taxTreatment: true, taxForm: true, k1sReceived: true, createdAt: true },
       }),
       prisma.personalReturn.findMany({ select: { partyId: true, year: true, matchedName: true } }),
       prisma.yearClose.findMany({ select: { companyId: true, year: true } }),
+      prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
     ]);
 
   const years = [
@@ -103,12 +105,21 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
   const pk = (id: string) => `p:${id}`;
   const compById = new Map(companies.map((c) => [c.id, c]));
 
-  // Forma/tributação por empresa (último IR conhecido). Pass-through = ≠ C_CORP.
-  const treatByCompany = new Map<string, string>();
-  for (const t of taxReturns.sort((a, b) => (a.year ?? 0) - (b.year ?? 0))) {
-    if (t.companyId) treatByCompany.set(t.companyId, t.taxTreatment ?? t.taxForm ?? "");
-  }
-  const isCorp = (id: string) => /c.?corp|1120(?!-s)/i.test(treatByCompany.get(id) ?? "");
+  // Forma/tributação por (empresa, ano do fechamento) — resolver único: cadastro do ano > IR do
+  // ano > último conhecido. Alimenta o IR com taxTreatment ?? taxForm p/ preservar a detecção 1120.
+  const resolveTreatment = buildTreatmentResolver(
+    taxStatuses,
+    taxReturns
+      .filter((t) => t.companyId && t.year != null)
+      .map((t) => ({
+        companyId: t.companyId!,
+        year: t.year!,
+        taxTreatment: t.taxTreatment ?? t.taxForm ?? null,
+        createdAt: t.createdAt,
+      })),
+  );
+  const treatOf = (id: string) => resolveTreatment(id, year).treatment;
+  const isCorp = (id: string) => isCorpTreatment(treatOf(id));
 
   // ── Nós ──
   const nodes = new Map<string, SeqNode>();
@@ -119,7 +130,7 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       id: c.id,
       name: c.legalName,
       acronym: acronymOf(c.legalName, "company"),
-      form: treatByCompany.get(c.id) ?? null,
+      form: treatOf(c.id),
       finalPayer: isCorp(c.id),
       passesTo: [],
       tier: 0,

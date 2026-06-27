@@ -7,6 +7,7 @@ import {
 } from "@/lib/ir/k1-reconcile";
 import { booksIncomeNotOnReturnOf, type Figure } from "@/lib/ir/income-bridge";
 import { effectiveFiguresOf } from "@/lib/ir/figures";
+import { loadTreatmentDivergences } from "@/lib/tax/treatment";
 import { pnlTotals } from "@/lib/qbo/pnl";
 
 // Uma divergência/pendência detectada — para a fila de conferência consolidada.
@@ -14,7 +15,7 @@ export type ReviewFinding = {
   companyId: string | null;
   companyName: string;
   year: number | null;
-  kind: "k1" | "income" | "missing-year" | "unregistered";
+  kind: "k1" | "income" | "missing-year" | "unregistered" | "treatment";
   severity: "high" | "medium" | "info";
   title: string;
   detail: string;
@@ -191,6 +192,21 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
       title: "New entity — not registered",
       detail: `${r.taxId ? `EIN ${r.taxId}` : "This return's EIN"} doesn't match any registered company. Register it in Tax.`,
       href: "/tax",
+    });
+  }
+
+  // ── 5) Tributação: cadastro (CompanyTaxStatus) × IR discordam de classe no mesmo ano ──────────
+  // Muda a alíquota (C-corp 21% × pass-through 30%) entre Reserve e fechamento se não for resolvido.
+  for (const d of await loadTreatmentDivergences()) {
+    findings.push({
+      companyId: d.companyId,
+      companyName: companyById.get(d.companyId)?.legalName ?? "—",
+      year: d.year,
+      kind: "treatment",
+      severity: "high",
+      title: "Tax treatment: registry and return disagree",
+      detail: `Registered as ${d.statusValue} for ${d.year}, but the filed return is ${d.returnValue}. This flips the tax class (C-corp 21% vs pass-through 30%) — fix the year's tax status or the return so the reserve and the close agree.`,
+      href: `/companies/${d.companyId}/year/${d.year}`,
     });
   }
 

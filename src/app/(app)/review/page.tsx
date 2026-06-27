@@ -8,6 +8,7 @@ const KIND_LABEL: Record<ReviewFinding["kind"], string> = {
   income: "Income omission",
   "missing-year": "Missing return",
   unregistered: "New entity",
+  treatment: "Tax treatment",
 };
 
 const SEV_DOT: Record<ReviewFinding["severity"], string> = {
