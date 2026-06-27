@@ -143,6 +143,10 @@ function YearModal({
   const totDeveria = rowsForYear.reduce((s, r) => s + r.deveria, 0);
   const totDepreciado = rowsForYear.reduce((s, r) => s + (r.depreciado ?? 0), 0);
   const registrados = rowsForYear.filter((r) => r.depreciado != null).length;
+  // Match livro × IR declarado: a soma do que foi alocado por ativo deve bater com o que o contador
+  // declarou no ano (mesmo que NÃO bata com a MACRS). Diferença = quanto ainda falta alocar/conciliar.
+  const matchDiff = irForYear == null ? null : Math.round((irForYear - totDepreciado) * 100) / 100;
+  const matched = matchDiff != null && Math.abs(matchDiff) <= 1;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center" onClick={onClose}>
@@ -266,6 +270,34 @@ function YearModal({
             )}
           </table>
         </div>
+
+        {/* Match livro × IR declarado — confirma que o total alocado por ativo bate com o que o
+            contador declarou no ano (mesmo que não bata com a MACRS). */}
+        {irForYear != null && (
+          <div
+            className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+              matched ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+            }`}
+          >
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums">
+              <span className="text-slate-600">
+                IR declarado (Form 4562): <span className="font-semibold text-slate-800">{m(irForYear)}</span>
+              </span>
+              <span className="text-slate-600">
+                Registrado no livro: <span className="font-semibold text-slate-800">{m(totDepreciado)}</span>
+              </span>
+            </div>
+            <div className={`font-medium ${matched ? "text-emerald-700" : "text-amber-700"}`}>
+              {matched ? (
+                "✓ bate com o IR declarado"
+              ) : (
+                <>
+                  {matchDiff! > 0 ? "falta alocar" : "alocado a mais"} {m(Math.abs(matchDiff!))}
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         <p className="mt-2 text-[11px] text-slate-400">
           <strong>Deveria</strong> = MACRS do ano por ativo. <strong>Depreciado</strong> = o que foi
