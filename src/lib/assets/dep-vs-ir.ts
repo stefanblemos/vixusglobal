@@ -27,7 +27,7 @@ type Figure = { key?: string; value?: number | null };
 
 export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
   const [reg, returns, companies] = await Promise.all([
-    buildAssetRegister(year),
+    buildAssetRegister(year, undefined, { pureMacrs: true }), // "Computed (MACRS)" = MACRS legal pura
     prisma.taxReturn.findMany({
       where: { companyId: { not: null } },
       select: { companyId: true, year: true, figures: true },

@@ -48,7 +48,9 @@ export interface AssetRegister {
 export async function buildAssetRegister(
   year: number,
   companyFilter?: string,
+  opts?: { pureMacrs?: boolean }, // ignora "totalmente depreciado" e baixa → MACRS legal "deveria"
 ): Promise<AssetRegister> {
+  const pure = opts?.pureMacrs ?? false;
   const [companies, assets] = await Promise.all([
     prisma.company.findMany({
       where: { jurisdiction: "US" },
@@ -73,8 +75,9 @@ export async function buildAssetRegister(
       method: a.method === "SL_MM" ? "SL_MM" : a.method === "NONE" ? "NONE" : "MACRS",
       acquisitionYear: a.acquisitionDate.getUTCFullYear(),
       acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
-      fullyDepreciatedYear: a.fullyDepreciatedYear,
-      disposalYear: a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
+      // MACRS pura (deveria) ignora os ajustes do livro; o modo padrão (efetivo) os aplica.
+      fullyDepreciatedYear: pure ? null : a.fullyDepreciatedYear,
+      disposalYear: pure ? null : a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
     });
     const accumulated = accumulatedThrough(sched, year);
     return {

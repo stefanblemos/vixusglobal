@@ -10,7 +10,7 @@ export type AssetForRecon = {
   id: string;
   name: string;
   cost: number;
-  schedule: { year: number; amount: number }[];
+  macrsSchedule: { year: number; amount: number }[]; // MACRS PURA (deveria) — regra legal do IRS
   actualByYear: Record<string, number>; // ano → depreciação real registrada à mão (sobrescreve)
   derivedByYear: Record<string, number>; // ano → depreciação do livro DERIVADA (totalmente dep./baixa)
 };
@@ -125,19 +125,26 @@ function YearModal({
     a.actualByYear[String(y)] ?? a.derivedByYear[String(y)];
   const rowsForYear = assets
     .map((a) => {
-      const acqYear = a.schedule.length ? a.schedule[0].year : year;
-      const deveria = a.schedule.find((s) => s.year === year)?.amount ?? 0;
+      const acqYear = a.macrsSchedule.length ? a.macrsSchedule[0].year : year;
+      const deveria = a.macrsSchedule.find((s) => s.year === year)?.amount ?? 0;
       const manual = a.actualByYear[String(year)];
       const depreciado = bookOf(a, year);
       const isDerived = manual == null && depreciado != null;
-      // Acumulado real até o ano = soma do depreciado (manual ?? derivado) ≤ ano.
+      // Acumulado do livro: até o ano (accReal) e ANTES do ano (accBefore, p/ saber se já zerou).
       const years = new Set([...Object.keys(a.actualByYear), ...Object.keys(a.derivedByYear)]);
       let accReal = 0;
-      for (const k of years) if (Number(k) <= year) accReal += bookOf(a, Number(k)) ?? 0;
+      let accBefore = 0;
+      for (const k of years) {
+        const v = bookOf(a, Number(k)) ?? 0;
+        if (Number(k) <= year) accReal += v;
+        if (Number(k) < year) accBefore += v;
+      }
       const saldoReal = Math.max(0, a.cost - accReal);
-      return { a, acqYear, deveria, depreciado, isDerived, saldoReal };
+      return { a, acqYear, deveria, depreciado, isDerived, saldoReal, accBefore };
     })
-    .filter((r) => r.acqYear <= year)
+    // Em serviço no ano E ainda não totalmente baixado no livro ANTES deste ano (se já zerou em ano
+    // anterior, sai do modal — não ocupa espaço; continua na lista de ativos).
+    .filter((r) => r.acqYear <= year && r.accBefore < r.a.cost - 0.005)
     .sort((x, y2) => y2.deveria - x.deveria);
 
   const totDeveria = rowsForYear.reduce((s, r) => s + r.deveria, 0);

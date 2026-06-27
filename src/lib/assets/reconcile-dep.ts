@@ -40,8 +40,9 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
   const currentYear = new Date().getUTCFullYear();
   const throughYear = currentYear - 1;
 
-  // MACRS por ano (soma dos schedules de todos os ativos US da empresa).
-  const reg = await buildAssetRegister(currentYear, companyId);
+  // MACRS por ano (soma dos schedules de todos os ativos US da empresa). MACRS PURA (deveria) —
+  // ignora "totalmente depreciado"/baixa: o "deveria" é a regra legal do IRS, não o que o livro fez.
+  const reg = await buildAssetRegister(currentYear, companyId, { pureMacrs: true });
   const macrsByYear = new Map<number, number>();
   let minYear = currentYear;
   for (const a of reg.assets) {

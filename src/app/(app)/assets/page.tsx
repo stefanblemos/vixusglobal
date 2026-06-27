@@ -40,6 +40,10 @@ export default async function AssetsPage({
   // Conferência da depreciação por ano: segue a empresa do select global (company). Só quando uma
   // empresa está selecionada — em "Todas" mostramos a visão agregada.
   const reconData = company ? await buildDepreciationReconciliation(company) : null;
+  // Registro com MACRS PURA (deveria) — para o "Deveria (MACRS)" do modal (regra legal do IRS,
+  // não o valor acelerado do livro). O efetivo (reg) é usado para o "Depreciado (livro)" derivado.
+  const regPure = company ? await buildAssetRegister(year, company, { pureMacrs: true }) : null;
+  const pureScheduleById = new Map((regPure?.assets ?? []).map((a) => [a.id, a.schedule]));
   // Payload por ativo para o modal "depreciação por ativo no ano": cronograma MACRS + depreciação
   // real registrada (AssetYearDepreciation) por ano.
   const actualRows = company
@@ -66,7 +70,8 @@ export default async function AssetsPage({
           id: a.id,
           name: a.name,
           cost: a.cost,
-          schedule: a.schedule,
+          // "Deveria" = MACRS pura; "derivado" = efetivo (a.schedule, com totalmente dep./baixa).
+          macrsSchedule: pureScheduleById.get(a.id) ?? a.schedule,
           actualByYear: actualByAsset.get(a.id) ?? {},
           derivedByYear,
         };
