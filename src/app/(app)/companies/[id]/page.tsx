@@ -225,7 +225,7 @@ export default async function CompanyDetailPage({
   const passThrough = ["PARTNERSHIP", "S_CORP", "DISREGARDED", "SOLE_PROP"].includes(
     treatment ?? "",
   );
-  const estimate = tab === "estimated-tax" ? await companyReserve(id, estYear) : null;
+  const estimate = tab === "estimated-tax" ? await companyReserve(id, estYear, treatment) : null;
   // P/ o split da reserva uso o snapshot de FIM do ano (soma 100%); num ano de transição
   // a aba Ownership é que mostra todos os sócios com seus períodos.
   const ownersForEst = directOwners.filter(
@@ -956,8 +956,8 @@ export default async function CompanyDetailPage({
               )
             ) : (
               <span className="text-slate-500">
-                No tax treatment on file for {estYear} — using a flat reserve. Set it in History
-                &amp; Tax.
+                No tax treatment on file for {estYear} — using the pass-through default rate. Set it
+                in History &amp; Tax.
               </span>
             )}
           </div>
@@ -981,7 +981,7 @@ export default async function CompanyDetailPage({
                 <Kpi
                   label="Reserve rate"
                   value={`${estimate.ratePct}%`}
-                  hint={estimate.hasOverride ? "company override" : "group default"}
+                  hint={estimate.hasOverride ? "company override" : "class rate (year)"}
                 />
                 <Kpi
                   label="Reserve to set aside"

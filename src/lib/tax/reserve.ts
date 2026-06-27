@@ -34,17 +34,12 @@ async function bookDepreciationOf(importIds: string[]): Promise<number> {
   return bookDepFromLines(lines);
 }
 
+// Overrides de alíquota POR EMPRESA (TaxReserveRate, exceto a linha GLOBAL — aposentada). O default
+// não é mais um flat global: vem SEMPRE da classe/ano (TaxRateYear) via classRate. Fonte única.
 async function rateConfig() {
-  const rates = await prisma.taxReserveRate.findMany();
-  const global = Number(
-    rates.find((r) => r.companyId === GLOBAL_RATE_KEY)?.ratePct ?? DEFAULT_RATE,
-  );
-  const override = new Map(
-    rates
-      .filter((r) => r.companyId !== GLOBAL_RATE_KEY)
-      .map((r) => [r.companyId, Number(r.ratePct)]),
-  );
-  return { global, override };
+  const rates = await prisma.taxReserveRate.findMany({ where: { companyId: { not: GLOBAL_RATE_KEY } } });
+  const override = new Map(rates.map((r) => [r.companyId, Number(r.ratePct)]));
+  return { override };
 }
 
 // Alíquotas de provisão do ANO (defaults se não houver linha): C-corp 21%, demais 30%,
@@ -65,9 +60,10 @@ export async function yearRates(year: number): Promise<YearRates> {
   };
 }
 
-// Alíquota da empresa: override por empresa, senão a da classe (corp 21 / demais 30) do ano.
-// A classe corp/pass vem do resolver único (lib/tax/treatment) — cadastro do ano > IR do ano.
-const classRate = (
+// FONTE ÚNICA da alíquota de uma empresa: override por empresa (TaxReserveRate), senão a alíquota
+// da CLASSE (corp 21% / demais 30%) do ANO (TaxRateYear). Year-aware e class-aware. Usada por TODOS
+// os consumidores (buildTaxReserve, quarterly, breakdown, companyReserve) — sem flat global.
+export const classRate = (
   taxTreatment: string | null,
   override: Map<string, number>,
   companyId: string,
@@ -430,18 +426,21 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
   return { rows };
 }
 
-// Estimativa de IR de UMA empresa num ano — para a aba da empresa.
-export async function companyReserve(companyId: string, year: number) {
-  const [pnls, { global, override }] = await Promise.all([
+// Estimativa de IR de UMA empresa num ano — para a aba da empresa. Usa a MESMA alíquota do reserve
+// principal (classRate: override por empresa, senão classe/ano), recebendo o treatment já resolvido
+// pela página (cadastro > IR). Antes usava um flat global e divergia do reserve.
+export async function companyReserve(companyId: string, year: number, taxTreatment: string | null) {
+  const [pnls, { override }, yr] = await Promise.all([
     prisma.qboImport.findMany({
       where: { companyId, reportKind: "PROFIT_AND_LOSS" },
       select: { id: true, periodLabel: true },
     }),
     rateConfig(),
+    yearRates(year),
   ]);
   const { profit, periodLabel, importId } = await profitForYear(pnls, year);
   const hasOverride = override.has(companyId);
-  const ratePct = hasOverride ? override.get(companyId)! : global;
+  const ratePct = classRate(taxTreatment, override, companyId, yr);
   const reserve = profit != null && profit > 0 ? (profit * ratePct) / 100 : 0;
   return { profit, periodLabel, importId, ratePct, hasOverride, reserve };
 }

@@ -4,7 +4,8 @@ import { periodMonths } from "@/lib/qbo/period";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { bookDepFromLines, trustBookDepAdjustment } from "@/lib/assets/book-tax-dep";
 import { computeLoanBalance } from "@/lib/loans/interest";
-import { yearRates } from "./reserve";
+import { yearRates, classRate } from "./reserve";
+import { buildTreatmentResolver } from "@/lib/tax/treatment";
 
 // Demonstração TRIMESTRAL por componentes da base tributável, por empresa:
 //   lucro do período + juros a receber − juros a pagar − depreciação ± K-1 = base → tax.
@@ -43,7 +44,6 @@ const yearOfLabel = (s: string) => {
   const m = s.match(/(20\d\d)/);
   return m ? Number(m[1]) : null;
 };
-const isCorp = (t: string | null) => (t ?? "").toUpperCase() === "C_CORP";
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const quarterOf = (m: number) => Math.ceil(m / 3);
 
@@ -53,7 +53,7 @@ async function netIncomeOf(importId: string): Promise<number | null> {
 }
 
 export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBreakdownRow[] }> {
-  const [companies, pnls, returns, loans, assetReg, ownerships, overrideRows, yr] =
+  const [companies, pnls, returns, loans, assetReg, ownerships, overrideRows, yr, taxStatuses] =
     await Promise.all([
       prisma.company.findMany({
         where: { baseCurrency: "USD" },
@@ -65,8 +65,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
       }),
       prisma.taxReturn.findMany({
         where: { companyId: { not: null }, taxTreatment: { not: null } },
-        select: { companyId: true, taxTreatment: true, year: true },
-        orderBy: { year: "desc" },
+        select: { companyId: true, taxTreatment: true, year: true, createdAt: true },
       }),
       prisma.intercompanyLoan.findMany({ include: { transactions: true } }),
       buildAssetRegister(year),
@@ -76,16 +75,19 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
       }),
       prisma.taxReserveRate.findMany({ where: { companyId: { not: "GLOBAL" } } }),
       yearRates(year),
+      prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
     ]);
 
   // Trimestre só no ano vigente; anos anteriores entram como anual.
   const showQuarters = year === new Date().getUTCFullYear();
-  const treatment = new Map<string, string>();
-  for (const r of returns) if (r.companyId && !treatment.has(r.companyId)) treatment.set(r.companyId, r.taxTreatment ?? "");
+  // Treatment por (empresa, ano) e alíquota — fonte única (resolver + classRate), igual ao reserve.
+  const resolveTreatment = buildTreatmentResolver(
+    taxStatuses,
+    returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
+  );
   const override = new Map(overrideRows.map((o) => [o.companyId, Number(o.ratePct)]));
   const taxDep = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
-  const rateFor = (id: string) =>
-    override.has(id) ? override.get(id)! : isCorp(treatment.get(id) ?? null) ? yr.corpPct : yr.passPct;
+  const rateFor = (id: string) => classRate(resolveTreatment(id, year).treatment, override, id, yr);
 
   // ── Lucro por trimestre / anual ──
   const profitQ = new Map<string, (number | null)[]>(); // Q1..Q4
