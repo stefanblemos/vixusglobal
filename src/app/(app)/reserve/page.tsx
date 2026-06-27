@@ -306,20 +306,22 @@ export default async function ReservePage({
                     </td>
                     {anyAssets && (
                       <td className="px-3 py-2 text-right text-xs tabular-nums">
-                        {r.hasAssets ? (
-                          <span title={`Book dep ${money(r.bookDep, r.currency)} − Tax dep ${money(r.taxDep, r.currency)}`}>
-                            <span className="text-slate-400">
-                              {money(r.bookDep, r.currency)} → {money(r.taxDep, r.currency)}
-                            </span>
-                            <span
-                              className={`ml-1 ${r.depAdjustment < 0 ? "text-rose-600" : "text-emerald-600"}`}
-                            >
-                              ({r.depAdjustment >= 0 ? "+" : ""}
-                              {money(r.depAdjustment, r.currency)})
-                            </span>
+                        {!r.hasAssets ? (
+                          <span className="text-slate-300">—</span>
+                        ) : r.macrsApplied ? (
+                          <span
+                            className="text-rose-600"
+                            title={`Livro sem depreciação — MACRS ${money(r.taxDep, r.currency)} aplicada na base`}
+                          >
+                            MACRS −{money(r.taxDep, r.currency)}
                           </span>
                         ) : (
-                          <span className="text-slate-300">—</span>
+                          <span
+                            className="text-slate-400"
+                            title={`Livro já tem depreciação (${money(r.bookDep, r.currency)}) — confia no livro; MACRS ${money(r.taxDep, r.currency)} só p/ conferência`}
+                          >
+                            confia no livro
+                          </span>
                         )}
                       </td>
                     )}

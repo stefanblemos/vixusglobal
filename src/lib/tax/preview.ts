@@ -3,6 +3,7 @@ import { pnlTotals } from "@/lib/qbo/pnl";
 import { buildClosingSequence } from "@/lib/closing/sequence";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { buildDepreciationReconciliation } from "@/lib/assets/reconcile-dep";
+import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
 import { edgesFromOwnerships } from "@/lib/ownership/effective";
 
 // Tax preview: estima o IR final de cada entidade do grupo a partir do QBO já importado.
@@ -78,15 +79,6 @@ function nonDeductibleFromPnl(lines: Line[]): number {
   }
   return Math.round(total * 100) / 100;
 }
-function bookDepFromPnl(lines: Line[]): number {
-  let total = 0;
-  for (const l of lines) {
-    if (l.lineType !== "ACCOUNT" || l.value == null) continue;
-    if (/deprecia|amortiza/i.test(l.label) && !/accumulated/i.test(l.label)) total += Math.abs(Number(l.value));
-  }
-  return Math.round(total * 100) / 100;
-}
-
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/(?:19|20)\d\d/) ?? [])[0] ?? 0);
 
@@ -177,11 +169,11 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     // Depreciação: CONFIA no livro. Se o P&L já tem depreciação, a base usa o lucro como está
     // (ajuste 0) — o que diverge da MACRS vira só FLAG (catch-up da Conferência), não imposto.
     // A MACRS do app só entra na base quando o livro NÃO tem depreciação nenhuma (preenche a lacuna).
-    const bookDep = bookDepFromPnl(lines);
+    const bookDep = bookDepFromLines(lines);
     const hasAssets = macrsByCompany.has(n.id);
     const macrsDep = hasAssets ? r2(macrsByCompany.get(n.id)!) : 0;
-    const macrsApplied = bookDep <= 0.005 && macrsDep > 0.005;
-    const depAdj = macrsApplied ? r2(-macrsDep) : 0;
+    const macrsApplied = macrsAppliedToBase(bookDep, macrsDep, hasAssets);
+    const depAdj = trustBookDepAdjustment(bookDep, macrsDep, hasAssets);
     const depCatchUp = reconByCompany.get(n.id)?.catchUp ?? null;
     self.set(n.key, { bookNet: r2(bookNet), nonDed, stateAddBack, stateInterest, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }

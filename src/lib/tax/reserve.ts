@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { qboPeriodKey, periodMonths } from "@/lib/qbo/period";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
+import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
 const DEFAULT_RATE = 30;
@@ -22,18 +23,14 @@ async function netIncomeOf(importId: string): Promise<number | null> {
   return pnlTotals(lines).netIncome;
 }
 
-// Depreciação contábil (book) lançada no P&L — para "estornar" e trocar pela fiscal (MACRS).
+// Depreciação contábil (book) lançada no P&L — fonte única (book-tax-dep).
 async function bookDepreciationOf(importIds: string[]): Promise<number> {
   if (importIds.length === 0) return 0;
   const lines = await prisma.qboImportLine.findMany({
     where: { importId: { in: importIds }, lineType: "ACCOUNT" },
-    select: { label: true, value: true },
+    select: { lineType: true, label: true, value: true },
   });
-  let sum = 0;
-  for (const l of lines) {
-    if (l.value != null && /depreciat|amortiz|deprecia[cç]/i.test(l.label)) sum += Number(l.value);
-  }
-  return Math.round(sum * 100) / 100;
+  return bookDepFromLines(lines);
 }
 
 async function rateConfig() {
@@ -148,7 +145,8 @@ export type ReserveRow = {
   bookDep: number; // depreciação contábil lançada no P&L
   taxDep: number; // depreciação fiscal calculada (MACRS)
   hasAssets: boolean; // há ativos cadastrados p/ ajustar?
-  depAdjustment: number; // book − tax (entra no lucro tributável)
+  macrsApplied: boolean; // livro sem depreciação → MACRS aplicada na base (senão confia no livro)
+  depAdjustment: number; // ajuste na base: 0 (confia no livro) ou −MACRS (livro sem dep)
   taxableProfit: number | null; // lucro ajustado (pode ser negativo → compensa no dono)
   ratePct: number;
   hasOverride: boolean;
@@ -236,8 +234,10 @@ export async function buildTaxReserve(
     const taxDep = taxDepByCompany.get(c.id) ?? 0;
     const hasAssets = taxDepByCompany.has(c.id);
     const bookDep = hasAssets ? await bookDepreciationOf(importIds) : 0;
-    // Troca a depreciação contábil pela fiscal: lucro tributável = book + bookDep − taxDep.
-    const depAdjustment = hasAssets ? Math.round((bookDep - taxDep) * 100) / 100 : 0;
+    // CONFIA no livro (mesma regra do Tax preview): se o livro já tem depreciação, ajuste 0; só
+    // aplica a MACRS (−taxDep) quando o livro NÃO tem depreciação. Não infla pela diferença.
+    const depAdjustment = trustBookDepAdjustment(bookDep, taxDep, hasAssets);
+    const macrsApplied = macrsAppliedToBase(bookDep, taxDep, hasAssets);
     const taxableProfit = profit != null ? Math.round((profit + depAdjustment) * 100) / 100 : null;
 
     const treatment = treatmentByCompany.get(c.id) ?? null;
@@ -273,6 +273,7 @@ export async function buildTaxReserve(
       bookDep,
       taxDep,
       hasAssets,
+      macrsApplied,
       depAdjustment,
       taxableProfit,
       ratePct,
@@ -314,7 +315,7 @@ export type QuarterlyRow = {
 };
 
 export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
-  const [companies, pnls, { override }, yr, deposits, returns] = await Promise.all([
+  const [companies, pnls, { override }, yr, deposits, returns, assetReg] = await Promise.all([
     prisma.company.findMany({
       where: { baseCurrency: "USD" },
       select: { id: true, legalName: true, baseCurrency: true },
@@ -335,7 +336,9 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
       select: { companyId: true, taxTreatment: true, year: true },
       orderBy: { year: "desc" },
     }),
+    buildAssetRegister(year),
   ]);
+  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
   const treatmentByCompany = new Map<string, string>();
   for (const r of returns) {
     if (r.companyId && !treatmentByCompany.has(r.companyId)) {
@@ -382,6 +385,18 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
         // Anual, multi-trimestre, ou ano não-vigente → trata como anual.
         annualProfit = (annualProfit ?? 0) + ni;
       }
+    }
+
+    // Ajuste de depreciação livro→fiscal (confia no livro) — mesma regra do buildTaxReserve.
+    const taxDep = taxDepByCompany.get(c.id) ?? 0;
+    const hasAssets = taxDepByCompany.has(c.id);
+    const bookDep = hasAssets ? await bookDepreciationOf(imports.map((i) => i.id)) : 0;
+    const depAdj = trustBookDepAdjustment(bookDep, taxDep, hasAssets);
+    if (depAdj !== 0) {
+      const nq = qProfit.filter((p) => p != null).length || 1;
+      const perQ = depAdj / nq;
+      for (let i = 0; i < 4; i++) if (qProfit[i] != null) qProfit[i] = (qProfit[i] ?? 0) + perQ;
+      if (annualProfit != null) annualProfit += depAdj;
     }
 
     const ratePct = classRate(treatmentByCompany.get(c.id) ?? null, override, c.id, yr);

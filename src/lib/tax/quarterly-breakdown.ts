@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { periodMonths } from "@/lib/qbo/period";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
+import { bookDepFromLines, trustBookDepAdjustment } from "@/lib/assets/book-tax-dep";
 import { computeLoanBalance } from "@/lib/loans/interest";
 import { yearRates } from "./reserve";
 
@@ -117,6 +118,31 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     hasQ.set(cid, anyQ);
   }
 
+  // Ajuste de depreciação livro→fiscal (confia no livro) por empresa — mesma regra das outras
+  // telas. O valor APLICADO na base é 0 (livro já tem dep) ou taxDep (livro sem dep). Antes o
+  // breakdown subtraía a MACRS sempre, contando a depreciação em dobro com a do livro no lucro.
+  const yearImportIds = [...pnlByCompany.values()].flat().map((p) => p.id);
+  const depLines = yearImportIds.length
+    ? await prisma.qboImportLine.findMany({
+        where: { importId: { in: yearImportIds }, lineType: "ACCOUNT" },
+        select: { importId: true, lineType: true, label: true, value: true },
+      })
+    : [];
+  const importToCompany = new Map<string, string>();
+  for (const [cid, imps] of pnlByCompany) for (const p of imps) importToCompany.set(p.id, cid);
+  const linesByCompany = new Map<string, { lineType: string; label: string; value: unknown }[]>();
+  for (const l of depLines) {
+    const cid = importToCompany.get(l.importId);
+    if (!cid) continue;
+    (linesByCompany.get(cid) ?? linesByCompany.set(cid, []).get(cid)!).push(l);
+  }
+  // appliedDep(id) = quanto a depreciação reduz a base (0 se confia no livro; taxDep se livro sem dep).
+  const appliedDep = (id: string) => {
+    const td = taxDep.get(id) ?? 0;
+    const bookDep = bookDepFromLines(linesByCompany.get(id) ?? []);
+    return -trustBookDepAdjustment(bookDep, td, taxDep.has(id)); // −adj: 0 ou taxDep
+  };
+
   // ── Juros por trimestre (credor = in, tomador = out) ──
   const bounds = [0, 3, 6, 9, 12].map((m) => new Date(Date.UTC(m === 12 ? year + 1 : year, m === 12 ? 0 : m, 1)));
   const intIn = new Map<string, number[]>(); // [Q1..Q4]
@@ -152,7 +178,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
   }
 
   // ── Standalone por trimestre (lucro + juros − dep), p/ depois atribuir K-1 ──
-  const depQ = (id: string) => (taxDep.get(id) ?? 0) / 4;
+  const depQ = (id: string) => appliedDep(id) / 4;
   const standalone = (id: string, qi: number): number => {
     const p = profitQ.get(id)?.[qi];
     const profit = p ?? (hasQ.get(id) ? 0 : 0);
@@ -164,7 +190,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     const profit = profitFY.get(id) ?? 0;
     const inn = (intIn.get(id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0);
     const out = (intOut.get(id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0);
-    return r2(profit + inn - out - (taxDep.get(id) ?? 0));
+    return r2(profit + inn - out - appliedDep(id));
   };
 
   // K-1: a empresa (owner) recebe a fatia do resultado das suas investidas (owned).
@@ -211,7 +237,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     // FY
     const innFY = r2((intIn.get(c.id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0));
     const outFY = r2((intOut.get(c.id) ?? [0, 0, 0, 0]).reduce((s, v) => s + v, 0));
-    const depFY = r2(taxDep.get(c.id) ?? 0);
+    const depFY = r2(appliedDep(c.id));
     const k1FY = r2(owned.reduce((s, o) => s + (standaloneFY(o.ownedId) * o.pct) / 100, 0));
     const profitFYv = r2(profitFY.get(c.id) ?? 0);
     const baseFY = r2(profitFYv + innFY - outFY - depFY + k1FY);
