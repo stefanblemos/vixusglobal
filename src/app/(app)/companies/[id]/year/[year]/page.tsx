@@ -12,6 +12,7 @@ import {
   booksIncomeNotOnReturnOf,
 } from "@/lib/ir/income-bridge";
 import { pnlTotals } from "@/lib/qbo/pnl";
+import { bookDepFromLines } from "@/lib/assets/book-tax-dep";
 import { buildDistExtracts, reconcileDistributions } from "@/lib/qbo/distributions";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { AccountantReport } from "@/components/accountant-report";
@@ -114,6 +115,7 @@ function buildCmpRows(
   figures: Figure[],
   pnl: Pnl,
   depTotal: number | null,
+  depSource: "gl" | "pnl" | null,
   companyId: string,
   pnlHref: string | undefined,
 ): CmpRow[] {
@@ -272,10 +274,12 @@ function buildCmpRows(
       strong: true,
     },
     {
-      label: "Depreciation (per GL)",
+      label: `Depreciation (${depSource === "pnl" ? "per P&L" : "per GL"})`,
       ir: figVal("DEPRECIATION"),
       qbo: depTotal,
-      href: depTotal != null ? `/ledger?company=${companyId}` : undefined,
+      // Livro tem depreciação mas o IR não destacou (sem Form 4562 / linha 14) → sinaliza p/ revisar.
+      flag: depTotal != null && figVal("DEPRECIATION") == null,
+      href: depSource === "pnl" && pnlHref ? pnlHref : depTotal != null ? `/ledger?company=${companyId}` : undefined,
     },
   ];
 }
@@ -382,7 +386,10 @@ export default async function CompanyYearPage({
     },
     select: { amount: true },
   });
-  const depTotal = depTxns.length ? depTxns.reduce((s, t) => s + Number(t.amount), 0) : null;
+  // Depreciação do LIVRO: do GL quando houver conta de depreciação; senão (caso comum: depreciação
+  // é uma linha de P&L / lançamento de ajuste, não transação no GL) cai pro P&L. Assim não fica
+  // "no data" quando o livro tem depreciação só no P&L.
+  const depGL = depTxns.length ? depTxns.reduce((s, t) => s + Number(t.amount), 0) : null;
 
   // P&L do QBO do mesmo ano, para o cruzamento.
   const pnlImport = await prisma.qboImport.findFirst({
@@ -397,6 +404,11 @@ export default async function CompanyYearPage({
     ? await prisma.qboImportLine.findMany({ where: { importId: pnlImport.id } })
     : [];
   const pnl = pnlTotals(pnlLines);
+
+  // Fallback da depreciação do livro: GL → P&L. Source para o rótulo/hint.
+  const depPnl = bookDepFromLines(pnlLines);
+  const depTotal = depGL ?? (depPnl > 0.005 ? depPnl : null);
+  const depSource: "gl" | "pnl" | null = depGL != null ? "gl" : depPnl > 0.005 ? "pnl" : null;
 
   // Folhas (contas) da seção "Other Income" do QBO — para detalhar de onde vem a renda.
   const otherIncomeLines = pnlImport
@@ -474,7 +486,7 @@ export default async function CompanyYearPage({
       : [];
   // Quantas linhas do espelho IR×QBO seguem divergentes (não explicadas) — hint do lock.
   const primaryRows = latestIr
-    ? buildCmpRows((latestIr.figures as Figure[] | null) ?? [], pnl, depTotal, id, pnlHref)
+    ? buildCmpRows((latestIr.figures as Figure[] | null) ?? [], pnl, depTotal, depSource, id, pnlHref)
     : [];
   const unreconciledCount = primaryRows.filter(
     (r) => !r.taxOnly && rowEval(r).status === "diff",
@@ -622,7 +634,7 @@ export default async function CompanyYearPage({
           const owners = (r.owners as Owner[] | null) ?? [];
           const figures = (r.figures as Figure[] | null) ?? [];
           const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
-          const cmpRows = buildCmpRows(figures, pnl, depTotal, id, pnlHref);
+          const cmpRows = buildCmpRows(figures, pnl, depTotal, depSource, id, pnlHref);
           // 3 blocos: espelho (livro × declaração) e ponte M-1 (livro → tributável).
           const isBridgeAdj = (r: (typeof cmpRows)[number]) =>
             !!r.taxOnly || r.label.trimStart().startsWith("=");
@@ -693,7 +705,7 @@ export default async function CompanyYearPage({
                 <Kpi
                   label="Depreciation"
                   value={money(depIr ?? depTotal, ccy)}
-                  hint={depIr != null ? "per IR" : depTotal != null ? "per GL" : undefined}
+                  hint={depIr != null ? "per IR" : depSource === "pnl" ? "per P&L" : depTotal != null ? "per GL" : undefined}
                 />
               </div>
 
