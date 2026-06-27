@@ -37,7 +37,19 @@ function scheduleRows(a: AssetView): Row[] {
   return out;
 }
 
-export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]; year: number; allAssets: AssetLite[] }) {
+export function AssetTimeline({
+  assets,
+  year,
+  allAssets,
+  actualByAsset = {},
+  pureScheduleById = {},
+}: {
+  assets: AssetView[];
+  year: number;
+  allAssets: AssetLite[];
+  actualByAsset?: Record<string, Record<string, number>>; // ativo → ano → depreciação REAL lançada no livro
+  pureScheduleById?: Record<string, { year: number; amount: number }[]>; // ativo → MACRS pura (estimado)
+}) {
   const [selId, setSelId] = useState<string | null>(null);
   const [showDepleted, setShowDepleted] = useState(false);
 
@@ -160,7 +172,14 @@ export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]
           onClick={() => setSelId(null)}
         >
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <AssetDetail a={sel} year={year} allAssets={allAssets} onClose={() => setSelId(null)} />
+            <AssetDetail
+              a={sel}
+              year={year}
+              allAssets={allAssets}
+              actualByYear={actualByAsset[sel.id] ?? {}}
+              pureSchedule={pureScheduleById[sel.id] ?? sel.schedule}
+              onClose={() => setSelId(null)}
+            />
           </div>
         </div>
       )}
@@ -168,7 +187,21 @@ export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]
   );
 }
 
-function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: number; allAssets: AssetLite[]; onClose?: () => void }) {
+function AssetDetail({
+  a,
+  year,
+  allAssets,
+  actualByYear,
+  pureSchedule,
+  onClose,
+}: {
+  a: AssetView;
+  year: number;
+  allAssets: AssetLite[];
+  actualByYear: Record<string, number>;
+  pureSchedule: { year: number; amount: number }[];
+  onClose?: () => void;
+}) {
   // Candidatos a merge: mesma empresa + compatíveis (data, método, vida). Incompatível não aparece.
   const mergeCandidates = allAssets.filter(
     (x) =>
@@ -191,8 +224,45 @@ function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: numb
   const disposalYears: number[] = [];
   for (let y = acqYear; y <= Math.max(lastSched, year, disposalYear ?? 0); y++) disposalYears.push(y);
 
+  // Estimado (MACRS pura "deveria") × Real (o que foi de fato lançado no livro). Real por ano =
+  // valor manual (AssetYearDepreciation) ?? derivado do cadastro quando há sinal de livro (totalmente
+  // depreciado/baixa → o schedule efetivo já reflete o livro).
+  const hasBookSignal = a.fullyDepreciatedYear != null || a.disposalDate != null;
+  const realOf = (y: number): number | undefined =>
+    actualByYear[String(y)] ?? (hasBookSignal ? a.schedule.find((s) => s.year === y)?.amount : undefined);
+  const cmpYears = [...new Set([...pureSchedule.map((s) => s.year), ...Object.keys(actualByYear).map(Number)])].sort((x, z) => x - z);
+  // Saldos até o ano: simulado (MACRS pura) × real (livro).
+  const estAccThruYear = pureSchedule.reduce((s, x) => (x.year <= year ? s + x.amount : s), 0);
+  const realAccThruYear = cmpYears.reduce((s, y) => (y <= year ? s + (realOf(y) ?? 0) : s), 0);
+  const saldoSimulado = Math.max(0, a.cost - estAccThruYear);
+  const saldoReal = Math.max(0, a.cost - realAccThruYear);
+  // 100% depreciado no LIVRO até o ANO selecionado: marcado/detectado até o ano, ou o real acumulado
+  // até o ano já cobre o custo. (Relativo ao ano — não marca um ativo antes de ele ter zerado.)
+  const is100 =
+    (a.fullyDepreciatedYear != null && a.fullyDepreciatedYear <= year) ||
+    (a.bookDepletedYear != null && a.bookDepletedYear <= year) ||
+    realAccThruYear >= a.cost - 0.5;
+  // Linhas estimado×real (acumulado real corrente) — usado na tabela quando is100.
+  let realRun = 0;
+  const cmpRows = cmpYears.map((y) => {
+    const est = pureSchedule.find((s) => s.year === y)?.amount ?? 0;
+    const real = realOf(y) ?? 0;
+    realRun += real;
+    return { year: y, est, real, realAcc: realRun, saldoReal: Math.max(0, a.cost - realRun) };
+  });
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
+      {is100 && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center overflow-hidden">
+          <span
+            className="select-none whitespace-nowrap text-6xl font-extrabold uppercase tracking-widest text-emerald-600/15"
+            style={{ transform: "rotate(-28deg)" }}
+          >
+            100% depreciado
+          </span>
+        </div>
+      )}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <form action={renameAsset} className="flex flex-wrap items-center gap-1.5">
@@ -245,40 +315,84 @@ function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: numb
       <div className="my-3 grid grid-cols-3 gap-2.5">
         <Metric label={`Depreciação ${year}`} value={money(depCur)} />
         <Metric label={`Acumulada até ${year}`} value={money(accCur)} />
-        <Metric label="Saldo restante" value={money(remCur)} accent />
+        {is100 ? (
+          <div className="rounded-lg bg-slate-50 px-3 py-2.5">
+            <div className="text-xs text-slate-500">Saldo — simulado · real</div>
+            <div className="mt-0.5 flex items-baseline gap-1.5">
+              <span className="text-xl font-semibold tabular-nums text-slate-400" title="Saldo pela MACRS (estimado)">{money(saldoSimulado)}</span>
+              <span className="text-slate-300">·</span>
+              <span className="text-xl font-semibold tabular-nums text-[#3B6D11]" title="Saldo real pelo livro">{money(saldoReal)}</span>
+            </div>
+          </div>
+        ) : (
+          <Metric label="Saldo restante" value={money(remCur)} accent />
+        )}
       </div>
 
-      <div className="grid grid-cols-[44px_1fr_88px_88px_88px] items-center gap-2 border-b border-slate-100 pb-1.5 text-[11px] text-slate-400">
-        <div>Ano</div>
-        <div>Depreciação no ano</div>
-        <div className="text-right">Valor</div>
-        <div className="text-right">Acumulada</div>
-        <div className="text-right">Saldo</div>
-      </div>
-      {rows.map((r) => {
-        const isCur = r.year === year;
-        const fut = r.year > year;
-        const part = disposalYear === r.year;
-        const barColor = isCur ? "bg-[#8DC63F]" : fut ? "bg-slate-300" : "bg-[#1f3a5f]";
-        return (
-          <div key={r.year} className="grid grid-cols-[44px_1fr_88px_88px_88px] items-center gap-2 py-1 text-xs">
-            <div className="font-medium text-slate-700">{r.year}</div>
-            <div className="flex items-center gap-2">
-              <div className={`h-3.5 rounded ${barColor}`} style={{ width: `${Math.max(4, (r.amt / max) * 100)}%` }} />
-              {part && (
-                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">parcial (half-year)</span>
-              )}
-              {isCur && !part && (
-                <span className="rounded-full bg-[#8DC63F]/20 px-1.5 py-0.5 text-[10px] text-[#3B6D11]">estimado</span>
-              )}
-              {fut && <span className="text-[10px] text-slate-400">projeção</span>}
-            </div>
-            <div className="text-right tabular-nums text-slate-800">{money(r.amt)}</div>
-            <div className="text-right tabular-nums text-slate-500">{money(r.acc)}</div>
-            <div className="text-right tabular-nums text-slate-500">{money(r.rem)}</div>
+      {is100 ? (
+        /* 100% depreciado: comparativo estimado (MACRS) × real (livro) por ano. */
+        <>
+          <div className="grid grid-cols-[40px_1fr_1fr_1fr_1fr] items-center gap-2 border-b border-slate-100 pb-1.5 text-[11px] text-slate-400">
+            <div>Ano</div>
+            <div className="text-right">Estimado (MACRS)</div>
+            <div className="text-right">Real (livro)</div>
+            <div className="text-right">Acum. real</div>
+            <div className="text-right">Saldo real</div>
           </div>
-        );
-      })}
+          {cmpRows.map((r) => {
+            const fut = r.year > year;
+            return (
+              <div key={r.year} className="grid grid-cols-[40px_1fr_1fr_1fr_1fr] items-center gap-2 py-1 text-xs">
+                <div className="font-medium text-slate-700">{r.year}{fut ? "*" : ""}</div>
+                <div className="text-right tabular-nums text-slate-400">{r.est > 0.005 ? money(r.est) : "—"}</div>
+                <div className={`text-right tabular-nums ${r.real > 0.005 ? "font-medium text-slate-800" : "text-slate-300"}`}>
+                  {r.real > 0.005 ? money(r.real) : "—"}
+                </div>
+                <div className="text-right tabular-nums text-slate-500">{money(r.realAcc)}</div>
+                <div className="text-right tabular-nums text-slate-500">{money(r.saldoReal)}</div>
+              </div>
+            );
+          })}
+          <p className="mt-1 text-[10px] text-slate-400">
+            <span className="text-slate-400">Estimado</span> = MACRS pura (deveria). <span className="text-slate-700">Real</span> ={" "}
+            o que foi lançado no livro. <span className="text-[#3B6D11]">*</span> projeção MACRS após {year}.
+          </p>
+        </>
+      ) : (
+        <>
+          <div className="grid grid-cols-[44px_1fr_88px_88px_88px] items-center gap-2 border-b border-slate-100 pb-1.5 text-[11px] text-slate-400">
+            <div>Ano</div>
+            <div>Depreciação no ano</div>
+            <div className="text-right">Valor</div>
+            <div className="text-right">Acumulada</div>
+            <div className="text-right">Saldo</div>
+          </div>
+          {rows.map((r) => {
+            const isCur = r.year === year;
+            const fut = r.year > year;
+            const part = disposalYear === r.year;
+            const barColor = isCur ? "bg-[#8DC63F]" : fut ? "bg-slate-300" : "bg-[#1f3a5f]";
+            return (
+              <div key={r.year} className="grid grid-cols-[44px_1fr_88px_88px_88px] items-center gap-2 py-1 text-xs">
+                <div className="font-medium text-slate-700">{r.year}</div>
+                <div className="flex items-center gap-2">
+                  <div className={`h-3.5 rounded ${barColor}`} style={{ width: `${Math.max(4, (r.amt / max) * 100)}%` }} />
+                  {part && (
+                    <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">parcial (half-year)</span>
+                  )}
+                  {isCur && !part && (
+                    <span className="rounded-full bg-[#8DC63F]/20 px-1.5 py-0.5 text-[10px] text-[#3B6D11]">estimado</span>
+                  )}
+                  {fut && <span className="text-[10px] text-slate-400">projeção</span>}
+                </div>
+                <div className="text-right tabular-nums text-slate-800">{money(r.amt)}</div>
+                <div className="text-right tabular-nums text-slate-500">{money(r.acc)}</div>
+                <div className="text-right tabular-nums text-slate-500">{money(r.rem)}</div>
+              </div>
+            );
+          })}
+        </>
+      )}
 
       {/* Situação do ativo — dois ajustes manuais, cada um confirmado pelo usuário. */}
       <div className="mt-4 border-t border-slate-100 pt-3">

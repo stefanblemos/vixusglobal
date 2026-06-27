@@ -40,18 +40,16 @@ export default async function AssetsPage({
   // Conferência da depreciação por ano: segue a empresa do select global (company). Só quando uma
   // empresa está selecionada — em "Todas" mostramos a visão agregada.
   const reconData = company ? await buildDepreciationReconciliation(company) : null;
-  // Registro com MACRS PURA (deveria) — para o "Deveria (MACRS)" do modal (regra legal do IRS,
-  // não o valor acelerado do livro). O efetivo (reg) é usado para o "Depreciado (livro)" derivado.
-  const regPure = company ? await buildAssetRegister(year, company, { pureMacrs: true }) : null;
-  const pureScheduleById = new Map((regPure?.assets ?? []).map((a) => [a.id, a.schedule]));
-  // Payload por ativo para o modal "depreciação por ativo no ano": cronograma MACRS + depreciação
-  // real registrada (AssetYearDepreciation) por ano.
-  const actualRows = company
-    ? await prisma.assetYearDepreciation.findMany({
-        where: { asset: { companyId: company } },
-        select: { assetId: true, year: true, amount: true },
-      })
-    : [];
+  // Registro com MACRS PURA (deveria) — para o "Deveria (MACRS)" da conferência (regra legal do IRS,
+  // não o valor acelerado do livro) e para o comparativo estimado×real do modal do ativo. O efetivo
+  // (reg) é usado para o "Depreciado (livro)" derivado. Construído p/ TODOS os ativos da visão.
+  const regPure = await buildAssetRegister(year, company, { pureMacrs: true });
+  const pureScheduleById = new Map(regPure.assets.map((a) => [a.id, a.schedule]));
+  // Depreciação real registrada (AssetYearDepreciation) por ano — p/ a conferência E o modal do ativo.
+  const actualRows = await prisma.assetYearDepreciation.findMany({
+    where: { assetId: { in: reg.assets.map((a) => a.id) } },
+    select: { assetId: true, year: true, amount: true },
+  });
   const actualByAsset = new Map<string, Record<string, number>>();
   for (const r of actualRows) {
     const mp = actualByAsset.get(r.assetId) ?? {};
@@ -276,6 +274,8 @@ export default async function AssetsPage({
           <AssetTimeline
             assets={listAssets}
             year={year}
+            actualByAsset={Object.fromEntries(actualByAsset)}
+            pureScheduleById={Object.fromEntries(pureScheduleById)}
             allAssets={reg.assets.map((a) => ({
               id: a.id,
               companyId: a.companyId,

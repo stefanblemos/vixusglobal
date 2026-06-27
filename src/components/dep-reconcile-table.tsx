@@ -195,7 +195,8 @@ function YearModal({
               O que a MACRS diz que <strong>deveria</strong> ter sido depreciado × o que foi de fato
               lançado no livro. Edite no lápis para registrar o valor real por ativo. Em{" "}
               <strong>Acumulado</strong>, veja o total que deveria vs o real e o <strong>catch-up</strong>{" "}
-              por ativo (quanto lançar para zerar a diferença).
+              por ativo — positivo = falta lançar; negativo = já foi <strong>depreciado a maior</strong>{" "}
+              (atenção, nada a lançar).
             </div>
           </div>
           <button onClick={onClose} aria-label="Fechar" className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700">
@@ -235,9 +236,19 @@ function YearModal({
               <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
                 Depreciado acum. (livro): <span className="font-semibold tabular-nums text-slate-800">{m(totBookAccum)}</span>
               </span>
-              <span className={`rounded-lg px-3 py-1.5 ${Math.abs(totCatchUp) <= 1 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                Catch-up a lançar: <span className="font-semibold tabular-nums">{m(totCatchUp)}</span>
-              </span>
+              {Math.abs(totCatchUp) <= 1 ? (
+                <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-700">
+                  Conciliado: nada a lançar
+                </span>
+              ) : totCatchUp > 0 ? (
+                <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-700">
+                  Catch-up a lançar: <span className="font-semibold tabular-nums">{m(totCatchUp)}</span>
+                </span>
+              ) : (
+                <span className="rounded-lg bg-rose-50 px-3 py-1.5 text-rose-700">
+                  ⚠ Depreciado a maior: <span className="font-semibold tabular-nums">{m(Math.abs(totCatchUp))}</span> — nada a lançar
+                </span>
+              )}
             </>
           )}
         </div>
@@ -315,7 +326,7 @@ function YearModal({
                         {diff == null ? "—" : m(diff)}
                       </td>
                     ) : (
-                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(catchUp) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
+                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(catchUp) <= 1 ? "text-slate-400" : catchUp < 0 ? "font-medium text-rose-700" : "font-medium text-amber-700"}`} title={catchUp < -1 ? "Depreciado a maior — nada a lançar" : undefined}>
                         {m(catchUp)}
                       </td>
                     )}
