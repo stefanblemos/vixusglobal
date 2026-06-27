@@ -11,7 +11,8 @@ export type AssetForRecon = {
   name: string;
   cost: number;
   schedule: { year: number; amount: number }[];
-  actualByYear: Record<string, number>; // ano(string) → depreciação real lançada
+  actualByYear: Record<string, number>; // ano → depreciação real registrada à mão (sobrescreve)
+  derivedByYear: Record<string, number>; // ano → depreciação do livro DERIVADA (totalmente dep./baixa)
 };
 
 const STATUS: Record<ReconStatus, { label: string; cls: string }> = {
@@ -119,17 +120,22 @@ function YearModal({
   const [editing, setEditing] = useState<string | null>(null);
 
   // Só ativos já em serviço no ano (entrada ≤ ano).
+  // Depreciado por ano = manual (sobrescreve) ?? derivado dos sinais cadastrados (totalmente dep./baixa).
+  const bookOf = (a: AssetForRecon, y: number): number | undefined =>
+    a.actualByYear[String(y)] ?? a.derivedByYear[String(y)];
   const rowsForYear = assets
     .map((a) => {
       const acqYear = a.schedule.length ? a.schedule[0].year : year;
       const deveria = a.schedule.find((s) => s.year === year)?.amount ?? 0;
-      const depreciado = a.actualByYear[String(year)];
-      // Acumulado real até o ano = soma dos valores registrados ≤ ano.
-      const accReal = Object.entries(a.actualByYear)
-        .filter(([y]) => Number(y) <= year)
-        .reduce((s, [, v]) => s + v, 0);
+      const manual = a.actualByYear[String(year)];
+      const depreciado = bookOf(a, year);
+      const isDerived = manual == null && depreciado != null;
+      // Acumulado real até o ano = soma do depreciado (manual ?? derivado) ≤ ano.
+      const years = new Set([...Object.keys(a.actualByYear), ...Object.keys(a.derivedByYear)]);
+      let accReal = 0;
+      for (const k of years) if (Number(k) <= year) accReal += bookOf(a, Number(k)) ?? 0;
       const saldoReal = Math.max(0, a.cost - accReal);
-      return { a, acqYear, deveria, depreciado, saldoReal };
+      return { a, acqYear, deveria, depreciado, isDerived, saldoReal };
     })
     .filter((r) => r.acqYear <= year)
     .sort((x, y2) => y2.deveria - x.deveria);
@@ -182,7 +188,7 @@ function YearModal({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rowsForYear.map(({ a, deveria, depreciado, saldoReal }) => {
+              {rowsForYear.map(({ a, deveria, depreciado, isDerived, saldoReal }) => {
                 const diff = depreciado == null ? null : Math.round((deveria - depreciado) * 100) / 100;
                 return (
                   <tr key={a.id}>
@@ -216,6 +222,11 @@ function YearModal({
                           <span className={`tabular-nums ${depreciado == null ? "text-slate-300" : "text-slate-800"}`}>
                             {depreciado == null ? "—" : m(depreciado)}
                           </span>
+                          {isDerived && (
+                            <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] text-emerald-700" title="Vem do cadastro do ativo (totalmente depreciado / baixa). Edite no lápis para sobrescrever.">
+                              cadastro
+                            </span>
+                          )}
                           <button
                             onClick={() => setEditing(a.id)}
                             title="Editar valor depreciado no livro"
@@ -258,9 +269,11 @@ function YearModal({
 
         <p className="mt-2 text-[11px] text-slate-400">
           <strong>Deveria</strong> = MACRS do ano por ativo. <strong>Depreciado</strong> = o que foi
-          lançado no livro (registre no lápis; vazio = ainda não registrado). <strong>Saldo real</strong>{" "}
-          = custo − depreciação real acumulada registrada. A soma de &ldquo;Depreciado&rdquo; deveria
-          bater com o IR declarado no ano.
+          lançado no livro. Quando o ativo já está marcado &ldquo;totalmente depreciado no livro&rdquo;
+          ou &ldquo;baixado&rdquo; (na ficha), o valor vem do <strong>cadastro</strong> automaticamente
+          (badge); o lápis sobrescreve. Vazio = ainda não registrado. <strong>Saldo real</strong> =
+          custo − depreciação real acumulada. A soma de &ldquo;Depreciado&rdquo; deveria bater com o
+          IR declarado no ano.
         </p>
       </div>
     </div>

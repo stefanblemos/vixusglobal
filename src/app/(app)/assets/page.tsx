@@ -55,13 +55,22 @@ export default async function AssetsPage({
     actualByAsset.set(r.assetId, mp);
   }
   const reconAssets = company
-    ? reg.assets.map((a) => ({
-        id: a.id,
-        name: a.name,
-        cost: a.cost,
-        schedule: a.schedule,
-        actualByYear: actualByAsset.get(a.id) ?? {},
-      }))
+    ? reg.assets.map((a) => {
+        // "Depreciado (livro)" derivado dos sinais já cadastrados: se o ativo foi marcado
+        // "totalmente depreciado no livro" ou "baixado", o schedule efetivo (a.schedule) JÁ
+        // reflete o que o livro fez → vira a fonte do depreciado por ano. Entrada manual sobrescreve.
+        const hasBookSignal = a.fullyDepreciatedYear != null || a.disposalDate != null;
+        const derivedByYear: Record<string, number> = {};
+        if (hasBookSignal) for (const s of a.schedule) derivedByYear[String(s.year)] = s.amount;
+        return {
+          id: a.id,
+          name: a.name,
+          cost: a.cost,
+          schedule: a.schedule,
+          actualByYear: actualByAsset.get(a.id) ?? {},
+          derivedByYear,
+        };
+      })
     : [];
   // "Computed vs tax return" (acumulado): filtra para a empresa selecionada, se houver.
   const vsRows = company ? vsIr.rows.filter((r) => r.companyId === company) : vsIr.rows;
