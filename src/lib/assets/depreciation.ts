@@ -65,6 +65,21 @@ export async function buildAssetRegister(
     }),
   ]);
 
+  // Depreciação real registrada por ativo/ano — para o "totalmente depreciado" usar o saldo REAL
+  // (custo − registrado antes do ano), não a MACRS presumida. (No modo pura, o flag é ignorado.)
+  const ayd = pure
+    ? []
+    : await prisma.assetYearDepreciation.findMany({
+        where: { assetId: { in: assets.map((a) => a.id) } },
+        select: { assetId: true, year: true, amount: true },
+      });
+  const aydByAsset = new Map<string, { year: number; amount: number }[]>();
+  for (const r of ayd) {
+    const arr = aydByAsset.get(r.assetId) ?? [];
+    arr.push({ year: r.year, amount: Number(r.amount.toString()) });
+    aydByAsset.set(r.assetId, arr);
+  }
+
   const views: AssetView[] = assets.map((a) => {
     const cost = Number(a.cost.toString());
     const sched = depreciationSchedule({
@@ -77,6 +92,7 @@ export async function buildAssetRegister(
       acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
       // MACRS pura (deveria) ignora os ajustes do livro; o modo padrão (efetivo) os aplica.
       fullyDepreciatedYear: pure ? null : a.fullyDepreciatedYear,
+      bookEntriesBeforeFullDep: aydByAsset.get(a.id) ?? [],
       disposalYear: pure ? null : a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
     });
     const accumulated = accumulatedThrough(sched, year);

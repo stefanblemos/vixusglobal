@@ -25,6 +25,10 @@ export interface AssetInput {
   acquisitionMonth: number; // 1-12 (para mid-month)
   // Contador depreciou tudo no livro até este ano → acumulada = custo aqui, $0 depois.
   fullyDepreciatedYear?: number | null;
+  // Depreciação REAL já lançada no livro nos anos ANTES do fullyDepreciatedYear (registrada por
+  // ativo/ano). O saldo real (custo − isto) é o que entra no ano do "totalmente depreciado" — NÃO a
+  // MACRS presumida. Vazio = nada foi depreciado antes → o custo inteiro entra no ano Y.
+  bookEntriesBeforeFullDep?: { year: number; amount: number }[];
   // Vendido/baixado neste ano → metade da cota no ano da baixa (half-year) e $0 depois.
   disposalYear?: number | null;
 }
@@ -87,10 +91,14 @@ export function depreciationSchedule(a: AssetInput): AssetSchedule {
   // aquisição (Y = ano de aquisição → cota única = custo) ou catch-up acelerado em ano posterior.
   const Y = a.fullyDepreciatedYear;
   if (Y != null && Y >= a.acquisitionYear) {
-    const kept = schedule.filter((s) => s.year < Y);
-    const cumBefore = round2(kept.reduce((s, y) => s + y.amount, 0));
-    const remainder = round2(a.cost - cumBefore);
-    schedule = remainder > 0.005 ? [...kept, { year: Y, amount: remainder }] : kept;
+    // O que o livro REALMENTE depreciou antes de Y (registrado), NÃO a MACRS presumida. O saldo
+    // real (custo − isso) entra no ano Y. Sem registro antes → o custo inteiro cai em Y.
+    const prior = (a.bookEntriesBeforeFullDep ?? [])
+      .filter((p) => p.year < Y)
+      .map((p) => ({ year: p.year, amount: round2(p.amount) }));
+    const priorSum = round2(prior.reduce((s, p) => s + p.amount, 0));
+    const remainder = round2(a.cost - priorSum);
+    schedule = remainder > 0.005 ? [...prior, { year: Y, amount: remainder }] : prior;
   }
 
   // Vendido/baixado no ano D: metade da cota no ano da baixa (half-year) e nada depois.
