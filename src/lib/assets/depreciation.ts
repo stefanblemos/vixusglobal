@@ -83,20 +83,6 @@ export async function buildAssetRegister(
 
   const views: AssetView[] = assets.map((a) => {
     const cost = Number(a.cost.toString());
-    const sched = depreciationSchedule({
-      cost,
-      section179: Number(a.section179.toString()),
-      bonusPct: Number(a.bonusPct.toString()),
-      recoveryYears: Number(a.recoveryYears.toString()),
-      method: a.method === "SL_MM" ? "SL_MM" : a.method === "NONE" ? "NONE" : "MACRS",
-      acquisitionYear: a.acquisitionDate.getUTCFullYear(),
-      acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
-      // MACRS pura (deveria) ignora os ajustes do livro; o modo padrão (efetivo) os aplica.
-      fullyDepreciatedYear: pure ? null : a.fullyDepreciatedYear,
-      bookEntriesBeforeFullDep: aydByAsset.get(a.id) ?? [],
-      disposalYear: pure ? null : a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
-    });
-    const accumulated = accumulatedThrough(sched, year);
     // Ano em que a depreciação REAL do livro (entradas AssetYearDepreciation, da conferência) zerou
     // o ativo — acumulado ≥ custo. Captura o caso "contador expensou 100%" sem a flag fullyDep.
     const bookEntries = (aydByAsset.get(a.id) ?? []).slice().sort((x, y) => x.year - y.year);
@@ -106,6 +92,29 @@ export async function buildAssetRegister(
       bookAcc += e.amount;
       if (bookDepletedYear == null && bookAcc >= cost - 0.01) bookDepletedYear = e.year;
     }
+    // No modo EFETIVO (a dedução real, que alimenta o registro/reserve/preview), o livro também
+    // TRUNCA o cronograma: se o contador já zerou o ativo — pela flag OU pelos lançamentos reais
+    // cobrindo o custo — não há mais nada a depreciar; não projetar MACRS fantasma depois. A MACRS
+    // pura ("deveria") ignora isso. O ano efetivo é o mais cedo entre flag e livro.
+    const effectiveFullyDepYear = pure
+      ? null
+      : a.fullyDepreciatedYear != null && bookDepletedYear != null
+        ? Math.min(a.fullyDepreciatedYear, bookDepletedYear)
+        : (a.fullyDepreciatedYear ?? bookDepletedYear);
+    const sched = depreciationSchedule({
+      cost,
+      section179: Number(a.section179.toString()),
+      bonusPct: Number(a.bonusPct.toString()),
+      recoveryYears: Number(a.recoveryYears.toString()),
+      method: a.method === "SL_MM" ? "SL_MM" : a.method === "NONE" ? "NONE" : "MACRS",
+      acquisitionYear: a.acquisitionDate.getUTCFullYear(),
+      acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
+      // MACRS pura (deveria) ignora os ajustes do livro; o modo padrão (efetivo) os aplica.
+      fullyDepreciatedYear: effectiveFullyDepYear,
+      bookEntriesBeforeFullDep: aydByAsset.get(a.id) ?? [],
+      disposalYear: pure ? null : a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
+    });
+    const accumulated = accumulatedThrough(sched, year);
     return {
       id: a.id,
       companyId: a.companyId,
