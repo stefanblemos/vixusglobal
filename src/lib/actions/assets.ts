@@ -234,6 +234,64 @@ export async function distributeYearDepreciation(formData: FormData): Promise<vo
   revalidatePath("/assets");
 }
 
+// Reverte a "cadeia de eventos" de um ativo: tira a baixa, tira o "totalmente depreciado" e apaga
+// TODOS os valores de depreciação por ano registrados. Volta ao estado limpo (MACRS pura); a base
+// (nome, custo, data, categoria) fica. Para corrigir um cadastro bagunçado e refazer do zero.
+export async function revertAssetEntries(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await prisma.$transaction([
+    prisma.assetYearDepreciation.deleteMany({ where: { assetId: id } }),
+    prisma.fixedAsset.update({ where: { id }, data: { disposalDate: null, fullyDepreciatedYear: null } }),
+  ]);
+  revalidatePath("/assets");
+}
+
+// Mescla dois ativos em um (vieram separados no livro mas são um só). Soma o custo (valor original)
+// e §179, e soma os valores por ano. Mantém o "target" (com nome/data/categoria dele) e deleta o
+// "source". BLOQUEIA se forem incompatíveis: empresa, data de aquisição, método e vida têm que ser
+// iguais (senão a depreciação não combina).
+export async function mergeAssets(formData: FormData): Promise<void> {
+  const targetId = String(formData.get("targetId") ?? "");
+  const sourceId = String(formData.get("sourceId") ?? "");
+  if (!targetId || !sourceId || targetId === sourceId) return;
+  const [target, source] = await Promise.all([
+    prisma.fixedAsset.findUnique({ where: { id: targetId } }),
+    prisma.fixedAsset.findUnique({ where: { id: sourceId } }),
+  ]);
+  if (!target || !source) return;
+  const compatible =
+    target.companyId === source.companyId &&
+    target.acquisitionDate.getTime() === source.acquisitionDate.getTime() &&
+    target.method === source.method &&
+    Number(target.recoveryYears) === Number(source.recoveryYears);
+  if (!compatible) return; // bloqueia
+
+  const srcYears = await prisma.assetYearDepreciation.findMany({ where: { assetId: sourceId } });
+  await prisma.$transaction(async (tx) => {
+    for (const sy of srcYears) {
+      const ex = await tx.assetYearDepreciation.findUnique({
+        where: { assetId_year: { assetId: targetId, year: sy.year } },
+      });
+      const amount = Math.round(((ex ? Number(ex.amount) : 0) + Number(sy.amount)) * 100) / 100;
+      await tx.assetYearDepreciation.upsert({
+        where: { assetId_year: { assetId: targetId, year: sy.year } },
+        create: { assetId: targetId, year: sy.year, amount },
+        update: { amount },
+      });
+    }
+    await tx.fixedAsset.update({
+      where: { id: targetId },
+      data: {
+        cost: Number(target.cost) + Number(source.cost),
+        section179: Number(target.section179) + Number(source.section179),
+      },
+    });
+    await tx.fixedAsset.delete({ where: { id: sourceId } }); // cascade apaga os year-deps do source
+  });
+  revalidatePath("/assets");
+}
+
 export async function deleteAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
   if (id) await prisma.fixedAsset.delete({ where: { id } });

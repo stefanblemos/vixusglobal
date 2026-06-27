@@ -276,7 +276,19 @@ export default async function AssetsPage({
               serviço depois. Selecione um ano a partir da aquisição.
             </div>
           ) : (
-            <AssetTimeline assets={listAssets} year={year} />
+            <AssetTimeline
+              assets={listAssets}
+              year={year}
+              allAssets={reg.assets.map((a) => ({
+                id: a.id,
+                companyId: a.companyId,
+                name: a.name,
+                cost: a.cost,
+                acquisitionDate: a.acquisitionDate,
+                method: a.method,
+                recoveryYears: a.recoveryYears,
+              }))}
+            />
           )}
           <p className="text-xs text-slate-400">
             MACRS GDS half-year tables (Pub. 946); real property is straight-line mid-month. §179 and

@@ -2,7 +2,18 @@
 
 import { useEffect, useState } from "react";
 import type { AssetView } from "@/lib/assets/depreciation";
-import { deleteAsset, renameAsset, setFullyDepreciated, setDisposal } from "@/lib/actions/assets";
+import { deleteAsset, renameAsset, setFullyDepreciated, setDisposal, revertAssetEntries, mergeAssets } from "@/lib/actions/assets";
+
+// Versão leve de ativo (para o seletor de merge) — só o que importa para compatibilidade.
+export type AssetLite = {
+  id: string;
+  companyId: string;
+  name: string;
+  cost: number;
+  acquisitionDate: string;
+  method: string;
+  recoveryYears: number;
+};
 
 // Ficha por ativo: abre ao clicar na lista e mostra a linha do tempo da depreciação
 // (depreciação no ano · acumulada · saldo restante). Baixa/venda e "totalmente depreciado no livro"
@@ -26,7 +37,7 @@ function scheduleRows(a: AssetView): Row[] {
   return out;
 }
 
-export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: number }) {
+export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]; year: number; allAssets: AssetLite[] }) {
   const [selId, setSelId] = useState<string | null>(null);
 
   // Fecha o modal com Esc.
@@ -112,7 +123,7 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
           onClick={() => setSelId(null)}
         >
           <div className="w-full max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <AssetDetail a={sel} year={year} onClose={() => setSelId(null)} />
+            <AssetDetail a={sel} year={year} allAssets={allAssets} onClose={() => setSelId(null)} />
           </div>
         </div>
       )}
@@ -120,7 +131,16 @@ export function AssetTimeline({ assets, year }: { assets: AssetView[]; year: num
   );
 }
 
-function AssetDetail({ a, year, onClose }: { a: AssetView; year: number; onClose?: () => void }) {
+function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: number; allAssets: AssetLite[]; onClose?: () => void }) {
+  // Candidatos a merge: mesma empresa + compatíveis (data, método, vida). Incompatível não aparece.
+  const mergeCandidates = allAssets.filter(
+    (x) =>
+      x.id !== a.id &&
+      x.companyId === a.companyId &&
+      x.acquisitionDate === a.acquisitionDate &&
+      x.method === a.method &&
+      x.recoveryYears === a.recoveryYears,
+  );
   const rows = scheduleRows(a);
   const disposalYear = disposalYearOf(a);
   const accCur = [...rows].filter((r) => r.year <= year).pop()?.acc ?? 0;
@@ -272,18 +292,65 @@ function AssetDetail({ a, year, onClose }: { a: AssetView; year: number; onClose
         </div>
       </div>
 
+      {/* Mesclar com outro ativo compatível (vieram separados no livro mas são um só). */}
+      {mergeCandidates.length > 0 && (
+        <form action={mergeAssets} className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+          <input type="hidden" name="targetId" value={a.id} />
+          <span className="text-xs font-medium text-slate-700">Mesclar com</span>
+          <select name="sourceId" required defaultValue="" className="rounded-lg border border-slate-300 px-2 py-1 text-xs">
+            <option value="" disabled>selecione…</option>
+            {mergeCandidates.map((c) => (
+              <option key={c.id} value={c.id}>{c.name} ({money(c.cost)})</option>
+            ))}
+          </select>
+          <button
+            onClick={(e) => {
+              if (!confirm("Mesclar este ativo com o selecionado? Soma os custos e os valores por ano NESTE ativo e DELETA o outro.")) e.preventDefault();
+            }}
+            className="rounded-lg bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]"
+            title="Soma custo + valores por ano neste ativo e remove o outro (só compatíveis aparecem)"
+          >
+            Mesclar
+          </button>
+          <span className="basis-full text-[11px] text-slate-400">
+            Soma o custo e os valores por ano <strong>neste</strong> ativo (mantém nome/data daqui) e
+            remove o outro. Só aparecem ativos compatíveis (mesma data, método e vida).
+          </span>
+        </form>
+      )}
+
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-3 text-[11px] text-slate-400">
           <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-[#1f3a5f] align-middle" />lançado</span>
           <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-[#8DC63F] align-middle" />estimado (entra no Faturamento)</span>
           <span><span className="mr-1 inline-block h-2.5 w-2.5 rounded-sm bg-slate-300 align-middle" />projeção</span>
         </div>
-        <form action={deleteAsset}>
-          <input type="hidden" name="id" value={a.id} />
-          <button className="text-xs text-slate-300 hover:text-red-600" title="Remover ativo">
-            Remover ✕
-          </button>
-        </form>
+        <div className="flex items-center gap-3">
+          <form action={revertAssetEntries}>
+            <input type="hidden" name="id" value={a.id} />
+            <button
+              onClick={(e) => {
+                if (!confirm("Reverter os lançamentos deste ativo? Remove a baixa, o “totalmente depreciado” e TODOS os valores de depreciação por ano registrados. A base (nome, custo, data) fica. Você pode refazer depois.")) e.preventDefault();
+              }}
+              className="text-xs text-slate-400 hover:text-amber-700"
+              title="Limpar baixa, totalmente depreciado e valores por ano — volta ao estado limpo (MACRS pura)"
+            >
+              ↺ Reverter lançamentos
+            </button>
+          </form>
+          <form action={deleteAsset}>
+            <input type="hidden" name="id" value={a.id} />
+            <button
+              onClick={(e) => {
+                if (!confirm("Remover este ativo? Apaga o ativo e todos os valores registrados dele.")) e.preventDefault();
+              }}
+              className="text-xs text-slate-300 hover:text-red-600"
+              title="Remover ativo"
+            >
+              Remover ✕
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
