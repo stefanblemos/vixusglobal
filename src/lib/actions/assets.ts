@@ -158,11 +158,17 @@ export async function dedupeAssets(formData: FormData): Promise<void> {
   revalidatePath("/assets");
 }
 
-// Renomeia um ativo já cadastrado (nomes do QBO às vezes não ajudam).
+// Edita um ativo já cadastrado: nome (os do QBO às vezes não ajudam) e data de entrada em serviço
+// (cadastros com data errada deslocam toda a projeção MACRS). Cada campo é opcional/independente.
 export async function renameAsset(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
+  if (!id) return;
   const name = String(formData.get("name") ?? "").trim();
-  if (id && name) await prisma.fixedAsset.update({ where: { id }, data: { name: name.slice(0, 200) } });
+  const acq = String(formData.get("acquisitionDate") ?? "").trim();
+  const data: { name?: string; acquisitionDate?: Date } = {};
+  if (name) data.name = name.slice(0, 200);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(acq)) data.acquisitionDate = new Date(`${acq}T00:00:00Z`);
+  if (Object.keys(data).length > 0) await prisma.fixedAsset.update({ where: { id }, data });
   revalidatePath("/assets");
 }
 

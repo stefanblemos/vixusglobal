@@ -185,7 +185,7 @@ function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: numb
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-xl">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <form action={renameAsset} className="flex items-center gap-1.5">
+          <form action={renameAsset} className="flex flex-wrap items-center gap-1.5">
             <input type="hidden" name="id" value={a.id} />
             <input
               name="name"
@@ -193,7 +193,14 @@ function AssetDetail({ a, year, allAssets, onClose }: { a: AssetView; year: numb
               className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 text-base font-medium text-slate-800 hover:border-slate-200 focus:border-sky-300 focus:bg-white focus:outline-none"
               title="Editar nome do ativo"
             />
-            <button className="shrink-0 rounded-lg px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-sky-700" title="Salvar nome">
+            <input
+              type="date"
+              name="acquisitionDate"
+              defaultValue={a.acquisitionDate}
+              className="shrink-0 rounded-lg border border-transparent bg-transparent px-1.5 py-0.5 text-xs text-slate-600 hover:border-slate-200 focus:border-sky-300 focus:bg-white focus:outline-none"
+              title="Editar data de entrada em serviço"
+            />
+            <button className="shrink-0 rounded-lg px-2 py-0.5 text-[11px] text-slate-400 hover:bg-slate-100 hover:text-sky-700" title="Salvar nome e data de entrada">
               salvar
             </button>
           </form>
