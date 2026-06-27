@@ -14,6 +14,7 @@ import {
 import { pnlTotals } from "@/lib/qbo/pnl";
 import { bookDepFromLines } from "@/lib/assets/book-tax-dep";
 import { setManualIrFigure, removeManualIrFigure } from "@/lib/actions/ir";
+import { effectiveFigures } from "@/lib/ir/figures";
 import { buildDistExtracts, reconcileDistributions } from "@/lib/qbo/distributions";
 import { detectYearAlerts, type YearSnapshot } from "@/lib/ir/year-close";
 import { AccountantReport } from "@/components/accountant-report";
@@ -30,12 +31,9 @@ type Owner = {
 
 type Figure = { key: string; label: string; value: number | null; line: string | null };
 type ManualFigure = Figure & { note?: string; addedAt?: string };
-// Mescla figuras lidas + ajustes manuais (manual sobrepõe por key).
-function mergeFigures(parsed: Figure[], manual: ManualFigure[]): Figure[] {
-  if (!manual.length) return parsed;
-  const keys = new Set(manual.map((m) => m.key));
-  return [...parsed.filter((f) => !keys.has(f.key)), ...manual];
-}
+// Mescla figuras lidas + ajustes manuais via o helper compartilhado (fonte única).
+const mergeFigures = (parsed: Figure[], manual: ManualFigure[]): Figure[] =>
+  effectiveFigures(parsed, manual) as Figure[];
 type Pnl = ReturnType<typeof pnlTotals>;
 type CmpRow = {
   label: string;
@@ -443,6 +441,7 @@ export default async function CompanyYearPage({
       owners: true,
       k1sReceived: true,
       figures: true,
+      manualFigures: true,
     },
   });
   const k1Omissions = reconcileK1s(allK1Returns as unknown as K1Return[], companies).filter(
@@ -488,7 +487,7 @@ export default async function CompanyYearPage({
           taxForm: latestIr.taxForm,
           taxTreatment: latestIr.taxTreatment,
           entityType: latestIr.entityType,
-          figures: (latestIr.figures as Figure[] | null) ?? [],
+          figures: mergeFigures((latestIr.figures as Figure[] | null) ?? [], (latestIr.manualFigures as ManualFigure[] | null) ?? []),
           owners: (latestIr.owners as Owner[] | null) ?? [],
         })
       : [];

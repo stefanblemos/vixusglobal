@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { pnlTotals } from "@/lib/qbo/pnl";
+import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 // Achados determinísticos para o report ao contador: o app encontra (números nossos),
 // a IA só redige depois. Cruza o IR mais recente do ano com o P&L do QBO e a Schedule M-1.
@@ -62,7 +63,7 @@ export async function buildReportFindings(companyId: string, year: number): Prom
   };
   if (!ir) return base;
 
-  const figures = ((ir.figures as Figure[] | null) ?? []).filter(Boolean);
+  const figures = (effectiveFiguresOf(ir) as Figure[]).filter(Boolean);
   const figVal = (k: string) => figures.find((f) => f.key === k)?.value ?? null;
   const irRevenue = figVal("GROSS_RECEIPTS");
   const irCogs = figVal("COST_OF_GOODS");

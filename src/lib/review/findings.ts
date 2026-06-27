@@ -6,6 +6,7 @@ import {
   type K1Company,
 } from "@/lib/ir/k1-reconcile";
 import { booksIncomeNotOnReturnOf, type Figure } from "@/lib/ir/income-bridge";
+import { effectiveFiguresOf } from "@/lib/ir/figures";
 import { pnlTotals } from "@/lib/qbo/pnl";
 
 // Uma divergência/pendência detectada — para a fila de conferência consolidada.
@@ -51,6 +52,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
         owners: true,
         k1sReceived: true,
         figures: true,
+        manualFigures: true,
         isFinalReturn: true,
       },
     }),
@@ -124,7 +126,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
     if (!r.companyId || r.year == null) continue;
     const oi = otherIncomeByKey.get(`${r.companyId}:${r.year}`);
     if (oi == null) continue;
-    const gap = booksIncomeNotOnReturnOf((r.figures as Figure[] | null) ?? [], oi);
+    const gap = booksIncomeNotOnReturnOf(effectiveFiguresOf(r) as Figure[], oi);
     if (gap == null) continue;
     findings.push({
       companyId: r.companyId,

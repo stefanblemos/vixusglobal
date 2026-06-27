@@ -1,5 +1,6 @@
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 import { normalizeName } from "@/lib/qbo/match";
+import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 // Conciliação intercompany de K-1 × 1065, a nível da holding inteira.
 //
@@ -37,6 +38,7 @@ export type K1Return = {
   owners: K1Owner[] | null;
   k1sReceived: K1Received[] | null;
   figures?: K1Figure[] | null;
+  manualFigures?: K1Figure[] | null; // ajustes manuais auditáveis (sobrepõem figures por key)
 };
 
 export type K1Status =
@@ -238,7 +240,8 @@ export function reconcileK1s(returns: K1Return[], companies: K1Company[]): K1Edg
     const at = k.lastIndexOf("@");
     const recipientId = k.slice(0, at);
     const year = Number(k.slice(at + 1));
-    const line4 = lineFourOf(getReturn(recipientId, year)?.figures);
+    const rr = getReturn(recipientId, year);
+    const line4 = lineFourOf(rr ? (effectiveFiguresOf(rr) as K1Figure[]) : null);
     if (line4 == null) continue;
     const itemized = group
       .filter((e) => e.recipientAmount != null)

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { normalizeName } from "@/lib/qbo/match";
+import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 // Números-chave do IR que entram no snapshot (comparáveis entre reenvios).
 const SNAPSHOT_FIGURE_KEYS = [
@@ -68,7 +69,7 @@ export async function buildYearSnapshot(companyId: string, year: number): Promis
     registeredOwnersAsOf(companyId, year),
   ]);
 
-  const irFigures = (latestIr?.figures as Figure[] | null) ?? [];
+  const irFigures = latestIr ? (effectiveFiguresOf(latestIr) as Figure[]) : [];
   const figVal = (k: string) => irFigures.find((f) => f.key === k);
   const figures: SnapshotFigure[] = SNAPSHOT_FIGURE_KEYS.map((k) => {
     const f = figVal(k);

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildAssetRegister } from "./depreciation";
+import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 // Conferência da depreciação por empresa, ano a ano: o que o MACRS diz que DEVERIA ter sido
 // depreciado em cada ano × o que o contador realmente lançou no IR (Form 4562) — e o acumulado
@@ -52,13 +53,15 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
     }
   }
 
-  // IR lançado por ano (figura DEPRECIATION do retorno).
-  const returns = await prisma.taxReturn.findMany({ where: { companyId }, select: { year: true, figures: true } });
+  // IR lançado por ano (figura DEPRECIATION do retorno) — usando as figuras EFETIVAS (com ajuste manual).
+  const returns = await prisma.taxReturn.findMany({
+    where: { companyId },
+    select: { year: true, figures: true, manualFigures: true },
+  });
   const irByYear = new Map<number, number>();
   for (const ret of returns) {
     if (ret.year == null) continue;
-    const figs = (ret.figures as { key?: string; value?: number | null }[] | null) ?? [];
-    const d = figs.find((f) => f.key === "DEPRECIATION" && f.value != null);
+    const d = effectiveFiguresOf(ret).find((f) => f.key === "DEPRECIATION" && f.value != null);
     if (d && d.value != null) irByYear.set(ret.year, Math.abs(Number(d.value)));
   }
 

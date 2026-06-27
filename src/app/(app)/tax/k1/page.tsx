@@ -82,6 +82,7 @@ export default async function K1ReconcilePage() {
         owners: true,
         k1sReceived: true,
         figures: true,
+        manualFigures: true,
       },
     }),
     prisma.company.findMany({
