@@ -39,6 +39,7 @@ function scheduleRows(a: AssetView): Row[] {
 
 export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]; year: number; allAssets: AssetLite[] }) {
   const [selId, setSelId] = useState<string | null>(null);
+  const [showDepleted, setShowDepleted] = useState(false);
 
   // Fecha o modal com Esc.
   useEffect(() => {
@@ -57,8 +58,34 @@ export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]
 
   const sel = selId ? (assets.find((a) => a.id === selId) ?? null) : null;
 
+  // 100% depreciado em ANO ANTERIOR: o cronograma terminou antes do ano selecionado (saldo 0, sem
+  // previsão). Terreno (schedule vazio) não conta. Ocultos por padrão; checkbox mostra, com a contagem.
+  const isDepleted = (a: AssetView) => {
+    const last = a.schedule.length ? a.schedule[a.schedule.length - 1].year : null;
+    return last != null && last < year;
+  };
+  const depletedCount = assets.filter(isDepleted).length;
+  const visible = showDepleted ? assets : assets.filter((a) => !isDepleted(a));
+
   return (
     <>
+      {depletedCount > 0 && (
+        <div className="flex justify-end">
+          <label className="flex items-center gap-2 text-xs text-slate-500">
+            <input
+              type="checkbox"
+              checked={showDepleted}
+              onChange={(e) => setShowDepleted(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Mostrar 100% depreciados
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-600">
+              {depletedCount} oculto{depletedCount > 1 ? "s" : ""}
+            </span>
+          </label>
+        </div>
+      )}
+
       {/* Lista de ativos em tabela (clicável) — clique na linha abre a ficha em modal */}
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -74,7 +101,7 @@ export function AssetTimeline({ assets, year, allAssets }: { assets: AssetView[]
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {assets.map((a) => {
+            {visible.map((a) => {
               const rows = scheduleRows(a);
               const dispYr = disposalYearOf(a);
               // Valores do ano selecionado (baixa já embutida no schedule).
