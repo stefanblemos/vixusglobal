@@ -51,6 +51,7 @@ const NAV: Entry[] = [
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/parties", label: "Owners", icon: Users },
       { href: "/org-chart", label: "Org chart", icon: Network },
+      { href: "/assets", label: "Assets & depreciation", icon: Boxes },
     ],
   },
   {
@@ -73,7 +74,6 @@ const NAV: Entry[] = [
       { href: "/tax", label: "Tax", icon: ReceiptText },
       { href: "/tax-preview", label: "Tax preview", icon: Calculator },
       { href: "/1099", label: "1099 worklist", icon: FileText },
-      { href: "/assets", label: "Assets & depreciation", icon: Boxes },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
       { href: "/florida", label: "Florida tax", icon: Landmark },
       { href: "/tax-settings", label: "Tax settings", icon: Settings },
