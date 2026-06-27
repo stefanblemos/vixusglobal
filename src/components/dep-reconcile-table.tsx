@@ -118,6 +118,8 @@ function YearModal({
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
+  const [view, setView] = useState<"ano" | "acum">("ano"); // por ano × acumulado (catch-up)
+  const r2 = (n: number) => Math.round(n * 100) / 100;
 
   // Só ativos já em serviço no ano (entrada ≤ ano).
   // Depreciado por ano = manual (sobrescreve) ?? derivado dos sinais cadastrados (totalmente dep./baixa).
@@ -140,7 +142,11 @@ function YearModal({
         if (Number(k) < year) accBefore += v;
       }
       const saldoReal = Math.max(0, a.cost - accReal);
-      return { a, acqYear, deveria, depreciado, isDerived, saldoReal, accBefore };
+      // Acumulados (até o ano): MACRS que DEVERIA × o que foi de fato lançado → catch-up por ativo.
+      const macrsAccum = r2(a.macrsSchedule.reduce((s, x) => (x.year <= year ? s + x.amount : s), 0));
+      const bookAccum = r2(accReal);
+      const catchUp = r2(macrsAccum - bookAccum);
+      return { a, acqYear, deveria, depreciado, isDerived, saldoReal, accBefore, macrsAccum, bookAccum, catchUp };
     })
     // Em serviço no ano E ainda não totalmente baixado no livro ANTES deste ano (se já zerou em ano
     // anterior, sai do modal — não ocupa espaço; continua na lista de ativos).
@@ -150,6 +156,10 @@ function YearModal({
   const totDeveria = rowsForYear.reduce((s, r) => s + r.deveria, 0);
   const totDepreciado = rowsForYear.reduce((s, r) => s + (r.depreciado ?? 0), 0);
   const registrados = rowsForYear.filter((r) => r.depreciado != null).length;
+  // Totais acumulados (visão "Acumulado").
+  const totMacrsAccum = r2(rowsForYear.reduce((s, r) => s + r.macrsAccum, 0));
+  const totBookAccum = r2(rowsForYear.reduce((s, r) => s + r.bookAccum, 0));
+  const totCatchUp = r2(totMacrsAccum - totBookAccum);
   // Match livro × IR declarado: a soma do que foi alocado por ativo deve bater com o que o contador
   // declarou no ano (mesmo que NÃO bata com a MACRS). Diferença = quanto ainda falta alocar/conciliar.
   const matchDiff = irForYear == null ? null : Math.round((irForYear - totDepreciado) * 100) / 100;
@@ -183,7 +193,9 @@ function YearModal({
             <div className="text-base font-medium text-slate-800">Depreciação por ativo — {year}</div>
             <div className="mt-0.5 text-xs text-slate-500">
               O que a MACRS diz que <strong>deveria</strong> ter sido depreciado × o que foi de fato
-              lançado no livro. Edite no lápis para registrar o valor real por ativo.
+              lançado no livro. Edite no lápis para registrar o valor real por ativo. Em{" "}
+              <strong>Acumulado</strong>, veja o total que deveria vs o real e o <strong>catch-up</strong>{" "}
+              por ativo (quanto lançar para zerar a diferença).
             </div>
           </div>
           <button onClick={onClose} aria-label="Fechar" className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700">
@@ -191,19 +203,43 @@ function YearModal({
           </button>
         </div>
 
-        {/* Referência do ano */}
-        <div className="my-3 flex flex-wrap gap-2 text-xs">
-          <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-            MACRS do ano (deveria): <span className="font-semibold tabular-nums text-slate-800">{m(macrsForYear)}</span>
-          </span>
-          <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-            IR declarado no ano:{" "}
-            <span className="font-semibold tabular-nums text-slate-800">{irForYear == null ? "—" : m(irForYear)}</span>
-          </span>
-          <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-            Registrado por ativo: <span className="font-semibold tabular-nums text-slate-800">{m(totDepreciado)}</span>{" "}
-            ({registrados}/{rowsForYear.length})
-          </span>
+        {/* Toggle por ano × acumulado + referência */}
+        <div className="my-3 flex flex-wrap items-center gap-2 text-xs">
+          <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
+            <button onClick={() => setView("ano")} className={`px-3 py-1.5 ${view === "ano" ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+              Por ano
+            </button>
+            <button onClick={() => setView("acum")} className={`px-3 py-1.5 ${view === "acum" ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+              Acumulado
+            </button>
+          </div>
+          {view === "ano" ? (
+            <>
+              <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
+                MACRS do ano (deveria): <span className="font-semibold tabular-nums text-slate-800">{m(macrsForYear)}</span>
+              </span>
+              <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
+                IR declarado no ano:{" "}
+                <span className="font-semibold tabular-nums text-slate-800">{irForYear == null ? "—" : m(irForYear)}</span>
+              </span>
+              <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
+                Registrado por ativo: <span className="font-semibold tabular-nums text-slate-800">{m(totDepreciado)}</span>{" "}
+                ({registrados}/{rowsForYear.length})
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
+                MACRS acum. (deveria) até {year}: <span className="font-semibold tabular-nums text-slate-800">{m(totMacrsAccum)}</span>
+              </span>
+              <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
+                Depreciado acum. (livro): <span className="font-semibold tabular-nums text-slate-800">{m(totBookAccum)}</span>
+              </span>
+              <span className={`rounded-lg px-3 py-1.5 ${Math.abs(totCatchUp) <= 1 ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                Catch-up a lançar: <span className="font-semibold tabular-nums">{m(totCatchUp)}</span>
+              </span>
+            </>
+          )}
         </div>
 
         <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -212,22 +248,28 @@ function YearModal({
               <tr>
                 <th className="px-3 py-2 font-medium">Ativo</th>
                 <th className="px-3 py-2 text-right font-medium">Valor original</th>
-                <th className="px-3 py-2 text-right font-medium">Deveria (MACRS)</th>
-                <th className="px-3 py-2 text-right font-medium">Depreciado (livro)</th>
-                <th className="px-3 py-2 text-right font-medium">Diferença</th>
+                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Deveria (MACRS)" : "MACRS acum. (deveria)"}</th>
+                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Depreciado (livro)" : "Depreciado acum. (livro)"}</th>
+                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Diferença" : "Catch-up"}</th>
                 <th className="px-3 py-2 text-right font-medium">Saldo real</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {rowsForYear.map(({ a, deveria, depreciado, isDerived, saldoReal }) => {
+              {rowsForYear.map(({ a, deveria, depreciado, isDerived, saldoReal, macrsAccum, bookAccum, catchUp }) => {
                 const diff = depreciado == null ? null : Math.round((deveria - depreciado) * 100) / 100;
                 return (
                   <tr key={a.id}>
                     <td className="px-3 py-2 font-medium text-slate-700">{a.name}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">{m0(a.cost)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">{deveria ? m(deveria) : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
+                      {view === "ano" ? (deveria ? m(deveria) : "—") : macrsAccum ? m(macrsAccum) : "—"}
+                    </td>
                     <td className="px-3 py-2 text-right">
-                      {editing === a.id ? (
+                      {view === "acum" ? (
+                        <span className={`tabular-nums ${bookAccum > 0.005 ? "text-slate-800" : "text-slate-300"}`}>
+                          {bookAccum > 0.005 ? m(bookAccum) : "—"}
+                        </span>
+                      ) : editing === a.id ? (
                         <form
                           action={setAssetYearDepreciation}
                           onSubmit={() => setTimeout(() => setEditing(null), 50)}
@@ -268,9 +310,15 @@ function YearModal({
                         </div>
                       )}
                     </td>
-                    <td className={`px-3 py-2 text-right tabular-nums ${diff == null ? "text-slate-300" : Math.abs(diff) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
-                      {diff == null ? "—" : m(diff)}
-                    </td>
+                    {view === "ano" ? (
+                      <td className={`px-3 py-2 text-right tabular-nums ${diff == null ? "text-slate-300" : Math.abs(diff) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
+                        {diff == null ? "—" : m(diff)}
+                      </td>
+                    ) : (
+                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(catchUp) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
+                        {m(catchUp)}
+                      </td>
+                    )}
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">{m(saldoReal)}</td>
                   </tr>
                 );
@@ -288,9 +336,11 @@ function YearModal({
                 <tr>
                   <td className="px-3 py-2 font-medium">Total</td>
                   <td></td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m(totDeveria)}</td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m(totDepreciado)}</td>
-                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m(Math.round((totDeveria - totDepreciado) * 100) / 100)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m(view === "ano" ? totDeveria : totMacrsAccum)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">{m(view === "ano" ? totDepreciado : totBookAccum)}</td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums">
+                    {m(view === "ano" ? Math.round((totDeveria - totDepreciado) * 100) / 100 : totCatchUp)}
+                  </td>
                   <td></td>
                 </tr>
               </tfoot>
