@@ -2,10 +2,12 @@ import Link from "next/link";
 import {
   buildTaxReserve,
   buildQuarterlyReserve,
+  buildReserveByEntity,
   reserveYears,
   QUARTER_DUE,
 } from "@/lib/tax/reserve";
-import { setReserveRate, lockReserveYear, unlockReserveYear } from "@/lib/actions/reserve";
+import { ReserveEntityTable } from "@/components/reserve-entity";
+import { lockReserveYear, unlockReserveYear } from "@/lib/actions/reserve";
 import { prisma } from "@/lib/db";
 import { YearSelect } from "@/components/year-select";
 import { CompletenessModal } from "@/components/completeness-modal";
@@ -34,14 +36,14 @@ export default async function ReservePage({
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
   const TABS = [
     { key: "quarterly", label: "Quarterly" },
-    { key: "annual", label: "Annual" },
-    { key: "owners", label: "Owners / K-1" },
+    { key: "annual", label: "By entity" },
   ];
   const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "quarterly";
 
-  const [{ rows, flow }, { rows: qRows }, { rows: breakdown }, completeness, depositList] =
+  const [{ rows }, byEntity, { rows: qRows }, { rows: breakdown }, completeness, depositList] =
     await Promise.all([
       buildTaxReserve(year),
+      buildReserveByEntity(year),
       buildQuarterlyReserve(year),
       buildQuarterlyBreakdown(year),
       buildGroupCompleteness(year),
@@ -69,10 +71,6 @@ export default async function ReservePage({
   // Total a reservar por moeda (não dá pra somar USD + BRL + EUR).
   const totals = new Map<string, number>();
   for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.reserve);
-  const anyAssets = rows.some((r) => r.hasAssets);
-  // Comparação da compensação (em USD): reserva por empresa (sem abater) × net por dono.
-  const grossUsd = rows.filter((r) => r.currency === "USD").reduce((s, r) => s + r.reserve, 0);
-  const netUsd = flow.reduce((s, f) => s + f.reserve, 0);
 
   return (
     <div className="space-y-6">
@@ -263,167 +261,27 @@ export default async function ReservePage({
           )}
 
           {tab === "annual" && (
-          <>
-          <h2 className="text-lg font-medium text-slate-800">
-            Annual — depreciation-adjusted, with loss compensation
-          </h2>
-          <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-slate-500">
-                <tr>
-                  <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-3 py-2 text-right font-medium">Book profit</th>
-                  {anyAssets && (
-                    <th className="px-3 py-2 text-right font-medium">Depreciation book → tax</th>
-                  )}
-                  <th className="px-3 py-2 text-right font-medium">Taxable profit</th>
-                  <th className="px-3 py-2 text-right font-medium">Rate</th>
-                  <th className="px-4 py-2 text-right font-medium">Reserve</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {rows.map((r) => (
-                  <tr key={r.companyId} className="hover:bg-slate-50">
-                    <td className="px-4 py-2">
-                      <Link
-                        href={`/companies/${r.companyId}`}
-                        className="font-medium text-[#1f3a5f] hover:underline"
-                      >
-                        {r.name}
-                      </Link>
-                      <div className="text-xs text-slate-400">
-                        {r.importId ? (
-                          <Link href={`/import/${r.importId}`} className="hover:underline">
-                            {r.periodLabel}
-                          </Link>
-                        ) : (
-                          r.periodLabel
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-3 py-2 text-right tabular-nums text-slate-700">
-                      {money(r.profit, r.currency)}
-                    </td>
-                    {anyAssets && (
-                      <td className="px-3 py-2 text-right text-xs tabular-nums">
-                        {!r.hasAssets ? (
-                          <span className="text-slate-300">—</span>
-                        ) : r.macrsApplied ? (
-                          <span
-                            className="text-rose-600"
-                            title={`P&L sem depreciação — aplicada a depreciação REAL dos ativos (${money(r.taxDep, r.currency)}; registrada na conferência, ou MACRS se não houver) na base`}
-                          >
-                            deprec. −{money(r.taxDep, r.currency)}
-                          </span>
-                        ) : (
-                          <span
-                            className="text-slate-400"
-                            title={`O P&L já traz depreciação (${money(r.bookDep, r.currency)}) — confia no livro; conferência compara com a MACRS`}
-                          >
-                            confia no livro
-                          </span>
-                        )}
-                      </td>
-                    )}
-                    <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-800">
-                      {money(r.taxableProfit, r.currency)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      <form action={setReserveRate} className="flex items-center justify-end gap-1">
-                        <input type="hidden" name="companyId" value={r.companyId} />
-                        <input
-                          type="number"
-                          name="ratePct"
-                          defaultValue={r.ratePct}
-                          step="0.5"
-                          min="0"
-                          max="100"
-                          className={`w-14 rounded border px-1.5 py-0.5 text-right text-xs ${
-                            r.hasOverride ? "border-[#1f3a5f] text-[#1f3a5f]" : "border-slate-200"
-                          }`}
-                        />
-                        <button className="rounded border border-slate-300 px-1.5 py-0.5 text-xs text-slate-600 hover:bg-slate-100">
-                          set
-                        </button>
-                      </form>
-                    </td>
-                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
-                      {money(r.reserve, r.currency)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot className="border-t-2 border-slate-200 bg-slate-50/60">
-                {[...totals.entries()].map(([ccy, total]) => (
-                  <tr key={ccy}>
-                    <td className="px-4 py-2 font-medium text-slate-700" colSpan={anyAssets ? 5 : 4}>
-                      Total to move into the reserve account ({ccy})
-                    </td>
-                    <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
-                      {money(total, ccy)}
-                    </td>
-                  </tr>
-                ))}
-              </tfoot>
-            </table>
-          </div>
-          </>
-          )}
-
-          {tab === "owners" && flow.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-lg font-medium text-slate-800">
-                Profit flow to owners — with loss compensation
-              </h2>
-              <p className="text-sm text-slate-500">
-                Each company&apos;s taxable profit (or loss) attributed to its direct owners. Losses
-                offset profits at the owner level, so the reserve is on the net base — not on each
-                profit alone.
-              </p>
-              <div className="grid grid-cols-3 gap-3">
-                <Stat label="Gross reserve (USD, no offset)" value={money(grossUsd, "USD")} muted />
-                <Stat label="After loss compensation" value={money(netUsd, "USD")} />
-                <Stat label="Saved by offsetting losses" value={money(grossUsd - netUsd, "USD")} good />
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-lg font-medium text-slate-800">By entity — same base as the Tax preview</h2>
+                <p className="text-sm text-slate-500">
+                  Reserva por entidade sobre a <strong>mesma base</strong> do Tax preview (lucro book +
+                  ajustes + depreciação real + K-1 cascateado). C-corp reserva 21% sobre a base (incl.
+                  K-1 recebido); pessoa física na taxa de provisão; pass-through repassa (prejuízos
+                  compensam pela cascata). Clique numa linha para o passo a passo.
+                </p>
               </div>
-              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-slate-500">
-                    <tr>
-                      <th className="px-4 py-2 font-medium">Owner</th>
-                      <th className="px-4 py-2 font-medium">From (profit / loss)</th>
-                      <th className="px-4 py-2 text-right font-medium">Net base</th>
-                      <th className="px-4 py-2 text-right font-medium">Reserve ({flow[0]?.ratePct ?? 0}%)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {flow.map((f) => (
-                      <tr key={f.name}>
-                        <td className="px-4 py-2 font-medium text-slate-700">{f.name}</td>
-                        <td className="px-4 py-2 text-xs text-slate-500">
-                          {f.from.map((x, i) => (
-                            <span key={i}>
-                              {i > 0 && " · "}
-                              {x.company} (
-                              <span className={x.amount < 0 ? "text-rose-600" : "text-slate-500"}>
-                                {money(x.amount, "USD")}
-                              </span>
-                              )
-                            </span>
-                          ))}
-                        </td>
-                        <td
-                          className={`px-4 py-2 text-right tabular-nums ${f.net < 0 ? "text-rose-600" : "text-slate-800"}`}
-                        >
-                          {money(f.net, "USD")}
-                        </td>
-                        <td className="px-4 py-2 text-right font-semibold tabular-nums text-slate-900">
-                          {money(f.reserve, "USD")}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <Stat label={`Total to reserve (${year})`} value={money(byEntity.totalReserve, "USD")} good />
+                <Stat label="C-corps (21%)" value={money(byEntity.corpReserve, "USD")} />
+                <Stat label="Individuals (provision)" value={money(byEntity.ownerReserve, "USD")} />
               </div>
+              {byEntity.excludedNonUsd.length > 0 && (
+                <p className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                  Fora deste cálculo (federal US, só USD): {byEntity.excludedNonUsd.join(", ")} — tributadas no próprio país.
+                </p>
+              )}
+              <ReserveEntityTable rows={byEntity.rows} locked={locked} />
             </section>
           )}
 

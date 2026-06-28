@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { GLOBAL_RATE_KEY, buildTaxReserve, buildQuarterlyReserve } from "@/lib/tax/reserve";
+import { GLOBAL_RATE_KEY, buildReserveByEntity, buildQuarterlyReserve } from "@/lib/tax/reserve";
 
 // Define a alíquota de reserva (default global ou override por empresa).
 // companyId vazio/"GLOBAL" = default; vazio o rate numa empresa = remove o override.
@@ -91,18 +91,21 @@ export async function setTaxRateYear(formData: FormData): Promise<void> {
 export async function lockReserveYear(formData: FormData): Promise<void> {
   const year = Number(String(formData.get("year") ?? ""));
   if (!Number.isInteger(year)) return;
-  const [{ rows, flow }, { rows: qRows }] = await Promise.all([
-    buildTaxReserve(year),
+  const [byEntity, { rows: qRows }] = await Promise.all([
+    buildReserveByEntity(year),
     buildQuarterlyReserve(year),
   ]);
   const snapshot = {
-    perCompany: rows.map((r) => ({
+    totalReserve: byEntity.totalReserve,
+    corpReserve: byEntity.corpReserve,
+    ownerReserve: byEntity.ownerReserve,
+    perEntity: byEntity.rows.map((r) => ({
       name: r.name,
-      currency: r.currency,
-      taxableProfit: r.taxableProfit,
+      entityType: r.entityType,
+      taxable: r.taxable,
+      reserveRate: r.reserveRate,
       reserve: r.reserve,
     })),
-    flow: flow.map((f) => ({ name: f.name, net: f.net, reserve: f.reserve })),
     quarterly: qRows.map((q) => ({
       name: q.name,
       currency: q.currency,

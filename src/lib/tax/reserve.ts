@@ -5,6 +5,7 @@ import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
 import { buildTreatmentResolver, isCorpTreatment, type TreatmentResolver } from "@/lib/tax/treatment";
 import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
+import { buildTaxPreview, type TaxPreviewRow } from "@/lib/tax/preview";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
 const DEFAULT_RATE = 30;
@@ -450,4 +451,58 @@ export async function companyReserve(companyId: string, year: number, taxTreatme
   const ratePct = classRate(taxTreatment, override, companyId, yr);
   const reserve = profit != null && profit > 0 ? (profit * ratePct) / 100 : 0;
   return { profit, periodLabel, importId, ratePct, hasOverride, reserve };
+}
+
+// RESERVE POR ENTIDADE — fonte ÚNICA da base: consome o motor do Tax preview (lucro book + ajustes
+// + depreciação real + K-1 cascateado, cada entidade na sua classe), e aplica POR CIMA a alíquota de
+// PROVISÃO do reserve (conservadora): C-corp paga 21% sobre a base (incl. K-1 recebido); pessoa
+// física reserva passPct (default 30%) sobre a base já líquida da cascata (prejuízos compensam);
+// pass-through repassa (0 no nível). Override por empresa vence a classe. Corrige a dupla-contagem,
+// a alíquota errada do dono C-corp e o K-1 que não entrava na base.
+export type ReserveEntityRow = TaxPreviewRow & {
+  reserveRate: number; // alíquota de provisão aplicada
+  reserve: number; // caixa a reservar (0 p/ pass-through, que repassa)
+  hasOverride: boolean;
+};
+
+export interface ReserveByEntity {
+  year: number;
+  rows: ReserveEntityRow[];
+  totalReserve: number;
+  corpReserve: number; // soma das C-corp
+  ownerReserve: number; // soma das pessoas (PF)
+  excludedNonUsd: string[];
+  missingPnl: string[];
+}
+
+export async function buildReserveByEntity(year: number): Promise<ReserveByEntity> {
+  const [preview, { override }, yr] = await Promise.all([
+    buildTaxPreview(year),
+    rateConfig(),
+    yearRates(year),
+  ]);
+  const rows: ReserveEntityRow[] = preview.rows.map((r) => {
+    const hasOverride = r.kind === "company" && override.has(r.id);
+    const reserveRate = hasOverride
+      ? override.get(r.id)!
+      : r.entityType === "C-corp"
+        ? yr.corpPct
+        : r.entityType === "PF"
+          ? yr.passPct
+          : 0; // pass-through repassa
+    const reserve =
+      r.entityType === "Pass-through" ? 0 : Math.round(Math.max(0, r.taxable) * reserveRate) / 100;
+    return { ...r, reserveRate, reserve, hasOverride };
+  });
+  const sum = (f: (r: ReserveEntityRow) => boolean) =>
+    Math.round(rows.filter(f).reduce((s, r) => s + r.reserve, 0) * 100) / 100;
+  return {
+    year,
+    rows,
+    totalReserve: sum(() => true),
+    corpReserve: sum((r) => r.entityType === "C-corp"),
+    ownerReserve: sum((r) => r.entityType === "PF"),
+    excludedNonUsd: preview.excludedNonUsd,
+    missingPnl: preview.missingPnl,
+  };
 }
