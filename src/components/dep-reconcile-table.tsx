@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { formatMoney } from "@/lib/money";
 import type { ReconYearRow, ReconStatus } from "@/lib/assets/reconcile-dep";
@@ -56,40 +56,57 @@ export function DepReconcileTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {rows.map((r) => {
+            {rows.map((r, i) => {
               const st = STATUS[r.status];
               const future = r.year > throughYear;
+              // 1ª linha após o último ano declarado → divisor "projeção".
+              const showDivider = r.beyondFiled && !(rows[i - 1]?.beyondFiled ?? false);
               return (
-                <tr
-                  key={r.year}
-                  onClick={() => setOpenYear(r.year)}
-                  className={`cursor-pointer hover:bg-sky-50/60 ${r.status === "faltou" ? "bg-red-50/40" : future ? "text-slate-400" : ""}`}
-                  title="Clique para ver e registrar a depreciação por ativo neste ano"
-                >
-                  <td className="px-4 py-2 font-medium">{r.year}{future ? " (proj.)" : ""}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.macrs ? m(r.macrs) : "—"}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-500">{m(r.macrsAccum)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{r.ir == null ? "—" : m(r.ir)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-500">{m(r.irAccum)}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(r.accumDiff) <= 1 ? "text-slate-400" : "font-medium text-amber-700"}`}>
-                    {m(r.accumDiff)}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
-                  </td>
-                  <td className="px-2 py-2 text-right text-slate-300">›</td>
-                </tr>
+                <Fragment key={r.year}>
+                  {showDivider && (
+                    <tr className="bg-slate-50/70">
+                      <td colSpan={8} className="px-4 py-1.5 text-[11px] font-medium text-slate-400">
+                        Projeção — anos ainda não declarados (depreciação normal a lançar; não é atraso)
+                      </td>
+                    </tr>
+                  )}
+                  <tr
+                    onClick={() => setOpenYear(r.year)}
+                    className={`cursor-pointer hover:bg-sky-50/60 ${r.status === "faltou" ? "bg-red-50/40" : r.beyondFiled ? "text-slate-400" : ""}`}
+                    title="Clique para ver e registrar a depreciação por ativo neste ano"
+                  >
+                    <td className="px-4 py-2 font-medium">{r.year}{future ? " (proj.)" : ""}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.macrs ? m(r.macrs) : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{m(r.macrsAccum)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{r.ir == null ? "—" : m(r.ir)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-slate-500">{r.beyondFiled ? "—" : m(r.irAccum)}</td>
+                    {r.beyondFiled ? (
+                      <td className="px-3 py-2 text-right text-[11px] text-slate-300" title="Anos ainda não declarados: a MACRS é apenas projeção; o catch-up só conta até o último IR.">
+                        a declarar
+                      </td>
+                    ) : (
+                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(r.accumDiff) <= 1 ? "text-slate-400" : r.accumDiff < 0 ? "font-medium text-rose-700" : "font-medium text-amber-700"}`}>
+                        {m(r.accumDiff)}
+                      </td>
+                    )}
+                    <td className="px-3 py-2 text-center">
+                      <span className={`rounded-full px-2 py-0.5 text-xs ${st.cls}`}>{st.label}</span>
+                    </td>
+                    <td className="px-2 py-2 text-right text-slate-300">›</td>
+                  </tr>
+                </Fragment>
               );
             })}
           </tbody>
         </table>
       </div>
       <p className="text-xs text-slate-400">
-        <strong>Diferença acum.</strong> = MACRS acumulado − IR acumulado (quanto, no total, ainda
-        falta lançar até aquele ano — não é a diferença de um ano só). Clique numa linha para ver e{" "}
-        <strong>registrar a depreciação real por ativo</strong> naquele ano. Confira com o contador
-        antes de deduzir tudo de uma vez (pode haver forma própria de recuperar depreciação omitida,
-        ex.: Form 3115).
+        <strong>Diferença acum.</strong> = MACRS acumulado − IR acumulado, só até o último ano{" "}
+        <strong>declarado</strong> (é o catch-up real). Depois disso o IR ainda não foi entregue, então
+        a diferença vira <strong>&ldquo;a declarar&rdquo;</strong> (depreciação normal, não atraso). Clique
+        numa linha para ver e <strong>registrar a depreciação real por ativo</strong> naquele ano. Confira
+        com o contador antes de deduzir tudo de uma vez (pode haver forma própria de recuperar
+        depreciação omitida, ex.: Form 3115).
       </p>
 
       {openYear != null && (

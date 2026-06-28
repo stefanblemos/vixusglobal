@@ -44,6 +44,7 @@ export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
   const irAccum = new Map<string, number>();
   const hasReturn = new Set<string>(); // tem IR do ano selecionado
   const hasAnyIr = new Set<string>(); // tem algum IR (≤ ano) com figura de depreciação
+  const lastFiledByCompany = new Map<string, number>(); // último ano com IR de depreciação (≤ ano)
   const allYears = new Set<number>();
   for (const r of returns) {
     if (!r.companyId || r.year == null) continue;
@@ -57,14 +58,24 @@ export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
       hasAnyIr.add(r.companyId);
       irAccum.set(r.companyId, (irAccum.get(r.companyId) ?? 0) + v);
       if (r.year === year) irDep.set(r.companyId, v);
+      const lf = lastFiledByCompany.get(r.companyId);
+      if (lf == null || r.year > lf) lastFiledByCompany.set(r.companyId, r.year);
     }
   }
 
   // Calculado: depreciação do ano + acumulada, por empresa.
   const computedYear = new Map(reg.byCompany.map((b) => [b.companyId, b.yearDep]));
-  const accumByCompany = new Map<string, number>();
+  const accumByCompany = new Map<string, number>(); // MACRS acum até o ANO (projeção completa)
+  // MACRS acum até o ÚLTIMO IR de cada empresa — base do catch-up (anos seguintes não declarados
+  // ainda não entram, senão a diferença infla comparando projeção × IR congelado).
+  const accumFiledByCompany = new Map<string, number>();
   for (const a of reg.assets) {
     accumByCompany.set(a.companyId, (accumByCompany.get(a.companyId) ?? 0) + a.accumulated);
+    const lf = lastFiledByCompany.get(a.companyId);
+    if (lf != null) {
+      const filed = a.schedule.reduce((s, x) => (x.year <= lf ? s + x.amount : s), 0);
+      accumFiledByCompany.set(a.companyId, (accumFiledByCompany.get(a.companyId) ?? 0) + filed);
+    }
   }
   for (const y of reg.years) allYears.add(y);
 
@@ -72,10 +83,13 @@ export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
   const r2 = (n: number) => Math.round(n * 100) / 100;
   const rows: DepVsIrRow[] = [...ids].map((id) => {
     const computed = r2(computedYear.get(id) ?? 0);
-    const accumulated = r2(accumByCompany.get(id) ?? 0);
+    const lf = lastFiledByCompany.get(id);
+    // "Computed acum." e o catch-up são medidos até o ÚLTIMO IR declarado (não até o ano da página),
+    // para não comparar projeção futura contra IR congelado. Sem nenhum IR → acum até o ano.
+    const accumulated = lf != null ? r2(accumFiledByCompany.get(id) ?? 0) : r2(accumByCompany.get(id) ?? 0);
     const reported = irDep.has(id) ? irDep.get(id)! : null;
     const reportedAccum = hasAnyIr.has(id) ? r2(irAccum.get(id) ?? 0) : null;
-    // Catch-up acumulado: MACRS acumulada − IR acumulado (anos sem IR contam 0) — = Conferência.
+    // Catch-up acumulado REAL: MACRS acum (até último IR) − IR acumulado — = Conferência.
     const catchUp = r2(accumulated - (reportedAccum ?? 0));
     const diff = reported == null ? null : r2(computed - reported);
     const ok = Math.abs(catchUp) <= Math.max(1, 0.01 * Math.abs(accumulated || 1));

@@ -16,6 +16,7 @@ export interface ReconYearRow {
   irAccum: number; // IR lançado acumulado até o ano (null vira 0)
   accumDiff: number; // diferença ACUMULADA = MACRS acum − IR acum (>0 = falta lançar)
   status: ReconStatus;
+  beyondFiled: boolean; // ano APÓS o último IR declarado → o "acum" vira projeção (não é atraso)
 }
 
 export interface DepReconciliation {
@@ -23,10 +24,13 @@ export interface DepReconciliation {
   companyName: string;
   rows: ReconYearRow[];
   throughYear: number; // último ano fechado considerado (ano corrente − 1)
+  lastFiledYear: number | null; // último ano que TEM IR de depreciação declarado
   macrsAccumThrough: number; // acumulada MACRS que DEVERIA estar lançada até throughYear
   irToDate: number; // soma do que foi lançado no IR (anos com IR)
   irYearsMissing: number[]; // anos com MACRS > 0 sem IR de depreciação na base
-  catchUpVsIr: number; // macrsAccumThrough − irToDate
+  catchUpVsIr: number; // macrsAccumThrough − irToDate (legado — mistura anos não declarados)
+  catchUpFiled: number; // CATCH-UP REAL: MACRS acum − IR acum ATÉ o último ano declarado
+  pendingToDeclare: number; // depreciação de anos fechados APÓS o último IR (normal, ainda não declarada)
   bsAccum: number | null; // acumulada de depreciação no QBO (Balance Sheet) — referência
   bsLabel: string | null;
   catchUpVsBs: number | null; // macrsAccumThrough − bsAccum
@@ -64,6 +68,10 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
     const d = effectiveFiguresOf(ret).find((f) => f.key === "DEPRECIATION" && f.value != null);
     if (d && d.value != null) irByYear.set(ret.year, Math.abs(Number(d.value)));
   }
+  // Último ano DECLARADO (com IR de depreciação). O catch-up só faz sentido até aqui; depois disso
+  // a MACRS continua acumulando mas o IR fica parado — comparar os dois infla a diferença sem sentido.
+  const filedYears = [...irByYear.keys()].filter((y) => y <= throughYear);
+  const lastFiledYear = filedYears.length ? Math.max(...filedYears) : null;
 
   // Acumulada de depreciação no QBO: escolhe o BS (mais recente por período) que tem linhas de
   // "Accumulated depreciation"; soma-as (valor absoluto).
@@ -117,20 +125,33 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
       if (ir != null) irToDate = r2(irToDate + ir);
       else irYearsMissing.push(y);
     }
-    rows.push({ year: y, macrs, macrsAccum: accum, ir, irAccum, accumDiff, status });
+    const beyondFiled = lastFiledYear == null || y > lastFiledYear;
+    rows.push({ year: y, macrs, macrsAccum: accum, ir, irAccum, accumDiff, status, beyondFiled });
   }
 
   const macrsAccumThrough = r2(rows.filter((r) => r.year <= throughYear).pop()?.macrsAccum ?? 0);
+  // Catch-up REAL: só até o último ano declarado (MACRS acum − IR acum nesse ponto).
+  const filedRow = lastFiledYear == null ? null : (rows.find((r) => r.year === lastFiledYear) ?? null);
+  const catchUpFiled = r2((filedRow?.macrsAccum ?? 0) - (filedRow?.irAccum ?? 0));
+  // A declarar: MACRS de anos FECHADOS após o último IR (depreciação normal, ainda não no IR).
+  const pendingToDeclare = r2(
+    rows
+      .filter((r) => r.year <= throughYear && (lastFiledYear == null || r.year > lastFiledYear))
+      .reduce((s, r) => s + r.macrs, 0),
+  );
 
   return {
     companyId,
     companyName: company.legalName,
     rows,
     throughYear,
+    lastFiledYear,
     macrsAccumThrough,
     irToDate: r2(irToDate),
     irYearsMissing,
     catchUpVsIr: r2(macrsAccumThrough - irToDate),
+    catchUpFiled,
+    pendingToDeclare,
     bsAccum,
     bsLabel,
     catchUpVsBs: bsAccum == null ? null : r2(macrsAccumThrough - bsAccum),

@@ -11,7 +11,8 @@ export function DepReconcile({ data, assets }: { data: DepReconciliation | null;
         </h2>
         <p className="text-sm text-slate-500">
           O que o MACRS diz que <strong>deveria</strong> ter sido depreciado em cada ano × o que foi
-          lançado no IR. Use o catch-up para alinhar o próximo IR (e o QBO) ao cálculo do app.
+          lançado no IR. O <strong>catch-up real</strong> é só dos anos já declarados; anos fechados
+          ainda sem IR são depreciação <strong>normal a declarar</strong> (não atraso).
         </p>
       </div>
 
@@ -22,23 +23,35 @@ export function DepReconcile({ data, assets }: { data: DepReconciliation | null;
         </p>
       ) : (
         <>
-          {/* Headline: o catch-up */}
+          {/* Headline: separa o catch-up REAL (anos declarados) da depreciação normal a declarar. */}
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-xs text-slate-500">MACRS acumulada — deveria (até {data.throughYear})</div>
-              <div className="mt-1 text-xl font-semibold tabular-nums text-slate-800">{formatMoney(data.macrsAccumThrough, "USD")}</div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-xs text-slate-500">Lançado no IR até agora</div>
+              <div className="text-xs text-slate-500">
+                Lançado no IR{data.lastFiledYear ? ` (até ${data.lastFiledYear})` : " até agora"}
+              </div>
               <div className="mt-1 text-xl font-semibold tabular-nums text-slate-800">{formatMoney(data.irToDate, "USD")}</div>
               {data.irYearsMissing.length > 0 && (
                 <div className="mt-1 text-[11px] text-amber-600">sem IR nos anos: {data.irYearsMissing.join(", ")}</div>
               )}
             </div>
             <div className="rounded-xl border-2 border-[#8DC63F]/60 bg-[#8DC63F]/[0.08] p-4">
-              <div className="text-xs text-slate-600">Catch-up a lançar no próximo IR</div>
-              <div className="mt-1 text-xl font-semibold tabular-nums text-[#3B6D11]">{formatMoney(data.catchUpVsIr, "USD")}</div>
-              <div className="mt-1 text-[11px] text-slate-500">MACRS acumulada − já lançado no IR</div>
+              <div className="text-xs text-slate-600">
+                Catch-up real — anos já declarados{data.lastFiledYear ? ` (até ${data.lastFiledYear})` : ""}
+              </div>
+              <div className={`mt-1 text-xl font-semibold tabular-nums ${data.catchUpFiled < -1 ? "text-rose-700" : "text-[#3B6D11]"}`}>
+                {formatMoney(data.catchUpFiled, "USD")}
+              </div>
+              <div className="mt-1 text-[11px] text-slate-500">MACRS − IR dos anos declarados — o que de fato ficou para trás</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">
+                A declarar nos próximos IRs
+                {data.lastFiledYear && data.lastFiledYear < data.throughYear
+                  ? ` (${data.lastFiledYear + 1}–${data.throughYear})`
+                  : ""}
+              </div>
+              <div className="mt-1 text-xl font-semibold tabular-nums text-slate-800">{formatMoney(data.pendingToDeclare, "USD")}</div>
+              <div className="mt-1 text-[11px] text-slate-500">depreciação normal de anos fechados ainda não declarados</div>
             </div>
           </div>
 

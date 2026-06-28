@@ -219,12 +219,13 @@ export default async function AssetsPage({
 
       {tab === "conferencia" && vsRows.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return (acumulado) — até {year}</h2>
+          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return (acumulado)</h2>
           <p className="text-sm text-slate-500">
-            A MACRS <strong>acumulada</strong> calculada contra a depreciação <strong>acumulada</strong>{" "}
-            lançada no IR (Form 4562). A diferença é o <strong>catch-up</strong> — o mesmo número da
-            conferência por ano abaixo (não a diferença de um ano só, que engana quando o contador
-            lança um catch-up de uma vez).
+            A MACRS <strong>acumulada</strong> contra a depreciação <strong>acumulada</strong> lançada
+            no IR (Form 4562), medidas <strong>até o último IR declarado</strong> de cada empresa — anos
+            seguintes ainda não declarados não entram (senão a diferença infla comparando projeção com
+            IR parado). A diferença é o <strong>catch-up real</strong> — o mesmo número da conferência
+            por ano abaixo.
           </p>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
@@ -272,8 +273,9 @@ export default async function AssetsPage({
           </div>
           <p className="text-xs text-slate-400">
             ✓ alinhado (catch-up dentro de 1%). <strong>Catch-up</strong> = MACRS acumulada − IR
-            acumulado (o que, no total, ainda falta lançar até {year}). &ldquo;no IR figure&rdquo; =
-            nenhum IR com linha de depreciação até {year} — conta como não lançado.
+            acumulado, <strong>até o último IR declarado</strong> de cada empresa (o que, no total,
+            ainda falta lançar dos anos já entregues). &ldquo;no IR figure&rdquo; = empresa sem nenhum
+            IR com linha de depreciação — conta como não lançado.
           </p>
         </section>
       )}
