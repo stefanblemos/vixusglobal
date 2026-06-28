@@ -1,10 +1,11 @@
 import { prisma } from "@/lib/db";
 import { pnlTotals } from "@/lib/qbo/pnl";
-import { buildClosingSequence } from "@/lib/closing/sequence";
+import { buildClosingSequence, acronymOf, type SeqNode } from "@/lib/closing/sequence";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { buildDepreciationReconciliation } from "@/lib/assets/reconcile-dep";
 import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
 import { edgesFromOwnerships } from "@/lib/ownership/effective";
+import { loadTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
 
 // Tax preview: estima o IR final de cada entidade do grupo a partir do QBO já importado.
 // Por entidade: lucro líquido (P&L) + despesas não dedutíveis (M-1) ± ajuste de depreciação
@@ -36,6 +37,7 @@ export interface TaxPreviewRow {
   tax: number; // 0 p/ pass-through (repassa)
   passesTo: { acronym: string; pct: number }[];
   tier: number;
+  inCycle: boolean; // posse circular → o K-1 cruzado é aproximado (a base pode não fechar)
 }
 
 export interface TaxPreview {
@@ -46,6 +48,7 @@ export interface TaxPreview {
   corpTax: number;
   pfTax: number;
   missingPnl: string[]; // empresas sem P&L do ano
+  excludedNonUsd: string[]; // empresas em moeda estrangeira fora do cálculo federal US (tributadas no país)
 }
 
 // Faixas federais MFJ 2024 + dedução padrão (estimativa simplificada, só federal).
@@ -84,7 +87,7 @@ const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/
 
 export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [seq, assetReg, ownerships, pnlImports, stateFilings] = await Promise.all([
+  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment] = await Promise.all([
     buildClosingSequence(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
@@ -98,7 +101,13 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     prisma.stateTaxFiling.findMany({
       select: { companyId: true, principal: true, penalty: true, interest: true, paidDate: true },
     }),
+    prisma.company.findMany({
+      select: { id: true, legalName: true, baseCurrency: true, monitored: true, relationship: true, controlsTax: true },
+    }),
+    loadTreatmentResolver(),
   ]);
+  const companyById = new Map(companies.map((c) => [c.id, c]));
+  const isUsd = (id: string) => (companyById.get(id)?.baseCurrency ?? "USD") === "USD";
 
   // P&L mais recente do ANO por empresa.
   const pnlByCompany = new Map<string, Line[]>();
@@ -148,8 +157,30 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     (recipientsByOwned.get(ownedKey) ?? recipientsByOwned.set(ownedKey, []).get(ownedKey)!).push({ ownerKey, pct: e.percentage });
   }
 
-  const nodes = seq.tiers.flat(); // ordem ascendente de tier (investidas antes das investidoras)
-  const typeOf = (n: (typeof nodes)[number]): EntityType =>
+  // (A) Moeda: o preview é IMPOSTO FEDERAL US — só entidades em USD. Empresas em moeda estrangeira
+  // (PT/EUR, BR/BRL) são tributadas no próprio país; ficam fora e são listadas à parte (igual ao reserve).
+  const seqNodes = seq.tiers.flat(); // ordem ascendente de tier (investidas antes das investidoras)
+  const excludedNonUsd = seqNodes.filter((n) => n.kind === "company" && !isUsd(n.id)).map((n) => n.name);
+  const nodes: SeqNode[] = seqNodes.filter((n) => n.kind === "person" || isUsd(n.id));
+
+  // (B) Inclui empresas elegíveis (USD, monitoradas, do grupo/que controlamos) com P&L ou imposto
+  // estadual do ano que ficaram FORA da sequência (sem ownership/IR) — senão quem deve pagar some.
+  const present = new Set(nodes.filter((n) => n.kind === "company").map((n) => n.id));
+  const eligible = (c: { monitored: boolean; relationship: string; controlsTax: boolean; baseCurrency: string }) =>
+    c.monitored && c.baseCurrency === "USD" && (c.relationship === "GROUP_MEMBER" || c.controlsTax);
+  for (const id of new Set([...pnlByCompany.keys(), ...stateByCompany.keys()])) {
+    if (present.has(id)) continue;
+    const c = companyById.get(id);
+    if (!c || !eligible(c)) continue;
+    present.add(id);
+    nodes.push({
+      key: ck(id), kind: "company", id, name: c.legalName, acronym: acronymOf(c.legalName, "company"),
+      form: null, finalPayer: isCorpTreatment(resolveTreatment(id, year).treatment),
+      passesTo: [], tier: 1, deps: [], status: "ready", done: false, outOfOrder: [], inCycle: false,
+    });
+  }
+
+  const typeOf = (n: SeqNode): EntityType =>
     n.kind === "person" ? "PF" : n.finalPayer ? "C-corp" : "Pass-through";
 
   // Base própria de cada entidade.
@@ -196,18 +227,20 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   const rows: TaxPreviewRow[] = nodes.map((n) => {
     const s = self.get(n.key)!;
     const t = typeOf(n);
-    const taxable = taxableByKey.get(n.key) ?? 0;
+    // Base recomputada a partir do k1In FINAL → a linha sempre fecha (book + add-backs + dep + K-1).
+    // Num DAG é idêntica à acumulada; só difere num ciclo (sinalizado por inCycle).
+    const taxable = r2(s.bookNet + s.nonDed + s.stateAddBack + s.depAdj + (k1In.get(n.key) ?? 0));
     const tax = t === "C-corp" ? r2(Math.max(0, taxable) * 0.21) : t === "PF" ? federalPF(taxable) : 0;
     return {
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
       hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed,
       stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest,
       depAdj: s.depAdj, bookDep: s.bookDep, macrsDep: s.macrsDep, macrsApplied: s.macrsApplied, depCatchUp: s.depCatchUp,
-      k1In: r2(k1In.get(n.key) ?? 0), taxable, tax, passesTo: n.passesTo, tier: n.tier,
+      k1In: r2(k1In.get(n.key) ?? 0), taxable, tax, passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
     };
   });
 
   const corpTax = r2(rows.filter((r) => r.entityType === "C-corp").reduce((a, r) => a + r.tax, 0));
   const pfTax = r2(rows.filter((r) => r.entityType === "PF").reduce((a, r) => a + r.tax, 0));
-  return { year, years: seq.years.length ? seq.years : [year], rows, groupTax: r2(corpTax + pfTax), corpTax, pfTax, missingPnl };
+  return { year, years: seq.years.length ? seq.years : [year], rows, groupTax: r2(corpTax + pfTax), corpTax, pfTax, missingPnl, excludedNonUsd };
 }

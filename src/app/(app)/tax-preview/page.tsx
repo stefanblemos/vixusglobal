@@ -73,6 +73,13 @@ export default async function TaxPreviewPage({
         </p>
       )}
 
+      {data.excludedNonUsd.length > 0 && (
+        <p className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+          Fora deste cálculo (imposto federal US, só USD): {data.excludedNonUsd.join(", ")} — entidades
+          em moeda estrangeira são tributadas no próprio país (PT/BR), não a 21% federal.
+        </p>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
@@ -101,6 +108,11 @@ export default async function TaxPreviewPage({
                     <div className="font-medium text-slate-800">{r.name}</div>
                     <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${TYPE_TAG[r.entityType]}`}>{r.entityType}</span>
                     {!r.hasPnl && r.kind === "company" && <span className="ml-1 text-[10px] text-amber-600">sem P&L</span>}
+                    {r.inCycle && (
+                      <span className="ml-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700" title="Posse circular entre entidades — o K-1 cruzado é aproximado e a base pode não fechar exatamente. Revise a estrutura de ownership.">
+                        ⚠ ciclo
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.kind === "person" ? "—" : m(r.bookNet)}</td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">
