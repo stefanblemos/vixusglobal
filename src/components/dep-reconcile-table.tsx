@@ -210,8 +210,8 @@ function YearModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-4 sm:items-center" onClick={onClose}>
-      <div className="w-full max-w-4xl rounded-xl border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="flex max-h-[88vh] w-full max-w-4xl flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
           <div>
             <div className="text-base font-medium text-slate-800">Depreciação por ativo — {year}</div>
             <div className="mt-0.5 text-xs text-slate-500">
@@ -228,7 +228,7 @@ function YearModal({
         </div>
 
         {/* Toggle por ano × acumulado + referência */}
-        <div className="my-3 flex flex-wrap items-center gap-2 text-xs">
+        <div className="my-3 flex shrink-0 flex-wrap items-center gap-2 text-xs">
           <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
             <button onClick={() => setView("ano")} className={`px-3 py-1.5 ${view === "ano" ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
               Por ano
@@ -276,9 +276,9 @@ function YearModal({
           )}
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-200">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-500">
+            <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-500 shadow-[0_1px_0_0_rgb(226,232,240)]">
               <tr>
                 <th className="px-3 py-2 font-medium">Ativo</th>
                 <th className="px-3 py-2 text-right font-medium">Valor original</th>
@@ -379,7 +379,7 @@ function YearModal({
               )}
             </tbody>
             {rowsForYear.length > 0 && (
-              <tfoot className="border-t-2 border-slate-200 bg-slate-50/60 text-slate-700">
+              <tfoot className="sticky bottom-0 z-10 border-t-2 border-slate-200 bg-slate-50 text-slate-700 shadow-[0_-1px_0_0_rgb(226,232,240)]">
                 <tr>
                   <td className="px-3 py-2 font-medium">Total</td>
                   <td></td>
@@ -399,7 +399,7 @@ function YearModal({
             contador declarou no ano (mesmo que não bata com a MACRS). */}
         {irForYear != null && (
           <div
-            className={`mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+            className={`mt-3 flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
               matched ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
             }`}
           >
@@ -437,7 +437,7 @@ function YearModal({
           </div>
         )}
 
-        <p className="mt-2 text-[11px] text-slate-400">
+        <p className="mt-2 shrink-0 text-[11px] text-slate-400">
           <strong>Deveria</strong> = MACRS do ano por ativo. <strong>Depreciado</strong> = o que foi
           lançado no livro. Quando o ativo já está marcado &ldquo;totalmente depreciado no livro&rdquo;
           ou &ldquo;baixado&rdquo; (na ficha), o valor vem do <strong>cadastro</strong> automaticamente
