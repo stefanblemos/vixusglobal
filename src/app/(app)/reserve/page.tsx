@@ -311,14 +311,14 @@ export default async function ReservePage({
                         ) : r.macrsApplied ? (
                           <span
                             className="text-rose-600"
-                            title={`Livro sem depreciação — MACRS ${money(r.taxDep, r.currency)} aplicada na base`}
+                            title={`P&L sem depreciação — aplicada a depreciação REAL dos ativos (${money(r.taxDep, r.currency)}; registrada na conferência, ou MACRS se não houver) na base`}
                           >
-                            MACRS −{money(r.taxDep, r.currency)}
+                            deprec. −{money(r.taxDep, r.currency)}
                           </span>
                         ) : (
                           <span
                             className="text-slate-400"
-                            title={`Livro já tem depreciação (${money(r.bookDep, r.currency)}) — confia no livro; MACRS ${money(r.taxDep, r.currency)} só p/ conferência`}
+                            title={`O P&L já traz depreciação (${money(r.bookDep, r.currency)}) — confia no livro; conferência compara com a MACRS`}
                           >
                             confia no livro
                           </span>
@@ -428,11 +428,12 @@ export default async function ReservePage({
           )}
 
           <p className="text-xs text-slate-400">
-            Taxable profit = book net income, swapping booked depreciation for the computed{" "}
+            Taxable profit = book net income; when the P&amp;L carries no depreciation, the{" "}
             <Link href="/assets" className="text-[#1f3a5f] hover:underline">
-              MACRS depreciation
+              real per-asset depreciation
             </Link>{" "}
-            where assets are on file (book − tax). At the owner level, losses compensate profits, so
+            (book balances from the reconciliation; MACRS only if none is registered) is applied to the
+            base. At the owner level, losses compensate profits, so
             the reserve is on the net base (the company table shows each entity&apos;s standalone
             figure). Direct ownership only, USD; reconcile against the actual return at year-end.{" "}
             <Link href="/florida" className="text-[#1f3a5f] hover:underline">

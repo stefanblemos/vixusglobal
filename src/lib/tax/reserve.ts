@@ -197,7 +197,8 @@ export async function buildTaxReserve(
     prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
   ]);
 
-  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
+  // Depreciação REAL do ano (livro registrado onde houver, senão MACRS efetiva) — não a MACRS teórica.
+  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.realDep]));
   // Classe corp/pass por (empresa, ano): cadastro do ano > IR do ano > último conhecido (resolver único).
   const resolveTreatment: TreatmentResolver = buildTreatmentResolver(
     taxStatuses,
@@ -339,7 +340,8 @@ export async function buildQuarterlyReserve(year: number): Promise<{ rows: Quart
     buildAssetRegister(year),
     prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
   ]);
-  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
+  // Depreciação REAL do ano (livro registrado onde houver, senão MACRS efetiva).
+  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.realDep]));
   const resolveTreatment: TreatmentResolver = buildTreatmentResolver(
     taxStatuses,
     returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],

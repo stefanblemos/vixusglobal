@@ -117,7 +117,8 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     if (!pnlByCompany.has(imp.companyId)) pnlByCompany.set(imp.companyId, imp.lines);
   }
 
-  const macrsByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
+  const macrsByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep])); // MACRS efetiva (referência)
+  const realDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.realDep])); // livro real onde houver, senão MACRS
 
   // Conferência (catch-up acumulado) só para empresas COM ativos cadastrados — fonte única da
   // comparação livro × MACRS. Pega a diferença ACUMULADA até o ano (MACRS acum − IR acum).
@@ -203,9 +204,11 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     // A MACRS do app só entra na base quando o livro NÃO tem depreciação nenhuma (preenche a lacuna).
     const bookDep = bookDepFromLines(lines);
     const hasAssets = macrsByCompany.has(n.id);
-    const macrsDep = hasAssets ? r2(macrsByCompany.get(n.id)!) : 0;
-    const macrsApplied = macrsAppliedToBase(bookDep, macrsDep, hasAssets);
-    const depAdj = trustBookDepAdjustment(bookDep, macrsDep, hasAssets);
+    const macrsDep = hasAssets ? r2(macrsByCompany.get(n.id)!) : 0; // MACRS (referência/conferência)
+    // Ajuste da base usa a depreciação REAL (livro registrado onde houver, senão MACRS), não a teórica.
+    const realDep = hasAssets ? r2(realDepByCompany.get(n.id)!) : 0;
+    const macrsApplied = macrsAppliedToBase(bookDep, realDep, hasAssets);
+    const depAdj = trustBookDepAdjustment(bookDep, realDep, hasAssets);
     const depCatchUp = reconByCompany.get(n.id)?.catchUp ?? null;
     self.set(n.key, { bookNet: r2(bookNet), nonDed, stateAddBack, stateInterest, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }

@@ -71,7 +71,7 @@ export function TaxPreviewTable({ rows, year }: { rows: TaxPreviewRow[]; year: n
                   <td className={`px-3 py-2 text-right tabular-nums ${r.depAdj < 0 ? "text-emerald-600" : "text-slate-600"}`}>
                     {r.macrsApplied ? m(r.depAdj) : "—"}
                     {r.kind === "company" && r.hasPnl && r.macrsApplied && (
-                      <div className="text-[10px] text-emerald-700">MACRS aplicada</div>
+                      <div className="text-[10px] text-emerald-700">deprec. aplicada</div>
                     )}
                     {r.kind === "company" && r.hasPnl && !r.macrsApplied && r.depCatchUp != null && Math.abs(r.depCatchUp) > 1 && (
                       <div className="text-[10px] text-amber-600">catch-up {m(r.depCatchUp)}</div>
@@ -175,7 +175,7 @@ function DetailModal({
               />
             )}
             {row.depAdj !== 0 ? (
-              <Step label="± Ajuste de depreciação (livro → MACRS)" value={row.depAdj} hint="o livro não tinha depreciação no ano → aplica a MACRS na base" />
+              <Step label="± Ajuste de depreciação" value={row.depAdj} hint="o P&L não tinha depreciação no ano → aplica a depreciação REAL dos ativos (registrada na conferência; MACRS só se não houver real)" />
             ) : (
               !isPerson && row.hasPnl && (
                 <div className="py-1.5 text-[11px] text-slate-400">

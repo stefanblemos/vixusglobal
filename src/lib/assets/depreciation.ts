@@ -23,7 +23,8 @@ export interface AssetView {
   method: string;
   section179: number;
   bonusPct: number;
-  yearDep: number; // depreciação no ano selecionado
+  yearDep: number; // depreciação MACRS efetiva no ano selecionado
+  realDepYear: number; // depreciação REAL do ano: AssetYearDepreciation (livro) se registrada, senão a MACRS efetiva
   accumulated: number; // acumulada até o ano selecionado
   remaining: number; // base ainda a depreciar
   total: number; // depreciação total (vida toda)
@@ -33,7 +34,8 @@ export interface AssetView {
 export interface CompanyDep {
   companyId: string;
   companyName: string;
-  yearDep: number;
+  yearDep: number; // MACRS efetiva do ano
+  realDep: number; // depreciação REAL do ano (livro registrado onde houver, senão MACRS efetiva)
   accumulated: number;
 }
 
@@ -134,6 +136,12 @@ export async function buildAssetRegister(
       section179: Number(a.section179.toString()),
       bonusPct: Number(a.bonusPct.toString()),
       yearDep: depreciationForYear(sched, year),
+      // Depreciação REAL do ano: o valor lançado no livro (AssetYearDepreciation) tem prioridade;
+      // sem ele, cai na MACRS efetiva. No modo pura ("deveria"), é sempre a MACRS.
+      realDepYear: (() => {
+        const real = bookEntries.find((e) => e.year === year)?.amount;
+        return !pure && real != null ? Math.round(real * 100) / 100 : depreciationForYear(sched, year);
+      })(),
       accumulated,
       remaining: Math.round((cost - accumulated) * 100) / 100,
       total: sched.total,
@@ -147,9 +155,11 @@ export async function buildAssetRegister(
       companyId: v.companyId,
       companyName: v.companyName,
       yearDep: 0,
+      realDep: 0,
       accumulated: 0,
     };
     g.yearDep += v.yearDep;
+    g.realDep += v.realDepYear;
     g.accumulated += v.accumulated;
     byCompanyMap.set(v.companyId, g);
   }

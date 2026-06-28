@@ -87,7 +87,7 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
   );
   const override = new Map(overrideRows.map((o) => [o.companyId, Number(o.ratePct)]));
-  const taxDep = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep]));
+  const taxDep = new Map(assetReg.byCompany.map((b) => [b.companyId, b.realDep]));
   const rateFor = (id: string) => classRate(resolveTreatment(id, year).treatment, override, id, yr);
 
   // ── Lucro por trimestre / anual ──
