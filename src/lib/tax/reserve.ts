@@ -4,6 +4,7 @@ import { qboPeriodKey, periodMonths } from "@/lib/qbo/period";
 import { buildAssetRegister } from "@/lib/assets/depreciation";
 import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
 import { buildTreatmentResolver, isCorpTreatment, type TreatmentResolver } from "@/lib/tax/treatment";
+import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
 const DEFAULT_RATE = 30;
@@ -179,10 +180,12 @@ export async function buildTaxReserve(
     yearRates(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
-      where: { ownedCompanyId: { not: null }, endDate: null },
+      where: { ownedCompanyId: { not: null } },
       select: {
         ownedCompanyId: true,
         percentage: true,
+        effectiveDate: true,
+        endDate: true,
         ownerParty: { select: { name: true } },
         ownerCompany: { select: { legalName: true } },
       },
@@ -200,9 +203,11 @@ export async function buildTaxReserve(
     taxStatuses,
     returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
   );
+  // Donos vigentes NO ANO (não os de hoje) — fonte única de vigência (isEffectiveAt @ 31/dez).
+  const asOf = asOfYearEnd(year);
   const ownersByCompany = new Map<string, { name: string; pct: number }[]>();
   for (const o of ownerships) {
-    if (!o.ownedCompanyId) continue;
+    if (!o.ownedCompanyId || !isEffectiveAt(o, asOf)) continue;
     const name = o.ownerParty?.name ?? o.ownerCompany?.legalName;
     if (!name) continue;
     const arr = ownersByCompany.get(o.ownedCompanyId) ?? [];

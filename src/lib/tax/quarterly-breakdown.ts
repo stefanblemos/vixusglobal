@@ -6,6 +6,7 @@ import { bookDepFromLines, trustBookDepAdjustment } from "@/lib/assets/book-tax-
 import { computeLoanBalance } from "@/lib/loans/interest";
 import { yearRates, classRate } from "./reserve";
 import { buildTreatmentResolver } from "@/lib/tax/treatment";
+import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
 
 // Demonstração TRIMESTRAL por componentes da base tributável, por empresa:
 //   lucro do período + juros a receber − juros a pagar − depreciação ± K-1 = base → tax.
@@ -70,8 +71,8 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
       prisma.intercompanyLoan.findMany({ include: { transactions: true } }),
       buildAssetRegister(year),
       prisma.ownership.findMany({
-        where: { ownerCompanyId: { not: null }, ownedCompanyId: { not: null }, endDate: null },
-        select: { ownerCompanyId: true, ownedCompanyId: true, percentage: true },
+        where: { ownerCompanyId: { not: null }, ownedCompanyId: { not: null } },
+        select: { ownerCompanyId: true, ownedCompanyId: true, percentage: true, effectiveDate: true, endDate: true },
       }),
       prisma.taxReserveRate.findMany({ where: { companyId: { not: "GLOBAL" } } }),
       yearRates(year),
@@ -195,10 +196,12 @@ export async function buildQuarterlyBreakdown(year: number): Promise<{ rows: QBr
     return r2(profit + inn - out - appliedDep(id));
   };
 
-  // K-1: a empresa (owner) recebe a fatia do resultado das suas investidas (owned).
+  // K-1: a empresa (owner) recebe a fatia do resultado das suas investidas (owned). Vigência NO ANO
+  // (não os donos de hoje) — fonte única isEffectiveAt @ 31/dez.
+  const asOf = asOfYearEnd(year);
   const ownedOf = new Map<string, { ownedId: string; pct: number }[]>();
   for (const o of ownerships) {
-    if (!o.ownerCompanyId || !o.ownedCompanyId) continue;
+    if (!o.ownerCompanyId || !o.ownedCompanyId || !isEffectiveAt(o, asOf)) continue;
     (ownedOf.get(o.ownerCompanyId) ?? ownedOf.set(o.ownerCompanyId, []).get(o.ownerCompanyId)!).push({
       ownedId: o.ownedCompanyId,
       pct: Number(o.percentage.toString()),

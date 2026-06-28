@@ -102,16 +102,30 @@ export interface OwnershipRow {
   endDate?: Date | null;
 }
 
-/** Converte linhas de Ownership do banco em arestas vigentes na data `asOf`
- * (já entrou: effectiveDate ≤ asOf; ainda não saiu: endDate > asOf). */
+// Fim do ano-calendário (31/dez) — a data padrão para "donos vigentes no ano Y". Use isto em
+// QUALQUER cálculo por ano (preview, reserve, quarterly, sequence) para todos usarem a MESMA
+// estrutura societária vigente, em vez de "donos de hoje" (endDate null) ou datas ad-hoc.
+export const asOfYearEnd = (year: number) => new Date(Date.UTC(year, 11, 31, 23, 59, 59));
+
+/** Uma linha de ownership está vigente na data `asOf`? (já entrou: effectiveDate ≤ asOf; ainda não
+ * saiu: endDate > asOf). FONTE ÚNICA da regra de vigência — usada aqui e nos consumidores por ano. */
+export function isEffectiveAt(
+  r: { effectiveDate?: Date | null; endDate?: Date | null },
+  asOf: Date,
+): boolean {
+  if (r.endDate && r.endDate <= asOf) return false;
+  if (r.effectiveDate && r.effectiveDate > asOf) return false;
+  return true;
+}
+
+/** Converte linhas de Ownership do banco em arestas vigentes na data `asOf`. */
 export function edgesFromOwnerships(
   rows: OwnershipRow[],
   asOf: Date = new Date(),
 ): OwnershipEdge[] {
   const edges: OwnershipEdge[] = [];
   for (const r of rows) {
-    if (r.endDate && r.endDate <= asOf) continue;
-    if (r.effectiveDate && r.effectiveDate > asOf) continue; // ainda não vigente
+    if (!isEffectiveAt(r, asOf)) continue;
     const ownerType: NodeType | null = r.ownerPartyId
       ? "party"
       : r.ownerCompanyId
