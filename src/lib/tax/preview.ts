@@ -33,9 +33,10 @@ export interface TaxPreviewRow {
   macrsApplied: boolean; // true = livro sem dep e MACRS aplicada na base; false = confia no livro
   depCatchUp: number | null; // catch-up acumulado (MACRS acum − IR acum até o ano), da Conferência; null se sem ativos
   k1In: number; // K-1 recebido das investidas
+  k1From: { fromKey: string; fromName: string; fromAcronym: string; amount: number }[]; // origem do K-1
   taxable: number;
   tax: number; // 0 p/ pass-through (repassa)
-  passesTo: { acronym: string; pct: number }[];
+  passesTo: { name: string; acronym: string; pct: number }[];
   tier: number;
   inCycle: boolean; // posse circular → o K-1 cruzado é aproximado (a base pode não fechar)
 }
@@ -209,8 +210,11 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     self.set(n.key, { bookNet: r2(bookNet), nonDed, stateAddBack, stateInterest, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }
 
-  // K-1 acumulado de baixo para cima.
+  // K-1 acumulado de baixo para cima. k1FromByKey guarda a ORIGEM (quem repassou e quanto) — para o
+  // drill-down "das empresas formadoras de K-1 até os owners".
+  const nodeByKey = new Map(nodes.map((n) => [n.key, n]));
   const k1In = new Map<string, number>();
+  const k1FromByKey = new Map<string, { fromKey: string; amount: number }[]>();
   const taxableByKey = new Map<string, number>();
   for (const n of nodes) {
     const s = self.get(n.key)!;
@@ -219,7 +223,11 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     const t = typeOf(n);
     if (t === "Pass-through") {
       for (const rcpt of recipientsByOwned.get(n.key) ?? []) {
-        k1In.set(rcpt.ownerKey, r2((k1In.get(rcpt.ownerKey) ?? 0) + taxable * (rcpt.pct / 100)));
+        const amt = r2(taxable * (rcpt.pct / 100));
+        k1In.set(rcpt.ownerKey, r2((k1In.get(rcpt.ownerKey) ?? 0) + amt));
+        const arr = k1FromByKey.get(rcpt.ownerKey) ?? [];
+        arr.push({ fromKey: n.key, amount: amt });
+        k1FromByKey.set(rcpt.ownerKey, arr);
       }
     }
   }
@@ -236,7 +244,11 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
       hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed,
       stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest,
       depAdj: s.depAdj, bookDep: s.bookDep, macrsDep: s.macrsDep, macrsApplied: s.macrsApplied, depCatchUp: s.depCatchUp,
-      k1In: r2(k1In.get(n.key) ?? 0), taxable, tax, passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
+      k1In: r2(k1In.get(n.key) ?? 0),
+      k1From: (k1FromByKey.get(n.key) ?? [])
+        .map((f) => ({ fromKey: f.fromKey, fromName: nodeByKey.get(f.fromKey)?.name ?? "—", fromAcronym: nodeByKey.get(f.fromKey)?.acronym ?? "?", amount: r2(f.amount) }))
+        .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
+      taxable, tax, passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
     };
   });
 

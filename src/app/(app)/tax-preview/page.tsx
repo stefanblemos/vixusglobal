@@ -1,14 +1,9 @@
 import Link from "next/link";
-import { buildTaxPreview, type EntityType } from "@/lib/tax/preview";
+import { buildTaxPreview } from "@/lib/tax/preview";
+import { TaxPreviewTable } from "@/components/tax-preview-detail";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
-
-const TYPE_TAG: Record<EntityType, string> = {
-  "C-corp": "bg-sky-50 text-sky-700",
-  "Pass-through": "bg-green-50 text-green-700",
-  PF: "bg-amber-50 text-amber-700",
-};
 
 const m = (n: number) => formatMoney(n, "USD");
 
@@ -80,95 +75,7 @@ export default async function TaxPreviewPage({
         </p>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-slate-500">
-            <tr>
-              <th className="px-4 py-2 font-medium">Entidade</th>
-              <th className="px-3 py-2 text-right font-medium">Lucro líq.</th>
-              <th className="px-3 py-2 text-right font-medium">+ Não ded.</th>
-              <th className="px-3 py-2 text-right font-medium">± Deprec.</th>
-              <th className="px-3 py-2 text-right font-medium">+ K-1</th>
-              <th className="px-3 py-2 text-right font-medium">= Base trib.</th>
-              <th className="px-3 py-2 text-right font-medium">IR estimado</th>
-              <th className="px-3 py-2 font-medium">Fluxo</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {data.rows.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-4 text-sm text-slate-400">
-                  Nenhuma entidade no escopo. Verifique empresas/pessoas marcadas no fechamento.
-                </td>
-              </tr>
-            ) : (
-              data.rows.map((r) => (
-                <tr key={r.key} className={r.taxable < 0 ? "bg-red-50/30" : ""}>
-                  <td className="px-4 py-2">
-                    <div className="font-medium text-slate-800">{r.name}</div>
-                    <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${TYPE_TAG[r.entityType]}`}>{r.entityType}</span>
-                    {!r.hasPnl && r.kind === "company" && <span className="ml-1 text-[10px] text-amber-600">sem P&L</span>}
-                    {r.inCycle && (
-                      <span className="ml-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700" title="Posse circular entre entidades — o K-1 cruzado é aproximado e a base pode não fechar exatamente. Revise a estrutura de ownership.">
-                        ⚠ ciclo
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.kind === "person" ? "—" : m(r.bookNet)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                    {r.nonDeductible + r.stateTaxAddBack ? m(r.nonDeductible + r.stateTaxAddBack) : "—"}
-                    {r.stateTaxAddBack > 0 && (
-                      <div className="text-[10px] text-sky-700">
-                        inclui estadual {m(r.stateTaxAddBack)} (principal+multa)
-                        {r.stateTaxInterest > 0 && <> · juros {m(r.stateTaxInterest)} dedutíveis</>}
-                      </div>
-                    )}
-                  </td>
-                  <td className={`px-3 py-2 text-right tabular-nums ${r.depAdj < 0 ? "text-emerald-600" : "text-slate-600"}`}>
-                    {r.macrsApplied ? m(r.depAdj) : "—"}
-                    {r.kind === "company" && r.hasPnl && r.macrsApplied && (
-                      <div className="text-[10px] text-emerald-700">MACRS aplicada (livro sem dep.)</div>
-                    )}
-                    {r.kind === "company" && r.hasPnl && !r.macrsApplied && r.bookDep > 0 && r.macrsDep > 0 && (
-                      <div className="text-[10px] text-slate-500">
-                        <span className={r.depCatchUp && Math.abs(r.depCatchUp) > 1 ? "text-amber-600" : ""}>
-                          livro {m(r.bookDep)} · MACRS {m(r.macrsDep)}
-                        </span>
-                        {r.depCatchUp != null && Math.abs(r.depCatchUp) > 1 && (
-                          <div className="text-amber-600">
-                            falta catch-up {m(r.depCatchUp)} —{" "}
-                            <Link href={`/assets?tab=conferencia&company=${r.id}`} className="underline hover:text-amber-700">
-                              ver Conferência
-                            </Link>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.k1In ? m(r.k1In) : "—"}</td>
-                  <td className={`px-3 py-2 text-right tabular-nums font-medium ${r.taxable < 0 ? "text-red-600" : "text-slate-800"}`}>{m(r.taxable)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {r.entityType === "Pass-through" ? (
-                      <span className="text-slate-400">— (repassa)</span>
-                    ) : (
-                      <span className="font-semibold text-slate-900">{m(r.tax)}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-slate-500">
-                    {r.entityType === "Pass-through"
-                      ? r.passesTo.length
-                        ? `repassa: ${r.passesTo.map((p) => `${p.acronym} ${p.pct.toLocaleString("en-US", { maximumFractionDigits: 1 })}%`).join(" · ")}`
-                        : "repassa aos sócios"
-                      : r.entityType === "PF"
-                        ? "pagador final (1040)"
-                        : "paga 21%"}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <TaxPreviewTable rows={data.rows} year={year} />
 
       <p className="text-xs text-slate-400">
         Não dedutíveis detectados do P&L: 50% de refeições, multas/penalidades, seguro de vida,
