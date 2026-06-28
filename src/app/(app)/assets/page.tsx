@@ -62,8 +62,16 @@ export default async function AssetsPage({
         // "totalmente depreciado no livro" ou "baixado", o schedule efetivo (a.schedule) JÁ
         // reflete o que o livro fez → vira a fonte do depreciado por ano. Entrada manual sobrescreve.
         const hasBookSignal = a.fullyDepreciatedYear != null || a.disposalDate != null;
+        const dispY = a.disposalDate ? Number(a.disposalDate.slice(0, 4)) : null;
         const derivedByYear: Record<string, number> = {};
-        if (hasBookSignal) for (const s of a.schedule) derivedByYear[String(s.year)] = s.amount;
+        // Deriva o livro a partir do cadastro (totalmente dep./baixa). EXCEÇÃO: o ANO DA BAIXA não é
+        // assumido — a meia-cota é só a regra ("deveria"); o contador pode não tê-la tomado. Fica "—"
+        // (não registrado) para o usuário confirmar o que de fato foi lançado (0 ou o valor real).
+        if (hasBookSignal)
+          for (const s of a.schedule) {
+            if (s.year === dispY) continue;
+            derivedByYear[String(s.year)] = s.amount;
+          }
         return {
           id: a.id,
           name: a.name,
