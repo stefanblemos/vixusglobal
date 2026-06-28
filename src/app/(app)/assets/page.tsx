@@ -68,6 +68,7 @@ export default async function AssetsPage({
           id: a.id,
           name: a.name,
           cost: a.cost,
+          disposalYear: a.disposalDate ? Number(a.disposalDate.slice(0, 4)) : null,
           // "Deveria" = MACRS pura; "derivado" = efetivo (a.schedule, com totalmente dep./baixa).
           macrsSchedule: pureScheduleById.get(a.id) ?? a.schedule,
           actualByYear: actualByAsset.get(a.id) ?? {},

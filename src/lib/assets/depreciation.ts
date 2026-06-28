@@ -109,10 +109,12 @@ export async function buildAssetRegister(
       method: a.method === "SL_MM" ? "SL_MM" : a.method === "NONE" ? "NONE" : "MACRS",
       acquisitionYear: a.acquisitionDate.getUTCFullYear(),
       acquisitionMonth: a.acquisitionDate.getUTCMonth() + 1,
-      // MACRS pura (deveria) ignora os ajustes do livro; o modo padrão (efetivo) os aplica.
+      // MACRS pura (deveria) ignora só os ajustes de LIVRO (totalmente depreciado). A BAIXA é evento
+      // REAL (o ativo saiu): vale nos dois modos — meia-cota no ano da baixa e ZERO depois (a MACRS
+      // legal também para de depreciar um ativo vendido/baixado).
       fullyDepreciatedYear: effectiveFullyDepYear,
       bookEntriesBeforeFullDep: aydByAsset.get(a.id) ?? [],
-      disposalYear: pure ? null : a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
+      disposalYear: a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
     });
     const accumulated = accumulatedThrough(sched, year);
     return {

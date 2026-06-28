@@ -10,6 +10,7 @@ export type AssetForRecon = {
   id: string;
   name: string;
   cost: number;
+  disposalYear: number | null; // ano da baixa (vendido/baixado) — não deprecia depois
   macrsSchedule: { year: number; amount: number }[]; // MACRS PURA (deveria) — regra legal do IRS
   actualByYear: Record<string, number>; // ano → depreciação real registrada à mão (sobrescreve)
   derivedByYear: Record<string, number>; // ano → depreciação do livro DERIVADA (totalmente dep./baixa)
@@ -148,9 +149,14 @@ function YearModal({
       const catchUp = r2(macrsAccum - bookAccum);
       return { a, acqYear, deveria, depreciado, isDerived, saldoReal, accBefore, macrsAccum, bookAccum, catchUp };
     })
-    // Em serviço no ano E ainda não totalmente baixado no livro ANTES deste ano (se já zerou em ano
-    // anterior, sai do modal — não ocupa espaço; continua na lista de ativos).
-    .filter((r) => r.acqYear <= year && r.accBefore < r.a.cost - 0.005)
+    // Em serviço no ano: já adquirido, NÃO baixado em ano anterior (depois da baixa não deprecia
+    // mais → sai do modal), e ainda não totalmente zerado no livro antes deste ano.
+    .filter(
+      (r) =>
+        r.acqYear <= year &&
+        (r.a.disposalYear == null || r.a.disposalYear >= year) &&
+        r.accBefore < r.a.cost - 0.005,
+    )
     .sort((x, y2) => y2.deveria - x.deveria);
 
   const totDeveria = rowsForYear.reduce((s, r) => s + r.deveria, 0);
@@ -268,9 +274,17 @@ function YearModal({
             <tbody className="divide-y divide-slate-100">
               {rowsForYear.map(({ a, deveria, depreciado, isDerived, saldoReal, macrsAccum, bookAccum, catchUp }) => {
                 const diff = depreciado == null ? null : Math.round((deveria - depreciado) * 100) / 100;
+                const disposedHere = a.disposalYear === year; // baixado neste ano
+                // Deveria depreciar (deveria > 0) mas o livro lançou ZERO → não foi depreciado.
+                const notDepreciated = view === "ano" && depreciado != null && depreciado <= 0.005 && deveria > 0.5;
                 return (
-                  <tr key={a.id}>
-                    <td className="px-3 py-2 font-medium text-slate-700">{a.name}</td>
+                  <tr key={a.id} className={notDepreciated ? "bg-rose-50/40" : ""}>
+                    <td className="px-3 py-2 font-medium text-slate-700">
+                      {a.name}
+                      {disposedHere && (
+                        <span className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">baixado {year}</span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">{m0(a.cost)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                       {view === "ano" ? (deveria ? m(deveria) : "—") : macrsAccum ? m(macrsAccum) : "—"}
@@ -303,10 +317,15 @@ function YearModal({
                         </form>
                       ) : (
                         <div className="flex items-center justify-end gap-1.5">
-                          <span className={`tabular-nums ${depreciado == null ? "text-slate-300" : "text-slate-800"}`}>
+                          <span className={`tabular-nums ${depreciado == null ? "text-slate-300" : notDepreciated ? "text-rose-700" : "text-slate-800"}`}>
                             {depreciado == null ? "—" : m(depreciado)}
                           </span>
-                          {isDerived && (
+                          {notDepreciated && (
+                            <span className="rounded bg-rose-50 px-1 py-0.5 text-[9px] text-rose-700" title={`O livro não depreciou este ativo no ano, mas a MACRS dizia ${m(deveria)}. ${disposedHere ? "Na baixa, a depreciação do ano não foi tomada — vira maior perda na venda (Section 1231)." : "Falta lançar essa depreciação."}`}>
+                              não depreciado
+                            </span>
+                          )}
+                          {isDerived && !notDepreciated && (
                             <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] text-emerald-700" title="Vem do cadastro do ativo (totalmente depreciado / baixa). Edite no lápis para sobrescrever.">
                               cadastro
                             </span>
