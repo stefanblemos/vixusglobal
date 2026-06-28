@@ -159,6 +159,22 @@ function DetailModal({
           <button onClick={onClose} aria-label="Fechar" className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700">✕</button>
         </div>
 
+        {row.kind === "company" && (
+          <div className="mt-2 flex items-center gap-3 text-xs">
+            <span className="text-slate-400">Conferir no QBO:</span>
+            {row.pnlImportId ? (
+              <Link href={`/import/${row.pnlImportId}`} className="text-sky-700 hover:underline">P&amp;L do ano →</Link>
+            ) : (
+              <span className="text-amber-600">P&amp;L não importado</span>
+            )}
+            {row.bsImportId ? (
+              <Link href={`/import/${row.bsImportId}`} className="text-sky-700 hover:underline">Balance Sheet →</Link>
+            ) : (
+              <span className="text-amber-600">BS não importado</span>
+            )}
+          </div>
+        )}
+
         {/* Cascata da base */}
         <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2">
           <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">Base tributável ({year})</div>

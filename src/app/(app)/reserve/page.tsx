@@ -281,6 +281,11 @@ export default async function ReservePage({
                   Fora deste cálculo (federal US, só USD): {byEntity.excludedNonUsd.join(", ")} — tributadas no próprio país.
                 </p>
               )}
+              {byEntity.excludedClosed.length > 0 && (
+                <p className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+                  Encerradas (IR final já declarado) — fora do reserve: {byEntity.excludedClosed.join(", ")}.
+                </p>
+              )}
               <ReserveEntityTable rows={byEntity.rows} locked={locked} />
             </section>
           )}

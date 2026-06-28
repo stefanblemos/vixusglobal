@@ -39,6 +39,8 @@ export interface TaxPreviewRow {
   passesTo: { name: string; acronym: string; pct: number }[];
   tier: number;
   inCycle: boolean; // posse circular → o K-1 cruzado é aproximado (a base pode não fechar)
+  pnlImportId: string | null; // import do P&L do ano (fonte clicável)
+  bsImportId: string | null; // import do Balance Sheet do ano (fonte clicável)
 }
 
 export interface TaxPreview {
@@ -50,6 +52,7 @@ export interface TaxPreview {
   pfTax: number;
   missingPnl: string[]; // empresas sem P&L do ano
   excludedNonUsd: string[]; // empresas em moeda estrangeira fora do cálculo federal US (tributadas no país)
+  excludedClosed: string[]; // empresas encerradas antes do ano (IR final já declarado) — não entram
 }
 
 // Faixas federais MFJ 2024 + dedução padrão (estimativa simplificada, só federal).
@@ -88,7 +91,7 @@ const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/
 
 export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment] = await Promise.all([
+  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment, finalReturns] = await Promise.all([
     buildClosingSequence(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
@@ -103,18 +106,53 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
       select: { companyId: true, principal: true, penalty: true, interest: true, paidDate: true },
     }),
     prisma.company.findMany({
-      select: { id: true, legalName: true, baseCurrency: true, monitored: true, relationship: true, controlsTax: true },
+      select: { id: true, legalName: true, baseCurrency: true, monitored: true, relationship: true, controlsTax: true, closedDate: true, status: true },
     }),
     loadTreatmentResolver(),
+    prisma.taxReturn.findMany({ where: { isFinalReturn: true, companyId: { not: null } }, select: { companyId: true, year: true } }),
   ]);
   const companyById = new Map(companies.map((c) => [c.id, c]));
   const isUsd = (id: string) => (companyById.get(id)?.baseCurrency ?? "USD") === "USD";
+  // Empresa ENCERRADA antes do ano Y → some do preview/reserve (no ano do fecho ainda aparece, pois
+  // declara o IR final). Sinal: ano do IR final (isFinalReturn) ou closedDate, o mais cedo conhecido.
+  const finalYearByCompany = new Map<string, number>();
+  for (const r of finalReturns) {
+    if (!r.companyId || r.year == null) continue;
+    const cur = finalYearByCompany.get(r.companyId);
+    if (cur == null || r.year > cur) finalYearByCompany.set(r.companyId, r.year);
+  }
+  const closedYearOf = (id: string): number | null => {
+    const c = companyById.get(id);
+    const fin = finalYearByCompany.get(id) ?? null;
+    const cd = c?.closedDate ? Number((c.closedDate.match(/(?:19|20)\d\d/) ?? [])[0]) || null : null;
+    const ys = [fin, cd].filter((y): y is number => y != null);
+    return ys.length ? Math.min(...ys) : null;
+  };
+  const isClosedBeforeYear = (id: string) => {
+    const cy = closedYearOf(id);
+    return cy != null && cy < year;
+  };
 
-  // P&L mais recente do ANO por empresa.
+  // P&L mais recente do ANO por empresa (linhas + id do import, para abrir a fonte clicável).
   const pnlByCompany = new Map<string, Line[]>();
+  const pnlImportIdByCompany = new Map<string, string>();
   for (const imp of pnlImports) {
     if (!imp.companyId || yearOf(imp.periodLabel) !== year) continue;
-    if (!pnlByCompany.has(imp.companyId)) pnlByCompany.set(imp.companyId, imp.lines);
+    if (!pnlByCompany.has(imp.companyId)) {
+      pnlByCompany.set(imp.companyId, imp.lines);
+      pnlImportIdByCompany.set(imp.companyId, imp.id);
+    }
+  }
+  // Balance Sheet mais recente do ANO por empresa — só o id (para o link da fonte).
+  const bsImports = await prisma.qboImport.findMany({
+    where: { reportKind: "BALANCE_SHEET" },
+    orderBy: { createdAt: "desc" },
+    select: { id: true, companyId: true, periodLabel: true },
+  });
+  const bsImportIdByCompany = new Map<string, string>();
+  for (const imp of bsImports) {
+    if (!imp.companyId || yearOf(imp.periodLabel) !== year) continue;
+    if (!bsImportIdByCompany.has(imp.companyId)) bsImportIdByCompany.set(imp.companyId, imp.id);
   }
 
   const macrsByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.yearDep])); // MACRS efetiva (referência)
@@ -163,7 +201,11 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   // (PT/EUR, BR/BRL) são tributadas no próprio país; ficam fora e são listadas à parte (igual ao reserve).
   const seqNodes = seq.tiers.flat(); // ordem ascendente de tier (investidas antes das investidoras)
   const excludedNonUsd = seqNodes.filter((n) => n.kind === "company" && !isUsd(n.id)).map((n) => n.name);
-  const nodes: SeqNode[] = seqNodes.filter((n) => n.kind === "person" || isUsd(n.id));
+  // (C) Empresa ENCERRADA antes do ano (IR final já declarado / closedDate): some do cálculo.
+  const excludedClosed = seqNodes
+    .filter((n) => n.kind === "company" && isUsd(n.id) && isClosedBeforeYear(n.id))
+    .map((n) => n.name);
+  const nodes: SeqNode[] = seqNodes.filter((n) => n.kind === "person" || (isUsd(n.id) && !isClosedBeforeYear(n.id)));
 
   // (B) Inclui empresas elegíveis (USD, monitoradas, do grupo/que controlamos) com P&L ou imposto
   // estadual do ano que ficaram FORA da sequência (sem ownership/IR) — senão quem deve pagar some.
@@ -174,6 +216,7 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     if (present.has(id)) continue;
     const c = companyById.get(id);
     if (!c || !eligible(c)) continue;
+    if (isClosedBeforeYear(id)) { excludedClosed.push(c.legalName); continue; } // encerrada → nota, não entra
     present.add(id);
     nodes.push({
       key: ck(id), kind: "company", id, name: c.legalName, acronym: acronymOf(c.legalName, "company"),
@@ -252,10 +295,12 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
         .map((f) => ({ fromKey: f.fromKey, fromName: nodeByKey.get(f.fromKey)?.name ?? "—", fromAcronym: nodeByKey.get(f.fromKey)?.acronym ?? "?", amount: r2(f.amount) }))
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
       taxable, tax, passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
+      pnlImportId: n.kind === "company" ? (pnlImportIdByCompany.get(n.id) ?? null) : null,
+      bsImportId: n.kind === "company" ? (bsImportIdByCompany.get(n.id) ?? null) : null,
     };
   });
 
   const corpTax = r2(rows.filter((r) => r.entityType === "C-corp").reduce((a, r) => a + r.tax, 0));
   const pfTax = r2(rows.filter((r) => r.entityType === "PF").reduce((a, r) => a + r.tax, 0));
-  return { year, years: seq.years.length ? seq.years : [year], rows, groupTax: r2(corpTax + pfTax), corpTax, pfTax, missingPnl, excludedNonUsd };
+  return { year, years: seq.years.length ? seq.years : [year], rows, groupTax: r2(corpTax + pfTax), corpTax, pfTax, missingPnl, excludedNonUsd, excludedClosed };
 }

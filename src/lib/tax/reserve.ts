@@ -472,6 +472,7 @@ export interface ReserveByEntity {
   corpReserve: number; // soma das C-corp
   ownerReserve: number; // soma das pessoas (PF)
   excludedNonUsd: string[];
+  excludedClosed: string[];
   missingPnl: string[];
 }
 
@@ -503,6 +504,7 @@ export async function buildReserveByEntity(year: number): Promise<ReserveByEntit
     corpReserve: sum((r) => r.entityType === "C-corp"),
     ownerReserve: sum((r) => r.entityType === "PF"),
     excludedNonUsd: preview.excludedNonUsd,
+    excludedClosed: preview.excludedClosed,
     missingPnl: preview.missingPnl,
   };
 }

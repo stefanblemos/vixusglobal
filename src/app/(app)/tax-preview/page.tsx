@@ -75,6 +75,12 @@ export default async function TaxPreviewPage({
         </p>
       )}
 
+      {data.excludedClosed.length > 0 && (
+        <p className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs text-slate-600">
+          Encerradas (IR final já declarado em ano anterior) — fora do cálculo: {data.excludedClosed.join(", ")}.
+        </p>
+      )}
+
       <TaxPreviewTable rows={data.rows} year={year} />
 
       <p className="text-xs text-slate-400">
