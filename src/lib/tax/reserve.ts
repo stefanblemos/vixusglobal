@@ -508,3 +508,65 @@ export async function buildReserveByEntity(year: number): Promise<ReserveByEntit
     missingPnl: preview.missingPnl,
   };
 }
+
+// PAGAMENTOS ESTIMADOS por trimestre — DERIVA do reserve por entidade (fonte única do imposto anual),
+// sem recalcular. Cada pagador final (C-corp paga 1120-W; pessoa física 1040-ES) deve recolher ~25%
+// do imposto do ano por trimestre, no vencimento. Pass-through não paga (repassa). Se faltar P&L de
+// alguma empresa no escopo, o anual está incompleto → o relatório NÃO é gerado (evita erro).
+export const CORP_ESTIMATE_DUE = ["Apr 15", "Jun 15", "Sep 15", "Dec 15"]; // 1120-W (ano-calendário)
+export const INDIVIDUAL_ESTIMATE_DUE = ["Apr 15", "Jun 15", "Sep 15", "Jan 15 (ano seg.)"]; // 1040-ES
+
+export interface EstimatedPaymentRow {
+  key: string;
+  kind: "company" | "person";
+  id: string;
+  name: string;
+  entityType: TaxPreviewRow["entityType"]; // só "C-corp" | "PF" (pass-through é filtrada)
+  annualReserve: number;
+  installment: number; // ~25% do anual por trimestre
+  due: string; // vencimento do trimestre selecionado (por tipo)
+  pnlImportId: string | null; // fonte clicável
+}
+
+export interface EstimatedPayments {
+  year: number;
+  quarter: number; // 1..4
+  rows: EstimatedPaymentRow[]; // pagadores finais (C-corp + PF)
+  totalAnnual: number;
+  totalInstallment: number;
+  corpDue: string;
+  individualDue: string;
+  blockedMissingPnl: string[]; // empresas no escopo sem P&L → relatório bloqueado
+}
+
+export async function buildEstimatedPayments(year: number, quarter: number): Promise<EstimatedPayments> {
+  const q = quarter >= 1 && quarter <= 4 ? quarter : 1;
+  const be = await buildReserveByEntity(year);
+  const corpDue = CORP_ESTIMATE_DUE[q - 1];
+  const individualDue = INDIVIDUAL_ESTIMATE_DUE[q - 1];
+  const rows: EstimatedPaymentRow[] = be.rows
+    .filter((r) => r.entityType !== "Pass-through" && r.reserve > 0.005)
+    .map((r) => ({
+      key: r.key,
+      kind: r.kind,
+      id: r.id,
+      name: r.name,
+      entityType: r.entityType,
+      annualReserve: r.reserve,
+      installment: Math.round((r.reserve / 4) * 100) / 100,
+      due: r.entityType === "C-corp" ? corpDue : individualDue,
+      pnlImportId: r.pnlImportId,
+    }))
+    .sort((a, b) => b.annualReserve - a.annualReserve);
+  const totalAnnual = Math.round(rows.reduce((s, r) => s + r.annualReserve, 0) * 100) / 100;
+  return {
+    year,
+    quarter: q,
+    rows,
+    totalAnnual,
+    totalInstallment: Math.round((totalAnnual / 4) * 100) / 100,
+    corpDue,
+    individualDue,
+    blockedMissingPnl: be.missingPnl,
+  };
+}

@@ -3,6 +3,7 @@ import {
   buildTaxReserve,
   buildQuarterlyReserve,
   buildReserveByEntity,
+  buildEstimatedPayments,
   reserveYears,
   QUARTER_DUE,
 } from "@/lib/tax/reserve";
@@ -28,17 +29,20 @@ const money = (v: number | null, ccy = "USD") =>
 export default async function ReservePage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string; tab?: string }>;
+  searchParams: Promise<{ year?: string; tab?: string; q?: string }>;
 }) {
-  const { year: yearRaw, tab: tabRaw } = await searchParams;
+  const { year: yearRaw, tab: tabRaw, q: qRaw } = await searchParams;
   const years = await reserveYears();
   const fallbackYear = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
+  const quarter = [1, 2, 3, 4].includes(Number(qRaw)) ? Number(qRaw) : Math.ceil((new Date().getUTCMonth() + 1) / 3);
   const TABS = [
     { key: "quarterly", label: "Quarterly" },
     { key: "annual", label: "By entity" },
+    { key: "estimated", label: "Estimated payments" },
   ];
   const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "quarterly";
+  const estimated = tab === "estimated" ? await buildEstimatedPayments(year, quarter) : null;
 
   const [{ rows }, byEntity, { rows: qRows }, { rows: breakdown }, completeness, depositList] =
     await Promise.all([
@@ -287,6 +291,96 @@ export default async function ReservePage({
                 </p>
               )}
               <ReserveEntityTable rows={byEntity.rows} locked={locked} />
+            </section>
+          )}
+
+          {tab === "estimated" && estimated && (
+            <section className="space-y-3">
+              <div>
+                <h2 className="text-lg font-medium text-slate-800">Estimated tax payments — {estimated.year}</h2>
+                <p className="text-sm text-slate-500">
+                  Quanto cada pagador final deve recolher por trimestre para não tomar multa — ~25% do
+                  imposto do ano (a <strong>mesma base</strong> do &ldquo;By entity&rdquo;). C-corp paga
+                  o 1120-W; pessoa física o 1040-ES; pass-through repassa (não paga).
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                <span className="mr-1 text-slate-400">Trimestre:</span>
+                {[1, 2, 3, 4].map((q) => (
+                  <Link
+                    key={q}
+                    href={`/reserve?year=${year}&tab=estimated&q=${q}`}
+                    className={`rounded-full px-3 py-1 ${q === estimated.quarter ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                  >
+                    Q{q}
+                  </Link>
+                ))}
+                <span className="ml-2 text-xs text-slate-400">
+                  venc.: C-corp {estimated.corpDue} · PF {estimated.individualDue}
+                </span>
+              </div>
+
+              {estimated.blockedMissingPnl.length > 0 ? (
+                <div className="rounded-xl border border-rose-300 bg-rose-50 p-4 text-sm text-rose-800">
+                  <div className="font-medium">Relatório não gerado — faltam livros.</div>
+                  <p className="mt-1">
+                    Sem o P&amp;L do ano de: <strong>{estimated.blockedMissingPnl.join(", ")}</strong>. O
+                    imposto anual fica incompleto; importe os P&amp;L faltantes antes de gerar (evita pagar
+                    errado).
+                  </p>
+                </div>
+              ) : estimated.rows.length === 0 ? (
+                <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-500">
+                  Nenhum pagador final com imposto estimado neste ano.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Stat label={`Total a pagar em Q${estimated.quarter}`} value={money(estimated.totalInstallment)} good />
+                    <Stat label="Imposto anual estimado (4 parcelas)" value={money(estimated.totalAnnual)} />
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                          <th className="px-4 py-2 font-medium">Entity</th>
+                          <th className="px-3 py-2 font-medium">Form</th>
+                          <th className="px-3 py-2 text-right font-medium">Annual tax</th>
+                          <th className="px-3 py-2 text-right font-medium">Q{estimated.quarter} payment</th>
+                          <th className="px-3 py-2 font-medium">Due</th>
+                          <th className="px-3 py-2 font-medium">Source</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {estimated.rows.map((r) => (
+                          <tr key={r.key} className="hover:bg-slate-50">
+                            <td className="px-4 py-2">
+                              <span className="font-medium text-slate-800">{r.name}</span>
+                              <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${r.entityType === "C-corp" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700"}`}>{r.entityType}</span>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-slate-500">{r.entityType === "C-corp" ? "1120-W" : "1040-ES"}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(r.annualReserve)}</td>
+                            <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">{money(r.installment)}</td>
+                            <td className="px-3 py-2 text-xs text-slate-600">{r.due}</td>
+                            <td className="px-3 py-2 text-xs">
+                              {r.pnlImportId ? (
+                                <Link href={`/import/${r.pnlImportId}`} className="text-sky-700 hover:underline">P&amp;L →</Link>
+                              ) : (
+                                <span className="text-amber-600">não imp.</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Parcela = ¼ do imposto anual (método regular de 4 parcelas iguais). Para quem começou
+                    no meio do ano, o método de renda anualizada pode reduzir parcelas — confirme com o
+                    contador. Datas de vencimento são o padrão do ano-calendário.
+                  </p>
+                </>
+              )}
             </section>
           )}
 
