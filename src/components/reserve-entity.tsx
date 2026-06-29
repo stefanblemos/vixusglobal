@@ -173,8 +173,28 @@ function DetailModal({
           <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">Base tributável</div>
           <div className="divide-y divide-slate-100">
             <Step label={isPerson ? "Renda própria" : "Lucro líquido (book · P&L)"} value={row.bookNet} />
-            {row.nonDeductible !== 0 && <Step label="+ Não dedutíveis (M-1)" value={row.nonDeductible} />}
-            {row.stateTaxAddBack !== 0 && <Step label="+ Imposto estadual (add-back)" value={row.stateTaxAddBack} />}
+            {row.nonDeductible !== 0 && (
+              <>
+                <Step label="+ Não dedutíveis (M-1)" value={row.nonDeductible} hint="o livro lançou como despesa, mas não abate imposto → voltam à base (IR federal é o maior caso)" />
+                {row.nonDeductibleItems.length > 0 && (
+                  <div className="py-1 pl-3">
+                    {row.nonDeductibleItems.map((it, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                        <span className="truncate">{it.label}</span>
+                        <span className="shrink-0 tabular-nums">{m(it.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+            {row.stateTaxAddBack !== 0 && (
+              <Step
+                label="+ Imposto estadual (add-back)"
+                value={row.stateTaxAddBack}
+                hint={row.stateTaxSource === "florida" ? "principal + multa (controle Florida)" : "imposto estadual lançado como despesa no P&L"}
+              />
+            )}
             {row.depAdj !== 0 ? (
               <Step label="± Depreciação real dos ativos" value={row.depAdj} hint="livro real registrado (conferência); MACRS só se não houver real" />
             ) : (

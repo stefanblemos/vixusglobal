@@ -1056,35 +1056,85 @@ export default async function CompanyDetailPage({
 
           <section className="space-y-3">
             <h2 className="text-lg font-medium text-slate-800">QBO reports on file</h2>
-            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              {qboImports.length === 0 ? (
-                <p className="p-6 text-sm text-slate-500">No QBO reports imported.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <tbody className="divide-y divide-slate-100">
-                    {[...qboImports].sort(byPeriodDesc).map((q) => (
-                      <tr key={q.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3 font-medium">
-                          <Link href={`/import/${q.id}`} className="text-[#1f3a5f] hover:underline">
-                            {q.reportTypeLabel}
-                          </Link>
-                        </td>
-                        <td className="px-4 py-3 text-slate-500">{q.periodLabel}</td>
-                        <td className="px-4 py-3 text-slate-400">{q.basis ?? ""}</td>
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            href={`/import/${q.id}`}
-                            className="text-xs text-[#1f3a5f] hover:underline"
-                          >
-                            Open →
-                          </Link>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+            {qboImports.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+                No QBO reports imported.
+              </div>
+            ) : (
+              (() => {
+                // Organizado por ANO × TIPO (em vez de uma lista corrida) — assim acha-se direto "o P&L
+                // de 2024". O rótulo do período fica na célula, então YTD parciais (ex.: Jan–31) aparecem.
+                const KINDS = [
+                  { key: "PROFIT_AND_LOSS", label: "Profit & Loss" },
+                  { key: "BALANCE_SHEET", label: "Balance Sheet" },
+                  { key: "GENERAL_LEDGER", label: "General Ledger" },
+                ] as const;
+                const yOf = (s: string) => Number((String(s).match(/(20\d\d)/) ?? [])[1] ?? 0);
+                const byYear = new Map<number, typeof qboImports>();
+                for (const q of qboImports) {
+                  const y = yOf(q.periodLabel);
+                  const arr = byYear.get(y) ?? [];
+                  arr.push(q);
+                  byYear.set(y, arr);
+                }
+                const years = [...byYear.keys()].sort((a, b) => b - a);
+                return (
+                  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                          <th className="px-4 py-2 font-medium">Year</th>
+                          {KINDS.map((k) => (
+                            <th key={k.key} className="px-4 py-2 font-medium">
+                              {k.label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {years.map((y) => {
+                          const items = byYear.get(y)!;
+                          return (
+                            <tr key={y} className="align-top">
+                              <td className="px-4 py-3 font-medium text-slate-700">{y || "—"}</td>
+                              {KINDS.map((k) => {
+                                const list = items
+                                  .filter((i) => i.reportKind === k.key)
+                                  .sort(byPeriodDesc);
+                                return (
+                                  <td key={k.key} className="px-4 py-3">
+                                    {list.length === 0 ? (
+                                      <span className="text-slate-300">—</span>
+                                    ) : (
+                                      <div className="space-y-1">
+                                        {list.map((q) => (
+                                          <Link
+                                            key={q.id}
+                                            href={`/import/${q.id}`}
+                                            className="block text-[#1f3a5f] hover:underline"
+                                          >
+                                            {q.periodLabel}
+                                            {q.basis ? (
+                                              <span className="ml-1 text-[11px] text-slate-400">
+                                                {q.basis}
+                                              </span>
+                                            ) : null}
+                                          </Link>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })()
+            )}
           </section>
 
           <section className="space-y-3">

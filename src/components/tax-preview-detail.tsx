@@ -181,13 +181,25 @@ function DetailModal({
           <div className="divide-y divide-slate-100">
             <Step label={isPerson ? "Renda própria" : "Lucro líquido (book · P&L)"} value={row.bookNet} muted={isPerson && row.bookNet === 0} />
             {row.nonDeductible !== 0 && (
-              <Step label="+ Não dedutíveis (Schedule M-1)" value={row.nonDeductible} hint="refeições 50%, multas, seguro de vida de oficial, imposto federal, contrib. política/clube" />
+              <>
+                <Step label="+ Não dedutíveis (Schedule M-1)" value={row.nonDeductible} hint="o livro lançou como despesa, mas não abate imposto → voltam à base (IR federal é o maior caso)" />
+                {row.nonDeductibleItems.length > 0 && (
+                  <div className="py-1 pl-3">
+                    {row.nonDeductibleItems.map((it, i) => (
+                      <div key={i} className="flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                        <span className="truncate">{it.label}</span>
+                        <span className="shrink-0 tabular-nums">{m(it.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
             {row.stateTaxAddBack !== 0 && (
               <Step
                 label="+ Imposto estadual — add-back"
                 value={row.stateTaxAddBack}
-                hint={`principal + multa pagos em ${year}${row.stateTaxInterest > 0 ? ` · juros ${m(row.stateTaxInterest)} são dedutíveis (ficam de fora)` : ""}`}
+                hint={`${row.stateTaxSource === "florida" ? `principal + multa pagos em ${year} (controle Florida)` : `imposto estadual lançado como despesa no P&L de ${year}`}${row.stateTaxInterest > 0 ? ` · juros ${m(row.stateTaxInterest)} são dedutíveis (ficam de fora)` : ""}`}
               />
             )}
             {row.depAdj !== 0 ? (

@@ -26,9 +26,11 @@ export interface TaxPreviewRow {
   entityType: EntityType;
   hasPnl: boolean;
   bookNet: number; // lucro líquido do P&L (0 p/ pessoa)
-  nonDeductible: number; // add-backs do M-1 detectados do P&L
-  stateTaxAddBack: number; // add-back do estadual pago no ano (principal + multa) — do controle /florida
+  nonDeductible: number; // add-backs do M-1 detectados do P&L (inclui IR federal — nunca dedutível)
+  nonDeductibleItems: { label: string; amount: number }[]; // detalhe do add-back ("o que foi o ajuste")
+  stateTaxAddBack: number; // add-back do estadual pago no ano (principal + multa) — do controle /florida ou do P&L
   stateTaxInterest: number; // juros do estadual pago no ano — dedutíveis, NÃO somados (só p/ nota)
+  stateTaxSource: "florida" | "pnl" | null; // de onde veio o add-back estadual
   depAdj: number; // ajuste de depreciação na base: 0 quando confia no livro; −MACRS quando o livro não tem
   bookDep: number; // depreciação no P&L (livro) do ano
   macrsDep: number; // depreciação MACRS do ano (app) — dos ativos cadastrados
@@ -74,19 +76,38 @@ function federalPF(taxable: number): number {
 }
 
 type Line = { lineType: string; label: string; value: unknown };
-function nonDeductibleFromPnl(lines: Line[]): number {
-  let total = 0;
+type AddBack = { label: string; amount: number };
+// Despesas do P&L que NÃO são despesa de verdade para o imposto e precisam voltar à base (Schedule
+// M-1). O caso mais grave: o QBO lança o PAGAMENTO de IR federal (e estadual) como despesa — isso
+// derruba o lucro para um valor irreal. O IR federal nunca é dedutível → volta sempre. O estadual é
+// dedutível no federal, então é tratado à parte (`stateTaxFromPnl`): o controle /florida tem
+// prioridade e, se não houver, usa-se esta linha — evitando dupla contagem. Retorna o DETALHE
+// (label + valor) para a tela deixar claro "o que foi o ajuste".
+function taxAddBacksFromPnl(lines: Line[]): { total: number; items: AddBack[]; stateTaxFromPnl: number } {
+  const items: AddBack[] = [];
+  let stateTaxFromPnl = 0;
   for (const l of lines) {
     if (l.lineType !== "ACCOUNT" || l.value == null) continue;
     const v = Math.abs(Number(l.value));
+    if (v < 0.005) continue;
     const n = l.label.toLowerCase();
-    if (/\bmeal/.test(n)) total += v * 0.5; // 50% das refeições
-    else if (/penalt|fine|late fee/.test(n)) total += v; // multas/penalidades
-    else if (/life insurance/.test(n)) total += v; // seguro de vida de oficial
-    else if (/federal income tax/.test(n)) total += v; // imposto federal
-    else if (/political|club dues|lobby/.test(n)) total += v; // contrib. política/clube
+    const payroll = /payroll|unemploy|\bfica\b|social security|medicare|\bfui\b|\bsui\b|withhold/.test(n);
+    // imposto de renda ESTADUAL (não folha/vendas/imóvel) — dedutível no federal; tratado à parte.
+    if (!payroll && /\bstate\b/.test(n) && /tax|income/.test(n) && !/sales|use tax|property|tangible/.test(n)) {
+      stateTaxFromPnl = Math.round((stateTaxFromPnl + v) * 100) / 100;
+      continue;
+    }
+    // imposto de renda FEDERAL — nunca dedutível (Schedule M-1, linha 2). Casa "Federal Taxes",
+    // "Federal Income Tax", "US income tax", "income tax — federal" (mas não folha).
+    if (!payroll && (/federal/.test(n) && /tax|income/.test(n)) ) items.push({ label: l.label, amount: v });
+    else if (/income tax/.test(n) && !payroll && !/state/.test(n)) items.push({ label: l.label, amount: v });
+    else if (/\bmeal/.test(n)) items.push({ label: l.label, amount: Math.round(v * 50) / 100 }); // 50%
+    else if (/penalt|fine|late fee/.test(n)) items.push({ label: l.label, amount: v });
+    else if (/life insurance/.test(n)) items.push({ label: l.label, amount: v });
+    else if (/political|club dues|lobby/.test(n)) items.push({ label: l.label, amount: v });
   }
-  return Math.round(total * 100) / 100;
+  const total = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
+  return { total, items, stateTaxFromPnl };
 }
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/(?:19|20)\d\d/) ?? [])[0] ?? 0);
@@ -238,7 +259,7 @@ export async function buildTaxPreview(
     n.kind === "person" ? "PF" : n.finalPayer ? "C-corp" : "Pass-through";
 
   // Base própria de cada entidade.
-  const blank = { bookNet: 0, nonDed: 0, stateAddBack: 0, stateInterest: 0, depAdj: 0, bookDep: 0, macrsDep: 0, macrsApplied: false, depCatchUp: null as number | null, hasPnl: false };
+  const blank = { bookNet: 0, nonDed: 0, nonDedItems: [] as AddBack[], stateAddBack: 0, stateInterest: 0, stateSource: null as "florida" | "pnl" | null, depAdj: 0, bookDep: 0, macrsDep: 0, macrsApplied: false, depCatchUp: null as number | null, hasPnl: false };
   const self = new Map<string, typeof blank>();
   const missingPnl: string[] = [];
   for (const n of nodes) {
@@ -246,11 +267,15 @@ export async function buildTaxPreview(
     const lines = pnlByCompany.get(n.id);
     if (!lines) { self.set(n.key, { ...blank }); missingPnl.push(n.name); continue; }
     const bookNet = pnlTotals(lines).netIncome ?? 0;
-    const nonDed = nonDeductibleFromPnl(lines);
-    // Add-back do estadual pago no ano (o P&L lançou essa despesa, então reverte principal+multa).
+    const ded = taxAddBacksFromPnl(lines);
+    const nonDed = ded.total;
+    // Estadual: o controle /florida (datado: principal+multa, juros à parte) tem prioridade. Sem ele,
+    // usa-se a linha de imposto estadual do próprio P&L (fallback) — sem duplicar.
     const st = stateByCompany.get(n.id);
-    const stateAddBack = st ? r2(st.addBack) : 0;
-    const stateInterest = st ? r2(st.interest) : 0;
+    let stateAddBack: number, stateInterest: number, stateSource: "florida" | "pnl" | null;
+    if (st) { stateAddBack = r2(st.addBack); stateInterest = r2(st.interest); stateSource = "florida"; }
+    else if (ded.stateTaxFromPnl > 0) { stateAddBack = ded.stateTaxFromPnl; stateInterest = 0; stateSource = "pnl"; }
+    else { stateAddBack = 0; stateInterest = 0; stateSource = null; }
     const bookDep = bookDepFromLines(lines);
     const hasAssets = macrsByCompany.has(n.id);
     let macrsDep: number, realDep: number, macrsApplied: boolean, depAdj: number;
@@ -271,7 +296,7 @@ export async function buildTaxPreview(
       depAdj = trustBookDepAdjustment(bookDep, realDep, hasAssets);
     }
     const depCatchUp = reconByCompany.get(n.id)?.catchUp ?? null;
-    self.set(n.key, { bookNet: r2(bookNet), nonDed, stateAddBack, stateInterest, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
+    self.set(n.key, { bookNet: r2(bookNet), nonDed, nonDedItems: ded.items, stateAddBack, stateInterest, stateSource, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }
 
   // K-1 acumulado de baixo para cima. k1FromByKey guarda a ORIGEM (quem repassou e quanto) — para o
@@ -305,8 +330,8 @@ export async function buildTaxPreview(
     const tax = t === "C-corp" ? r2(Math.max(0, taxable) * 0.21) : t === "PF" ? federalPF(taxable) : 0;
     return {
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
-      hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed,
-      stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest,
+      hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, nonDeductibleItems: s.nonDedItems,
+      stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest, stateTaxSource: s.stateSource,
       depAdj: s.depAdj, bookDep: s.bookDep, macrsDep: s.macrsDep, macrsApplied: s.macrsApplied, depCatchUp: s.depCatchUp,
       k1In: r2(k1In.get(n.key) ?? 0),
       k1From: (k1FromByKey.get(n.key) ?? [])
