@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { edgesFromOwnerships } from "@/lib/ownership/effective";
+import { loadTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
 import { acronymOf } from "@/lib/closing/sequence";
 
 // Organograma anual: árvore de donos × investidas (pass-through) com os percentuais.
@@ -48,7 +49,7 @@ const MARGIN = 24;
 
 export async function buildOrgChart(year: number): Promise<OrgChart> {
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [companies, parties, ownerships, taxReturns] = await Promise.all([
+  const [companies, parties, ownerships, taxReturns, resolveTreatment] = await Promise.all([
     prisma.company.findMany({ select: { id: true, legalName: true } }),
     prisma.party.findMany({ where: { kind: "PERSON" }, select: { id: true, name: true } }),
     prisma.ownership.findMany({
@@ -66,6 +67,8 @@ export async function buildOrgChart(year: number): Promise<OrgChart> {
       where: { companyId: { not: null } },
       select: { companyId: true, year: true, taxTreatment: true, taxForm: true },
     }),
+    // Tributação por (empresa, ano) — fonte única (cadastro > IR exato > carry-forward).
+    loadTreatmentResolver(),
   ]);
 
   // Anos disponíveis no seletor: trocas de ownership + anos com IR + ano corrente e anterior.
@@ -81,12 +84,8 @@ export async function buildOrgChart(year: number): Promise<OrgChart> {
   yearSet.add(now.getUTCFullYear() - 1);
   const years = [...yearSet].filter((y) => y >= 2000 && y <= 2100).sort((a, b) => b - a);
 
-  // Tributação por empresa (último IR) → marca C-corp vs pass-through.
-  const treat = new Map<string, string>();
-  for (const t of taxReturns.sort((a, b) => (a.year ?? 0) - (b.year ?? 0))) {
-    if (t.companyId) treat.set(t.companyId, t.taxTreatment ?? t.taxForm ?? "");
-  }
-  const isCorp = (id: string) => /c.?corp|1120(?!-s)/i.test(treat.get(id) ?? "");
+  // C-corp vs pass-through por (empresa, ano) — fonte única (resolver + isCorpTreatment).
+  const isCorp = (id: string) => isCorpTreatment(resolveTreatment(id, year).treatment);
 
   const ck = (id: string) => `c:${id}`;
   const pk = (id: string) => `p:${id}`;

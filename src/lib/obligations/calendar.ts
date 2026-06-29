@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { obligationsFor, type Obligation } from "./rules";
+import { loadTreatmentResolver } from "@/lib/tax/treatment";
+import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
 
 // Expande as obrigações (de rules.ts) em VENCIMENTOS DATADOS dentro de um ano-calendário,
 // e cruza com o status gravado (feito/pendente/NA). Mensais, trimestrais e anuais.
@@ -127,7 +129,7 @@ export async function buildObligationCalendar(
   year: number,
   companyFilter?: string,
 ): Promise<ObligationCalendar> {
-  const [companies, returns, ownerships, parties, statuses] = await Promise.all([
+  const [companies, resolveTreatment, ownerships, parties, statuses] = await Promise.all([
     prisma.company.findMany({
       where: { status: "ACTIVE", monitored: true },
       select: {
@@ -136,31 +138,25 @@ export async function buildObligationCalendar(
       },
       orderBy: { legalName: "asc" },
     }),
-    prisma.taxReturn.findMany({
-      where: { companyId: { not: null }, taxTreatment: { not: null } },
-      select: { companyId: true, taxTreatment: true, year: true },
-      orderBy: { year: "desc" },
-    }),
+    // Tributação por (empresa, ano) — fonte única (cadastro > IR exato > carry-forward).
+    loadTreatmentResolver(),
     prisma.ownership.findMany({
       where: { ownerPartyId: { not: null }, ownedCompanyId: { not: null } },
-      select: { ownedCompanyId: true, ownerPartyId: true },
+      select: { ownedCompanyId: true, ownerPartyId: true, effectiveDate: true, endDate: true },
     }),
     prisma.party.findMany({ select: { id: true, taxJurisdiction: true } }),
     prisma.obligationStatus.findMany(),
   ]);
 
-  const treatmentByCompany = new Map<string, string>();
-  for (const r of returns) {
-    if (r.companyId && !treatmentByCompany.has(r.companyId)) {
-      treatmentByCompany.set(r.companyId, r.taxTreatment ?? "");
-    }
-  }
   const foreignPartyIds = new Set(
     parties.filter((p) => p.taxJurisdiction && p.taxJurisdiction !== "US").map((p) => p.id),
   );
+  // Sócio estrangeiro VIGENTE no ano (fonte única isEffectiveAt) — antes contava qualquer ownership
+  // de qualquer época (um sócio que saiu ainda disparava withholding).
+  const asOf = asOfYearEnd(year);
   const foreignByCompany = new Set<string>();
   for (const o of ownerships) {
-    if (o.ownedCompanyId && o.ownerPartyId && foreignPartyIds.has(o.ownerPartyId)) {
+    if (o.ownedCompanyId && o.ownerPartyId && foreignPartyIds.has(o.ownerPartyId) && isEffectiveAt(o, asOf)) {
       foreignByCompany.add(o.ownedCompanyId);
     }
   }
@@ -173,7 +169,7 @@ export async function buildObligationCalendar(
 
   const scope = companyFilter ? companies.filter((c) => c.id === companyFilter) : companies;
   for (const c of scope) {
-    const treatment = treatmentByCompany.get(c.id) ?? null;
+    const treatment = resolveTreatment(c.id, year).treatment;
     const obls: Obligation[] = obligationsFor({
       jurisdiction: c.jurisdiction,
       state: c.state,

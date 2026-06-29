@@ -3,6 +3,8 @@ import { buildCompleteness } from "@/lib/closing/completeness";
 import { buildBankReconSummary } from "@/lib/bank/summary";
 import { computeLoanBalance } from "@/lib/loans/interest";
 import { obligationsFor } from "@/lib/obligations/rules";
+import { loadTreatmentResolver } from "@/lib/tax/treatment";
+import { isEffectiveAt } from "@/lib/ownership/effective";
 
 // Monta o painel do Overview: atenção, progresso do fechamento, exposição intercompany
 // e mapa de calor — tudo restrito às empresas monitoradas (flag `monitored`).
@@ -112,7 +114,7 @@ export async function buildOverview(): Promise<OverviewData> {
   }
 
   // ── Obrigações (próximo vencimento entre as empresas monitoradas) ──
-  const [oblCompanies, returns, ownerships, parties] = await Promise.all([
+  const [oblCompanies, resolveTreatment, ownerships, parties] = await Promise.all([
     prisma.company.findMany({
       where: { status: "ACTIVE", monitored: true },
       select: {
@@ -120,29 +122,23 @@ export async function buildOverview(): Promise<OverviewData> {
         collectsSalesTax: true, hasEmployees: true,
       },
     }),
-    prisma.taxReturn.findMany({
-      where: { companyId: { not: null }, taxTreatment: { not: null } },
-      select: { companyId: true, taxTreatment: true, year: true },
-      orderBy: { year: "desc" },
-    }),
+    // Tributação por (empresa, ano) — fonte única (cadastro > IR exato > carry-forward).
+    loadTreatmentResolver(),
     prisma.ownership.findMany({
       where: { ownerPartyId: { not: null }, ownedCompanyId: { not: null } },
-      select: { ownedCompanyId: true, ownerPartyId: true },
+      select: { ownedCompanyId: true, ownerPartyId: true, effectiveDate: true, endDate: true },
     }),
     prisma.party.findMany({ select: { id: true, taxJurisdiction: true } }),
   ]);
-  const treatmentByCompany = new Map<string, string>();
-  for (const r of returns) {
-    if (r.companyId && !treatmentByCompany.has(r.companyId)) {
-      treatmentByCompany.set(r.companyId, r.taxTreatment ?? "");
-    }
-  }
+  const obligationsYear = today.getUTCFullYear();
   const foreignPartyIds = new Set(
     parties.filter((p) => p.taxJurisdiction && p.taxJurisdiction !== "US").map((p) => p.id),
   );
+  // Sócio estrangeiro VIGENTE hoje (fonte única isEffectiveAt) — antes contava qualquer ownership
+  // de qualquer época, então um sócio que já saiu ainda disparava obrigação de withholding.
   const foreignByCompany = new Set<string>();
   for (const o of ownerships) {
-    if (o.ownedCompanyId && o.ownerPartyId && foreignPartyIds.has(o.ownerPartyId)) {
+    if (o.ownedCompanyId && o.ownerPartyId && foreignPartyIds.has(o.ownerPartyId) && isEffectiveAt(o, today)) {
       foreignByCompany.add(o.ownedCompanyId);
     }
   }
@@ -154,7 +150,7 @@ export async function buildOverview(): Promise<OverviewData> {
     const obls = obligationsFor({
       jurisdiction: c.jurisdiction,
       state: c.state,
-      taxTreatment: treatmentByCompany.get(c.id) ?? null,
+      taxTreatment: resolveTreatment(c.id, obligationsYear).treatment,
       collectsSalesTax: c.collectsSalesTax,
       hasEmployees: c.hasEmployees,
       hasForeignPartners: foreignByCompany.has(c.id),

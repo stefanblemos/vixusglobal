@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { periodMonths } from "@/lib/qbo/period";
 import { loadClosedResolver } from "@/lib/companies/closed";
+import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
 
 // Completude dos dados por GRUPO (dono → empresas que entram no número dele). Para o cálculo
 // da reserva/fluxo ser preciso, cada empresa do grupo precisa de P&L, BS e GL no ano.
@@ -55,9 +56,11 @@ export async function buildGroupCompleteness(year: number): Promise<GroupComplet
       select: { companyId: true, reportKind: true, periodLabel: true },
     }),
     prisma.ownership.findMany({
-      where: { ownedCompanyId: { not: null }, endDate: null },
+      where: { ownedCompanyId: { not: null } },
       select: {
         ownedCompanyId: true,
+        effectiveDate: true,
+        endDate: true,
         ownerParty: { select: { name: true } },
         ownerCompany: { select: { legalName: true } },
       },
@@ -79,11 +82,15 @@ export async function buildGroupCompleteness(year: number): Promise<GroupComplet
     return coverageOf(best.periodLabel);
   };
 
+  const asOf = asOfYearEnd(year);
   const groupsMap = new Map<string, Set<string>>();
   for (const o of ownerships) {
     const owner = o.ownerParty?.name ?? o.ownerCompany?.legalName;
     // Só empresas ATIVAS e NÃO encerradas (fonte única) — encerradas (IR final/closedDate) saem.
     if (!owner || !o.ownedCompanyId || !nameById.has(o.ownedCompanyId)) continue;
+    // Dono VIGENTE no ano (fonte única isEffectiveAt) — antes era endDate:null (dono de HOJE), então
+    // a completude de um ano histórico usava o dono atual, não o do ano.
+    if (!isEffectiveAt(o, asOf)) continue;
     if (closedResolver.isClosedBeforeYear(o.ownedCompanyId, year)) continue;
     (groupsMap.get(owner) ?? groupsMap.set(owner, new Set()).get(owner)!).add(o.ownedCompanyId);
   }
