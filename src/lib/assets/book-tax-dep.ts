@@ -9,12 +9,15 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 
 type PnlLine = { lineType: string; label: string; value: unknown };
 
-// Depreciação contábil (book) lançada no P&L — exclui linhas "accumulated/acumulada".
+// Depreciação contábil (book) lançada no P&L — exclui "accumulated/acumulada". Conta DEPRECIAÇÃO
+// (inclui a linha combinada "Depreciation & Amortization", que tem depreciação), mas NÃO a
+// amortização PURA de intangíveis: a MACRS do app é só de ativos fixos, então se o livro tem apenas
+// amortização (sem depreciação), os ativos fixos ainda precisam da MACRS na base (antes era suprimida).
 export function bookDepFromLines(lines: PnlLine[]): number {
   let sum = 0;
   for (const l of lines) {
     if (l.lineType !== "ACCOUNT" || l.value == null) continue;
-    if (/deprecia|amortiza/i.test(l.label) && !/accumulated|acumulad/i.test(l.label)) {
+    if (/deprecia/i.test(l.label) && !/accumulated|acumulad/i.test(l.label)) {
       sum += Math.abs(Number(l.value));
     }
   }

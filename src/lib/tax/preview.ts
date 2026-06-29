@@ -349,7 +349,9 @@ export async function buildTaxPreview(
       stateEstInterest = r2(stateEstimate * STATE_INTEREST);
     }
     const taxable = r2(baseBeforeState - stateEstimate - stateEstInterest);
-    const tax = t === "C-corp" ? r2(Math.max(0, taxable) * 0.21) : t === "PF" ? federalPF(taxable) : 0;
+    // Alíquota federal C-corp = fonte única yr.corpPct (Tax settings); antes era 0.21 hardcoded e
+    // divergia do reserve se a taxa fosse alterada.
+    const tax = t === "C-corp" ? r2(Math.max(0, taxable) * (yr.corpPct / 100)) : t === "PF" ? federalPF(taxable) : 0;
     return {
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
       hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, nonDeductibleItems: s.nonDedItems,
