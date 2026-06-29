@@ -53,32 +53,43 @@ export async function saveBankStatement(input: {
       ? cards.map((c) => ({ card: c.card, lines: st.lines.filter((l) => l.card === c.card) }))
       : [{ card: null as string | null, lines: st.lines }];
 
-  let firstId = "";
-  for (const g of groups) {
-    const dates = g.lines.map((l) => l.date).sort();
-    const created = await prisma.bankStatement.create({
-      data: {
-        companyId: input.companyId,
-        bankId: input.bankId,
-        bankLabel: adapter.label,
-        fileName: g.card ? `${input.fileName} · ••${g.card}` : input.fileName,
-        periodStart: g.card ? d(dates[0] ?? null) : d(st.periodStart),
-        periodEnd: g.card ? d(dates[dates.length - 1] ?? null) : d(st.periodEnd),
-        beginningBalance: g.card ? null : st.beginningBalance,
-        endingBalance: g.card ? null : st.endingBalance,
-        lines: {
-          create: g.lines.map((l) => ({
-            date: new Date(`${l.date}T00:00:00Z`),
-            description: l.description,
-            amount: l.amount,
-            balance: l.balance,
-          })),
-        },
-      },
-    });
-    await reconcileStatement(prisma, created.id);
-    if (!firstId) firstId = created.id;
-  }
+  // Cria os extratos (um por cartão) de forma ATÔMICA — todos ou nenhum — para um import multi-cartão
+  // não ficar pela metade. A reconciliação roda depois, por extrato (é idempotente e re-executável).
+  const created = await prisma.$transaction(
+    async (tx) => {
+      const out: { id: string }[] = [];
+      for (const g of groups) {
+        const dates = g.lines.map((l) => l.date).sort();
+        out.push(
+          await tx.bankStatement.create({
+            data: {
+              companyId: input.companyId,
+              bankId: input.bankId,
+              bankLabel: adapter.label,
+              fileName: g.card ? `${input.fileName} · ••${g.card}` : input.fileName,
+              periodStart: g.card ? d(dates[0] ?? null) : d(st.periodStart),
+              periodEnd: g.card ? d(dates[dates.length - 1] ?? null) : d(st.periodEnd),
+              beginningBalance: g.card ? null : st.beginningBalance,
+              endingBalance: g.card ? null : st.endingBalance,
+              lines: {
+                create: g.lines.map((l) => ({
+                  date: new Date(`${l.date}T00:00:00Z`),
+                  description: l.description,
+                  amount: l.amount,
+                  balance: l.balance,
+                })),
+              },
+            },
+            select: { id: true },
+          }),
+        );
+      }
+      return out;
+    },
+    { timeout: 30000 },
+  );
+  const firstId = created[0]?.id ?? "";
+  for (const c of created) await reconcileStatement(prisma, c.id);
 
   revalidatePath("/bank");
   // Vários cartões → vai para a lista (vê todos); um só → abre o extrato.

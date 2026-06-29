@@ -197,19 +197,25 @@ export async function importGeneralLedger(
   }
 
   // Saldos por conta (saldo final p/ BS, movimento p/ P&L) — sempre refletem o último arquivo
-  // do ano: recria os do import reusado.
-  await prisma.glAccountSummary.deleteMany({ where: { importId: imp.id } });
-  if (gl.accountBalances.length > 0) {
-    await prisma.glAccountSummary.createMany({
-      data: gl.accountBalances.map((b) => ({
-        importId: imp.id,
-        companyId,
-        account: b.account,
-        beginning: b.beginning,
-        ending: b.ending,
-      })),
-    });
-  }
+  // do ano: recria os do import reusado. Delete+create ATÔMICOS (batch $transaction) p/ nunca ficar
+  // com a tabela de saldos vazia se a recriação falhar. (As linhas do razão acima são ADITIVAS e
+  // idempotentes — um reimport completa o que faltou — então não precisam da transação.)
+  await prisma.$transaction([
+    prisma.glAccountSummary.deleteMany({ where: { importId: imp.id } }),
+    ...(gl.accountBalances.length > 0
+      ? [
+          prisma.glAccountSummary.createMany({
+            data: gl.accountBalances.map((b) => ({
+              importId: imp.id,
+              companyId,
+              account: b.account,
+              beginning: b.beginning,
+              ending: b.ending,
+            })),
+          }),
+        ]
+      : []),
+  ]);
 
   return {
     matched: true,

@@ -149,18 +149,22 @@ export async function importLoanRegister(
   const balanceOk =
     reg.endingBalance == null || Math.abs(computed - reg.endingBalance) < 0.01;
 
-  await prisma.loanTransaction.deleteMany({ where: { loanId } });
-  await prisma.loanTransaction.createMany({
-    data: usable.map((r) => ({
-      loanId,
-      type: (r.increase != null
-        ? "DISBURSEMENT"
-        : "REPAYMENT_PRINCIPAL") as LoanTxnType,
-      amount: r.increase ?? r.decrease ?? 0,
-      date: r.date ?? new Date(),
-      memo: r.memo || (r.type ? `(${r.type})` : null),
-    })),
-  });
+  // Substitui o register do empréstimo de forma ATÔMICA: delete + create no mesmo $transaction, para
+  // não deixar o empréstimo sem nenhuma transação se a recriação falhar.
+  await prisma.$transaction([
+    prisma.loanTransaction.deleteMany({ where: { loanId } }),
+    prisma.loanTransaction.createMany({
+      data: usable.map((r) => ({
+        loanId,
+        type: (r.increase != null
+          ? "DISBURSEMENT"
+          : "REPAYMENT_PRINCIPAL") as LoanTxnType,
+        amount: r.increase ?? r.decrease ?? 0,
+        date: r.date ?? new Date(),
+        memo: r.memo || (r.type ? `(${r.type})` : null),
+      })),
+    }),
+  ]);
   revalidatePath(`/loans/${loanId}`);
   return balanceOk
     ? undefined

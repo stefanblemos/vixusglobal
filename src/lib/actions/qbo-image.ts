@@ -51,36 +51,41 @@ export async function saveReportImage(input: {
   const { report, companyId, reportKind, periodLabel, fileName } = input;
   const currency = report.currency || "USD";
 
-  if (companyId) {
-    await prisma.qboImport.deleteMany({
-      where: { companyId, reportKind: reportKind as QboReportKind, periodLabel },
-    });
-  }
-
-  const imp = await prisma.qboImport.create({
-    data: {
-      companyId,
-      sourceCompanyName: report.companyName,
-      reportKind: reportKind as QboReportKind,
-      reportTypeLabel: reportKind === "BALANCE_SHEET" ? "Balance Sheet" : "Profit & Loss",
-      periodLabel,
-      basis: report.basis || null,
-      fileName,
-      columns: [],
-      lines: {
-        create: report.lines.map((l, i) => ({
-          rowIndex: i,
-          label: l.label,
-          accountCode: null,
-          sectionPath: l.section ? [l.section] : [],
-          depth: l.section ? 1 : 0,
-          lineType: l.lineType,
-          value: l.value != null ? String(l.value) : null,
-          currency,
-        })),
-      },
+  // Delete + create ATÔMICOS: se a criação falhar, o delete reverte e o import anterior fica intacto.
+  const imp = await prisma.$transaction(
+    async (tx) => {
+      if (companyId) {
+        await tx.qboImport.deleteMany({
+          where: { companyId, reportKind: reportKind as QboReportKind, periodLabel },
+        });
+      }
+      return tx.qboImport.create({
+        data: {
+          companyId,
+          sourceCompanyName: report.companyName,
+          reportKind: reportKind as QboReportKind,
+          reportTypeLabel: reportKind === "BALANCE_SHEET" ? "Balance Sheet" : "Profit & Loss",
+          periodLabel,
+          basis: report.basis || null,
+          fileName,
+          columns: [],
+          lines: {
+            create: report.lines.map((l, i) => ({
+              rowIndex: i,
+              label: l.label,
+              accountCode: null,
+              sectionPath: l.section ? [l.section] : [],
+              depth: l.section ? 1 : 0,
+              lineType: l.lineType,
+              value: l.value != null ? String(l.value) : null,
+              currency,
+            })),
+          },
+        },
+      });
     },
-  });
+    { timeout: 30000 },
+  );
 
   revalidatePath("/import");
   revalidatePath("/reserve");

@@ -57,41 +57,46 @@ export async function saveQboImport(input: {
 
   const currency = report.currency;
 
-  // Dedup: substitui um import anterior do mesmo (empresa, tipo, período).
-  if (companyId) {
-    await prisma.qboImport.deleteMany({
-      where: {
-        companyId,
-        reportKind: report.reportType as QboReportKind,
-        periodLabel: report.periodLabel,
-      },
-    });
-  }
-
-  const imp = await prisma.qboImport.create({
-    data: {
-      companyId,
-      sourceCompanyName: report.companyName,
-      reportKind: report.reportType as QboReportKind,
-      reportTypeLabel: report.reportTypeLabel,
-      periodLabel: report.periodLabel,
-      basis: report.basis,
-      fileName: input.fileName,
-      columns: report.columns,
-      lines: {
-        create: report.lines.map((l, i) => ({
-          rowIndex: i,
-          label: l.label,
-          accountCode: l.accountCode,
-          sectionPath: l.sectionPath,
-          depth: l.depth,
-          lineType: l.lineType,
-          value: l.values[0] ?? null,
-          currency,
-        })),
-      },
+  // Dedup: substitui um import anterior do mesmo (empresa, tipo, período). Delete + create ATÔMICOS:
+  // se a criação falhar, o delete reverte e o import anterior é preservado (nunca fica sem nada).
+  const imp = await prisma.$transaction(
+    async (tx) => {
+      if (companyId) {
+        await tx.qboImport.deleteMany({
+          where: {
+            companyId,
+            reportKind: report.reportType as QboReportKind,
+            periodLabel: report.periodLabel,
+          },
+        });
+      }
+      return tx.qboImport.create({
+        data: {
+          companyId,
+          sourceCompanyName: report.companyName,
+          reportKind: report.reportType as QboReportKind,
+          reportTypeLabel: report.reportTypeLabel,
+          periodLabel: report.periodLabel,
+          basis: report.basis,
+          fileName: input.fileName,
+          columns: report.columns,
+          lines: {
+            create: report.lines.map((l, i) => ({
+              rowIndex: i,
+              label: l.label,
+              accountCode: l.accountCode,
+              sectionPath: l.sectionPath,
+              depth: l.depth,
+              lineType: l.lineType,
+              value: l.values[0] ?? null,
+              currency,
+            })),
+          },
+        },
+      });
     },
-  });
+    { timeout: 30000 },
+  );
 
   // O QBO é a fonte da moeda da empresa — sincroniza baseCurrency (ex.: EUR para PT).
   if (companyId && currency) {
