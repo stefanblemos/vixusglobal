@@ -7,6 +7,7 @@ import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/
 import { edgesFromOwnerships } from "@/lib/ownership/effective";
 import { loadTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
 import { periodMonths } from "@/lib/qbo/period";
+import { loadClosedResolver } from "@/lib/companies/closed";
 
 // Tax preview: estima o IR final de cada entidade do grupo a partir do QBO já importado.
 // Por entidade: lucro líquido (P&L) + despesas não dedutíveis (M-1) ± ajuste de depreciação
@@ -99,7 +100,7 @@ export async function buildTaxPreview(
   const throughMonths = opts?.throughMonths ?? 12;
   const isPeriod = throughMonths < 12;
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment, finalReturns] = await Promise.all([
+  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment, closedResolver] = await Promise.all([
     buildClosingSequence(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
@@ -117,29 +118,12 @@ export async function buildTaxPreview(
       select: { id: true, legalName: true, baseCurrency: true, monitored: true, relationship: true, controlsTax: true, closedDate: true, status: true },
     }),
     loadTreatmentResolver(),
-    prisma.taxReturn.findMany({ where: { isFinalReturn: true, companyId: { not: null } }, select: { companyId: true, year: true } }),
+    loadClosedResolver(),
   ]);
   const companyById = new Map(companies.map((c) => [c.id, c]));
   const isUsd = (id: string) => (companyById.get(id)?.baseCurrency ?? "USD") === "USD";
-  // Empresa ENCERRADA antes do ano Y → some do preview/reserve (no ano do fecho ainda aparece, pois
-  // declara o IR final). Sinal: ano do IR final (isFinalReturn) ou closedDate, o mais cedo conhecido.
-  const finalYearByCompany = new Map<string, number>();
-  for (const r of finalReturns) {
-    if (!r.companyId || r.year == null) continue;
-    const cur = finalYearByCompany.get(r.companyId);
-    if (cur == null || r.year > cur) finalYearByCompany.set(r.companyId, r.year);
-  }
-  const closedYearOf = (id: string): number | null => {
-    const c = companyById.get(id);
-    const fin = finalYearByCompany.get(id) ?? null;
-    const cd = c?.closedDate ? Number((c.closedDate.match(/(?:19|20)\d\d/) ?? [])[0]) || null : null;
-    const ys = [fin, cd].filter((y): y is number => y != null);
-    return ys.length ? Math.min(...ys) : null;
-  };
-  const isClosedBeforeYear = (id: string) => {
-    const cy = closedYearOf(id);
-    return cy != null && cy < year;
-  };
+  // Empresa ENCERRADA antes do ano Y → some do preview/reserve (fonte única lib/companies/closed).
+  const isClosedBeforeYear = (id: string) => closedResolver.isClosedBeforeYear(id, year);
 
   // P&L por empresa, AWARE DO PERÍODO: pega o YTD (começa em janeiro) que cobre até `throughMonths`
   // (de maior cobertura ≤ alvo; em empate, o upload mais recente). No ano cheio prefere o Jan–Dez.

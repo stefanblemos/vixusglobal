@@ -4,9 +4,12 @@ import { useState } from "react";
 import Link from "next/link";
 import type { GroupCompleteness } from "@/lib/tax/group-completeness";
 
-const Mark = ({ ok }: { ok: boolean }) =>
+const Mark = ({ ok, period }: { ok: boolean; period?: string | null }) =>
   ok ? (
-    <span className="font-medium text-green-600">✓</span>
+    <span className="whitespace-nowrap text-xs">
+      <span className="font-medium text-green-600">✓</span>
+      {period && <span className="ml-1 text-slate-400">{period}</span>}
+    </span>
   ) : (
     <span className="rounded bg-rose-50 px-1.5 py-0.5 text-xs text-rose-600">missing</span>
   );
@@ -44,7 +47,9 @@ export function CompletenessModal({ data }: { data: GroupCompleteness }) {
                 </h2>
                 <p className="text-sm text-slate-500">
                   Each owner&apos;s number is only accurate if its companies have P&amp;L, BS and GL
-                  on file. Missing items in red — go upload them in Documents.
+                  on file. O ✓ mostra <strong>até quando</strong> o livro vai — <strong>ano</strong>{" "}
+                  (Jan–Dez, fechado) ou parcial (ex.: <strong>jan–jun</strong>, YTD). Missing em
+                  vermelho. Encerradas (IR final) não entram.
                 </p>
               </div>
               <button
@@ -106,13 +111,13 @@ export function CompletenessModal({ data }: { data: GroupCompleteness }) {
                               {c.controlled ? (
                                 <>
                                   <td className="px-3 py-1.5 text-center">
-                                    <Mark ok={c.pnl} />
+                                    <Mark ok={c.pnl} period={c.pnlPeriod} />
                                   </td>
                                   <td className="px-3 py-1.5 text-center">
-                                    <Mark ok={c.bs} />
+                                    <Mark ok={c.bs} period={c.bsPeriod} />
                                   </td>
                                   <td className="px-3 py-1.5 text-center">
-                                    <Mark ok={c.gl} />
+                                    <Mark ok={c.gl} period={c.glPeriod} />
                                   </td>
                                 </>
                               ) : (
