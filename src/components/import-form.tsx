@@ -22,10 +22,10 @@ function looksLikeGeneralLedger(csv: string): boolean {
   );
 }
 
-const fmtUSD = (v: string | null) =>
+const fmtMoney = (v: string | null, ccy: string) =>
   v == null
     ? ""
-    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(Number(v));
+    : new Intl.NumberFormat("en-US", { style: "currency", currency: ccy }).format(Number(v));
 
 const REPORT_LABEL: Record<string, string> = {
   BALANCE_SHEET: "Balance Sheet",
@@ -243,7 +243,7 @@ export function ImportForm() {
                     </td>
                     <td className="px-4 py-1.5 text-xs text-slate-400">{l.accountCode ?? ""}</td>
                     <td className="px-4 py-1.5 text-right tabular-nums text-slate-700">
-                      {fmtUSD(l.values[0])}
+                      {fmtMoney(l.values[0], result.report.currency)}
                     </td>
                   </tr>
                 ))}

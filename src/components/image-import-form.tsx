@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { analyzeReportImage, saveReportImage, type AnalyzeImageResult } from "@/lib/actions/qbo-image";
 
-const fmt = (v: number | null) =>
-  v == null ? "" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
+const fmt = (v: number | null, ccy: string) =>
+  v == null ? "" : new Intl.NumberFormat("en-US", { style: "currency", currency: ccy }).format(v);
 
 // Reduz a imagem para caber no limite do server action (mantém legível p/ a extração).
 async function fileToBase64(file: File): Promise<{ data: string; mediaType: string }> {
@@ -210,7 +210,7 @@ export function ImageImportForm() {
                       {l.label}
                     </td>
                     <td className="px-4 py-1.5 text-right tabular-nums text-slate-700">
-                      {fmt(l.value)}
+                      {fmt(l.value, result.report.currency || "USD")}
                     </td>
                   </tr>
                 ))}

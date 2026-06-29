@@ -8,8 +8,8 @@ import { resetLine } from "@/lib/actions/bank";
 import { buildBankReconSummary } from "@/lib/bank/summary";
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-const usd = (v: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
+const fmt = (v: number, ccy: string) =>
+  new Intl.NumberFormat("en-US", { style: "currency", currency: ccy }).format(v);
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   FLAGGED: { label: "Missing booking", cls: "bg-amber-50 text-amber-700" },
@@ -23,6 +23,7 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
     include: { company: true, lines: { orderBy: { date: "asc" } } },
   });
   if (!st) notFound();
+  const ccy = st.company?.baseCurrency ?? "USD";
 
   // Ignora linhas zeradas (ex.: fee waivers que se anulam) — não entram na reconciliação
   // nem no match rate. (Imports novos já não as trazem; isto limpa os antigos.)
@@ -47,7 +48,7 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
         <p className="text-sm text-slate-500">
           {st.bankLabel} · {isoDate(st.periodStart ?? st.lines[0]?.date ?? new Date())} →{" "}
           {isoDate(st.periodEnd ?? new Date())} · ending{" "}
-          {st.endingBalance != null ? formatMoney(st.endingBalance, "USD") : "—"}
+          {st.endingBalance != null ? formatMoney(st.endingBalance, ccy) : "—"}
         </p>
       </div>
 
@@ -76,8 +77,8 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
 
           {summary.mappedAccount ? (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
-              <Stat label="Statement net" value={usd(summary.bankNet)} cls="text-slate-800" />
-              <Stat label="GL cash net (period)" value={usd(summary.glNet)} cls="text-slate-800" />
+              <Stat label="Statement net" value={fmt(summary.bankNet, ccy)} cls="text-slate-800" />
+              <Stat label="GL cash net (period)" value={fmt(summary.glNet, ccy)} cls="text-slate-800" />
               <div
                 className={`rounded-xl border p-4 ${
                   reconciles ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"
@@ -89,7 +90,7 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
                     reconciles ? "text-green-700" : "text-amber-700"
                   }`}
                 >
-                  {usd(summary.difference)}
+                  {fmt(summary.difference, ccy)}
                 </div>
                 <div className={`text-xs ${reconciles ? "text-green-700" : "text-amber-700"}`}>
                   {reconciles ? "Period reconciles ✓" : "Out of balance — see exceptions"}
@@ -168,17 +169,17 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
                       <td className="px-3 py-1.5 text-slate-700">{g.account}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{g.count}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
-                        {g.inflow ? formatMoney(g.inflow, "USD") : "—"}
+                        {g.inflow ? formatMoney(g.inflow, ccy) : "—"}
                       </td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">
-                        {g.outflow ? formatMoney(g.outflow, "USD") : "—"}
+                        {g.outflow ? formatMoney(g.outflow, ccy) : "—"}
                       </td>
                       <td
                         className={`px-3 py-1.5 text-right tabular-nums font-medium ${
                           benign ? "text-emerald-600" : "text-amber-700"
                         }`}
                       >
-                        {formatMoney(g.net, "USD")}
+                        {formatMoney(g.net, ccy)}
                       </td>
                     </tr>
                   );
@@ -211,7 +212,7 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
                       <td className="px-3 py-1.5 text-slate-700">{t.name ?? "—"}</td>
                       <td className="px-3 py-1.5 text-slate-500">{t.split ?? "—"}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                        {formatMoney(t.amount, "USD")}
+                        {formatMoney(t.amount, ccy)}
                       </td>
                     </tr>
                   ))}
@@ -245,7 +246,7 @@ export default async function BankStatementPage({ params }: { params: Promise<{ 
                     </td>
                     <td className="px-3 py-1.5 text-slate-700">{l.description}</td>
                     <td className="px-3 py-1.5 text-right tabular-nums text-slate-800">
-                      {formatMoney(l.amount, "USD")}
+                      {formatMoney(l.amount, ccy)}
                     </td>
                     <td className="px-3 py-1.5">
                       <span
