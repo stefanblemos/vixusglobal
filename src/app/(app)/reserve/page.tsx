@@ -290,6 +290,37 @@ export default async function ReservePage({
                   Encerradas (IR final já declarado) — fora do reserve: {byEntity.excludedClosed.join(", ")}.
                 </p>
               )}
+              {byEntity.glOpenPriorPeriod.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+                  <div className="font-medium">
+                    ⚠ GL com período anterior em aberto — concilie antes de confiar no número
+                  </div>
+                  <p className="mt-0.5 text-amber-700">
+                    O saldo inicial do GL de {year} não fecha com o fim de {year - 1} nestas empresas
+                    (houve lançamento no ano anterior depois de fechado):
+                  </p>
+                  <ul className="mt-1 space-y-1">
+                    {byEntity.glOpenPriorPeriod.map((g) => (
+                      <li key={g.id}>
+                        <Link href={`/companies/${g.id}?tab=financials`} className="font-medium underline hover:text-amber-900">
+                          {g.name}
+                        </Link>{" "}
+                        — {g.count} conta{g.count > 1 ? "s" : ""} (vs {g.priorRef === "gl" ? "GL" : "BS"} de {year - 1}):{" "}
+                        <span className="text-amber-700">
+                          {g.topMismatches.map((mm) => `${mm.account} (${money(mm.diff, "USD")})`).join(" · ")}
+                          {g.count > g.topMismatches.length ? " …" : ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {byEntity.glUnverifiable > 0 && (
+                    <p className="mt-1 text-amber-600">
+                      {byEntity.glUnverifiable} empresa(s) com GL mas sem saldo inicial / sem {year - 1} —
+                      não foi possível checar.
+                    </p>
+                  )}
+                </div>
+              )}
               <ReserveEntityTable rows={byEntity.rows} locked={locked} />
             </section>
           )}

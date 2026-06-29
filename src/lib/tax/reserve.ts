@@ -6,6 +6,7 @@ import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/
 import { buildTreatmentResolver, isCorpTreatment, type TreatmentResolver } from "@/lib/tax/treatment";
 import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
 import { buildTaxPreview, type TaxPreviewRow } from "@/lib/tax/preview";
+import { buildGlOpenPriorPeriod, type GlOpenPriorPeriod } from "@/lib/qbo/gl-continuity";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
 const DEFAULT_RATE = 30;
@@ -476,6 +477,8 @@ export interface ReserveByEntity {
   excludedNonUsd: string[];
   excludedClosed: string[];
   missingPnl: string[];
+  glOpenPriorPeriod: GlOpenPriorPeriod[]; // empresas cujo GL não fecha com o ano anterior
+  glUnverifiable: number; // têm GL mas sem saldo inicial / sem Y-1 → não dá para checar
 }
 
 export async function buildReserveByEntity(year: number): Promise<ReserveByEntity> {
@@ -484,6 +487,10 @@ export async function buildReserveByEntity(year: number): Promise<ReserveByEntit
     rateConfig(),
     yearRates(year),
   ]);
+  // GL conciliado? Sinaliza empresas com lançamento em aberto no período anterior (saldo inicial do
+  // GL de Y ≠ fim de Y-1) — para não confiar no livro sem o período anterior fechado.
+  const companyIds = [...new Set(preview.rows.filter((r) => r.kind === "company").map((r) => r.id))];
+  const gl = await buildGlOpenPriorPeriod(year, companyIds);
   const rows: ReserveEntityRow[] = preview.rows.map((r) => {
     const hasOverride = r.kind === "company" && override.has(r.id);
     const reserveRate = hasOverride
@@ -512,6 +519,8 @@ export async function buildReserveByEntity(year: number): Promise<ReserveByEntit
     excludedNonUsd: preview.excludedNonUsd,
     excludedClosed: preview.excludedClosed,
     missingPnl: preview.missingPnl,
+    glOpenPriorPeriod: gl.flagged,
+    glUnverifiable: gl.unverifiable,
   };
 }
 
