@@ -103,26 +103,17 @@ export async function saveLoanYear(formData: FormData): Promise<void> {
   const year = Number(formData.get("year"));
   if (!loanId || !Number.isFinite(year)) return;
   const rateRaw = String(formData.get("annualRatePct") ?? "").trim();
+  // Só taxa + juro pago: o principal é fonte única em LoanTransaction; os campos vestigiais de
+  // principal/accrued ficam no default 0 (ver schema LoanYear).
+  const data = {
+    annualRatePct: rateRaw === "" ? null : num(rateRaw),
+    interestPaid: num(formData.get("interestPaid")),
+    note: String(formData.get("note") ?? "").trim() || null,
+  };
   await prisma.loanYear.upsert({
     where: { loanId_year: { loanId, year } },
-    create: {
-      loanId,
-      year,
-      annualRatePct: rateRaw === "" ? null : num(rateRaw),
-      principalAdded: num(formData.get("principalAdded")),
-      principalRepaid: num(formData.get("principalRepaid")),
-      interestAccrued: num(formData.get("interestAccrued")),
-      interestPaid: num(formData.get("interestPaid")),
-      note: String(formData.get("note") ?? "").trim() || null,
-    },
-    update: {
-      annualRatePct: rateRaw === "" ? null : num(rateRaw),
-      principalAdded: num(formData.get("principalAdded")),
-      principalRepaid: num(formData.get("principalRepaid")),
-      interestAccrued: num(formData.get("interestAccrued")),
-      interestPaid: num(formData.get("interestPaid")),
-      note: String(formData.get("note") ?? "").trim() || null,
-    },
+    create: { loanId, year, ...data },
+    update: data,
   });
   revalidatePath(`/loans/${loanId}`);
 }
