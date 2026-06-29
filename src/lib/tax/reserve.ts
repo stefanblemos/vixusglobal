@@ -460,8 +460,10 @@ export async function companyReserve(companyId: string, year: number, taxTreatme
 // pass-through repassa (0 no nível). Override por empresa vence a classe. Corrige a dupla-contagem,
 // a alíquota errada do dono C-corp e o K-1 que não entrava na base.
 export type ReserveEntityRow = TaxPreviewRow & {
-  reserveRate: number; // alíquota de provisão aplicada
-  reserve: number; // caixa a reservar (0 p/ pass-through, que repassa)
+  reserveRate: number; // alíquota de provisão aplicada (federal)
+  reserve: number; // caixa total a reservar = federal + estadual (0 p/ pass-through, que repassa)
+  federalReserve: number; // parcela federal (taxable × alíquota)
+  stateReserve: number; // estadual do ano (principal + juros estimados) — só C-corp
   hasOverride: boolean;
 };
 
@@ -491,9 +493,13 @@ export async function buildReserveByEntity(year: number): Promise<ReserveByEntit
         : r.entityType === "PF"
           ? yr.passPct
           : 0; // pass-through repassa
-    const reserve =
+    const federalReserve =
       r.entityType === "Pass-through" ? 0 : Math.round(Math.max(0, r.taxable) * reserveRate) / 100;
-    return { ...r, reserveRate, reserve, hasOverride };
+    // C-corp também separa o estadual DO ANO (principal + juros estimados) — caixa a reservar.
+    const stateReserve =
+      r.entityType === "C-corp" ? Math.round((r.stateEstimate + r.stateEstInterest) * 100) / 100 : 0;
+    const reserve = Math.round((federalReserve + stateReserve) * 100) / 100;
+    return { ...r, reserveRate, reserve, federalReserve, stateReserve, hasOverride };
   });
   const sum = (f: (r: ReserveEntityRow) => boolean) =>
     Math.round(rows.filter(f).reduce((s, r) => s + r.reserve, 0) * 100) / 100;

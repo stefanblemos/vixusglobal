@@ -219,6 +219,13 @@ function DetailModal({
                 ))}
               </div>
             )}
+            {row.stateEstimate > 0 && (
+              <Step
+                label="− Estadual do ano estimado"
+                value={-(row.stateEstimate + row.stateEstInterest)}
+                hint={`Florida 5,5% (− isenção $50k) = ${m(row.stateEstimate)}${row.stateEstInterest > 0 ? ` + juros ${m(row.stateEstInterest)}` : ""} — dedutível, a pagar no ano seguinte`}
+              />
+            )}
           </div>
           <div className="mt-1 flex items-center justify-between border-t-2 border-slate-200 pt-2">
             <span className="text-sm font-medium text-slate-700">= Base tributável</span>
@@ -233,7 +240,16 @@ function DetailModal({
             {isPass ? (
               "Pass-through — repassa a base via K-1; reserva no nível do dono"
             ) : (
-              <>Reservar <span className="font-medium">{row.reserveRate}%</span> da base{row.entityType === "C-corp" ? " (C-corp, 21% federal)" : " (provisão conservadora do dono)"}{row.taxable < 0 ? " — base negativa → $0" : ""}</>
+              <>
+                Reservar <span className="font-medium">{row.reserveRate}%</span> da base
+                {row.entityType === "C-corp" ? " (C-corp, 21% federal)" : " (provisão conservadora do dono)"}
+                {row.taxable < 0 ? " — base negativa → $0" : ""}
+                {row.stateReserve > 0 && (
+                  <div className="mt-0.5 text-[11px] text-slate-500">
+                    federal {m(row.federalReserve)} + estadual estimado {m(row.stateReserve)}
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className="text-lg font-semibold tabular-nums text-[#3B6D11]">{isPass ? "—" : m(row.reserve)}</div>

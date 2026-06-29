@@ -31,6 +31,8 @@ export interface TaxPreviewRow {
   stateTaxAddBack: number; // add-back do estadual pago no ano (principal + multa) — do controle /florida ou do P&L
   stateTaxInterest: number; // juros do estadual pago no ano — dedutíveis, NÃO somados (só p/ nota)
   stateTaxSource: "florida" | null; // add-back estadual (pagamento do ano anterior) — do controle /florida
+  stateEstimate: number; // estadual DO ANO estimado (FL 5,5% − isenção), a pagar em Y+1 — dedutível (só C-corp)
+  stateEstInterest: number; // juros estimados sobre o diferimento do estadual do ano — dedutível
   depAdj: number; // ajuste de depreciação na base: 0 quando confia no livro; −MACRS quando o livro não tem
   bookDep: number; // depreciação no P&L (livro) do ano
   macrsDep: number; // depreciação MACRS do ano (app) — dos ativos cadastrados
@@ -111,6 +113,14 @@ function taxAddBacksFromPnl(lines: Line[]): { total: number; items: AddBack[]; s
 }
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/(?:19|20)\d\d/) ?? [])[0] ?? 0);
+
+// Estimativa do imposto estadual DO ANO (Florida F-1120): 5,5% sobre a base apurada menos a isenção
+// anual de $50k, só para C-corp (FL não tributa renda de pass-through). Como ainda não foi pago (cai
+// no ano seguinte, quando o contador fecha o IR), estima-se juros de ~8% a.a. (~1 ano de diferimento,
+// taxa underpayment IRS/FL). Principal e juros são dedutíveis no federal → reduzem a base de 21%.
+const STATE_RATE = 0.055;
+const STATE_EXEMPTION = 50000;
+const STATE_INTEREST = 0.08;
 
 // opts.throughMonths (3/6/9) = modo PERÍODO (estimado até o trimestre): usa o P&L YTD do período e a
 // MACRS proporcional (× throughMonths/12) trocando a depreciação do livro. Default 12 = ano cheio.
@@ -329,12 +339,21 @@ export async function buildTaxPreview(
     const t = typeOf(n);
     // Base recomputada a partir do k1In FINAL → a linha sempre fecha (book + add-backs + dep + K-1).
     // Num DAG é idêntica à acumulada; só difere num ciclo (sinalizado por inCycle).
-    const taxable = r2(s.bookNet + s.nonDed + s.stateAddBack + s.depAdj + (k1In.get(n.key) ?? 0));
+    const baseBeforeState = r2(s.bookNet + s.nonDed + s.stateAddBack + s.depAdj + (k1In.get(n.key) ?? 0));
+    // Estadual DO ANO (a estimar, ainda não pago): só C-corp, sobre base positiva, menos a isenção FL.
+    // Principal + juros são dedutíveis no federal → reduzem a base de 21%.
+    let stateEstimate = 0, stateEstInterest = 0;
+    if (t === "C-corp" && baseBeforeState > 0) {
+      stateEstimate = r2(Math.max(0, baseBeforeState - STATE_EXEMPTION) * STATE_RATE);
+      stateEstInterest = r2(stateEstimate * STATE_INTEREST);
+    }
+    const taxable = r2(baseBeforeState - stateEstimate - stateEstInterest);
     const tax = t === "C-corp" ? r2(Math.max(0, taxable) * 0.21) : t === "PF" ? federalPF(taxable) : 0;
     return {
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
       hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, nonDeductibleItems: s.nonDedItems,
       stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest, stateTaxSource: s.stateSource,
+      stateEstimate, stateEstInterest,
       depAdj: s.depAdj, bookDep: s.bookDep, macrsDep: s.macrsDep, macrsApplied: s.macrsApplied, depCatchUp: s.depCatchUp,
       k1In: r2(k1In.get(n.key) ?? 0),
       k1From: (k1FromByKey.get(n.key) ?? [])
