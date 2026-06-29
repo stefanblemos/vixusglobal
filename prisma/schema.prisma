@@ -721,26 +721,18 @@ model IntercompanyLoan {
 // recalcula o juro — guarda o que é informado e faz o roll-forward do juro não pago para uma
 // conta SEPARADA (juro capitalizado), que fica apartada do principal para bater com o QBO.
 // AGENDA por ano de um empréstimo: taxa vigente + juro pago no ano. O PRINCIPAL é fonte única em
-// LoanTransaction (buildAnnualClosings/computeLoanBalance). Os 3 campos de principal/accrued abaixo
-// são VESTIGIAIS — nunca gravados pela UI (form só envia year/annualRatePct/interestPaid) e nenhum
-// código vivo os lê (o antigo buildLoanLedger foi removido). Drop deles fica para uma migração
-// deliberada depois de confirmar que a prod os tem em 0.
+// LoanTransaction (buildAnnualClosings/computeLoanBalance); o juro accrued é CALCULADO. As colunas de
+// principal/accrued vestigiais foram removidas (migração drop_loanyear_vestigial, com guarda anti-perda).
 model LoanYear {
-  id              String           @id @default(cuid())
-  loanId          String
-  loan            IntercompanyLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
-  year            Int
-  annualRatePct   Decimal?         @db.Decimal(9, 4) // taxa do ano (%, reajustável) — USADO
-  /// @deprecated vestigial — principal vem de LoanTransaction; sempre 0; remover em migração futura
-  principalAdded  Decimal          @default(0) @db.Decimal(20, 2)
-  /// @deprecated vestigial — principal vem de LoanTransaction; sempre 0; remover em migração futura
-  principalRepaid Decimal          @default(0) @db.Decimal(20, 2)
-  /// @deprecated vestigial — juro é calculado em buildAnnualClosings; sempre 0; remover depois
-  interestAccrued Decimal          @default(0) @db.Decimal(20, 2)
-  interestPaid    Decimal          @default(0) @db.Decimal(20, 2) // juro pago no ano (fornecido) — USADO
-  note            String?
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id            String           @id @default(cuid())
+  loanId        String
+  loan          IntercompanyLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  year          Int
+  annualRatePct Decimal?         @db.Decimal(9, 4) // taxa do ano (%, reajustável) — USADO
+  interestPaid  Decimal          @default(0) @db.Decimal(20, 2) // juro pago no ano (fornecido) — USADO
+  note          String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@unique([loanId, year])
 }
