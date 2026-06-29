@@ -6,6 +6,7 @@ import { buildDepreciationReconciliation } from "@/lib/assets/reconcile-dep";
 import { bookDepFromLines, trustBookDepAdjustment, macrsAppliedToBase } from "@/lib/assets/book-tax-dep";
 import { edgesFromOwnerships } from "@/lib/ownership/effective";
 import { loadTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
+import { periodMonths } from "@/lib/qbo/period";
 
 // Tax preview: estima o IR final de cada entidade do grupo a partir do QBO já importado.
 // Por entidade: lucro líquido (P&L) + despesas não dedutíveis (M-1) ± ajuste de depreciação
@@ -89,7 +90,14 @@ function nonDeductibleFromPnl(lines: Line[]): number {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/(?:19|20)\d\d/) ?? [])[0] ?? 0);
 
-export async function buildTaxPreview(year: number): Promise<TaxPreview> {
+// opts.throughMonths (3/6/9) = modo PERÍODO (estimado até o trimestre): usa o P&L YTD do período e a
+// MACRS proporcional (× throughMonths/12) trocando a depreciação do livro. Default 12 = ano cheio.
+export async function buildTaxPreview(
+  year: number,
+  opts?: { throughMonths?: number },
+): Promise<TaxPreview> {
+  const throughMonths = opts?.throughMonths ?? 12;
+  const isPeriod = throughMonths < 12;
   const asOf = new Date(Date.UTC(year, 11, 31));
   const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment, finalReturns] = await Promise.all([
     buildClosingSequence(year),
@@ -133,14 +141,30 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     return cy != null && cy < year;
   };
 
-  // P&L mais recente do ANO por empresa (linhas + id do import, para abrir a fonte clicável).
-  const pnlByCompany = new Map<string, Line[]>();
-  const pnlImportIdByCompany = new Map<string, string>();
+  // P&L por empresa, AWARE DO PERÍODO: pega o YTD (começa em janeiro) que cobre até `throughMonths`
+  // (de maior cobertura ≤ alvo; em empate, o upload mais recente). No ano cheio prefere o Jan–Dez.
+  // Assim a fonte é única por período — não pega um YTD parcial achando que é o ano, nem vice-versa.
+  const startEnd = (label: string) => {
+    const pm = periodMonths(label);
+    return pm ? { start: pm.start, end: pm.end } : { start: 1, end: 12 }; // sem período legível → assume anual
+  };
+  const yearPnls = new Map<string, typeof pnlImports>(); // já vêm mais-recente-primeiro
   for (const imp of pnlImports) {
     if (!imp.companyId || yearOf(imp.periodLabel) !== year) continue;
-    if (!pnlByCompany.has(imp.companyId)) {
-      pnlByCompany.set(imp.companyId, imp.lines);
-      pnlImportIdByCompany.set(imp.companyId, imp.id);
+    (yearPnls.get(imp.companyId) ?? yearPnls.set(imp.companyId, []).get(imp.companyId)!).push(imp);
+  }
+  const pnlByCompany = new Map<string, Line[]>();
+  const pnlImportIdByCompany = new Map<string, string>();
+  for (const [cid, imps] of yearPnls) {
+    const ytd = imps.filter((i) => {
+      const { start, end } = startEnd(i.periodLabel);
+      return start === 1 && end <= throughMonths;
+    });
+    ytd.sort((a, b) => startEnd(b.periodLabel).end - startEnd(a.periodLabel).end); // maior cobertura primeiro (estável p/ recência)
+    const best = ytd[0];
+    if (best) {
+      pnlByCompany.set(cid, best.lines);
+      pnlImportIdByCompany.set(cid, best.id);
     }
   }
   // Balance Sheet mais recente do ANO por empresa — só o id (para o link da fonte).
@@ -177,6 +201,7 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
   const stateByCompany = new Map<string, { addBack: number; interest: number }>();
   for (const f of stateFilings) {
     if (!f.paidDate || f.paidDate.getUTCFullYear() !== year) continue;
+    if (isPeriod && f.paidDate.getUTCMonth() + 1 > throughMonths) continue; // só o pago até o período
     const principal = Number(f.principal.toString());
     const penalty = Number(f.penalty.toString());
     const interest = Number(f.interest.toString());
@@ -242,16 +267,25 @@ export async function buildTaxPreview(year: number): Promise<TaxPreview> {
     const st = stateByCompany.get(n.id);
     const stateAddBack = st ? r2(st.addBack) : 0;
     const stateInterest = st ? r2(st.interest) : 0;
-    // Depreciação: CONFIA no livro. Se o P&L já tem depreciação, a base usa o lucro como está
-    // (ajuste 0) — o que diverge da MACRS vira só FLAG (catch-up da Conferência), não imposto.
-    // A MACRS do app só entra na base quando o livro NÃO tem depreciação nenhuma (preenche a lacuna).
     const bookDep = bookDepFromLines(lines);
     const hasAssets = macrsByCompany.has(n.id);
-    const macrsDep = hasAssets ? r2(macrsByCompany.get(n.id)!) : 0; // MACRS (referência/conferência)
-    // Ajuste da base usa a depreciação REAL (livro registrado onde houver, senão MACRS), não a teórica.
-    const realDep = hasAssets ? r2(realDepByCompany.get(n.id)!) : 0;
-    const macrsApplied = macrsAppliedToBase(bookDep, realDep, hasAssets);
-    const depAdj = trustBookDepAdjustment(bookDep, realDep, hasAssets);
+    let macrsDep: number, realDep: number, macrsApplied: boolean, depAdj: number;
+    if (isPeriod) {
+      // ESTIMADO do período: a depreciação é a MACRS do ano PROPORCIONAL (× throughMonths/12),
+      // TROCANDO a do livro (no meio do ano o livro normalmente não a lançou).
+      const annualMacrs = hasAssets ? r2(macrsByCompany.get(n.id)!) : 0;
+      const prorated = r2((annualMacrs * throughMonths) / 12);
+      macrsDep = prorated;
+      realDep = prorated;
+      macrsApplied = hasAssets && prorated > 0;
+      depAdj = r2(bookDep - prorated); // base passa a usar a MACRS proporcional
+    } else {
+      // ANO CHEIO: CONFIA no livro; só aplica a depreciação REAL quando o P&L não tem nenhuma.
+      macrsDep = hasAssets ? r2(macrsByCompany.get(n.id)!) : 0; // MACRS (referência/conferência)
+      realDep = hasAssets ? r2(realDepByCompany.get(n.id)!) : 0; // livro registrado onde houver, senão MACRS
+      macrsApplied = macrsAppliedToBase(bookDep, realDep, hasAssets);
+      depAdj = trustBookDepAdjustment(bookDep, realDep, hasAssets);
+    }
     const depCatchUp = reconByCompany.get(n.id)?.catchUp ?? null;
     self.set(n.key, { bookNet: r2(bookNet), nonDed, stateAddBack, stateInterest, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }

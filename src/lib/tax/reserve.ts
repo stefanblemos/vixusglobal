@@ -509,10 +509,11 @@ export async function buildReserveByEntity(year: number): Promise<ReserveByEntit
   };
 }
 
-// PAGAMENTOS ESTIMADOS por trimestre — DERIVA do reserve por entidade (fonte única do imposto anual),
-// sem recalcular. Cada pagador final (C-corp paga 1120-W; pessoa física 1040-ES) deve recolher ~25%
-// do imposto do ano por trimestre, no vencimento. Pass-through não paga (repassa). Se faltar P&L de
-// alguma empresa no escopo, o anual está incompleto → o relatório NÃO é gerado (evita erro).
+// PAGAMENTOS ESTIMADOS por trimestre — usa o MOTOR DO PREVIEW por PERÍODO (fonte única): o imposto
+// CUMULATIVO devido até o fim do trimestre = lucro YTD real do período + MACRS proporcional (× Q/4)
+// + add-backs + K-1 cascateado, tributado como no IR (C-corp 21%, PF nas faixas; pass-through repassa).
+// A PARCELA do trimestre = cumulativo até Q − cumulativo até Q-1. Se faltar o P&L YTD do período de
+// alguma empresa do escopo, o relatório NÃO é gerado (evita pagar sobre livro incompleto).
 export const CORP_ESTIMATE_DUE = ["Apr 15", "Jun 15", "Sep 15", "Dec 15"]; // 1120-W (ano-calendário)
 export const INDIVIDUAL_ESTIMATE_DUE = ["Apr 15", "Jun 15", "Sep 15", "Jan 15 (ano seg.)"]; // 1040-ES
 
@@ -522,51 +523,63 @@ export interface EstimatedPaymentRow {
   id: string;
   name: string;
   entityType: TaxPreviewRow["entityType"]; // só "C-corp" | "PF" (pass-through é filtrada)
-  annualReserve: number;
-  installment: number; // ~25% do anual por trimestre
-  due: string; // vencimento do trimestre selecionado (por tipo)
-  pnlImportId: string | null; // fonte clicável
+  cumulativeTax: number; // imposto devido ACUMULADO até o fim do trimestre
+  priorPaidThrough: number; // devido acumulado até o trimestre anterior
+  installment: number; // parcela do trimestre = cumulativo − anterior (≥0)
+  due: string; // vencimento do trimestre (por tipo)
+  pnlImportId: string | null; // fonte clicável (P&L YTD do período)
 }
 
 export interface EstimatedPayments {
   year: number;
   quarter: number; // 1..4
   rows: EstimatedPaymentRow[]; // pagadores finais (C-corp + PF)
-  totalAnnual: number;
+  totalCumulative: number;
   totalInstallment: number;
   corpDue: string;
   individualDue: string;
-  blockedMissingPnl: string[]; // empresas no escopo sem P&L → relatório bloqueado
+  blockedMissingPnl: string[]; // empresas no escopo sem o P&L YTD do período → relatório bloqueado
 }
 
 export async function buildEstimatedPayments(year: number, quarter: number): Promise<EstimatedPayments> {
   const q = quarter >= 1 && quarter <= 4 ? quarter : 1;
-  const be = await buildReserveByEntity(year);
   const corpDue = CORP_ESTIMATE_DUE[q - 1];
   const individualDue = INDIVIDUAL_ESTIMATE_DUE[q - 1];
-  const rows: EstimatedPaymentRow[] = be.rows
-    .filter((r) => r.entityType !== "Pass-through" && r.reserve > 0.005)
-    .map((r) => ({
-      key: r.key,
-      kind: r.kind,
-      id: r.id,
-      name: r.name,
-      entityType: r.entityType,
-      annualReserve: r.reserve,
-      installment: Math.round((r.reserve / 4) * 100) / 100,
-      due: r.entityType === "C-corp" ? corpDue : individualDue,
-      pnlImportId: r.pnlImportId,
-    }))
-    .sort((a, b) => b.annualReserve - a.annualReserve);
-  const totalAnnual = Math.round(rows.reduce((s, r) => s + r.annualReserve, 0) * 100) / 100;
+  // Preview por PERÍODO: até o fim de Q (throughMonths = 3·Q) e até o fim de Q-1 (para a diferença).
+  const [cum, prior] = await Promise.all([
+    buildTaxPreview(year, { throughMonths: 3 * q }),
+    q > 1 ? buildTaxPreview(year, { throughMonths: 3 * (q - 1) }) : Promise.resolve(null),
+  ]);
+  const priorTaxByKey = new Map((prior?.rows ?? []).map((r) => [r.key, r.tax]));
+  const rows: EstimatedPaymentRow[] = cum.rows
+    .filter((r) => r.entityType !== "Pass-through")
+    .map((r) => {
+      const cumulativeTax = r.tax;
+      const priorPaidThrough = priorTaxByKey.get(r.key) ?? 0;
+      const installment = Math.max(0, Math.round((cumulativeTax - priorPaidThrough) * 100) / 100);
+      return {
+        key: r.key,
+        kind: r.kind,
+        id: r.id,
+        name: r.name,
+        entityType: r.entityType,
+        cumulativeTax,
+        priorPaidThrough,
+        installment,
+        due: r.entityType === "C-corp" ? corpDue : individualDue,
+        pnlImportId: r.pnlImportId,
+      };
+    })
+    .filter((r) => r.cumulativeTax > 0.005 || r.installment > 0.005)
+    .sort((a, b) => b.installment - a.installment);
   return {
     year,
     quarter: q,
     rows,
-    totalAnnual,
-    totalInstallment: Math.round((totalAnnual / 4) * 100) / 100,
+    totalCumulative: Math.round(rows.reduce((s, r) => s + r.cumulativeTax, 0) * 100) / 100,
+    totalInstallment: Math.round(rows.reduce((s, r) => s + r.installment, 0) * 100) / 100,
     corpDue,
     individualDue,
-    blockedMissingPnl: be.missingPnl,
+    blockedMissingPnl: cum.missingPnl,
   };
 }

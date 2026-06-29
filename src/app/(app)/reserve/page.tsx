@@ -299,9 +299,10 @@ export default async function ReservePage({
               <div>
                 <h2 className="text-lg font-medium text-slate-800">Estimated tax payments — {estimated.year}</h2>
                 <p className="text-sm text-slate-500">
-                  Quanto cada pagador final deve recolher por trimestre para não tomar multa — ~25% do
-                  imposto do ano (a <strong>mesma base</strong> do &ldquo;By entity&rdquo;). C-corp paga
-                  o 1120-W; pessoa física o 1040-ES; pass-through repassa (não paga).
+                  Imposto devido <strong>acumulado até o fim do trimestre</strong>: lucro YTD real do
+                  período + depreciação MACRS proporcional (× Q/4) + add-backs + K-1 cascateado,
+                  tributado como no IR (C-corp 21%; PF nas faixas; pass-through repassa). A{" "}
+                  <strong>parcela</strong> a pagar = o acumulado até Q menos o do trimestre anterior.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-sm">
@@ -336,8 +337,8 @@ export default async function ReservePage({
               ) : (
                 <>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Stat label={`Total a pagar em Q${estimated.quarter}`} value={money(estimated.totalInstallment)} good />
-                    <Stat label="Imposto anual estimado (4 parcelas)" value={money(estimated.totalAnnual)} />
+                    <Stat label={`Parcela a pagar em Q${estimated.quarter}`} value={money(estimated.totalInstallment)} good />
+                    <Stat label={`Imposto devido acumulado até Q${estimated.quarter}`} value={money(estimated.totalCumulative)} />
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm">
@@ -345,8 +346,9 @@ export default async function ReservePage({
                         <tr>
                           <th className="px-4 py-2 font-medium">Entity</th>
                           <th className="px-3 py-2 font-medium">Form</th>
-                          <th className="px-3 py-2 text-right font-medium">Annual tax</th>
-                          <th className="px-3 py-2 text-right font-medium">Q{estimated.quarter} payment</th>
+                          <th className="px-3 py-2 text-right font-medium">Devido acum.</th>
+                          <th className="px-3 py-2 text-right font-medium">Já recolhido</th>
+                          <th className="px-3 py-2 text-right font-medium">Parcela Q{estimated.quarter}</th>
                           <th className="px-3 py-2 font-medium">Due</th>
                           <th className="px-3 py-2 font-medium">Source</th>
                         </tr>
@@ -359,7 +361,8 @@ export default async function ReservePage({
                               <span className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] ${r.entityType === "C-corp" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700"}`}>{r.entityType}</span>
                             </td>
                             <td className="px-3 py-2 text-xs text-slate-500">{r.entityType === "C-corp" ? "1120-W" : "1040-ES"}</td>
-                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(r.annualReserve)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(r.cumulativeTax)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-400">{money(r.priorPaidThrough)}</td>
                             <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">{money(r.installment)}</td>
                             <td className="px-3 py-2 text-xs text-slate-600">{r.due}</td>
                             <td className="px-3 py-2 text-xs">
@@ -375,9 +378,10 @@ export default async function ReservePage({
                     </table>
                   </div>
                   <p className="text-xs text-slate-400">
-                    Parcela = ¼ do imposto anual (método regular de 4 parcelas iguais). Para quem começou
-                    no meio do ano, o método de renda anualizada pode reduzir parcelas — confirme com o
-                    contador. Datas de vencimento são o padrão do ano-calendário.
+                    Acumulado = imposto sobre o lucro YTD do período com a MACRS proporcional. A parcela é
+                    a diferença para o trimestre anterior. Para quem começou no meio do ano, o método de
+                    renda anualizada pode mudar as parcelas — confirme com o contador. Vencimentos no
+                    padrão do ano-calendário.
                   </p>
                 </>
               )}
