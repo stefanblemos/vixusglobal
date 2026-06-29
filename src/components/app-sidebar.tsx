@@ -93,7 +93,7 @@ const NAV: Entry[] = [
       { href: "/reports", label: "Reports", icon: PieChart },
     ],
   },
-  { type: "link", href: "/import", label: "Documents", icon: FolderOpen },
+  { type: "link", href: "/import", label: "Uploads", icon: FolderOpen },
 ];
 
 export function AppSidebar({ email, role }: { email?: string | null; role?: string | null }) {

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { ImportForm } from "@/components/import-form";
@@ -6,6 +7,8 @@ import { ImportForm } from "@/components/import-form";
 // da rota (Server Actions herdam o maxDuration do segmento). Vercel Pro permite até 300s.
 export const maxDuration = 300;
 import { ImageImportForm } from "@/components/image-import-form";
+import { IrUpload } from "@/components/ir-upload";
+import { PersonalUpload } from "@/components/personal-upload";
 import { deleteQboImport } from "@/lib/actions/qbo";
 import {
   CoverageMatrix,
@@ -144,24 +147,55 @@ export default async function DocumentsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Documents</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">Uploads</h1>
         <p className="text-sm text-slate-500">
-          Every document on file, by company and year — QuickBooks reports, tax returns and bank
-          statements. Upload a QuickBooks Balance Sheet, Profit &amp; Loss or General Ledger (CSV or
-          .xlsx).
+          Um lugar só para subir tudo — cada tipo com o que é e <strong>para que serve</strong>. O que
+          é por empresa/empréstimo tem link para o contexto certo. Abaixo, todos os documentos por
+          empresa e ano.
         </p>
       </div>
 
-      <ImportForm />
+      <section className="space-y-3">
+        <UploadCard
+          title="Livros do QuickBooks — P&L, Balance Sheet, General Ledger"
+          purpose="A base do reserve, do tax preview e da conferência. Suba o YTD do período (ex.: Jan–Jun) ou o ano fechado (Jan–Dez). Sempre acumulado (YTD), CSV ou .xlsx."
+        >
+          <ImportForm />
+          <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50/60">
+            <summary className="cursor-pointer px-4 py-2 text-xs font-medium text-slate-600">
+              Sem export do QBO? Importar de imagem / PDF (empresa encerrada)
+            </summary>
+            <div className="border-t border-slate-100 p-4">
+              <ImageImportForm />
+            </div>
+          </details>
+        </UploadCard>
 
-      <details className="rounded-xl border border-slate-200 bg-white">
-        <summary className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-700">
-          Import from an image / PDF (closed company, no QBO export)
-        </summary>
-        <div className="border-t border-slate-100 p-5">
-          <ImageImportForm />
+        <UploadCard
+          title="Imposto de renda — empresas (1120 / 1120-S / 1065)"
+          purpose="O IR de cada empresa. Usado na conferência da depreciação (livros × IR) e nos alertas do fechamento. A IA lê e casa a empresa pelo nome/EIN."
+        >
+          <IrUpload />
+        </UploadCard>
+
+        <UploadCard
+          title="Imposto de renda — pessoas físicas (1040)"
+          purpose="O IR dos donos. Fecha o fluxo K-1 → owners e o estimado pessoal (1040-ES)."
+        >
+          <PersonalUpload />
+        </UploadCard>
+
+        <div>
+          <div className="mb-1.5 text-xs font-medium uppercase tracking-wide text-slate-400">
+            Por contexto (abre no lugar certo)
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LinkCard href="/bank" title="Extratos bancários" purpose="Conciliação banco × razão (GL)." />
+            <LinkCard href="/companies" title="Docs societários" purpose="Articles, EIN letter, annual report — na ficha de cada empresa." />
+            <LinkCard href="/florida" title="Imposto estadual (F-1120)" purpose="Avisos do DOR (principal/multa/juros) — em Florida." />
+          </div>
         </div>
-      </details>
+      </section>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Metric label="Companies with docs" value={rows.length} />
@@ -276,6 +310,36 @@ function CompanyDrill({ id, name, docs }: { id: string; name: string; docs: Doc[
         })}
       </div>
     </details>
+  );
+}
+
+function UploadCard({
+  title,
+  purpose,
+  children,
+}: {
+  title: string;
+  purpose: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5">
+      <div className="mb-1 text-sm font-medium text-slate-800">{title}</div>
+      <p className="mb-3 text-xs text-slate-500">{purpose}</p>
+      {children}
+    </div>
+  );
+}
+
+function LinkCard({ href, title, purpose }: { href: string; title: string; purpose: string }) {
+  return (
+    <Link
+      href={href}
+      className="block rounded-xl border border-slate-200 bg-white p-4 hover:border-sky-300 hover:bg-sky-50/40"
+    >
+      <div className="text-sm font-medium text-[#1f3a5f]">{title} →</div>
+      <p className="mt-0.5 text-xs text-slate-500">{purpose}</p>
+    </Link>
   );
 }
 
