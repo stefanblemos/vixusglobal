@@ -8,6 +8,7 @@ import { edgesFromOwnerships } from "@/lib/ownership/effective";
 import { loadTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
 import { periodMonths } from "@/lib/qbo/period";
 import { loadClosedResolver } from "@/lib/companies/closed";
+import { yearRates } from "@/lib/tax/rates";
 
 // Tax preview: estima o IR final de cada entidade do grupo a partir do QBO já importado.
 // Por entidade: lucro líquido (P&L) + despesas não dedutíveis (M-1) ± ajuste de depreciação
@@ -118,8 +119,7 @@ const yearOf = (s: string | null | undefined) => Number((String(s ?? "").match(/
 // anual de $50k, só para C-corp (FL não tributa renda de pass-through). Como ainda não foi pago (cai
 // no ano seguinte, quando o contador fecha o IR), estima-se juros de ~8% a.a. (~1 ano de diferimento,
 // taxa underpayment IRS/FL). Principal e juros são dedutíveis no federal → reduzem a base de 21%.
-const STATE_RATE = 0.055;
-const STATE_EXEMPTION = 50000;
+// A alíquota e a isenção de Florida vêm de yearRates (Tax settings) — fonte única, não constante.
 const STATE_INTEREST = 0.08;
 
 // opts.throughMonths (3/6/9) = modo PERÍODO (estimado até o trimestre): usa o P&L YTD do período e a
@@ -131,7 +131,7 @@ export async function buildTaxPreview(
   const throughMonths = opts?.throughMonths ?? 12;
   const isPeriod = throughMonths < 12;
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment, closedResolver] = await Promise.all([
+  const [seq, assetReg, ownerships, pnlImports, stateFilings, companies, resolveTreatment, closedResolver, yr] = await Promise.all([
     buildClosingSequence(year),
     buildAssetRegister(year),
     prisma.ownership.findMany({
@@ -150,6 +150,7 @@ export async function buildTaxPreview(
     }),
     loadTreatmentResolver(),
     loadClosedResolver(),
+    yearRates(year),
   ]);
   const companyById = new Map(companies.map((c) => [c.id, c]));
   const isUsd = (id: string) => (companyById.get(id)?.baseCurrency ?? "USD") === "USD";
@@ -344,7 +345,7 @@ export async function buildTaxPreview(
     // Principal + juros são dedutíveis no federal → reduzem a base de 21%.
     let stateEstimate = 0, stateEstInterest = 0;
     if (t === "C-corp" && baseBeforeState > 0) {
-      stateEstimate = r2(Math.max(0, baseBeforeState - STATE_EXEMPTION) * STATE_RATE);
+      stateEstimate = r2(Math.max(0, baseBeforeState - yr.flExemption) * (yr.flPct / 100));
       stateEstInterest = r2(stateEstimate * STATE_INTEREST);
     }
     const taxable = r2(baseBeforeState - stateEstimate - stateEstInterest);

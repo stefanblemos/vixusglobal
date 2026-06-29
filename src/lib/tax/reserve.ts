@@ -7,9 +7,9 @@ import { buildTreatmentResolver, isCorpTreatment, type TreatmentResolver } from 
 import { isEffectiveAt, asOfYearEnd } from "@/lib/ownership/effective";
 import { buildTaxPreview, type TaxPreviewRow } from "@/lib/tax/preview";
 import { buildGlOpenPriorPeriod, type GlOpenPriorPeriod } from "@/lib/qbo/gl-continuity";
+import { yearRates, type YearRates } from "./rates";
 
 export const GLOBAL_RATE_KEY = "GLOBAL";
-const DEFAULT_RATE = 30;
 
 const yearOf = (label: string): number | null => {
   const m = label.match(/(20\d\d)/);
@@ -45,23 +45,9 @@ async function rateConfig() {
   return { override };
 }
 
-// Alíquotas de provisão do ANO (defaults se não houver linha): C-corp 21%, demais 30%,
-// Florida 5,5% + isenção $50k.
-export interface YearRates {
-  corpPct: number;
-  passPct: number;
-  flPct: number;
-  flExemption: number;
-}
-export async function yearRates(year: number): Promise<YearRates> {
-  const row = await prisma.taxRateYear.findUnique({ where: { year } });
-  return {
-    corpPct: row ? Number(row.corpPct) : 21,
-    passPct: row ? Number(row.passPct) : DEFAULT_RATE,
-    flPct: row ? Number(row.flPct) : 5.5,
-    flExemption: row ? Number(row.flExemption) : 50000,
-  };
-}
+// Alíquotas de provisão do ANO — fonte única em ./rates (lida também pelo tax preview). Re-exporto
+// para os consumidores que já importavam daqui (tax-settings, florida).
+export { yearRates, type YearRates };
 
 // FONTE ÚNICA da alíquota de uma empresa: override por empresa (TaxReserveRate), senão a alíquota
 // da CLASSE (corp 21% / demais 30%) do ANO (TaxRateYear). Year-aware e class-aware. Usada por TODOS

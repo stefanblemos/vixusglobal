@@ -242,7 +242,7 @@ function DetailModal({
               <Step
                 label={`− Estadual de ${year} estimado (a pagar em ${year + 1})`}
                 value={-(row.stateEstimate + row.stateEstInterest)}
-                hint={`Florida 5,5% sobre a base (− isenção $50k) = ${m(row.stateEstimate)}${row.stateEstInterest > 0 ? ` + juros estimados ${m(row.stateEstInterest)} (~8% a.a., pago em ${year + 1})` : ""} — dedutível no federal`}
+                hint={`Florida (alíquota/isenção do ano em Tax settings) = ${m(row.stateEstimate)}${row.stateEstInterest > 0 ? ` + juros estimados ${m(row.stateEstInterest)} (~8% a.a., pago em ${year + 1})` : ""} — dedutível no federal`}
               />
             )}
           </div>
