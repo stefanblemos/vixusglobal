@@ -12,9 +12,12 @@ export interface DepVsIrRow {
   accumulated: number; // MACRS acumulada calculada até o ano
   reported: number | null; // depreciação do ano no IR (null = sem IR/sem a figura)
   reportedAccum: number | null; // IR acumulado lançado até o ano (null = nenhum IR com depreciação)
-  catchUp: number; // MACRS acumulada − IR acumulado (o que ainda falta lançar) — bate com a Conferência
+  catchUp: number; // MACRS acumulada − IR acumulado. ATENÇÃO: bate com a Conferência SÓ quando há ativos
+  // cadastrados. Quando irWithoutAssets=true, este número é o IR inteiro (MACRS=0) e NÃO é um catch-up
+  // de conferência — é o alerta de "cadastre os ativos" (a Conferência mostra 0 por não ter o que conciliar).
   diff: number | null; // calculado − IR (do ano) — referência
   ok: boolean; // catch-up dentro da tolerância
+  irWithoutAssets: boolean; // IR tem depreciação mas não há ativos cadastrados (MACRS=0) → cadastrar
   hasReturn: boolean; // existe IR do ano?
 }
 
@@ -89,10 +92,12 @@ export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
     const accumulated = lf != null ? r2(accumFiledByCompany.get(id) ?? 0) : r2(accumByCompany.get(id) ?? 0);
     const reported = irDep.has(id) ? irDep.get(id)! : null;
     const reportedAccum = hasAnyIr.has(id) ? r2(irAccum.get(id) ?? 0) : null;
-    // Catch-up acumulado REAL: MACRS acum (até último IR) − IR acumulado — = Conferência.
     const catchUp = r2(accumulated - (reportedAccum ?? 0));
     const diff = reported == null ? null : r2(computed - reported);
-    const ok = Math.abs(catchUp) <= Math.max(1, 0.01 * Math.abs(accumulated || 1));
+    // IR tem depreciação mas não há ativos cadastrados (MACRS=0): não é divergência de conferência,
+    // é alerta de cadastro. A Conferência (reconcile-dep) mostra 0 por não ter ativos a conciliar.
+    const irWithoutAssets = accumulated <= 0.005 && (reportedAccum ?? 0) > 0.005;
+    const ok = irWithoutAssets ? false : Math.abs(catchUp) <= Math.max(1, 0.01 * Math.abs(accumulated || 1));
     return {
       companyId: id,
       name: nameById.get(id) ?? "—",
@@ -103,6 +108,7 @@ export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
       catchUp,
       diff,
       ok,
+      irWithoutAssets,
       hasReturn: hasReturn.has(id),
     };
   });

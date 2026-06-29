@@ -240,7 +240,10 @@ export default async function AssetsPage({
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {vsRows.map((r) => (
-                  <tr key={r.companyId} className={!r.ok ? "bg-rose-50/40" : ""}>
+                  <tr
+                    key={r.companyId}
+                    className={r.irWithoutAssets ? "bg-amber-50/40" : !r.ok ? "bg-rose-50/40" : ""}
+                  >
                     <td className="px-4 py-2">
                       <Link href={`/companies/${r.companyId}`} className="font-medium text-[#1f3a5f] hover:underline">
                         {r.name}
@@ -258,13 +261,29 @@ export default async function AssetsPage({
                     </td>
                     <td
                       className={`px-3 py-2 text-right tabular-nums ${
-                        Math.abs(r.catchUp) <= 1 ? "text-slate-400" : "font-medium text-amber-700"
+                        r.irWithoutAssets
+                          ? "text-amber-700"
+                          : Math.abs(r.catchUp) <= 1
+                            ? "text-slate-400"
+                            : "font-medium text-amber-700"
                       }`}
                     >
-                      {formatMoney(r.catchUp, "USD")}
+                      {r.irWithoutAssets ? (
+                        <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
+                          IR sem ativos cadastrados
+                        </span>
+                      ) : (
+                        formatMoney(r.catchUp, "USD")
+                      )}
                     </td>
                     <td className="px-3 py-2 text-center">
-                      {r.ok ? <span className="text-green-600">✓</span> : <span className="text-rose-500">✗</span>}
+                      {r.irWithoutAssets ? (
+                        <span title="O IR tem depreciação mas não há ativos cadastrados — cadastre os ativos. A Conferência mostra 0 (nada a conciliar)." className="text-amber-600">⚠</span>
+                      ) : r.ok ? (
+                        <span className="text-green-600">✓</span>
+                      ) : (
+                        <span className="text-rose-500">✗</span>
+                      )}
                     </td>
                   </tr>
                 ))}
