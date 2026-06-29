@@ -10,6 +10,7 @@ import { CorporateUpload } from "@/components/corporate-upload";
 import { deleteTaxStatus } from "@/lib/actions/tax";
 import { deleteCorporateDoc } from "@/lib/actions/corporate";
 import { ownerNameMatches } from "@/lib/ownership/reconcile";
+import { computeLoanBalance } from "@/lib/loans/interest";
 import { normalizeName } from "@/lib/qbo/match";
 import {
   labelForEntityType,
@@ -103,7 +104,7 @@ export default async function CompanyDetailPage({
     prisma.bankStatement.findMany({ where: { companyId: id }, orderBy: { periodEnd: "desc" } }),
     prisma.intercompanyLoan.findMany({
       where: { OR: [{ lenderCompanyId: id }, { borrowerCompanyId: id }] },
-      include: { lender: true, borrower: true },
+      include: { lender: true, borrower: true, transactions: true },
     }),
     prisma.qboImport.findMany({ where: { companyId: id }, orderBy: { createdAt: "desc" } }),
     prisma.yearClose.findMany({ where: { companyId: id }, select: { year: true } }),
@@ -1154,6 +1155,17 @@ export default async function CompanyDetailPage({
                   <tbody className="divide-y divide-slate-100">
                     {loans.map((l) => {
                       const isLender = l.lenderCompanyId === id;
+                      // Principal em aberto = fonte única (LoanTransaction via computeLoanBalance), igual
+                      // a /loans e /overview. A coluna l.principal fica 0 em loans criados pela UI.
+                      const bal = computeLoanBalance(
+                        {
+                          annualInterestRate: l.annualInterestRate.toString(),
+                          dayCountBasis: l.dayCountBasis,
+                          startDate: l.startDate,
+                        },
+                        l.transactions.map((t) => ({ type: t.type, amount: t.amount.toString(), date: t.date })),
+                        new Date(),
+                      );
                       return (
                         <tr key={l.id}>
                           <td className="px-4 py-3">
@@ -1167,7 +1179,7 @@ export default async function CompanyDetailPage({
                             {isLender ? l.borrower.legalName : l.lender.legalName}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums text-slate-800">
-                            {money(l.principal, l.currency)}
+                            {money(Number(bal.principalOutstanding), l.currency)}
                           </td>
                         </tr>
                       );
