@@ -197,9 +197,9 @@ function DetailModal({
             )}
             {row.stateTaxAddBack !== 0 && (
               <Step
-                label="+ Imposto estadual — add-back"
+                label="+ Estadual pago no ano (add-back)"
                 value={row.stateTaxAddBack}
-                hint={`${row.stateTaxSource === "florida" ? `principal + multa pagos em ${year} (controle Florida)` : `imposto estadual lançado como despesa no P&L de ${year}`}${row.stateTaxInterest > 0 ? ` · juros ${m(row.stateTaxInterest)} são dedutíveis (ficam de fora)` : ""}`}
+                hint={`principal + multa do estadual de ${year - 1} pagos em ${year} (controle Florida) — já deduzido na competência${row.stateTaxInterest > 0 ? ` · juros ${m(row.stateTaxInterest)} são dedutíveis (ficam de fora)` : ""}`}
               />
             )}
             {row.depAdj !== 0 ? (

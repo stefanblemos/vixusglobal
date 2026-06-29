@@ -30,7 +30,7 @@ export interface TaxPreviewRow {
   nonDeductibleItems: { label: string; amount: number }[]; // detalhe do add-back ("o que foi o ajuste")
   stateTaxAddBack: number; // add-back do estadual pago no ano (principal + multa) — do controle /florida ou do P&L
   stateTaxInterest: number; // juros do estadual pago no ano — dedutíveis, NÃO somados (só p/ nota)
-  stateTaxSource: "florida" | "pnl" | null; // de onde veio o add-back estadual
+  stateTaxSource: "florida" | null; // add-back estadual (pagamento do ano anterior) — do controle /florida
   depAdj: number; // ajuste de depreciação na base: 0 quando confia no livro; −MACRS quando o livro não tem
   bookDep: number; // depreciação no P&L (livro) do ano
   macrsDep: number; // depreciação MACRS do ano (app) — dos ativos cadastrados
@@ -259,7 +259,7 @@ export async function buildTaxPreview(
     n.kind === "person" ? "PF" : n.finalPayer ? "C-corp" : "Pass-through";
 
   // Base própria de cada entidade.
-  const blank = { bookNet: 0, nonDed: 0, nonDedItems: [] as AddBack[], stateAddBack: 0, stateInterest: 0, stateSource: null as "florida" | "pnl" | null, depAdj: 0, bookDep: 0, macrsDep: 0, macrsApplied: false, depCatchUp: null as number | null, hasPnl: false };
+  const blank = { bookNet: 0, nonDed: 0, nonDedItems: [] as AddBack[], stateAddBack: 0, stateInterest: 0, stateSource: null as "florida" | null, depAdj: 0, bookDep: 0, macrsDep: 0, macrsApplied: false, depCatchUp: null as number | null, hasPnl: false };
   const self = new Map<string, typeof blank>();
   const missingPnl: string[] = [];
   for (const n of nodes) {
@@ -271,11 +271,14 @@ export async function buildTaxPreview(
     const nonDed = ded.total;
     // Estadual: o controle /florida (datado: principal+multa, juros à parte) tem prioridade. Sem ele,
     // usa-se a linha de imposto estadual do próprio P&L (fallback) — sem duplicar.
+    // O controle /florida já faz o add-back do estadual PAGO no ano (que é o do ano anterior — os
+    // livros lançam essa despesa quando pagam). A linha "State Taxes" do P&L é justamente esse
+    // pagamento de Y-1, então NÃO entra na base de Y (não a somamos). O estadual DE Y (ainda não
+    // pago) é estimado à parte, mais abaixo.
     const st = stateByCompany.get(n.id);
-    let stateAddBack: number, stateInterest: number, stateSource: "florida" | "pnl" | null;
-    if (st) { stateAddBack = r2(st.addBack); stateInterest = r2(st.interest); stateSource = "florida"; }
-    else if (ded.stateTaxFromPnl > 0) { stateAddBack = ded.stateTaxFromPnl; stateInterest = 0; stateSource = "pnl"; }
-    else { stateAddBack = 0; stateInterest = 0; stateSource = null; }
+    const stateAddBack = st ? r2(st.addBack) : 0;
+    const stateInterest = st ? r2(st.interest) : 0;
+    const stateSource: "florida" | null = st ? "florida" : null;
     const bookDep = bookDepFromLines(lines);
     const hasAssets = macrsByCompany.has(n.id);
     let macrsDep: number, realDep: number, macrsApplied: boolean, depAdj: number;

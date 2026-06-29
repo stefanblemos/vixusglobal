@@ -190,9 +190,9 @@ function DetailModal({
             )}
             {row.stateTaxAddBack !== 0 && (
               <Step
-                label="+ Imposto estadual (add-back)"
+                label="+ Estadual pago no ano (add-back)"
                 value={row.stateTaxAddBack}
-                hint={row.stateTaxSource === "florida" ? "principal + multa (controle Florida)" : "imposto estadual lançado como despesa no P&L"}
+                hint="principal + multa do estadual do ano anterior, pagos neste ano (controle Florida)"
               />
             )}
             {row.depAdj !== 0 ? (
