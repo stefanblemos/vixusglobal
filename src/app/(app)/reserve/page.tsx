@@ -1,11 +1,8 @@
 import Link from "next/link";
 import {
-  buildTaxReserve,
-  buildQuarterlyReserve,
   buildReserveByEntity,
   buildEstimatedPayments,
   reserveYears,
-  QUARTER_DUE,
 } from "@/lib/tax/reserve";
 import { ReserveEntityTable } from "@/components/reserve-entity";
 import { lockReserveYear, unlockReserveYear } from "@/lib/actions/reserve";
@@ -14,8 +11,6 @@ import { YearSelect } from "@/components/year-select";
 import { CompletenessModal } from "@/components/completeness-modal";
 import { buildGroupCompleteness } from "@/lib/tax/group-completeness";
 import { ReserveDepositModal, type DepositRow } from "@/components/reserve-deposit-modal";
-import { buildQuarterlyBreakdown } from "@/lib/tax/quarterly-breakdown";
-import { QuarterlyBreakdown } from "@/components/quarterly-breakdown";
 
 const money = (v: number | null, ccy = "USD") =>
   v == null
@@ -37,26 +32,21 @@ export default async function ReservePage({
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
   const quarter = [1, 2, 3, 4].includes(Number(qRaw)) ? Number(qRaw) : Math.ceil((new Date().getUTCMonth() + 1) / 3);
   const TABS = [
-    { key: "quarterly", label: "Quarterly" },
     { key: "annual", label: "By entity" },
     { key: "estimated", label: "Estimated payments" },
   ];
-  const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "quarterly";
+  const tab = TABS.some((t) => t.key === tabRaw) ? tabRaw! : "annual";
   const estimated = tab === "estimated" ? await buildEstimatedPayments(year, quarter) : null;
 
-  const [{ rows }, byEntity, { rows: qRows }, { rows: breakdown }, completeness, depositList] =
-    await Promise.all([
-      buildTaxReserve(year),
-      buildReserveByEntity(year),
-      buildQuarterlyReserve(year),
-      buildQuarterlyBreakdown(year),
-      buildGroupCompleteness(year),
-      prisma.reserveDeposit.findMany({
-        where: { year },
-        include: { company: { select: { legalName: true } } },
-        orderBy: [{ quarter: "asc" }, { createdAt: "asc" }],
-      }),
-    ]);
+  const [byEntity, completeness, depositList] = await Promise.all([
+    buildReserveByEntity(year),
+    buildGroupCompleteness(year),
+    prisma.reserveDeposit.findMany({
+      where: { year },
+      include: { company: { select: { legalName: true } } },
+      orderBy: [{ quarter: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
   const deposits: DepositRow[] = depositList.map((d) => ({
     id: d.id,
     company: d.company.legalName,
@@ -67,14 +57,14 @@ export default async function ReservePage({
     depositedAt: d.depositedAt ? d.depositedAt.toISOString().slice(0, 10) : null,
     note: d.note,
   }));
-  const depositCompanies = qRows.map((q) => ({ id: q.companyId, name: q.name }));
+  const depositCompanies = byEntity.rows
+    .filter((r) => r.kind === "company")
+    .map((r) => ({ id: r.id, name: r.name }));
   const lock = await prisma.reserveLock.findUnique({ where: { year } });
   const locked = !!lock;
   const lockedDate = lock ? new Date(lock.lockedAt).toISOString().slice(0, 10) : null;
 
-  // Total a reservar por moeda (não dá pra somar USD + BRL + EUR).
-  const totals = new Map<string, number>();
-  for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.reserve);
+  const isEmpty = byEntity.rows.length === 0;
 
   return (
     <div className="space-y-6">
@@ -135,134 +125,16 @@ export default async function ReservePage({
         </div>
       )}
 
-      {rows.length === 0 ? (
+      {isEmpty ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           No Profit &amp; Loss on file yet. Import one in{" "}
           <Link href="/import" className="text-[#1f3a5f] hover:underline">
-            Documents
+            Uploads
           </Link>{" "}
           to see the reserve.
         </div>
       ) : (
         <>
-          {tab === "quarterly" && (
-          <>
-          <section className="space-y-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-lg font-medium text-slate-800">Quarterly closing — needed vs funded</h2>
-              {!locked && (
-                <ReserveDepositModal year={year} companies={depositCompanies} deposits={deposits} />
-              )}
-            </div>
-            <p className="text-sm text-slate-500">
-              Per quarter, the amount to set aside (aligned to the estimated-tax deadlines) and what
-              you&apos;ve actually moved into the reserve. Gap = still to fund.
-            </p>
-            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-left text-slate-500">
-                  <tr>
-                    <th className="px-4 py-2 font-medium">Company</th>
-                    {QUARTER_DUE.map((due, i) => (
-                      <th key={i} className="px-3 py-2 text-right font-medium">
-                        Q{i + 1}
-                        <span className="block text-[10px] font-normal text-slate-400">due {due}</span>
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-right font-medium">FY needed</th>
-                    <th className="px-3 py-2 text-right font-medium">Funded</th>
-                    <th className="px-4 py-2 text-right font-medium">Gap</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {qRows.map((q) => (
-                    <tr key={q.companyId} className="hover:bg-slate-50">
-                      <td className="px-4 py-2">
-                        <Link
-                          href={`/companies/${q.companyId}`}
-                          className="font-medium text-[#1f3a5f] hover:underline"
-                        >
-                          {q.name}
-                        </Link>
-                        {q.annualOnly && (
-                          <span className="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
-                            annual only
-                          </span>
-                        )}
-                      </td>
-                      {q.quarters.map((cell, i) => (
-                        <td
-                          key={i}
-                          className="px-3 py-2 text-right tabular-nums text-slate-700"
-                          title={`${cell.profit != null ? `Profit ${money(cell.profit, q.currency)} · ` : ""}Funded ${money(cell.funded, q.currency)}`}
-                        >
-                          {q.annualOnly ? (
-                            <span className="text-slate-300">—</span>
-                          ) : cell.profit == null ? (
-                            <span className="text-slate-300">—</span>
-                          ) : (
-                            money(cell.reserve, q.currency)
-                          )}
-                        </td>
-                      ))}
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
-                        {money(q.fyReserve, q.currency)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">
-                        {money(q.fyFunded, q.currency)}
-                      </td>
-                      <td
-                        className={`px-4 py-2 text-right font-medium tabular-nums ${
-                          q.fyGap <= 0.005 ? "text-emerald-600" : "text-rose-600"
-                        }`}
-                      >
-                        {q.fyGap <= 0.005 ? "funded ✓" : money(q.fyGap, q.currency)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot className="border-t-2 border-slate-200 bg-slate-50/60">
-                  {[...totals.entries()].map(([ccy]) => {
-                    const qTot = [0, 1, 2, 3].map((i) =>
-                      qRows
-                        .filter((q) => q.currency === ccy && !q.annualOnly)
-                        .reduce((s, q) => s + q.quarters[i].reserve, 0),
-                    );
-                    const inCcy = qRows.filter((q) => q.currency === ccy);
-                    const fy = inCcy.reduce((s, q) => s + q.fyReserve, 0);
-                    const funded = inCcy.reduce((s, q) => s + q.fyFunded, 0);
-                    const gap = Math.round((fy - funded) * 100) / 100;
-                    return (
-                      <tr key={ccy}>
-                        <td className="px-4 py-2 font-medium text-slate-700">Total ({ccy})</td>
-                        {qTot.map((t, i) => (
-                          <td key={i} className="px-3 py-2 text-right font-medium tabular-nums text-slate-700">
-                            {money(t, ccy)}
-                          </td>
-                        ))}
-                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">
-                          {money(fy, ccy)}
-                        </td>
-                        <td className="px-3 py-2 text-right font-medium tabular-nums text-slate-600">
-                          {money(funded, ccy)}
-                        </td>
-                        <td
-                          className={`px-4 py-2 text-right font-semibold tabular-nums ${
-                            gap <= 0.005 ? "text-emerald-600" : "text-rose-600"
-                          }`}
-                        >
-                          {gap <= 0.005 ? "funded ✓" : money(gap, ccy)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tfoot>
-              </table>
-            </div>
-          </section>
-          <QuarterlyBreakdown rows={breakdown} />
-          </>
-          )}
 
           {tab === "annual" && (
             <section className="space-y-3">
@@ -327,14 +199,20 @@ export default async function ReservePage({
 
           {tab === "estimated" && estimated && (
             <section className="space-y-3">
-              <div>
-                <h2 className="text-lg font-medium text-slate-800">Estimated tax payments — {estimated.year}</h2>
-                <p className="text-sm text-slate-500">
-                  Imposto devido <strong>acumulado até o fim do trimestre</strong>: lucro YTD real do
-                  período + depreciação MACRS proporcional (× Q/4) + add-backs + K-1 cascateado,
-                  tributado como no IR (C-corp 21%; PF nas faixas; pass-through repassa). A{" "}
-                  <strong>parcela</strong> a pagar = o acumulado até Q menos o do trimestre anterior.
-                </p>
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-medium text-slate-800">Estimated tax payments — {estimated.year}</h2>
+                  <p className="text-sm text-slate-500">
+                    Imposto devido <strong>acumulado até o fim do trimestre</strong>: lucro YTD real do
+                    período + depreciação MACRS proporcional (× Q/4) + add-backs + K-1 cascateado,
+                    tributado como no IR (C-corp 21%; PF nas faixas; pass-through repassa). A{" "}
+                    <strong>parcela</strong> = o acumulado até Q menos o do trimestre anterior. Pague-a
+                    OU guarde-a na conta-reserva (registre o aporte para acompanhar o que falta).
+                  </p>
+                </div>
+                {!locked && (
+                  <ReserveDepositModal year={year} companies={depositCompanies} deposits={deposits} />
+                )}
               </div>
               <div className="flex flex-wrap items-center gap-1.5 text-sm">
                 <span className="mr-1 text-slate-400">Trimestre:</span>
@@ -367,9 +245,15 @@ export default async function ReservePage({
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Stat label={`Parcela a pagar em Q${estimated.quarter}`} value={money(estimated.totalInstallment)} good />
-                    <Stat label={`Imposto devido acumulado até Q${estimated.quarter}`} value={money(estimated.totalCumulative)} />
+                  <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                    <Stat label={`Parcela Q${estimated.quarter}`} value={money(estimated.totalInstallment)} good />
+                    <Stat label="Já guardado (aportes)" value={money(estimated.totalFunded)} />
+                    <Stat
+                      label={`Falta guardar Q${estimated.quarter}`}
+                      value={estimated.totalGap <= 0.005 ? "ok ✓" : money(estimated.totalGap)}
+                      muted={estimated.totalGap <= 0.005}
+                    />
+                    <Stat label={`Devido acum. até Q${estimated.quarter}`} value={money(estimated.totalCumulative)} />
                   </div>
                   <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                     <table className="w-full text-sm">
@@ -380,6 +264,8 @@ export default async function ReservePage({
                           <th className="px-3 py-2 text-right font-medium">Devido acum.</th>
                           <th className="px-3 py-2 text-right font-medium">Já recolhido</th>
                           <th className="px-3 py-2 text-right font-medium">Parcela Q{estimated.quarter}</th>
+                          <th className="px-3 py-2 text-right font-medium">Guardado</th>
+                          <th className="px-3 py-2 text-right font-medium">Falta</th>
                           <th className="px-3 py-2 font-medium">Due</th>
                           <th className="px-3 py-2 font-medium">Source</th>
                         </tr>
@@ -395,6 +281,12 @@ export default async function ReservePage({
                             <td className="px-3 py-2 text-right tabular-nums text-slate-600">{money(r.cumulativeTax)}</td>
                             <td className="px-3 py-2 text-right tabular-nums text-slate-400">{money(r.priorPaidThrough)}</td>
                             <td className="px-3 py-2 text-right font-semibold tabular-nums text-slate-900">{money(r.installment)}</td>
+                            <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                              {r.kind === "person" ? <span className="text-slate-300">—</span> : money(r.funded)}
+                            </td>
+                            <td className={`px-3 py-2 text-right tabular-nums ${r.kind === "person" ? "text-slate-300" : r.gap <= 0.005 ? "text-emerald-600" : "text-rose-600"}`}>
+                              {r.kind === "person" ? "—" : r.gap <= 0.005 ? "ok ✓" : money(r.gap)}
+                            </td>
                             <td className="px-3 py-2 text-xs text-slate-600">{r.due}</td>
                             <td className="px-3 py-2 text-xs">
                               {r.pnlImportId ? (

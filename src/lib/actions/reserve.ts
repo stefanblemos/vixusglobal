@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { GLOBAL_RATE_KEY, buildReserveByEntity, buildQuarterlyReserve } from "@/lib/tax/reserve";
+import { GLOBAL_RATE_KEY, buildReserveByEntity } from "@/lib/tax/reserve";
 
 // Define a alíquota de reserva (default global ou override por empresa).
 // companyId vazio/"GLOBAL" = default; vazio o rate numa empresa = remove o override.
@@ -91,10 +91,20 @@ export async function setTaxRateYear(formData: FormData): Promise<void> {
 export async function lockReserveYear(formData: FormData): Promise<void> {
   const year = Number(String(formData.get("year") ?? ""));
   if (!Number.isInteger(year)) return;
-  const [byEntity, { rows: qRows }] = await Promise.all([
+  const [byEntity, deposits] = await Promise.all([
     buildReserveByEntity(year),
-    buildQuarterlyReserve(year),
+    prisma.reserveDeposit.findMany({
+      where: { year, purpose: "RESERVE" },
+      select: { companyId: true, amount: true, company: { select: { legalName: true } } },
+    }),
   ]);
+  // Aportado de fato por empresa (todos os trimestres) — captura "quanto já foi guardado".
+  const fundedByCompany = new Map<string, { name: string; funded: number }>();
+  for (const d of deposits) {
+    const g = fundedByCompany.get(d.companyId) ?? { name: d.company.legalName, funded: 0 };
+    g.funded += Number(d.amount.toString());
+    fundedByCompany.set(d.companyId, g);
+  }
   const snapshot = {
     totalReserve: byEntity.totalReserve,
     corpReserve: byEntity.corpReserve,
@@ -106,12 +116,9 @@ export async function lockReserveYear(formData: FormData): Promise<void> {
       reserveRate: r.reserveRate,
       reserve: r.reserve,
     })),
-    quarterly: qRows.map((q) => ({
-      name: q.name,
-      currency: q.currency,
-      fyReserve: q.fyReserve,
-      fyFunded: q.fyFunded,
-      fyGap: q.fyGap,
+    funded: [...fundedByCompany.values()].map((g) => ({
+      name: g.name,
+      funded: Math.round(g.funded * 100) / 100,
     })),
   };
   await prisma.reserveLock.upsert({

@@ -300,141 +300,6 @@ export async function buildTaxReserve(
   return { rows, flow };
 }
 
-// ── Fechamento TRIMESTRAL (estimated tax) ───────────────────────────────────
-// Os trimestres mapeiam os vencimentos do estimated tax corporativo:
-export const QUARTER_DUE = ["Apr 15", "Jun 15", "Sep 15", "Dec 15"];
-const quarterOf = (m: number) => Math.ceil(m / 3); // 1..4
-
-export type QuarterlyRow = {
-  companyId: string;
-  name: string;
-  currency: string;
-  ratePct: number;
-  quarters: { profit: number | null; reserve: number; funded: number }[]; // Q1..Q4
-  annualOnly: boolean; // só tem P&L anual (sem detalhe trimestral)
-  fyProfit: number | null;
-  fyReserve: number;
-  fyFunded: number; // aportado de fato na conta-reserva
-  fyGap: number; // necessário − aportado (positivo = falta provisionar)
-};
-
-export async function buildQuarterlyReserve(year: number): Promise<{ rows: QuarterlyRow[] }> {
-  const [companies, pnls, { override }, yr, deposits, returns, assetReg, taxStatuses] = await Promise.all([
-    prisma.company.findMany({
-      where: { baseCurrency: "USD" },
-      select: { id: true, legalName: true, baseCurrency: true },
-    }),
-    prisma.qboImport.findMany({
-      where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
-      select: { id: true, companyId: true, periodLabel: true },
-    }),
-    rateConfig(),
-    yearRates(year),
-    // Só aportes marcados como RESERVE contam como funded (outros: empréstimo, juros…).
-    prisma.reserveDeposit.findMany({
-      where: { year, purpose: "RESERVE" },
-      select: { companyId: true, quarter: true, amount: true },
-    }),
-    prisma.taxReturn.findMany({
-      where: { companyId: { not: null }, taxTreatment: { not: null } },
-      select: { companyId: true, taxTreatment: true, year: true, createdAt: true },
-    }),
-    buildAssetRegister(year),
-    prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
-  ]);
-  // Depreciação REAL do ano (livro registrado onde houver, senão MACRS efetiva).
-  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.realDep]));
-  const resolveTreatment: TreatmentResolver = buildTreatmentResolver(
-    taxStatuses,
-    returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
-  );
-
-  const fundedByCompany = new Map<string, number[]>(); // [Q1..Q4]
-  for (const d of deposits) {
-    const arr = fundedByCompany.get(d.companyId) ?? [0, 0, 0, 0];
-    if (d.quarter >= 1 && d.quarter <= 4) arr[d.quarter - 1] += Number(d.amount.toString());
-    fundedByCompany.set(d.companyId, arr);
-  }
-
-  // Granularidade trimestral SÓ no ano vigente; anos anteriores entram como anual.
-  const showQuarters = year === new Date().getUTCFullYear();
-
-  const byCompany = new Map<string, { id: string; periodLabel: string }[]>();
-  for (const p of pnls) {
-    if (!p.companyId || yearOf(p.periodLabel) !== year) continue;
-    const arr = byCompany.get(p.companyId) ?? [];
-    arr.push({ id: p.id, periodLabel: p.periodLabel });
-    byCompany.set(p.companyId, arr);
-  }
-
-  const rows: QuarterlyRow[] = [];
-  for (const c of companies) {
-    const imports = byCompany.get(c.id);
-    if (!imports) continue;
-
-    const qProfit: (number | null)[] = [null, null, null, null];
-    let annualProfit: number | null = null;
-    let hasQuarterData = false;
-
-    for (const imp of imports) {
-      const pm = periodMonths(imp.periodLabel);
-      const ni = await netIncomeOf(imp.id);
-      if (ni == null) continue;
-      if (showQuarters && pm && quarterOf(pm.start) === quarterOf(pm.end)) {
-        const q = quarterOf(pm.start) - 1;
-        qProfit[q] = (qProfit[q] ?? 0) + ni;
-        hasQuarterData = true;
-      } else {
-        // Anual, multi-trimestre, ou ano não-vigente → trata como anual.
-        annualProfit = (annualProfit ?? 0) + ni;
-      }
-    }
-
-    // Ajuste de depreciação livro→fiscal (confia no livro) — mesma regra do buildTaxReserve.
-    const taxDep = taxDepByCompany.get(c.id) ?? 0;
-    const hasAssets = taxDepByCompany.has(c.id);
-    const bookDep = hasAssets ? await bookDepreciationOf(imports.map((i) => i.id)) : 0;
-    const depAdj = trustBookDepAdjustment(bookDep, taxDep, hasAssets);
-    if (depAdj !== 0) {
-      const nq = qProfit.filter((p) => p != null).length || 1;
-      const perQ = depAdj / nq;
-      for (let i = 0; i < 4; i++) if (qProfit[i] != null) qProfit[i] = (qProfit[i] ?? 0) + perQ;
-      if (annualProfit != null) annualProfit += depAdj;
-    }
-
-    const ratePct = classRate(resolveTreatment(c.id, year).treatment, override, c.id, yr);
-    const r = (p: number | null) =>
-      p != null && p > 0 ? Math.round(((p * ratePct) / 100) * 100) / 100 : 0;
-
-    const annualOnly = !hasQuarterData && annualProfit != null;
-    const funded = fundedByCompany.get(c.id) ?? [0, 0, 0, 0];
-    const quarters = qProfit.map((p, i) => ({ profit: p, reserve: r(p), funded: funded[i] }));
-    const fyProfit = hasQuarterData
-      ? qProfit.reduce<number | null>((s, p) => (p == null ? s : (s ?? 0) + p), null)
-      : annualProfit;
-    const fyReserve = hasQuarterData
-      ? quarters.reduce((s, q) => s + q.reserve, 0)
-      : r(annualProfit);
-    const fyFunded = funded.reduce((s, v) => s + v, 0);
-
-    // Sem dados de aporte E sem necessidade → pula (não polui a tabela). Mantém se houver algo.
-    rows.push({
-      companyId: c.id,
-      name: c.legalName,
-      currency: c.baseCurrency,
-      ratePct,
-      quarters,
-      annualOnly,
-      fyProfit,
-      fyReserve: Math.round(fyReserve * 100) / 100,
-      fyFunded: Math.round(fyFunded * 100) / 100,
-      fyGap: Math.round((fyReserve - fyFunded) * 100) / 100,
-    });
-  }
-  rows.sort((a, b) => b.fyReserve - a.fyReserve);
-  return { rows };
-}
-
 // Estimativa de IR de UMA empresa num ano — para a aba da empresa. Usa a MESMA alíquota do reserve
 // principal (classRate: override por empresa, senão classe/ano), recebendo o treatment já resolvido
 // pela página (cadastro > IR). Antes usava um flat global e divergia do reserve.
@@ -541,6 +406,8 @@ export interface EstimatedPaymentRow {
   cumulativeTax: number; // imposto devido ACUMULADO até o fim do trimestre
   priorPaidThrough: number; // devido acumulado até o trimestre anterior
   installment: number; // parcela do trimestre = cumulativo − anterior (≥0)
+  funded: number; // já aportado na conta-reserva neste trimestre (ReserveDeposit RESERVE) — só empresa
+  gap: number; // falta guardar = parcela − aportado (≥0)
   due: string; // vencimento do trimestre (por tipo)
   pnlImportId: string | null; // fonte clicável (P&L YTD do período)
 }
@@ -551,6 +418,8 @@ export interface EstimatedPayments {
   rows: EstimatedPaymentRow[]; // pagadores finais (C-corp + PF)
   totalCumulative: number;
   totalInstallment: number;
+  totalFunded: number;
+  totalGap: number;
   corpDue: string;
   individualDue: string;
   blockedMissingPnl: string[]; // empresas no escopo sem o P&L YTD do período → relatório bloqueado
@@ -566,12 +435,23 @@ export async function buildEstimatedPayments(year: number, quarter: number): Pro
     q > 1 ? buildTaxPreview(year, { throughMonths: 3 * (q - 1) }) : Promise.resolve(null),
   ]);
   const priorTaxByKey = new Map((prior?.rows ?? []).map((r) => [r.key, r.tax]));
+  // Aporte REAL no trimestre (conta-reserva) por empresa — para "guardado vs falta" (mesma fonte do
+  // antigo controle trimestral, agora no motor único). Pessoa física não tem aporte de empresa.
+  const deposits = await prisma.reserveDeposit.findMany({
+    where: { year, quarter: q, purpose: "RESERVE" },
+    select: { companyId: true, amount: true },
+  });
+  const fundedByCompany = new Map<string, number>();
+  for (const d of deposits)
+    fundedByCompany.set(d.companyId, (fundedByCompany.get(d.companyId) ?? 0) + Number(d.amount.toString()));
   const rows: EstimatedPaymentRow[] = cum.rows
     .filter((r) => r.entityType !== "Pass-through")
     .map((r) => {
       const cumulativeTax = r.tax;
       const priorPaidThrough = priorTaxByKey.get(r.key) ?? 0;
       const installment = Math.max(0, Math.round((cumulativeTax - priorPaidThrough) * 100) / 100);
+      const funded = r.kind === "company" ? Math.round((fundedByCompany.get(r.id) ?? 0) * 100) / 100 : 0;
+      const gap = Math.max(0, Math.round((installment - funded) * 100) / 100);
       return {
         key: r.key,
         kind: r.kind,
@@ -581,11 +461,13 @@ export async function buildEstimatedPayments(year: number, quarter: number): Pro
         cumulativeTax,
         priorPaidThrough,
         installment,
+        funded,
+        gap,
         due: r.entityType === "C-corp" ? corpDue : individualDue,
         pnlImportId: r.pnlImportId,
       };
     })
-    .filter((r) => r.cumulativeTax > 0.005 || r.installment > 0.005)
+    .filter((r) => r.cumulativeTax > 0.005 || r.installment > 0.005 || r.funded > 0.005)
     .sort((a, b) => b.installment - a.installment);
   return {
     year,
@@ -593,6 +475,8 @@ export async function buildEstimatedPayments(year: number, quarter: number): Pro
     rows,
     totalCumulative: Math.round(rows.reduce((s, r) => s + r.cumulativeTax, 0) * 100) / 100,
     totalInstallment: Math.round(rows.reduce((s, r) => s + r.installment, 0) * 100) / 100,
+    totalFunded: Math.round(rows.reduce((s, r) => s + r.funded, 0) * 100) / 100,
+    totalGap: Math.round(rows.reduce((s, r) => s + r.gap, 0) * 100) / 100,
     corpDue,
     individualDue,
     blockedMissingPnl: cum.missingPnl,
