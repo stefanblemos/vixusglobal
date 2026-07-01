@@ -6,6 +6,7 @@ import {
 } from "@/lib/tax/florida";
 import { reserveYears } from "@/lib/tax/reserve";
 import { buildStateTaxControl } from "@/lib/tax/state-tax";
+import { buildStateTaxReconciliation } from "@/lib/tax/state-tax-recon";
 import { StateTaxControl } from "@/components/state-tax-control";
 import { YearSelect } from "@/components/year-select";
 
@@ -14,7 +15,7 @@ const money = (v: number) =>
 
 export const dynamic = "force-dynamic";
 
-const TABS = ["forecast", "apuracao"] as const;
+const TABS = ["forecast", "apuracao", "reconciliacao"] as const;
 
 export default async function FloridaPage({
   searchParams,
@@ -25,11 +26,14 @@ export default async function FloridaPage({
   const years = await reserveYears();
   const fallback = years[0] ?? new Date().getFullYear();
   const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallback;
-  const tab: (typeof TABS)[number] = tabRaw === "apuracao" ? "apuracao" : "forecast";
+  const tab: (typeof TABS)[number] = TABS.includes(tabRaw as (typeof TABS)[number])
+    ? (tabRaw as (typeof TABS)[number])
+    : "forecast";
 
-  const [f, stateTax] = await Promise.all([
+  const [f, stateTax, recon] = await Promise.all([
     buildFloridaForecast(year),
     buildStateTaxControl(),
+    buildStateTaxReconciliation(year),
   ]);
 
   return (
@@ -43,14 +47,14 @@ export default async function FloridaPage({
               : "Apuração & pagamento real do imposto estadual (principal · multa · juros) por ano — base do add-back do Schedule M-1."}
           </p>
         </div>
-        {tab === "forecast" && years.length > 0 && (
-          <YearSelect years={years} value={year} basePath="/florida" params={{ tab: "forecast" }} />
+        {tab !== "apuracao" && years.length > 0 && (
+          <YearSelect years={years} value={year} basePath="/florida" params={{ tab }} />
         )}
       </div>
 
       {/* Abas */}
       <div className="flex gap-1 border-b border-slate-200 text-sm">
-        {([["forecast", "Forecast"], ["apuracao", "Apuração & pagamento"]] as [string, string][]).map(([key, label]) => (
+        {([["forecast", "Forecast"], ["apuracao", "Apuração & pagamento"], ["reconciliacao", "Reconciliação"]] as [string, string][]).map(([key, label]) => (
           <Link
             key={key}
             href={`/florida?tab=${key}`}
@@ -64,6 +68,84 @@ export default async function FloridaPage({
       </div>
 
       {tab === "apuracao" && <StateTaxControl data={stateTax} />}
+
+      {tab === "reconciliacao" && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-lg font-medium text-slate-800">Reconciliação — livro × pagamentos ({year})</h2>
+            <p className="text-sm text-slate-500">
+              A linha <strong>&ldquo;State Taxes&rdquo;</strong> do P&amp;L de {year} é estadual de anos{" "}
+              <strong>anteriores</strong> pago em {year} (pode misturar vários anos). O add-back do M-1
+              (principal + multa voltam; juros fica dedutível) só é confiável quando{" "}
+              <strong>Σ pagamentos cadastrados = a linha do P&amp;L</strong>. Onde não fecha, falta
+              cadastrar o pagamento em{" "}
+              <Link href="/florida?tab=apuracao" className="text-[#1f3a5f] hover:underline">Apuração</Link>.
+            </p>
+          </div>
+          {recon.rows.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+              Nenhuma empresa com &ldquo;State Taxes&rdquo; no P&amp;L nem pagamento em {year}.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2 font-medium">Empresa</th>
+                    <th className="px-3 py-2 text-right font-medium">State Taxes (P&amp;L)</th>
+                    <th className="px-3 py-2 text-right font-medium">Pago (filings)</th>
+                    <th className="px-3 py-2 text-right font-medium">Δ</th>
+                    <th className="px-3 py-2 text-right font-medium">Add-back / juros</th>
+                    <th className="px-3 py-2 text-center font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {recon.rows.map((r) => (
+                    <tr key={r.companyId} className={r.reconciles ? "" : "bg-amber-50/40"}>
+                      <td className="px-4 py-2">
+                        <Link href={`/companies/${r.companyId}`} className="font-medium text-[#1f3a5f] hover:underline">{r.name}</Link>
+                        {r.filings.length > 0 && (
+                          <div className="text-[11px] text-slate-400">
+                            {r.filings.map((f) => `${f.taxYear}: ${money(f.total)}`).join(" · ")}
+                          </div>
+                        )}
+                        {!r.hasPnl && <span className="ml-1 text-[10px] text-amber-600">sem P&amp;L</span>}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(r.pnlStateTaxes)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(r.filingsPaid)}</td>
+                      <td className={`px-3 py-2 text-right tabular-nums ${r.reconciles ? "text-slate-400" : "font-medium text-amber-700"}`}>{money(r.delta)}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                        {r.reconciles ? (
+                          <span title="principal + multa voltam à base; juros fica dedutível">
+                            {money(r.addBack)} <span className="text-[11px] text-slate-400">/ {money(r.deductibleInterest)}</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-center">
+                        {r.reconciles ? (
+                          <span className="text-green-600" title="fecha — add-back confiável">✓</span>
+                        ) : (
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" title="falta cadastrar pagamento — não confie no add-back">
+                            falta {money(Math.abs(r.delta))}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {recon.unreconciled > 0 && (
+            <p className="text-xs text-amber-700">
+              ⚠ {recon.unreconciled} empresa(s) não fecham — o preview/reserve <strong>não</strong> deve
+              adicionar de volta o estadual delas até cadastrar os pagamentos.
+            </p>
+          )}
+        </section>
+      )}
 
       {tab === "forecast" && (
       <>
