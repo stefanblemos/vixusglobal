@@ -81,7 +81,9 @@ function DetailModal({ src, onClose }: { src: DistSource; onClose: () => void })
           <div>
             <div className="text-base font-semibold text-slate-800">{src.name}</div>
             <div className="mt-0.5 text-xs text-slate-500">
-              Base = capital account (fim) do IR de {src.irYear} = <strong>{m(src.capitalAccount)}</strong> · sua fatia:{" "}
+              Base = capital account (fim) de {src.irYear}
+              {src.baseComputed && <span className="text-amber-600"> (calculada)</span>} ={" "}
+              <strong>{m(src.capitalAccount)}</strong> · sua fatia:{" "}
               {src.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}% = <strong>{m(src.amount)}</strong>
             </div>
           </div>
@@ -112,7 +114,10 @@ function DetailModal({ src, onClose }: { src: DistSource; onClose: () => void })
                   <td className="px-3 py-1.5 text-right tabular-nums text-slate-600">{mn(y.income)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-slate-600">{mn(y.guaranteed)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-rose-600">{mn(y.distributions)}</td>
-                  <td className="px-3 py-1.5 text-right font-medium tabular-nums text-slate-800">{mn(y.capEnd)}</td>
+                  <td className={`px-3 py-1.5 text-right font-medium tabular-nums ${y.capEndComputed ? "text-amber-700" : "text-slate-800"}`}>
+                    {mn(y.capEnd)}
+                    {y.capEndComputed && <span className="ml-1 text-[9px] text-amber-600" title="calculado (rolagem), não lido do IR">calc.</span>}
+                  </td>
                   <td className="px-3 py-1.5 text-right">
                     {y.hasPdf ? (
                       <a
@@ -135,11 +140,48 @@ function DetailModal({ src, onClose }: { src: DistSource; onClose: () => void })
           </table>
         </div>
 
+        {src.holdings.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-1 text-xs font-medium text-slate-600">
+              O que a <strong>{src.name}</strong> possui (composição de dentro)
+            </div>
+            <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-3 py-1.5 font-medium">Investida</th>
+                    <th className="px-3 py-1.5 text-right font-medium">%</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Capital account</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Fatia da {src.name.split(" ")[0]}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {src.holdings.map((h, i) => (
+                    <tr key={i}>
+                      <td className="px-3 py-1.5">
+                        <Link href={`/companies/${h.companyId}`} className="text-[#1f3a5f] hover:underline" onClick={(e) => e.stopPropagation()}>{h.name}</Link>
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{h.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{h.capitalAccount == null ? <span className="text-amber-600 text-[11px]">sem figura</span> : m(h.capitalAccount)}</td>
+                      <td className="px-3 py-1.5 text-right font-medium tabular-nums text-slate-700">{h.amount == null ? "—" : m(h.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-1 text-[11px] text-slate-400">
+              A base distribuível da <strong>{src.name}</strong> é a capital account DELA (o gargalo real do que você
+              tira dela) — esta composição é só para <strong>ver o que há dentro</strong>; pode não somar exatamente
+              a capital account (diferenças book-tax, aportes).
+            </p>
+          </div>
+        )}
+
         <p className="mt-3 text-[11px] text-slate-400">
-          Valores extraídos do IR (figuras da declaração + correções manuais), <strong>fiéis ao sinal</strong>
-          {" "}(prejuízo aparece negativo). A conta acumula: <strong>início + renda + guaranteed − distribuições = fim</strong>;
-          o <strong>fim</strong> do último IR é a base distribuível. Células &ldquo;—&rdquo; = figura não presente
-          naquele IR. Clique <strong>ver IR</strong> para conferir a linha na própria declaração.
+          Valores extraídos do IR (partnership: Partners&apos; capital · S-corp: AAA/retained earnings), <strong>fiéis
+          ao sinal</strong> (prejuízo negativo). Onde o IR não trouxe o fim, ele é <strong>calc.</strong> (rolagem:
+          anterior + renda − distribuições, ≠ do IR). &ldquo;—&rdquo; = figura ausente e sem âncora para calcular.
+          Clique <strong>ver IR</strong> para conferir na própria declaração.
         </p>
       </div>
     </div>

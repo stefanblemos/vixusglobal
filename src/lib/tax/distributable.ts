@@ -13,12 +13,16 @@ import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 const num = (v: unknown) => Number((v as { toString(): string } | null)?.toString() ?? 0);
 const r2 = (n: number) => Math.round(n * 100) / 100;
-// Figuras do IR (Schedule L / M-2 / página 1) para montar o ano-a-ano da capital account.
-const CAPITAL_END = /(partner|member).*capital.*end|capital account.*end/i;
-const CAPITAL_BEGIN = /(partner|member).*capital.*(begin|beginning)|capital account.*(begin|beginning)/i;
+// Figuras do IR para a "base distribuível" (a conta que acumula renda já tributada):
+//   • Partnership (1065): Partners'/Members' capital account (Schedule L / M-2).
+//   • S-Corp (1120-S): AAA — Accumulated Adjustments Account (Schedule M-2); fallback retained earnings.
+// As duas são o análogo: renda que passou no K-1 e ainda não foi distribuída.
+const CAPITAL_END = /(partner|member).*capital.*end|capital account.*end|accumulated adjustments.*(end|balance)|\baaa\b.*(end|balance)|retained earnings.*(end|close)/i;
+const CAPITAL_END_BARE = /accumulated adjustments account|retained earnings/i; // fallback S-corp sem "end"
+const CAPITAL_BEGIN = /(partner|member).*capital.*(begin|beginning)|capital account.*(begin|beginning)|accumulated adjustments.*(begin|beginning)|retained earnings.*(begin|beginning)/i;
 const INCOME = /ordinary business income/i;
 const GUARANTEED = /guaranteed payment/i;
-const DISTRIBUTIONS = /distribution.*(cash|marketable|property)|withdrawals and distributions/i;
+const DISTRIBUTIONS = /distribution.*(cash|marketable|property)|withdrawals and distributions|distributions.*shareholders?/i;
 
 // Ano-a-ano da conta de capital (uma linha por IR): mostra COMO se chegou na base atual, para conferir.
 export interface CapYear {
@@ -30,6 +34,16 @@ export interface CapYear {
   guaranteed: number | null; // guaranteed payments
   distributions: number | null; // distribuições do ano
   capEnd: number | null; // capital (fim) — a base acumulada até este ano
+  capEndComputed: boolean; // true = capEnd CALCULADO (rolagem início/anterior + renda − dist), não lido do IR
+}
+
+// O que uma pass-through possui (para o drill-down do holding: ver o que há "dentro" da capital account).
+export interface Holding {
+  companyId: string;
+  name: string;
+  pct: number; // % que a origem detém desta investida
+  capitalAccount: number | null; // capital account da investida (null = sem figura no IR)
+  amount: number | null; // capitalAccount × pct
 }
 
 export interface DistSource {
@@ -38,8 +52,10 @@ export interface DistSource {
   pct: number;
   capitalAccount: number; // base fiscal (end) da declaração usada
   irYear: number; // ano da declaração de onde veio a base (as-of)
+  baseComputed: boolean; // a base usada foi CALCULADA (o IR mais recente não trouxe a figura)
   amount: number; // capitalAccount × pct
   yearDetail: CapYear[]; // ano-a-ano da capital account (todos os IRs da empresa ≤ ano)
+  holdings: Holding[]; // investidas desta origem (composição do holding) — vazio se não é holding
 }
 
 export interface DistOwner {
@@ -104,18 +120,50 @@ export async function buildDistributableReport(year: number): Promise<Distributa
       income: pickFig(figs, INCOME, /apportioned|other partnership|estates/i),
       guaranteed: pickFig(figs, GUARANTEED, /health/i),
       distributions: pickFig(figs, DISTRIBUTIONS),
-      capEnd: pickFig(figs, CAPITAL_END),
+      capEnd: pickFig(figs, CAPITAL_END) ?? pickFig(figs, CAPITAL_END_BARE),
+      capEndComputed: false,
     };
     (detailByCo.get(ret.companyId) ?? detailByCo.set(ret.companyId, []).get(ret.companyId)!).push(row);
   }
-  // Base = capEnd da declaração mais recente que TEM a figura.
-  const capByCo = new Map<string, { val: number; year: number; detail: CapYear[] }>();
+  // FILL calculado: onde o IR não trouxe o capEnd, rola do último conhecido: prior + renda − distribuições
+  // (marcado como calculado, ≠ do IR). Anos ANTES do 1º capEnd conhecido não têm âncora → ficam null.
+  for (const detail of detailByCo.values()) {
+    detail.sort((a, b) => a.year - b.year);
+    let running: number | null = null;
+    for (const d of detail) {
+      if (d.capEnd != null) running = d.capEnd;
+      else if (running != null) {
+        running = r2(running + (d.income ?? 0) - (d.distributions ?? 0));
+        d.capEnd = running;
+        d.capEndComputed = true;
+      }
+    }
+  }
+  // Base = capEnd do ANO MAIS RECENTE que tenha capEnd (lido ou calculado).
+  const capByCo = new Map<string, { val: number; year: number; computed: boolean; detail: CapYear[] }>();
   for (const [id, detail] of detailByCo) {
     const withEnd = detail.filter((d) => d.capEnd != null);
     if (withEnd.length) {
       const latest = withEnd[withEnd.length - 1];
-      capByCo.set(id, { val: latest.capEnd!, year: latest.year, detail });
+      capByCo.set(id, { val: latest.capEnd!, year: latest.year, computed: latest.capEndComputed, detail });
     }
+  }
+
+  // Holdings: o que cada empresa POSSUI (investidas vigentes) + capital account delas — para o
+  // drill-down do holding (ver a composição de dentro).
+  const holdingsByCo = new Map<string, Holding[]>();
+  for (const o of owns) {
+    if (!o.ownerCompanyId || !o.ownedCompanyId || !isEffectiveAt(o, asOf)) continue;
+    const invCap = capByCo.get(o.ownedCompanyId);
+    const pct = Number(o.percentage);
+    const h: Holding = {
+      companyId: o.ownedCompanyId,
+      name: nameCo.get(o.ownedCompanyId) ?? "—",
+      pct,
+      capitalAccount: invCap?.val ?? null,
+      amount: invCap ? r2((invCap.val * pct) / 100) : null,
+    };
+    (holdingsByCo.get(o.ownerCompanyId) ?? holdingsByCo.set(o.ownerCompanyId, []).get(o.ownerCompanyId)!).push(h);
   }
 
   const pool = new Map<string, DistOwner>();
@@ -140,8 +188,10 @@ export async function buildDistributableReport(year: number): Promise<Distributa
       const pct = Number(o.percentage);
       const src: DistSource = {
         companyId: e.id, name: nameCo.get(e.id) ?? "—", pct,
-        capitalAccount: cap.val, irYear: cap.year, amount: r2((Math.max(0, cap.val) * pct) / 100),
+        capitalAccount: cap.val, irYear: cap.year, baseComputed: cap.computed,
+        amount: r2((Math.max(0, cap.val) * pct) / 100),
         yearDetail: cap.detail,
+        holdings: (holdingsByCo.get(e.id) ?? []).sort((a, b) => (b.amount ?? 0) - (a.amount ?? 0)),
       };
       if (o.ownerPartyId) addTo(`P:${o.ownerPartyId}`, nameP.get(o.ownerPartyId) ?? "?", "pessoa", src);
       else if (o.ownerCompanyId && isCorp(o.ownerCompanyId)) addTo(`C:${o.ownerCompanyId}`, nameCo.get(o.ownerCompanyId) ?? "?", "C-corp", src);
