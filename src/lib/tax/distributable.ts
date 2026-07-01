@@ -23,8 +23,10 @@ const DISTRIBUTIONS = /distribution.*(cash|marketable|property)|withdrawals and 
 // Ano-a-ano da conta de capital (uma linha por IR): mostra COMO se chegou na base atual, para conferir.
 export interface CapYear {
   year: number;
-  capBegin: number | null; // capital (início)
-  income: number | null; // ordinary business income do ano
+  returnId: string; // id do TaxReturn (para linkar o PDF e conferir na fonte)
+  hasPdf: boolean; // tem PDF do IR guardado (para o link "ver IR")
+  capBegin: number | null; // capital (início) — valor fiel ao IR (com sinal)
+  income: number | null; // ordinary business income (loss) do ano
   guaranteed: number | null; // guaranteed payments
   distributions: number | null; // distribuições do ano
   capEnd: number | null; // capital (fim) — a base acumulada até este ano
@@ -77,12 +79,18 @@ export async function buildDistributableReport(year: number): Promise<Distributa
 
   // Ano-a-ano da capital account por empresa (todos os IRs ≤ ano). A base usada é o capEnd da mais
   // recente. `hasIr` = tem alguma declaração ≤ ano (p/ distinguir "sem IR" de "IR sem a figura").
-  const returns = await prisma.taxReturn.findMany({ where: { companyId: { not: null } }, orderBy: { year: "asc" } });
+  // select explícito: NÃO carrega o blob `pdf` (pesado) — só o que a extração/rastreio precisa.
+  const returns = await prisma.taxReturn.findMany({
+    where: { companyId: { not: null } },
+    select: { id: true, companyId: true, year: true, figures: true, manualFigures: true, pdfSize: true },
+    orderBy: { year: "asc" },
+  });
   const hasIr = new Set<string>();
   const detailByCo = new Map<string, CapYear[]>();
+  // Fiel ao IR: preserva o SINAL (um ano de prejuízo mostra a renda negativa, como na declaração).
   const pickFig = (figs: { label?: string; value?: number | null }[], re: RegExp, exclude?: RegExp) => {
     const f = figs.find((x) => re.test(x.label ?? "") && !(exclude && exclude.test(x.label ?? "")));
-    return f?.value != null ? Math.abs(num(f.value)) : null;
+    return f?.value != null ? num(f.value) : null;
   };
   for (const ret of returns) {
     if (!ret.companyId || ret.year == null || ret.year > year) continue;
@@ -90,6 +98,8 @@ export async function buildDistributableReport(year: number): Promise<Distributa
     const figs = (effectiveFiguresOf(ret) ?? []) as { label?: string; value?: number | null }[];
     const row: CapYear = {
       year: ret.year,
+      returnId: ret.id,
+      hasPdf: (ret.pdfSize ?? 0) > 0,
       capBegin: pickFig(figs, CAPITAL_BEGIN),
       income: pickFig(figs, INCOME, /apportioned|other partnership|estates/i),
       guaranteed: pickFig(figs, GUARANTEED, /health/i),
@@ -130,7 +140,7 @@ export async function buildDistributableReport(year: number): Promise<Distributa
       const pct = Number(o.percentage);
       const src: DistSource = {
         companyId: e.id, name: nameCo.get(e.id) ?? "—", pct,
-        capitalAccount: cap.val, irYear: cap.year, amount: r2((cap.val * pct) / 100),
+        capitalAccount: cap.val, irYear: cap.year, amount: r2((Math.max(0, cap.val) * pct) / 100),
         yearDetail: cap.detail,
       };
       if (o.ownerPartyId) addTo(`P:${o.ownerPartyId}`, nameP.get(o.ownerPartyId) ?? "?", "pessoa", src);

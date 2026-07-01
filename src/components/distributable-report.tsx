@@ -98,6 +98,7 @@ function DetailModal({ src, onClose }: { src: DistSource; onClose: () => void })
                 <th className="px-3 py-1.5 text-right font-medium">+ Guaranteed</th>
                 <th className="px-3 py-1.5 text-right font-medium">− Distribuições</th>
                 <th className="px-3 py-1.5 text-right font-medium">= Fim (acum.)</th>
+                <th className="px-3 py-1.5"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -112,6 +113,22 @@ function DetailModal({ src, onClose }: { src: DistSource; onClose: () => void })
                   <td className="px-3 py-1.5 text-right tabular-nums text-slate-600">{mn(y.guaranteed)}</td>
                   <td className="px-3 py-1.5 text-right tabular-nums text-rose-600">{mn(y.distributions)}</td>
                   <td className="px-3 py-1.5 text-right font-medium tabular-nums text-slate-800">{mn(y.capEnd)}</td>
+                  <td className="px-3 py-1.5 text-right">
+                    {y.hasPdf ? (
+                      <a
+                        href={`/api/tax-returns/${y.returnId}/pdf`}
+                        target="_blank"
+                        rel="noopener"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[11px] text-sky-700 hover:underline"
+                        title="Abrir o IR deste ano para conferir na fonte"
+                      >
+                        ver IR ↗
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-slate-300" title="PDF do IR não guardado">sem PDF</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -119,9 +136,10 @@ function DetailModal({ src, onClose }: { src: DistSource; onClose: () => void })
         </div>
 
         <p className="mt-3 text-[11px] text-slate-400">
-          A conta de capital acumula ano a ano: <strong>início + renda tributada + guaranteed − distribuições = fim</strong>.
-          O <strong>fim</strong> do último IR é a base distribuível (renda já tributada e ainda não distribuída). Células
-          &ldquo;—&rdquo; = figura não presente naquele IR. Confira contra a declaração.
+          Valores extraídos do IR (figuras da declaração + correções manuais), <strong>fiéis ao sinal</strong>
+          {" "}(prejuízo aparece negativo). A conta acumula: <strong>início + renda + guaranteed − distribuições = fim</strong>;
+          o <strong>fim</strong> do último IR é a base distribuível. Células &ldquo;—&rdquo; = figura não presente
+          naquele IR. Clique <strong>ver IR</strong> para conferir a linha na própria declaração.
         </p>
       </div>
     </div>
