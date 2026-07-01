@@ -27,16 +27,6 @@ async function netIncomeOf(importId: string): Promise<number | null> {
   return pnlTotals(lines).netIncome;
 }
 
-// Depreciação contábil (book) lançada no P&L — fonte única (book-tax-dep).
-async function bookDepreciationOf(importIds: string[]): Promise<number> {
-  if (importIds.length === 0) return 0;
-  const lines = await prisma.qboImportLine.findMany({
-    where: { importId: { in: importIds }, lineType: "ACCOUNT" },
-    select: { lineType: true, label: true, value: true },
-  });
-  return bookDepFromLines(lines);
-}
-
 // Overrides de alíquota POR EMPRESA (TaxReserveRate, exceto a linha GLOBAL — aposentada). O default
 // não é mais um flat global: vem SEMPRE da classe/ano (TaxRateYear) via classRate. Fonte única.
 async function rateConfig() {
@@ -50,8 +40,8 @@ async function rateConfig() {
 export { yearRates, type YearRates };
 
 // FONTE ÚNICA da alíquota de uma empresa: override por empresa (TaxReserveRate), senão a alíquota
-// da CLASSE (corp 21% / demais 30%) do ANO (TaxRateYear). Year-aware e class-aware. Usada por TODOS
-// os consumidores (buildTaxReserve, quarterly, breakdown, companyReserve) — sem flat global.
+// da CLASSE (corp 21% / demais 30%) do ANO (TaxRateYear). Year-aware e class-aware. Usada por
+// buildReserveByEntity e companyReserve — sem flat global.
 export const classRate = (
   taxTreatment: string | null,
   override: Map<string, number>,
@@ -115,175 +105,6 @@ export async function reserveYears(): Promise<number[]> {
     if (y) ys.add(y);
   }
   return allowed.filter((y) => y === cur || ys.has(y));
-}
-
-export type ReserveOwner = { name: string; pct: number; attributed: number };
-
-export type ReserveRow = {
-  companyId: string;
-  name: string;
-  currency: string;
-  state: string | null;
-  taxTreatment: string | null;
-  periodLabel: string | null;
-  importId: string | null;
-  profit: number | null; // lucro contábil (book) do P&L
-  bookDep: number; // depreciação contábil lançada no P&L
-  taxDep: number; // depreciação fiscal calculada (MACRS)
-  hasAssets: boolean; // há ativos cadastrados p/ ajustar?
-  macrsApplied: boolean; // livro sem depreciação → MACRS aplicada na base (senão confia no livro)
-  depAdjustment: number; // ajuste na base: 0 (confia no livro) ou −MACRS (livro sem dep)
-  taxableProfit: number | null; // lucro ajustado (pode ser negativo → compensa no dono)
-  ratePct: number;
-  hasOverride: boolean;
-  reserve: number; // reserva da empresa (≥0), antes da compensação no dono
-  owners: ReserveOwner[]; // para quem o lucro/prejuízo flui (ownership direto)
-};
-
-// Fluxo por dono: prejuízos COMPENSAM lucros (net pode ser negativo); a reserva sai do net ≥ 0.
-export type OwnerFlow = {
-  name: string;
-  net: number; // base após compensar lucros e prejuízos
-  ratePct: number;
-  reserve: number; // max(0, net) × taxa
-  from: { company: string; amount: number }[]; // assinado (prejuízo negativo)
-};
-
-// Provisão de IR de todas as empresas para um ANO — com ajuste de depreciação (book→fiscal)
-// e o fluxo de lucro para os donos, onde PREJUÍZOS COMPENSAM LUCROS (nível do dono).
-export async function buildTaxReserve(
-  year: number,
-): Promise<{ rows: ReserveRow[]; flow: OwnerFlow[] }> {
-  const [companies, pnls, { override }, yr, assetReg, ownerships, returns, taxStatuses] = await Promise.all([
-    // Reserva de IR é lógica US (21%/30%) — só empresas em USD (não consolida EUR/BRL).
-    prisma.company.findMany({
-      where: { baseCurrency: "USD" },
-      select: { id: true, legalName: true, baseCurrency: true, state: true },
-    }),
-    prisma.qboImport.findMany({
-      where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
-      select: { id: true, companyId: true, periodLabel: true },
-    }),
-    rateConfig(),
-    yearRates(year),
-    buildAssetRegister(year),
-    prisma.ownership.findMany({
-      where: { ownedCompanyId: { not: null } },
-      select: {
-        ownedCompanyId: true,
-        percentage: true,
-        effectiveDate: true,
-        endDate: true,
-        ownerParty: { select: { name: true } },
-        ownerCompany: { select: { legalName: true } },
-      },
-    }),
-    prisma.taxReturn.findMany({
-      where: { companyId: { not: null }, taxTreatment: { not: null } },
-      select: { companyId: true, taxTreatment: true, year: true, createdAt: true },
-    }),
-    prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
-  ]);
-
-  // Depreciação REAL do ano (livro registrado onde houver, senão MACRS efetiva) — não a MACRS teórica.
-  const taxDepByCompany = new Map(assetReg.byCompany.map((b) => [b.companyId, b.realDep]));
-  // Classe corp/pass por (empresa, ano): cadastro do ano > IR do ano > último conhecido (resolver único).
-  const resolveTreatment: TreatmentResolver = buildTreatmentResolver(
-    taxStatuses,
-    returns.filter((r) => r.companyId && r.year != null) as Parameters<typeof buildTreatmentResolver>[1],
-  );
-  // Donos vigentes NO ANO (não os de hoje) — fonte única de vigência (isEffectiveAt @ 31/dez).
-  const asOf = asOfYearEnd(year);
-  const ownersByCompany = new Map<string, { name: string; pct: number }[]>();
-  for (const o of ownerships) {
-    if (!o.ownedCompanyId || !isEffectiveAt(o, asOf)) continue;
-    const name = o.ownerParty?.name ?? o.ownerCompany?.legalName;
-    if (!name) continue;
-    const arr = ownersByCompany.get(o.ownedCompanyId) ?? [];
-    arr.push({ name, pct: Number(o.percentage.toString()) });
-    ownersByCompany.set(o.ownedCompanyId, arr);
-  }
-
-  const byCompany = new Map<string, Pnl[]>();
-  for (const p of pnls) {
-    if (!p.companyId) continue;
-    const arr = byCompany.get(p.companyId) ?? [];
-    arr.push({ id: p.id, periodLabel: p.periodLabel });
-    byCompany.set(p.companyId, arr);
-  }
-
-  const rows: ReserveRow[] = [];
-  const flowMap = new Map<string, { name: string; net: number; from: { company: string; amount: number }[] }>();
-
-  for (const c of companies) {
-    const cp = byCompany.get(c.id);
-    if (!cp) continue;
-    const { profit, periodLabel, importId, importIds } = await profitForYear(cp, year);
-    if (periodLabel == null) continue; // sem P&L nesse ano
-
-    const taxDep = taxDepByCompany.get(c.id) ?? 0;
-    const hasAssets = taxDepByCompany.has(c.id);
-    const bookDep = hasAssets ? await bookDepreciationOf(importIds) : 0;
-    // CONFIA no livro (mesma regra do Tax preview): se o livro já tem depreciação, ajuste 0; só
-    // aplica a MACRS (−taxDep) quando o livro NÃO tem depreciação. Não infla pela diferença.
-    const depAdjustment = trustBookDepAdjustment(bookDep, taxDep, hasAssets);
-    const macrsApplied = macrsAppliedToBase(bookDep, taxDep, hasAssets);
-    const taxableProfit = profit != null ? Math.round((profit + depAdjustment) * 100) / 100 : null;
-
-    const treatment = resolveTreatment(c.id, year).treatment;
-    const hasOverride = override.has(c.id);
-    const ratePct = classRate(treatment, override, c.id, yr);
-    const reserve =
-      taxableProfit != null && taxableProfit > 0 ? (taxableProfit * ratePct) / 100 : 0;
-
-    // Atribuição ASSINADA: prejuízo entra negativo e compensa no dono.
-    const owners: ReserveOwner[] = (ownersByCompany.get(c.id) ?? []).map((o) => ({
-      name: o.name,
-      pct: o.pct,
-      attributed: taxableProfit != null ? Math.round(((taxableProfit * o.pct) / 100) * 100) / 100 : 0,
-    }));
-
-    for (const o of owners) {
-      if (o.attributed === 0) continue;
-      const f = flowMap.get(o.name) ?? { name: o.name, net: 0, from: [] };
-      f.net = Math.round((f.net + o.attributed) * 100) / 100;
-      f.from.push({ company: c.legalName, amount: o.attributed });
-      flowMap.set(o.name, f);
-    }
-
-    rows.push({
-      companyId: c.id,
-      name: c.legalName,
-      currency: c.baseCurrency,
-      state: c.state,
-      taxTreatment: treatment,
-      periodLabel,
-      importId,
-      profit,
-      bookDep,
-      taxDep,
-      hasAssets,
-      macrsApplied,
-      depAdjustment,
-      taxableProfit,
-      ratePct,
-      hasOverride,
-      reserve,
-      owners,
-    });
-  }
-  rows.sort((a, b) => b.reserve - a.reserve);
-  // No nível do dono (pass-through), aplica a alíquota de pass-through do ano.
-  const flow: OwnerFlow[] = [...flowMap.values()]
-    .map((f) => ({
-      name: f.name,
-      net: f.net,
-      ratePct: yr.passPct,
-      reserve: f.net > 0 ? Math.round(((f.net * yr.passPct) / 100) * 100) / 100 : 0,
-      from: f.from,
-    }))
-    .sort((a, b) => b.net - a.net);
-  return { rows, flow };
 }
 
 // Estimativa de IR de UMA empresa num ano — para a aba da empresa. Usa a MESMA alíquota do reserve
