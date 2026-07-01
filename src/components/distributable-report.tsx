@@ -29,6 +29,9 @@ export function DistributableReport({ owners }: { owners: DistOwner[] }) {
               <div className="text-lg font-semibold tabular-nums text-[#3B6D11]">{m(o.total)}</div>
             </div>
           </div>
+          {o.sources.length === 0 ? (
+            <div className="px-4 py-2 text-xs text-slate-500">Nada distribuível direto (sem imposto).</div>
+          ) : (
           <table className="w-full text-sm">
             <thead className="text-left text-slate-500">
               <tr>
@@ -59,6 +62,20 @@ export function DistributableReport({ owners }: { owners: DistOwner[] }) {
               ))}
             </tbody>
           </table>
+          )}
+          {o.trappedInCorp.length > 0 && (
+            <div className="border-t border-slate-100 bg-amber-50/50 px-4 py-2 text-[11px] text-amber-800">
+              <span className="font-medium">Preso em C-corp (não entra — sairia como dividendo tributável):</span>{" "}
+              {o.trappedInCorp.map((t, i) => (
+                <span key={t.companyId}>
+                  {i > 0 && " · "}
+                  <Link href={`/companies/${t.companyId}`} className="underline hover:text-amber-900" onClick={(e) => e.stopPropagation()}>{t.name}</Link>{" "}
+                  ({t.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%) → <strong>{m(t.share)}</strong>
+                </span>
+              ))}
+              . Sua parte na C-corp é <strong>dividendo</strong>, não devolução de base; fica retida lá.
+            </div>
+          )}
         </section>
       ))}
 

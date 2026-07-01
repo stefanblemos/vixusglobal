@@ -58,12 +58,23 @@ export interface DistSource {
   holdings: Holding[]; // investidas desta origem (composição do holding) — vazio se não é holding
 }
 
+// Valor "preso" numa C-corp que a pessoa possui: economicamente é dela, mas sair da C-corp é
+// DIVIDENDO TRIBUTÁVEL (não devolução de base) → NÃO entra na base distribuível tax-free.
+export interface TrappedCorp {
+  companyId: string;
+  name: string;
+  pct: number; // % da pessoa na C-corp
+  corpTotal: number; // base distribuível total DENTRO da C-corp
+  share: number; // corpTotal × pct (o que seria da pessoa, mas sai como dividendo)
+}
+
 export interface DistOwner {
   key: string;
   kind: "pessoa" | "C-corp";
   name: string;
   total: number;
   sources: DistSource[]; // pass-throughs de origem (detalhe)
+  trappedInCorp: TrappedCorp[]; // C-corps que a pessoa possui (valor preso lá) — vazio p/ C-corp
 }
 
 export interface DistMissing {
@@ -169,7 +180,7 @@ export async function buildDistributableReport(year: number): Promise<Distributa
   const pool = new Map<string, DistOwner>();
   const missing: DistMissing[] = [];
   const addTo = (key: string, name: string, kind: "pessoa" | "C-corp", src: DistSource) => {
-    const g = pool.get(key) ?? { key, kind, name, total: 0, sources: [] };
+    const g = pool.get(key) ?? { key, kind, name, total: 0, sources: [], trappedInCorp: [] };
     g.total = r2(g.total + src.amount);
     g.sources.push(src);
     pool.set(key, g);
@@ -198,6 +209,26 @@ export async function buildDistributableReport(year: number): Promise<Distributa
       // dono pass-through → conduíte, pula (a base dele já rola esta)
     }
   }
+
+  // Nota "preso na C-corp": para cada PESSOA que possui uma C-corp direto, o valor lá dentro
+  // (base da C-corp × %) sai como DIVIDENDO tributável — não entra na base tax-free dela. Inclui
+  // pessoas que só possuem C-corp (aparecem com $0 distribuível + a nota, para não sumirem).
+  const corpTotalById = new Map<string, number>();
+  for (const g of pool.values()) if (g.kind === "C-corp") corpTotalById.set(g.key.slice(2), g.total);
+  for (const o of owns) {
+    if (!o.ownerPartyId || !o.ownedCompanyId || !isEffectiveAt(o, asOf) || !isCorp(o.ownedCompanyId)) continue;
+    const corpTotal = corpTotalById.get(o.ownedCompanyId) ?? 0;
+    if (corpTotal <= 0.005) continue;
+    const key = `P:${o.ownerPartyId}`;
+    const g = pool.get(key) ?? { key, kind: "pessoa" as const, name: nameP.get(o.ownerPartyId) ?? "?", total: 0, sources: [], trappedInCorp: [] };
+    const pct = Number(o.percentage);
+    g.trappedInCorp.push({
+      companyId: o.ownedCompanyId, name: nameCo.get(o.ownedCompanyId) ?? "—",
+      pct, corpTotal, share: r2((corpTotal * pct) / 100),
+    });
+    pool.set(key, g);
+  }
+  for (const g of pool.values()) g.trappedInCorp.sort((a, b) => b.share - a.share);
 
   const owners = [...pool.values()]
     .map((o) => ({ ...o, sources: o.sources.sort((a, b) => b.amount - a.amount) }))
