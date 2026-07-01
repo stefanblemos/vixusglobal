@@ -106,7 +106,19 @@ export default async function FloridaPage({
                         <Link href={`/companies/${r.companyId}`} className="font-medium text-[#1f3a5f] hover:underline">{r.name}</Link>
                         {r.filings.length > 0 && (
                           <div className="text-[11px] text-slate-400">
-                            {r.filings.map((f) => `${f.taxYear}: ${money(f.total)}`).join(" · ")}
+                            {r.filings.map((f, i) => (
+                              <span key={i}>
+                                {i > 0 && " · "}
+                                {f.taxYear}: {money(f.total)}{" "}
+                                {f.irPrincipal == null ? (
+                                  <span className="text-slate-400" title="IR do ano não está no app — principal não verificado">(IR ausente)</span>
+                                ) : f.principalOk ? (
+                                  <span className="text-green-600" title={`principal bate com o IR (${money(f.irPrincipal)})`}>(IR ✓)</span>
+                                ) : (
+                                  <span className="text-rose-600" title={`principal ≠ IR (${money(f.irPrincipal)}) — conferir`}>(IR ≠)</span>
+                                )}
+                              </span>
+                            ))}
                           </div>
                         )}
                         {!r.hasPnl && <span className="ml-1 text-[10px] text-amber-600">sem P&amp;L</span>}

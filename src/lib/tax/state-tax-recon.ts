@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { periodMonths } from "@/lib/qbo/period";
+import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 // TRAVA DE RECONCILIAÇÃO do estadual: a linha "State Taxes" do P&L de um ano Y é sempre estadual de
 // anos ANTERIORES pago em Y (pode misturar vários anos). Só dá para confiar no add-back do preview
@@ -33,6 +34,8 @@ export interface StateReconFiling {
   penalty: number;
   interest: number;
   total: number;
+  irPrincipal: number | null; // "Florida Taxes (M-2)" do IR do ano-competência (null = IR ausente)
+  principalOk: boolean; // principal ≈ irPrincipal (ou IR ausente → não dá para verificar)
 }
 
 export interface StateReconRow {
@@ -46,6 +49,8 @@ export interface StateReconRow {
   delta: number; // pnlStateTaxes − filingsPaid (≠0 = falta cadastrar / P&L tem outra coisa)
   reconciles: boolean; // fecha dentro da tolerância
   hasPnl: boolean; // existe P&L do ano
+  irMismatch: boolean; // algum filing com principal ≠ figura do IR (possível erro de digitação)
+  irUnverified: boolean; // algum filing sem IR do ano no app (não dá para validar o principal)
 }
 
 export interface StateTaxReconciliation {
@@ -82,12 +87,32 @@ export async function buildStateTaxReconciliation(year: number): Promise<StateTa
     pnlStateByCo.set(id, stateTaxLineFromPnl(v.lines));
   }
 
+  // IR cross-check: figura "Florida Taxes (M-2)" do IR por (empresa, ano-competência) — valida o
+  // principal cadastrado. Só carrega os IRs das empresas que TÊM pagamento no ano.
+  const coWithFilings = [...new Set(filings.filter((f) => f.paidDate?.getUTCFullYear() === year).map((f) => f.companyId))];
+  const irReturns = coWithFilings.length
+    ? await prisma.taxReturn.findMany({ where: { companyId: { in: coWithFilings } } })
+    : [];
+  const irFlByCoYear = new Map<string, number>();
+  for (const ret of irReturns) {
+    if (!ret.companyId || ret.year == null) continue;
+    const figs = (effectiveFiguresOf(ret) ?? []) as { label?: string; value?: number | null }[];
+    const fl = figs.find((f) => /florida.*tax|state\b.*income.*tax/i.test(f.label ?? ""))?.value;
+    if (fl != null) irFlByCoYear.set(`${ret.companyId}:${ret.year}`, Math.abs(Number(fl)));
+  }
+
   // StateTaxFiling PAGOS no ano Y, agrupados por empresa/ano-competência.
   const filingsByCo = new Map<string, StateReconFiling[]>();
   for (const f of filings) {
     if (!f.paidDate || f.paidDate.getUTCFullYear() !== year) continue;
     const principal = num(f.principal), penalty = num(f.penalty), interest = num(f.interest);
-    const row: StateReconFiling = { taxYear: f.taxYear, principal, penalty, interest, total: r2(principal + penalty + interest) };
+    const irPrincipal = irFlByCoYear.get(`${f.companyId}:${f.taxYear}`) ?? null;
+    const principalOk =
+      irPrincipal == null || Math.abs(principal - irPrincipal) <= Math.max(1, 0.01 * irPrincipal);
+    const row: StateReconFiling = {
+      taxYear: f.taxYear, principal, penalty, interest, total: r2(principal + penalty + interest),
+      irPrincipal, principalOk,
+    };
     (filingsByCo.get(f.companyId) ?? filingsByCo.set(f.companyId, []).get(f.companyId)!).push(row);
   }
 
@@ -113,6 +138,8 @@ export async function buildStateTaxReconciliation(year: number): Promise<StateTa
       delta,
       reconciles: Math.abs(delta) <= tol,
       hasPnl: hasPnl.has(id),
+      irMismatch: fs.some((f) => f.irPrincipal != null && !f.principalOk),
+      irUnverified: fs.some((f) => f.irPrincipal == null),
     });
   }
   rows.sort((a, b) => Number(a.reconciles) - Number(b.reconciles) || Math.abs(b.delta) - Math.abs(a.delta));
