@@ -2,11 +2,9 @@ import Link from "next/link";
 import { buildDistributableReport } from "@/lib/tax/distributable";
 import { reserveYears } from "@/lib/tax/reserve";
 import { YearSelect } from "@/components/year-select";
+import { DistributableReport } from "@/components/distributable-report";
 
 export const dynamic = "force-dynamic";
-
-const money = (v: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
 
 export default async function DistributablePage({
   searchParams,
@@ -57,47 +55,7 @@ export default async function DistributablePage({
           Nada a distribuir com base no IR de {year}. Veja abaixo o que falta.
         </div>
       ) : (
-        <div className="space-y-4">
-          {report.owners.map((o) => (
-            <section key={o.key} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-              <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-2.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-medium text-slate-800">{o.name}</span>
-                  <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${o.kind === "C-corp" ? "bg-sky-50 text-sky-700" : "bg-amber-50 text-amber-700"}`}>
-                    {o.kind}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <div className="text-[11px] text-slate-400">distribuível sem imposto</div>
-                  <div className="text-lg font-semibold tabular-nums text-[#3B6D11]">{money(o.total)}</div>
-                </div>
-              </div>
-              <table className="w-full text-sm">
-                <thead className="text-left text-slate-500">
-                  <tr>
-                    <th className="px-4 py-1.5 font-medium">De (pass-through)</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Capital account (IR)</th>
-                    <th className="px-3 py-1.5 text-right font-medium">%</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Distribuível</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {o.sources.map((s, i) => (
-                    <tr key={i}>
-                      <td className="px-4 py-1.5">
-                        <Link href={`/companies/${s.companyId}`} className="text-[#1f3a5f] hover:underline">{s.name}</Link>
-                        <span className="ml-1 text-[10px] text-slate-400">IR {s.irYear}</span>
-                      </td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{money(s.capitalAccount)}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-slate-500">{s.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%</td>
-                      <td className="px-3 py-1.5 text-right font-medium tabular-nums text-slate-800">{money(s.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </section>
-          ))}
-        </div>
+        <DistributableReport owners={report.owners} />
       )}
 
       {report.missing.length > 0 && (
