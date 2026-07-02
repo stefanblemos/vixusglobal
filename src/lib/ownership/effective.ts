@@ -107,8 +107,20 @@ export interface OwnershipRow {
 // estrutura societária vigente, em vez de "donos de hoje" (endDate null) ou datas ad-hoc.
 export const asOfYearEnd = (year: number) => new Date(Date.UTC(year, 11, 31, 23, 59, 59));
 
-/** Uma linha de ownership está vigente na data `asOf`? (já entrou: effectiveDate ≤ asOf; ainda não
- * saiu: endDate > asOf). FONTE ÚNICA da regra de vigência — usada aqui e nos consumidores por ano. */
+/**
+ * Uma linha de ownership está vigente NO INSTANTE `asOf`? Snapshot PONTUAL (não sobreposição de
+ * intervalo). FONTE ÚNICA da regra de vigência — usada aqui e nos consumidores por ano (preview,
+ * reserve, quarterly, sequence), sempre com asOfYearEnd(Y).
+ *
+ * Convenção HALF-OPEN [effectiveDate, endDate): já entrou (effectiveDate ≤ asOf) e ainda não saiu
+ * (endDate > asOf). Ou seja, `endDate` é o PRIMEIRO instante SEM posse (não o último dia com posse).
+ *
+ * Fronteira de ano: asOfYearEnd(Y) = 31/dez Y 23:59:59. O cadastro grava endDate à meia-noite do dia
+ * informado (00:00:00Z). Logo uma saída lançada como "31/12/Y" (= 31/dez 00:00:00) tem endDate ≤ asOf
+ * → NÃO vigente no fim de Y (o vínculo conta como encerrado ANTES do fechamento). Para o sócio ser
+ * incluído no K-1 de Y (posse pelo ano inteiro), lançar a saída como 01/jan/(Y+1) — o primeiro dia
+ * sem posse. Snapshot as-of-fim-de-ano é aproximação: saídas no meio do ano zeram o K-1 do ano.
+ */
 export function isEffectiveAt(
   r: { effectiveDate?: Date | null; endDate?: Date | null },
   asOf: Date,
