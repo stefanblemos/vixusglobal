@@ -29,7 +29,9 @@ export function periodMonths(label: string): { start: number; end: number } | nu
   const lower = label.toLowerCase();
   const found: { idx: number; m: number }[] = [];
   for (const [k, m] of Object.entries(MONTHS)) {
-    const idx = lower.indexOf(k);
+    // Início de palavra: a chave é prefixo do mês (EN "march"/PT "setembro" começam por "mar"/"set").
+    // Sem o \b, "set" casava em "asset", "ago" em "Chicago" — mês fantasma dentro de outra palavra.
+    const idx = lower.search(new RegExp("\\b" + k));
     if (idx >= 0) found.push({ idx, m });
   }
   if (found.length === 0) return null;
@@ -44,7 +46,7 @@ export function qboPeriodKey(label: string): number {
   // Mês: pega o maior mês citado (para "As of Dec 31" = 12; para "Jan–Dec" = fim do ano).
   let month = 0;
   for (const k of Object.keys(MONTHS)) {
-    if (lower.includes(k)) month = Math.max(month, MONTHS[k]);
+    if (new RegExp("\\b" + k).test(lower)) month = Math.max(month, MONTHS[k]);
   }
   // Dia: primeiro número de 1–2 dígitos (ex.: "As of Jun 14, 2026" → 14).
   const dm = label.match(/\b(\d{1,2})\b/);
