@@ -106,12 +106,14 @@ export async function buildOverview(): Promise<OverviewData> {
     prisma.bankStatementLine.count({ where: { status: "UNREVIEWED" } }),
     prisma.bankStatement.findMany({ select: { id: true, glAccount: true } }),
   ]);
-  let outOfBalance = 0;
-  for (const s of statements) {
-    if (!s.glAccount) continue;
-    const sum = await buildBankReconSummary(prisma, s.id);
-    if (sum && Math.abs(sum.difference) >= 0.005) outOfBalance += 1;
-  }
+  // Antes: loop serial (≈3 queries × nº extratos, uma de cada vez). Mesmas queries, agora
+  // em paralelo — só conta quantos extratos não fecham; comportamento idêntico.
+  const reconSummaries = await Promise.all(
+    statements.filter((s) => s.glAccount).map((s) => buildBankReconSummary(prisma, s.id)),
+  );
+  const outOfBalance = reconSummaries.filter(
+    (sum) => sum && Math.abs(sum.difference) >= 0.005,
+  ).length;
 
   // ── Obrigações (próximo vencimento entre as empresas monitoradas) ──
   const [oblCompanies, resolveTreatment, ownerships, parties] = await Promise.all([
@@ -169,7 +171,15 @@ export async function buildOverview(): Promise<OverviewData> {
 
   // ── Exposição intercompany ──
   const loans = await prisma.intercompanyLoan.findMany({
-    include: { lender: true, borrower: true, transactions: true },
+    select: {
+      annualInterestRate: true,
+      dayCountBasis: true,
+      startDate: true,
+      currency: true,
+      lender: { select: { legalName: true } },
+      borrower: { select: { legalName: true } },
+      transactions: { select: { type: true, amount: true, date: true } },
+    },
   });
   const expLoans = loans
     .map((loan) => {

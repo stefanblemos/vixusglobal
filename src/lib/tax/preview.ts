@@ -138,7 +138,10 @@ export async function buildTaxPreview(
       select: { ownerCompanyId: true, ownerPartyId: true, ownedCompanyId: true, ownedPartyId: true, percentage: true, effectiveDate: true, endDate: true },
     }),
     prisma.qboImport.findMany({
-      where: { reportKind: "PROFIT_AND_LOSS" },
+      // Pré-filtro por ano: yearOf() extrai o ano de dentro do próprio periodLabel, logo todo
+      // label com yearOf===year contém String(year). O filtro JS (yearOf) segue sendo autoridade
+      // — isto só evita carregar as linhas de todos os outros anos. Comportamento idêntico.
+      where: { reportKind: "PROFIT_AND_LOSS", periodLabel: { contains: String(year) } },
       orderBy: { createdAt: "desc" },
       select: { id: true, companyId: true, periodLabel: true, lines: { select: { lineType: true, label: true, value: true } } },
     }),
@@ -185,7 +188,7 @@ export async function buildTaxPreview(
   }
   // Balance Sheet mais recente do ANO por empresa — só o id (para o link da fonte).
   const bsImports = await prisma.qboImport.findMany({
-    where: { reportKind: "BALANCE_SHEET" },
+    where: { reportKind: "BALANCE_SHEET", periodLabel: { contains: String(year) } },
     orderBy: { createdAt: "desc" },
     select: { id: true, companyId: true, periodLabel: true },
   });

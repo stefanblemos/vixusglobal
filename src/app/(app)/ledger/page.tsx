@@ -23,7 +23,14 @@ export default async function LedgerPage({
   const glImports = await prisma.qboImport.findMany({
     where: { reportKind: "GENERAL_LEDGER" },
     orderBy: { createdAt: "desc" },
-    include: { company: true, _count: { select: { ledgerTxns: true } } },
+    select: {
+      id: true,
+      companyId: true,
+      periodLabel: true,
+      sourceCompanyName: true,
+      company: { select: { legalName: true } },
+      _count: { select: { ledgerTxns: true } },
+    },
   });
 
   if (!company) {
