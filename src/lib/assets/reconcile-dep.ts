@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { buildAssetRegister } from "./depreciation";
+import { buildAssetRegister, type AssetRegister } from "./depreciation";
 import { effectiveFiguresOf } from "@/lib/ir/figures";
 
 // Conferência da depreciação por empresa, ano a ano: o que o MACRS diz que DEVERIA ter sido
@@ -38,7 +38,14 @@ export interface DepReconciliation {
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export async function buildDepreciationReconciliation(companyId: string): Promise<DepReconciliation | null> {
+export async function buildDepreciationReconciliation(
+  companyId: string,
+  // Registro MACRS-puro pré-computado (de todas as empresas): quando informado, filtra por empresa
+  // em vez de reconstruir o register aqui. O schedule é vitalício (independe do `year` do register),
+  // então fatiar o register completo dá exatamente os mesmos ativos/schedules que buildAssetRegister
+  // (currentYear, companyId, {pureMacrs}). Evita o N+1 (uma reconstrução por empresa) no preview.
+  opts?: { pureRegister?: AssetRegister },
+): Promise<DepReconciliation | null> {
   const company = await prisma.company.findUnique({ where: { id: companyId }, select: { legalName: true } });
   if (!company) return null;
 
@@ -47,10 +54,11 @@ export async function buildDepreciationReconciliation(companyId: string): Promis
 
   // MACRS por ano (soma dos schedules de todos os ativos US da empresa). MACRS PURA (deveria) —
   // ignora "totalmente depreciado"/baixa: o "deveria" é a regra legal do IRS, não o que o livro fez.
-  const reg = await buildAssetRegister(currentYear, companyId, { pureMacrs: true });
+  const reg = opts?.pureRegister ?? (await buildAssetRegister(currentYear, companyId, { pureMacrs: true }));
+  const regAssets = opts?.pureRegister ? reg.assets.filter((a) => a.companyId === companyId) : reg.assets;
   const macrsByYear = new Map<number, number>();
   let minYear = currentYear;
-  for (const a of reg.assets) {
+  for (const a of regAssets) {
     for (const y of a.schedule) {
       macrsByYear.set(y.year, (macrsByYear.get(y.year) ?? 0) + y.amount);
       if (y.year < minYear) minYear = y.year;

@@ -453,8 +453,15 @@ export default async function CompanyYearPage({
 
   // Distribuições de lucro (fora do K-1) pelos relatórios do QBO: o que ESTA empresa lançou
   // como "1099 - Not K1", correlacionado com o que a subsidiária deduziu no P&L dela.
+  // A conciliação de distribuições só correlaciona emissor×receptor DENTRO DO MESMO ano (recip.year),
+  // e o resultado é filtrado por e.year === year. Então basta o P&L de todas as empresas DESTE ano —
+  // antes varria todos os anos e descartava. O ano vem do periodLabel, logo o pré-filtro é idêntico.
   const distImports = await prisma.qboImport.findMany({
-    where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
+    where: {
+      reportKind: "PROFIT_AND_LOSS",
+      companyId: { not: null },
+      periodLabel: { contains: String(year) },
+    },
     select: { id: true, companyId: true, periodLabel: true, createdAt: true },
     orderBy: { createdAt: "desc" },
   });

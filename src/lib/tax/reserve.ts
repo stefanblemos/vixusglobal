@@ -66,10 +66,11 @@ async function profitForYear(pnls: Pnl[], year: number) {
       importIds: [annual[0].id],
     };
   }
+  // Soma dos meses (fallback sem P&L anual): as leituras eram sequenciais — agora em paralelo.
+  const nis = await Promise.all(inYear.map((p) => netIncomeOf(p.id)));
   let sum = 0;
   let any = false;
-  for (const p of inYear) {
-    const ni = await netIncomeOf(p.id);
+  for (const ni of nis) {
     if (ni != null) {
       sum += ni;
       any = true;

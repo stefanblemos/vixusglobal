@@ -204,8 +204,13 @@ export async function buildTaxPreview(
   // Conferência (catch-up acumulado) só para empresas COM ativos cadastrados — fonte única da
   // comparação livro × MACRS. Pega a diferença ACUMULADA até o ano (MACRS acum − IR acum).
   const assetCompanyIds = [...new Set(assetReg.byCompany.map((b) => b.companyId))];
+  // Um único register MACRS-puro (todas as empresas) reusado por todas as reconciliações — antes
+  // cada buildDepreciationReconciliation reconstruía o register da empresa (N+1). O schedule é
+  // vitalício, então o pureRegister injetado dá os mesmos números que a reconstrução por empresa.
+  const currentYear = new Date().getUTCFullYear();
+  const pureRegister = await buildAssetRegister(currentYear, undefined, { pureMacrs: true });
   const recons = await Promise.all(
-    assetCompanyIds.map((id) => buildDepreciationReconciliation(id).catch(() => null)),
+    assetCompanyIds.map((id) => buildDepreciationReconciliation(id, { pureRegister }).catch(() => null)),
   );
   const reconByCompany = new Map<string, { macrsAccum: number; irAccum: number; catchUp: number }>();
   for (const rec of recons) {
