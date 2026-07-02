@@ -94,16 +94,22 @@ function taxAddBacksFromPnl(lines: Line[]): { total: number; items: AddBack[]; s
     const v = Math.abs(Number(l.value));
     if (v < 0.005) continue;
     const n = l.label.toLowerCase();
-    const payroll = /payroll|unemploy|\bfica\b|social security|medicare|\bfui\b|\bsui\b|withhold/.test(n);
+    // Folha (não é IR): inclui FUTA/SUTA e os formulários 940/941 — antes escapavam e "Federal 940
+    // Tax" entrava como add-back de IR federal.
+    const payroll = /payroll|unemploy|\bfica\b|social security|medicare|\bfui\b|\bsui\b|\bfuta\b|\bsuta\b|withhold|\b94[01]\b/.test(n);
+    // Imposto de RENDA de outra esfera que NÃO é o IR federal da empresa: estrangeiro (creditável ou
+    // dedutível via FTC) e municipal/cidade (dedutível como SALT). Não entram no add-back federal —
+    // ficam como despesa deduzida (correto). Antes "Foreign income tax"/"Local income tax" entravam.
+    const foreignOrLocal = /foreign|\blocal\b|\bcity\b|municipal/.test(n);
     // imposto de renda ESTADUAL (não folha/vendas/imóvel) — dedutível no federal; tratado à parte.
     if (!payroll && /\bstate\b/.test(n) && /tax|income/.test(n) && !/sales|use tax|property|tangible/.test(n)) {
       stateTaxFromPnl = Math.round((stateTaxFromPnl + v) * 100) / 100;
       continue;
     }
     // imposto de renda FEDERAL — nunca dedutível (Schedule M-1, linha 2). Casa "Federal Taxes",
-    // "Federal Income Tax", "US income tax", "income tax — federal" (mas não folha).
-    if (!payroll && (/federal/.test(n) && /tax|income/.test(n)) ) items.push({ label: l.label, amount: v });
-    else if (/income tax/.test(n) && !payroll && !/state/.test(n)) items.push({ label: l.label, amount: v });
+    // "Federal Income Tax", "US income tax", "income tax — federal" (mas não folha/estrangeiro/local).
+    if (!payroll && !foreignOrLocal && /federal/.test(n) && /tax|income/.test(n)) items.push({ label: l.label, amount: v });
+    else if (!payroll && !foreignOrLocal && /income tax/.test(n) && !/\bstate\b/.test(n)) items.push({ label: l.label, amount: v });
     else if (/\bmeal/.test(n)) items.push({ label: l.label, amount: Math.round(v * 50) / 100 }); // 50%
     else if (/penalt|fine|late fee/.test(n)) items.push({ label: l.label, amount: v });
     else if (/life insurance/.test(n)) items.push({ label: l.label, amount: v });
