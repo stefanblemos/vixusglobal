@@ -117,6 +117,7 @@ export async function buildAssetRegister(
       fullyDepreciatedYear: effectiveFullyDepYear,
       bookEntriesBeforeFullDep: aydByAsset.get(a.id) ?? [],
       disposalYear: a.disposalDate ? a.disposalDate.getUTCFullYear() : null,
+      disposalMonth: a.disposalDate ? a.disposalDate.getUTCMonth() + 1 : null,
     });
     const accumulated = accumulatedThrough(sched, year);
     return {

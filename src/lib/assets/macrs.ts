@@ -29,8 +29,9 @@ export interface AssetInput {
   // ativo/ano). O saldo real (custo − isto) é o que entra no ano do "totalmente depreciado" — NÃO a
   // MACRS presumida. Vazio = nada foi depreciado antes → o custo inteiro entra no ano Y.
   bookEntriesBeforeFullDep?: { year: number; amount: number }[];
-  // Vendido/baixado neste ano → metade da cota no ano da baixa (half-year) e $0 depois.
+  // Vendido/baixado neste ano → convenção de meio período no ano da baixa e $0 depois.
   disposalYear?: number | null;
+  disposalMonth?: number | null; // 1-12 — só usado p/ real property (SL_MM, mid-month); default jul (7)
 }
 
 export interface YearDep {
@@ -101,12 +102,26 @@ export function depreciationSchedule(a: AssetInput): AssetSchedule {
     schedule = remainder > 0.005 ? [...prior, { year: Y, amount: remainder }] : prior;
   }
 
-  // Vendido/baixado no ano D: metade da cota no ano da baixa (half-year) e nada depois.
+  // Vendido/baixado no ano D: a parcela REGULAR do ano sofre a convenção de meio período — personal
+  // property = half-year (½ da cota); real property (SL_MM) = mid-month (fração pelo mês da baixa).
+  // §179 e bonus são tomados INTEGRALMENTE no ano de aquisição e NÃO sofrem a convenção — antes, se a
+  // baixa fosse no próprio ano de aquisição, o ×0.5 cortava §179/bonus pela metade (errado). $0 depois.
   const D = a.disposalYear;
   if (D != null && D >= a.acquisitionYear) {
+    const extra = s179 + bonus; // só compõe a cota do ano de aquisição
+    const dispMonth = a.disposalMonth != null ? Math.min(12, Math.max(1, a.disposalMonth)) : 7; // ação grava 1/jul
+    const frac =
+      a.method === "SL_MM"
+        ? Math.min(1, Math.max(0, (dispMonth - 0.5) / 12)) // real property: mid-month
+        : 0.5; // personal property: half-year
     schedule = schedule
       .filter((s) => s.year <= D)
-      .map((s) => (s.year === D ? { year: s.year, amount: round2(s.amount * 0.5) } : s));
+      .map((s) => {
+        if (s.year !== D) return s;
+        const acqYear = D === a.acquisitionYear;
+        const regular = acqYear ? round2(s.amount - extra) : s.amount; // isola a parcela regular
+        return { year: s.year, amount: round2(regular * frac + (acqYear ? extra : 0)) };
+      });
   }
 
   return {
