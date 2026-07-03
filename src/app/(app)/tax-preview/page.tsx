@@ -24,7 +24,7 @@ export default async function TaxPreviewPage({
   // Selo de confiança da base tributável vs IR (verde confere / vermelho diverge / cinza estimado).
   const confidence = await irTaxableConfidence(
     year,
-    data.rows.map((r) => ({ id: r.id, kind: r.kind, taxable: r.taxable, hasPnl: r.hasPnl })),
+    data.rows.map((r) => ({ id: r.id, kind: r.kind, entityType: r.entityType, taxable: r.taxable, hasPnl: r.hasPnl })),
   );
 
   return (
