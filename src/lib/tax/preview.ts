@@ -79,7 +79,7 @@ function federalPF(taxable: number): number {
   return Math.round(tax * 100) / 100;
 }
 
-type Line = { lineType: string; label: string; value: unknown };
+type Line = { lineType: string; label: string; value: unknown; sectionPath?: string[] };
 type AddBack = { label: string; amount: number };
 // Despesas do P&L que NÃO são despesa de verdade para o imposto e precisam voltar à base (Schedule
 // M-1). O caso mais grave: o QBO lança o PAGAMENTO de IR federal (e estadual) como despesa — isso
@@ -95,6 +95,11 @@ function taxAddBacksFromPnl(lines: Line[]): { total: number; items: AddBack[]; s
     const v = Math.abs(Number(l.value));
     if (v < 0.005) continue;
     const n = l.label.toLowerCase();
+    // Contas FILHAS (sub-contas de controle interno) herdam o conceito do PAI: uma sub-conta dentro
+    // de "Meals" conta como refeição mesmo que o nome dela não diga "meal" (ex.: "Per Diem"). Só usado
+    // p/ refeição/entretenimento (onde o QBO tem muita sub-conta); imposto federal/estadual segue só
+    // pelo rótulo (preciso). `hay` = rótulo + cadeia de pais.
+    const hay = (n + " " + (l.sectionPath ?? []).join(" ")).toLowerCase();
     // Folha (não é IR): inclui FUTA/SUTA e os formulários 940/941 — antes escapavam e "Federal 940
     // Tax" entrava como add-back de IR federal.
     const payroll = /payroll|unemploy|\bfica\b|social security|medicare|\bfui\b|\bsui\b|\bfuta\b|\bsuta\b|withhold|\b94[01]\b/.test(n);
@@ -111,10 +116,10 @@ function taxAddBacksFromPnl(lines: Line[]): { total: number; items: AddBack[]; s
     // "Federal Income Tax", "US income tax", "income tax — federal" (mas não folha/estrangeiro/local).
     if (!payroll && !foreignOrLocal && /federal/.test(n) && /tax|income/.test(n)) items.push({ label: l.label, amount: v });
     else if (!payroll && !foreignOrLocal && /income tax/.test(n) && !/\bstate\b/.test(n)) items.push({ label: l.label, amount: v });
-    else if (/\bmeal/.test(n)) items.push({ label: l.label, amount: Math.round(v * 50) / 100 }); // 50%
-    // Entretenimento PURO (sem "meal" no rótulo — este já caiu no ramo acima): 100% não dedutível
+    else if (/\bmeal/.test(hay)) items.push({ label: l.label, amount: Math.round(v * 50) / 100 }); // 50% — pega sub-contas de refeição pelo pai
+    // Entretenimento PURO (sem "meal" no rótulo/pai — este já caiu no ramo acima): 100% não dedutível
     // desde a TCJA (2018). "Meals & Entertainment" combinado fica no ramo de meals (50%, conservador).
-    else if (/entertain/.test(n)) items.push({ label: l.label, amount: v });
+    else if (/entertain/.test(hay)) items.push({ label: l.label, amount: v });
     else if (/penalt|fine|late fee/.test(n)) items.push({ label: l.label, amount: v });
     else if (/life insurance/.test(n)) items.push({ label: l.label, amount: v });
     else if (/political|club dues|lobby/.test(n)) items.push({ label: l.label, amount: v });
@@ -153,7 +158,7 @@ export async function buildTaxPreview(
       // — isto só evita carregar as linhas de todos os outros anos. Comportamento idêntico.
       where: { reportKind: "PROFIT_AND_LOSS", periodLabel: { contains: String(year) } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, companyId: true, periodLabel: true, lines: { select: { lineType: true, label: true, value: true } } },
+      select: { id: true, companyId: true, periodLabel: true, lines: { select: { lineType: true, label: true, value: true, sectionPath: true } } },
     }),
     prisma.stateTaxFiling.findMany({
       select: { companyId: true, principal: true, penalty: true, interest: true, paidDate: true },
