@@ -74,6 +74,7 @@ const NAV: Entry[] = [
     items: [
       { href: "/tax", label: "Tax", icon: ReceiptText },
       { href: "/tax-preview", label: "Tax preview", icon: Calculator },
+      { href: "/tax-audit", label: "Conferência IR", icon: ShieldCheck },
       { href: "/1099", label: "1099 worklist", icon: FileText },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
       { href: "/florida", label: "Florida tax", icon: Landmark },
