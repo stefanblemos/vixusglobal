@@ -32,6 +32,7 @@ export interface TaxPreviewRow {
   stateTaxAddBack: number; // add-back do estadual pago no ano (principal + multa) — do controle /florida ou do P&L
   stateTaxInterest: number; // juros do estadual pago no ano — dedutíveis, NÃO somados (só p/ nota)
   stateTaxSource: "florida" | null; // add-back estadual (pagamento do ano anterior) — do controle /florida
+  statePnlUnfiled: number; // P&L tem "State Taxes" mas sem StateTaxFiling → gap a cadastrar (não somado à base)
   stateEstimate: number; // estadual DO ANO estimado (FL 5,5% − isenção), a pagar em Y+1 — dedutível (só C-corp)
   stateEstInterest: number; // juros estimados sobre o diferimento do estadual do ano — dedutível
   depAdj: number; // ajuste de depreciação na base: 0 quando confia no livro; −MACRS quando o livro não tem
@@ -111,6 +112,9 @@ function taxAddBacksFromPnl(lines: Line[]): { total: number; items: AddBack[]; s
     if (!payroll && !foreignOrLocal && /federal/.test(n) && /tax|income/.test(n)) items.push({ label: l.label, amount: v });
     else if (!payroll && !foreignOrLocal && /income tax/.test(n) && !/\bstate\b/.test(n)) items.push({ label: l.label, amount: v });
     else if (/\bmeal/.test(n)) items.push({ label: l.label, amount: Math.round(v * 50) / 100 }); // 50%
+    // Entretenimento PURO (sem "meal" no rótulo — este já caiu no ramo acima): 100% não dedutível
+    // desde a TCJA (2018). "Meals & Entertainment" combinado fica no ramo de meals (50%, conservador).
+    else if (/entertain/.test(n)) items.push({ label: l.label, amount: v });
     else if (/penalt|fine|late fee/.test(n)) items.push({ label: l.label, amount: v });
     else if (/life insurance/.test(n)) items.push({ label: l.label, amount: v });
     else if (/political|club dues|lobby/.test(n)) items.push({ label: l.label, amount: v });
@@ -284,7 +288,7 @@ export async function buildTaxPreview(
     n.kind === "person" ? "PF" : n.finalPayer ? "C-corp" : "Pass-through";
 
   // Base própria de cada entidade.
-  const blank = { bookNet: 0, nonDed: 0, nonDedItems: [] as AddBack[], stateAddBack: 0, stateInterest: 0, stateSource: null as "florida" | null, depAdj: 0, bookDep: 0, macrsDep: 0, macrsApplied: false, depCatchUp: null as number | null, hasPnl: false };
+  const blank = { bookNet: 0, nonDed: 0, nonDedItems: [] as AddBack[], stateAddBack: 0, stateInterest: 0, stateSource: null as "florida" | null, statePnlUnfiled: 0, depAdj: 0, bookDep: 0, macrsDep: 0, macrsApplied: false, depCatchUp: null as number | null, hasPnl: false };
   const self = new Map<string, typeof blank>();
   const missingPnl: string[] = [];
   for (const n of nodes) {
@@ -304,6 +308,10 @@ export async function buildTaxPreview(
     const stateAddBack = st ? r2(st.addBack) : 0;
     const stateInterest = st ? r2(st.interest) : 0;
     const stateSource: "florida" | null = st ? "florida" : null;
+    // GAP visível: o P&L tem "State Taxes" (despesa deduzida) mas NÃO há StateTaxFiling cadastrado
+    // em /florida. Não somamos à base (o split principal/multa/juros vem do recibo, e a linha mistura
+    // anos — não chutamos). Só sinalizamos para o usuário cadastrar. Antes ficava invisível.
+    const statePnlUnfiled = !st && ded.stateTaxFromPnl > 0.005 ? r2(ded.stateTaxFromPnl) : 0;
     const bookDep = bookDepFromLines(lines);
     const hasAssets = macrsByCompany.has(n.id);
     let macrsDep: number, realDep: number, macrsApplied: boolean, depAdj: number;
@@ -324,7 +332,7 @@ export async function buildTaxPreview(
       depAdj = trustBookDepAdjustment(bookDep, realDep, hasAssets);
     }
     const depCatchUp = reconByCompany.get(n.id)?.catchUp ?? null;
-    self.set(n.key, { bookNet: r2(bookNet), nonDed, nonDedItems: ded.items, stateAddBack, stateInterest, stateSource, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
+    self.set(n.key, { bookNet: r2(bookNet), nonDed, nonDedItems: ded.items, stateAddBack, stateInterest, stateSource, statePnlUnfiled, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }
 
   // K-1 acumulado de baixo para cima. k1FromByKey guarda a ORIGEM (quem repassou e quanto) — para o
@@ -370,6 +378,7 @@ export async function buildTaxPreview(
       key: n.key, kind: n.kind, id: n.id, name: n.name, acronym: n.acronym, entityType: t,
       hasPnl: s.hasPnl, bookNet: s.bookNet, nonDeductible: s.nonDed, nonDeductibleItems: s.nonDedItems,
       stateTaxAddBack: s.stateAddBack, stateTaxInterest: s.stateInterest, stateTaxSource: s.stateSource,
+      statePnlUnfiled: s.statePnlUnfiled,
       stateEstimate, stateEstInterest,
       depAdj: s.depAdj, bookDep: s.bookDep, macrsDep: s.macrsDep, macrsApplied: s.macrsApplied, depCatchUp: s.depCatchUp,
       k1In: r2(k1In.get(n.key) ?? 0),

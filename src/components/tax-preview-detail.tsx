@@ -202,6 +202,14 @@ function DetailModal({
                 hint={`principal + multa do estadual de ${year - 1} pagos em ${year} (controle Florida) — já deduzido na competência${row.stateTaxInterest > 0 ? ` · juros ${m(row.stateTaxInterest)} são dedutíveis (ficam de fora)` : ""}`}
               />
             )}
+            {row.statePnlUnfiled > 0 && (
+              <div className="my-1.5 rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                ⚠ O P&L tem <strong>{m(row.statePnlUnfiled)}</strong> em &ldquo;State Taxes&rdquo; sem cadastro em{" "}
+                <Link href="/florida" className="underline hover:text-amber-900">Florida</Link>. Não foi somado à base
+                (o split principal/multa/juros vem do recibo do DOR, e a linha mistura anos — não chutamos). Cadastre o
+                StateTaxFiling para o add-back entrar certo.
+              </div>
+            )}
             {row.depAdj !== 0 ? (
               <Step label="± Ajuste de depreciação" value={row.depAdj} hint="o P&L não tinha depreciação no ano → aplica a depreciação REAL dos ativos (registrada na conferência; MACRS só se não houver real)" />
             ) : (
