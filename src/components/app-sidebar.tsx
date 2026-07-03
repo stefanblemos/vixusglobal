@@ -29,6 +29,7 @@ import {
   Network,
   Settings,
   ShieldCheck,
+  ClipboardList,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -96,6 +97,7 @@ const NAV: Entry[] = [
       { href: "/reports", label: "Reports", icon: PieChart },
     ],
   },
+  { type: "link", href: "/coa", label: "Plano de contas", icon: ClipboardList },
   { type: "link", href: "/import", label: "Uploads", icon: FolderOpen },
 ];
 
