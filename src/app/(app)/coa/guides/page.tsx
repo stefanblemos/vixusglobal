@@ -34,8 +34,7 @@ export default function PostingGuidesPage() {
                           {l.side}
                         </span>
                       </td>
-                      <td className="w-14 py-1 font-mono text-xs text-slate-400">{l.code}</td>
-                      <td className="py-1 font-medium text-slate-800">{l.name}</td>
+                      <td className="py-1 font-medium text-slate-800">{l.account}</td>
                       <td className="py-1 pl-3 text-[11px] text-slate-500">{l.hint}</td>
                     </tr>
                   ))}
