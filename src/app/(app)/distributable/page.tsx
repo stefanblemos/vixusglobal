@@ -30,7 +30,15 @@ export default async function DistributablePage({
             (tax-free); acima dela vira ganho de capital.
           </p>
         </div>
-        {years.length > 0 && <YearSelect years={years} value={year} basePath="/distributable" />}
+        <div className="flex items-center gap-2">
+          {years.length > 0 && <YearSelect years={years} value={year} basePath="/distributable" />}
+          <a
+            href={`/api/export/distributable?year=${year}`}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            ↓ Exportar CSV
+          </a>
+        </div>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-xs text-slate-600">

@@ -50,6 +50,12 @@ export default async function TaxPreviewPage({
             {y}
           </Link>
         ))}
+        <a
+          href={`/api/export/tax-preview?year=${year}`}
+          className="ml-auto rounded-lg border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50"
+        >
+          ↓ Exportar CSV
+        </a>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
