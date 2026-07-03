@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { coaBySection, type M1Concept } from "@/lib/coa/canonical";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +44,7 @@ export default function CoaPage() {
         <ol className="mt-1 list-decimal space-y-0.5 pl-4">
           <li>Baixe o CSV e importe no QBO da empresa (Configurações → Importar dados → Plano de contas).</li>
           <li>Faça o mesmo em <strong>cada</strong> empresa — todas ficam idênticas.</li>
-          <li>Lance seguindo os <strong>guias de lançamento</strong> (ex.: estadual em 3 contas). O app passa a ler e colocar cada valor no lugar certo automaticamente.</li>
+          <li>Lance seguindo os <strong><Link href="/coa/guides" className="text-sky-700 underline hover:text-sky-900">guias de lançamento</Link></strong> (ex.: estadual em 3 contas). O app passa a ler e colocar cada valor no lugar certo automaticamente.</li>
         </ol>
       </div>
 
