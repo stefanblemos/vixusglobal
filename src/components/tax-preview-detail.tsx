@@ -15,7 +15,22 @@ const m = (n: number) => formatMoney(n, "USD");
 // Tabela do tax preview com drill-down: clicar numa entidade abre o "report" do cálculo passo a
 // passo (lucro book → ajustes → base → imposto) e o fluxo K-1 (de quais investidas vem, para quais
 // owners vai). Origem e destino do K-1 permitem rastrear das formadoras até os donos.
-export function TaxPreviewTable({ rows, year }: { rows: TaxPreviewRow[]; year: number }) {
+// Selo de confiança da base tributável vs IR (vem da página, calculado em irTaxableConfidence).
+const CONF: Record<string, { label: string; cls: string; title: string }> = {
+  match: { label: "✓ IR", cls: "bg-[#8DC63F]/20 text-[#3B6D11]", title: "Base tributável confere com o IR declarado" },
+  diverge: { label: "≠ IR", cls: "bg-rose-100 text-rose-700", title: "Base tributável diverge do IR — ver Conferência IR" },
+  none: { label: "est.", cls: "bg-slate-100 text-slate-500", title: "Sem IR do ano para conferir — só estimativa" },
+};
+
+export function TaxPreviewTable({
+  rows,
+  year,
+  confidence = {},
+}: {
+  rows: TaxPreviewRow[];
+  year: number;
+  confidence?: Record<string, "match" | "diverge" | "none">;
+}) {
   const [selKey, setSelKey] = useState<string | null>(null);
   const sel = selKey ? (rows.find((r) => r.key === selKey) ?? null) : null;
 
@@ -54,6 +69,11 @@ export function TaxPreviewTable({ rows, year }: { rows: TaxPreviewRow[]; year: n
                   <td className="px-4 py-2">
                     <div className="font-medium text-slate-800">{r.name}</div>
                     <span className={`rounded-full px-1.5 py-0.5 text-[11px] ${TYPE_TAG[r.entityType]}`}>{r.entityType}</span>
+                    {confidence[r.id] && (
+                      <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] ${CONF[confidence[r.id]].cls}`} title={CONF[confidence[r.id]].title}>
+                        {CONF[confidence[r.id]].label}
+                      </span>
+                    )}
                     {!r.hasPnl && r.kind === "company" && <span className="ml-1 text-[10px] text-amber-600">sem P&L</span>}
                     {r.inCycle && (
                       <span className="ml-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700" title="Posse circular — K-1 cruzado aproximado.">

@@ -42,6 +42,33 @@ export interface IrReconciliation {
 // Tolerância: bate se |prev − IR| ≤ max($1.000, 8% do IR). Ajustes book→tax pequenos não viram flag.
 const withinTol = (a: number, b: number) => Math.abs(a - b) <= Math.max(1000, 0.08 * Math.abs(b));
 
+// Selo de confiança de UM número (base tributável) contra o IR — para badgear o preview/reserve sem
+// recomputar a reconciliação inteira. "match" = confere com o IR · "diverge" = IR existe e diverge ·
+// "none" = sem IR do ano para conferir (só estimativa). Só para empresas com P&L.
+export type IrConfidence = "match" | "diverge" | "none";
+export async function irTaxableConfidence(
+  year: number,
+  rows: { id: string; kind: string; taxable: number; hasPnl: boolean }[],
+): Promise<Record<string, IrConfidence>> {
+  const rets = await prisma.taxReturn.findMany({
+    where: { companyId: { not: null }, year },
+    select: { companyId: true, figures: true, manualFigures: true },
+  });
+  const irTaxable = new Map<string, number>();
+  for (const r of rets) {
+    if (!r.companyId) continue;
+    const f = effectiveFiguresOf(r).find((f) => f.key === "TAXABLE_INCOME" && f.value != null);
+    if (f) irTaxable.set(r.companyId, Number(f.value));
+  }
+  const out: Record<string, IrConfidence> = {};
+  for (const row of rows) {
+    if (row.kind !== "company" || !row.hasPnl) continue;
+    const ir = irTaxable.get(row.id);
+    out[row.id] = ir == null ? "none" : withinTol(row.taxable, ir) ? "match" : "diverge";
+  }
+  return out;
+}
+
 export async function buildIrReconciliation(year: number): Promise<IrReconciliation> {
   const preview = await buildTaxPreview(year);
   const rets = await prisma.taxReturn.findMany({

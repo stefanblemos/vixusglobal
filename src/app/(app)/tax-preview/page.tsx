@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { buildTaxPreview } from "@/lib/tax/preview";
+import { irTaxableConfidence } from "@/lib/tax/audit-vs-ir";
 import { TaxPreviewTable } from "@/components/tax-preview-detail";
 import { formatMoney } from "@/lib/money";
 
@@ -20,6 +21,11 @@ export default async function TaxPreviewPage({
   const years = probe.years.length ? probe.years : [currentYear - 1];
   const year = wanted ?? (years.includes(currentYear - 1) ? currentYear - 1 : years[0]);
   const data = wanted === year ? probe : await buildTaxPreview(year);
+  // Selo de confiança da base tributável vs IR (verde confere / vermelho diverge / cinza estimado).
+  const confidence = await irTaxableConfidence(
+    year,
+    data.rows.map((r) => ({ id: r.id, kind: r.kind, taxable: r.taxable, hasPnl: r.hasPnl })),
+  );
 
   return (
     <div className="space-y-6">
@@ -81,7 +87,7 @@ export default async function TaxPreviewPage({
         </p>
       )}
 
-      <TaxPreviewTable rows={data.rows} year={year} />
+      <TaxPreviewTable rows={data.rows} year={year} confidence={confidence} />
 
       <p className="text-xs text-slate-400">
         Não dedutíveis detectados do P&L: 50% de refeições, multas/penalidades, seguro de vida,
