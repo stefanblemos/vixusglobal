@@ -55,20 +55,20 @@ export async function buildM1Bridge(year: number): Promise<M1Bridge> {
     const line5Total = r2(line5Items.reduce((s, i) => s + i.amount, 0) + r.stateTaxAddBack);
 
     const lines: M1Line[] = [
-      { code: "1", label: "Lucro líquido por livro (QBO)", amount: r2(r.bookNet), sign: "=" },
+      { code: "1", label: "Net income per book (QBO)", amount: r2(r.bookNet), sign: "=" },
     ];
-    if (federalItem) lines.push({ code: "2", label: "Imposto de renda federal", amount: r2(federalItem.amount), sign: "+", detail: "nunca dedutível" });
-    if (r.k1In) lines.push({ code: "4", label: "Renda tributável fora do livro (K-1 recebido)", amount: r2(r.k1In), sign: "+", detail: "das investidas pass-through" });
+    if (federalItem) lines.push({ code: "2", label: "Federal income tax", amount: r2(federalItem.amount), sign: "+", detail: "never deductible" });
+    if (r.k1In) lines.push({ code: "4", label: "Taxable income outside the book (K-1 received)", amount: r2(r.k1In), sign: "+", detail: "from pass-through investees" });
     if (line5Total) {
       const parts = [
         ...line5Items.map((i) => `${i.label} ${Math.round(i.amount).toLocaleString("en-US")}`),
-        ...(r.stateTaxAddBack ? [`estadual pago ${Math.round(r.stateTaxAddBack).toLocaleString("en-US")}`] : []),
+        ...(r.stateTaxAddBack ? [`state tax paid ${Math.round(r.stateTaxAddBack).toLocaleString("en-US")}`] : []),
       ];
-      lines.push({ code: "5", label: "Despesas no livro não dedutíveis na declaração", amount: line5Total, sign: "+", detail: parts.join(" · ") });
+      lines.push({ code: "5", label: "Book expenses non-deductible on the return", amount: line5Total, sign: "+", detail: parts.join(" · ") });
     }
-    if (r.depAdj && r.depAdj < 0) lines.push({ code: "8", label: "Deduções na declaração fora do livro (depreciação MACRS)", amount: r2(-r.depAdj), sign: "−", detail: "livro sem depreciação → aplica MACRS" });
-    else if (r.depAdj && r.depAdj > 0) lines.push({ code: "5", label: "Ajuste de depreciação (livro > MACRS)", amount: r2(r.depAdj), sign: "+" });
-    lines.push({ code: "10", label: "Base tributável (taxable income)", amount: r2(r.taxable), sign: "=" });
+    if (r.depAdj && r.depAdj < 0) lines.push({ code: "8", label: "Deductions on the return outside the book (MACRS depreciation)", amount: r2(-r.depAdj), sign: "−", detail: "book without depreciation → applies MACRS" });
+    else if (r.depAdj && r.depAdj > 0) lines.push({ code: "5", label: "Depreciation adjustment (book > MACRS)", amount: r2(r.depAdj), sign: "+" });
+    lines.push({ code: "10", label: "Taxable income", amount: r2(r.taxable), sign: "=" });
 
     const figs = figsByCo.get(r.id);
     const base = figs ? baselineFig(r.entityType, figs) : null;

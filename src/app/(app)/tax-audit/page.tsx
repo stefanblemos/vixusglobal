@@ -7,11 +7,11 @@ export const dynamic = "force-dynamic";
 const m = (n: number | null) => (n == null ? "—" : formatMoney(n, "USD"));
 
 const SEV: Record<RowSeverity, { label: string; cls: string }> = {
-  diverge: { label: "diverge do IR", cls: "bg-rose-100 text-rose-700" },
-  warn: { label: "atenção", cls: "bg-amber-100 text-amber-700" },
-  "no-ir": { label: "sem IR p/ conferir", cls: "bg-slate-100 text-slate-500" },
-  "no-qbo": { label: "sem QBO do ano", cls: "bg-slate-100 text-slate-500" },
-  ok: { label: "confere", cls: "bg-[#8DC63F]/20 text-[#3B6D11]" },
+  diverge: { label: "diverges from return", cls: "bg-rose-100 text-rose-700" },
+  warn: { label: "attention", cls: "bg-amber-100 text-amber-700" },
+  "no-ir": { label: "no return to check", cls: "bg-slate-100 text-slate-500" },
+  "no-qbo": { label: "no QBO for year", cls: "bg-slate-100 text-slate-500" },
+  ok: { label: "matches", cls: "bg-[#8DC63F]/20 text-[#3B6D11]" },
 };
 
 const STATUS_DOT: Record<ReconStatus, string> = {
@@ -39,17 +39,17 @@ export default async function TaxAuditPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Conferência IR × QBO</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">Return check × QBO</h1>
         <p className="max-w-3xl text-sm text-slate-500">
-          Confronta o que o app <strong>calcula</strong> (tax preview, a partir do QBO) com o que o
-          contador <strong>declarou</strong> (as figuras do IR). Divergência = investigar; &ldquo;esperada&rdquo;
-          (azul) = holding cujo IR consolida o K-1 e o livro standalone não. É o Tax preview conferido
-          contra a fonte da verdade — sem chutar nada.
+          Compares what the app <strong>calculates</strong> (tax preview, from QBO) with what the
+          accountant <strong>filed</strong> (the tax return figures). Divergence = investigate; &ldquo;expected&rdquo;
+          (blue) = a holding whose return consolidates the K-1 while the standalone book does not. It is the Tax preview checked
+          against the source of truth — nothing guessed.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="mr-1 text-slate-400">Ano:</span>
+        <span className="mr-1 text-slate-400">Year:</span>
         {years.map((y) => (
           <Link
             key={y}
@@ -63,11 +63,11 @@ export default async function TaxAuditPage({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
         {[
-          { n: s.diverging, label: "divergem", cls: "border-rose-300 bg-rose-50 text-rose-700" },
-          { n: s.warn, label: "atenção", cls: "border-amber-300 bg-amber-50 text-amber-700" },
-          { n: s.ok, label: "conferem", cls: "border-[#8DC63F]/50 bg-[#8DC63F]/10 text-[#3B6D11]" },
-          { n: s.noIr, label: "sem IR", cls: "border-slate-200 bg-slate-50 text-slate-500" },
-          { n: s.noQbo, label: "sem QBO", cls: "border-slate-200 bg-slate-50 text-slate-500" },
+          { n: s.diverging, label: "diverge", cls: "border-rose-300 bg-rose-50 text-rose-700" },
+          { n: s.warn, label: "attention", cls: "border-amber-300 bg-amber-50 text-amber-700" },
+          { n: s.ok, label: "match", cls: "border-[#8DC63F]/50 bg-[#8DC63F]/10 text-[#3B6D11]" },
+          { n: s.noIr, label: "no return", cls: "border-slate-200 bg-slate-50 text-slate-500" },
+          { n: s.noQbo, label: "no QBO", cls: "border-slate-200 bg-slate-50 text-slate-500" },
         ].map((c) => (
           <div key={c.label} className={`rounded-xl border p-3 ${c.cls}`}>
             <div className="text-2xl font-semibold tabular-nums">{c.n}</div>
@@ -90,7 +90,7 @@ export default async function TaxAuditPage({
                   <span className="shrink-0 rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">{r.entityType}</span>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
-                  {divergeCount > 0 && <span className="text-[11px] text-rose-600">{divergeCount} métrica{divergeCount > 1 ? "s" : ""}</span>}
+                  {divergeCount > 0 && <span className="text-[11px] text-rose-600">{divergeCount} metric{divergeCount > 1 ? "s" : ""}</span>}
                   {r.flags.length > 0 && <span className="text-[11px] text-amber-600">⚠ {r.flags.length}</span>}
                   <span className={`rounded-full px-2 py-0.5 text-[11px] ${sev.cls}`}>{sev.label}</span>
                 </div>
@@ -102,9 +102,9 @@ export default async function TaxAuditPage({
                     <table className="w-full text-sm">
                       <thead className="text-left text-[11px] uppercase tracking-wide text-slate-400">
                         <tr>
-                          <th className="py-1 font-medium">Métrica</th>
+                          <th className="py-1 font-medium">Metric</th>
                           <th className="py-1 text-right font-medium">Preview (QBO)</th>
-                          <th className="py-1 text-right font-medium">IR (contador)</th>
+                          <th className="py-1 text-right font-medium">Return (accountant)</th>
                           <th className="py-1 text-right font-medium">Δ</th>
                           <th className="py-1 pl-3 font-medium">Status</th>
                         </tr>
@@ -121,7 +121,7 @@ export default async function TaxAuditPage({
                             <td className="py-1.5 pl-3">
                               <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500">
                                 <span className={`h-2 w-2 rounded-full ${STATUS_DOT[mt.status]}`} />
-                                {mt.status === "match" ? "confere" : mt.status === "diverge" ? "diverge" : mt.status === "expected" ? "esperada" : "sem IR"}
+                                {mt.status === "match" ? "matches" : mt.status === "diverge" ? "diverges" : mt.status === "expected" ? "expected" : "no return"}
                               </span>
                               {mt.note && <div className="mt-0.5 text-[10px] text-sky-600">{mt.note}</div>}
                             </td>
@@ -131,7 +131,7 @@ export default async function TaxAuditPage({
                     </table>
                   </div>
                 ) : (
-                  <p className="text-xs text-slate-500">Sem métricas para comparar neste ano.</p>
+                  <p className="text-xs text-slate-500">No metrics to compare in this year.</p>
                 )}
 
                 {r.flags.length > 0 && (
@@ -143,8 +143,8 @@ export default async function TaxAuditPage({
                 )}
 
                 <div className="mt-3 flex gap-3 text-[11px]">
-                  <Link href={`/tax-preview?year=${year}`} className="text-sky-700 hover:underline">ver no Tax preview →</Link>
-                  <Link href={`/companies/${r.companyId}/year/${year}`} className="text-sky-700 hover:underline">abrir a empresa ({year}) →</Link>
+                  <Link href={`/tax-preview?year=${year}`} className="text-sky-700 hover:underline">view in Tax preview →</Link>
+                  <Link href={`/companies/${r.companyId}/year/${year}`} className="text-sky-700 hover:underline">open the company ({year}) →</Link>
                 </div>
               </div>
             </details>
@@ -153,10 +153,10 @@ export default async function TaxAuditPage({
       </div>
 
       <p className="text-[11px] text-slate-400">
-        Tolerância: diverge se |preview − IR| &gt; máx($1.000, 8% do IR) — ajustes book→tax pequenos não
-        contam. Base tributável e add-backs (M-1) e depreciação devem bater; o lucro líquido de holding
-        diverge por construção (K-1). &ldquo;Sem IR&rdquo; = tem QBO mas falta a declaração para conferir;
-        &ldquo;sem QBO&rdquo; = tem IR mas falta o P&L do ano (ou é entidade estrangeira/encerrada).
+        Tolerance: diverges if |preview − return| &gt; max($1,000, 8% of the return) — small book→tax adjustments do not
+        count. Taxable income, add-backs (M-1) and depreciation must match; a holding&apos;s net income
+        diverges by construction (K-1). &ldquo;No return&rdquo; = has QBO but the return is missing to check against;
+        &ldquo;no QBO&rdquo; = has a return but the year&apos;s P&L is missing (or it is a foreign/closed entity).
       </p>
     </div>
   );

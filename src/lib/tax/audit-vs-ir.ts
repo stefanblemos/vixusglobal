@@ -57,7 +57,7 @@ export function baselineFig(entityType: string, figs: IrFigure[]): { key: string
 const FIG_LABEL: Record<string, string> = {
   TAXABLE_INCOME: "taxable income",
   ORDINARY_INCOME: "ordinary income",
-  NET_INCOME: "lucro por livro",
+  NET_INCOME: "book income",
 };
 
 // Selo de confiança de UM número (base tributável) contra o IR — para badgear o preview/reserve sem
@@ -140,30 +140,30 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
     const base = hasIr ? baselineFig(r.entityType, irByCo.get(r.id)!) : null;
     cmp(
       "taxable",
-      base ? `Base tributável (vs ${FIG_LABEL[base.key] ?? base.key})` : "Base tributável",
+      base ? `Taxable income (vs ${FIG_LABEL[base.key] ?? base.key})` : "Taxable income",
       hasQbo ? r.taxable : null,
       base?.value ?? null,
     );
     cmp("addbacks", "Add-backs (M-1)", hasQbo ? r.nonDeductible : null, irFig(r.id, "NON_DEDUCTIBLE"));
-    cmp("depreciation", "Depreciação (livro)", hasQbo ? r.bookDep : null, irFig(r.id, "DEPRECIATION"));
-    cmp("net", "Lucro líquido (livro)", hasQbo ? r.bookNet : null, irFig(r.id, "NET_INCOME"), {
+    cmp("depreciation", "Depreciation (book)", hasQbo ? r.bookDep : null, irFig(r.id, "DEPRECIATION"));
+    cmp("net", "Net income (book)", hasQbo ? r.bookNet : null, irFig(r.id, "NET_INCOME"), {
       expected: isHolding,
-      note: "holding: o IR consolida o K-1 das investidas; o livro standalone não — compare a base tributável",
+      note: "holding: the tax return consolidates the investees' K-1; the standalone book does not — compare the taxable income",
     });
     // Estadual só faz sentido comparar em C-corp (FL tributa só corp; pass-through não paga no nível).
     const irState = irFig(r.id, "STATE_TAX");
     if (r.entityType === "C-corp")
-      cmp("state", "Estadual (est. do ano × IR)", hasQbo ? r.stateEstimate || r.stateTaxAddBack || 0 : null, irState);
+      cmp("state", "State (year est. × tax return)", hasQbo ? r.stateEstimate || r.stateTaxAddBack || 0 : null, irState);
     else if (irState != null && Math.abs(irState) > 5000)
       // Pass-through com STATE_TAX alto no IR: o preview (0) está certo — é a figura do IR que chama
       // atenção (FL não tributa pass-through; pode ser outro estado, retenção, ou figura mal extraída).
-      flags.push(`IR mostra ${Math.round(irState).toLocaleString("en-US")} de estadual numa pass-through — conferir a figura (FL não tributa pass-through no nível)`);
+      flags.push(`Tax return shows ${Math.round(irState).toLocaleString("en-US")} of state tax on a pass-through — review the figure (FL doesn't tax pass-through at the entity level)`);
 
     const irDep = irFig(r.id, "DEPRECIATION");
     if (irDep != null && irDep > 500 && hasQbo && r.bookDep === 0 && r.macrsDep === 0)
-      flags.push(`IR tem ${Math.round(irDep).toLocaleString("en-US")} de depreciação, mas a empresa não tem ativos cadastrados`);
+      flags.push(`Tax return has ${Math.round(irDep).toLocaleString("en-US")} of depreciation, but the company has no assets registered`);
     if (r.statePnlUnfiled > 0)
-      flags.push(`${Math.round(r.statePnlUnfiled).toLocaleString("en-US")} em State Taxes no P&L sem cadastro em Florida`);
+      flags.push(`${Math.round(r.statePnlUnfiled).toLocaleString("en-US")} in State Taxes on the P&L with no registration in Florida`);
 
     let severity: RowSeverity;
     if (!hasQbo) severity = "no-qbo";
@@ -186,7 +186,7 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
       hasQbo: false,
       hasIr: true,
       metrics: [],
-      flags: ["IR presente, mas fora do preview (sem P&L do ano, encerrada, ou moeda estrangeira)"],
+      flags: ["Tax return present, but outside the preview (no P&L for the year, closed, or foreign currency)"],
       severity: "no-qbo",
     });
   }

@@ -4,7 +4,7 @@ import { buildM1Bridge } from "@/lib/tax/m1-bridge";
 export const dynamic = "force-dynamic";
 
 const M = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-const FIG: Record<string, string> = { TAXABLE_INCOME: "taxable income", ORDINARY_INCOME: "ordinary income", NET_INCOME: "lucro por livro" };
+const FIG: Record<string, string> = { TAXABLE_INCOME: "taxable income", ORDINARY_INCOME: "ordinary income", NET_INCOME: "book income" };
 
 export default async function M1BridgePage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const { year: yParam } = await searchParams;
@@ -19,16 +19,16 @@ export default async function M1BridgePage({ searchParams }: { searchParams: Pro
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Ponte M-1 (livro → imposto)</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">M-1 bridge (book → tax)</h1>
         <p className="max-w-3xl text-sm text-slate-500">
-          Do <strong>lucro por livro</strong> (QBO) até a <strong>base tributável</strong>, nas linhas reais do
-          Schedule M-1 — cada ajuste rastreado. A última linha é comparada com o IR declarado. Entregue ao
-          contador e confira linha a linha.
+          From <strong>book income</strong> (QBO) to <strong>taxable income</strong>, on the real lines of the
+          Schedule M-1 — each adjustment tracked. The last line is compared with the filed tax return. Hand it to your
+          accountant and check line by line.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="mr-1 text-slate-400">Ano:</span>
+        <span className="mr-1 text-slate-400">Year:</span>
         {years.map((y) => (
           <Link key={y} href={`/m1-bridge?year=${y}`} className={`rounded-full px-3 py-1 ${y === year ? "bg-[#1f3a5f] text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>{y}</Link>
         ))}
@@ -44,10 +44,10 @@ export default async function M1BridgePage({ searchParams }: { searchParams: Pro
                 <span className="rounded-full bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">{e.entityType}</span>
               </div>
               <div className="flex items-center gap-2 text-[11px]">
-                <span className="tabular-nums text-slate-500">base {M(e.taxable)}</span>
-                {e.matches === true && <span className="rounded-full bg-[#8DC63F]/20 px-2 py-0.5 text-[#3B6D11]">confere com IR</span>}
-                {e.matches === false && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">diverge {e.diff != null ? M(e.diff) : ""}</span>}
-                {e.matches == null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">sem IR</span>}
+                <span className="tabular-nums text-slate-500">taxable {M(e.taxable)}</span>
+                {e.matches === true && <span className="rounded-full bg-[#8DC63F]/20 px-2 py-0.5 text-[#3B6D11]">matches tax return</span>}
+                {e.matches === false && <span className="rounded-full bg-rose-100 px-2 py-0.5 text-rose-700">diverges {e.diff != null ? M(e.diff) : ""}</span>}
+                {e.matches == null && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500">no tax return</span>}
               </div>
             </summary>
             <div className="border-t border-slate-100 px-4 py-3">
@@ -68,7 +68,7 @@ export default async function M1BridgePage({ searchParams }: { searchParams: Pro
                   {e.irTaxable != null && (
                     <tr className="text-slate-500">
                       <td></td>
-                      <td className="py-1.5 text-[12px]">IR declarado ({FIG[e.irKey ?? ""] ?? e.irKey})</td>
+                      <td className="py-1.5 text-[12px]">Filed tax return ({FIG[e.irKey ?? ""] ?? e.irKey})</td>
                       <td className="py-1.5 text-right tabular-nums text-[12px]">{M(e.irTaxable)}</td>
                     </tr>
                   )}
@@ -76,9 +76,9 @@ export default async function M1BridgePage({ searchParams }: { searchParams: Pro
               </table>
               {e.matches === false && (
                 <p className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-[11px] text-rose-800">
-                  A base computada diverge do IR em {e.diff != null ? M(Math.abs(e.diff)) : ""} — conferir na{" "}
-                  <Link href={`/tax-audit?year=${year}`} className="underline">Conferência IR</Link> e na{" "}
-                  <Link href={`/companies/${e.companyId}/year/${year}`} className="underline">empresa</Link>.
+                  The computed taxable income diverges from the tax return by {e.diff != null ? M(Math.abs(e.diff)) : ""} — review it in the{" "}
+                  <Link href={`/tax-audit?year=${year}`} className="underline">Tax return review</Link> and in the{" "}
+                  <Link href={`/companies/${e.companyId}/year/${year}`} className="underline">company</Link>.
                 </p>
               )}
             </div>
@@ -87,9 +87,9 @@ export default async function M1BridgePage({ searchParams }: { searchParams: Pro
       </div>
 
       <p className="text-[11px] text-slate-400">
-        Reconstrução de controle a partir do QBO — as linhas do M-1 real do contador podem diferir (classificação,
-        itens não capturados). O objetivo é a <strong>ponte auditável</strong>: cada dólar do lucro por livro até a
-        base tributável, para bater com a declaração. Confirmar com o contador.
+        Control reconstruction from QBO — the lines on the accountant&apos;s actual M-1 may differ (classification,
+        items not captured). The goal is the <strong>auditable bridge</strong>: every dollar from book income to
+        taxable income, to match the filed return. Confirm with your accountant.
       </p>
     </div>
   );

@@ -4,9 +4,9 @@ import { ACCOUNT_SPECS, INTERCOMPANY_NOTE, M1_LABEL, type SpecAction } from "@/l
 export const dynamic = "force-dynamic";
 
 const ACTION: Record<SpecAction, { label: string; cls: string }> = {
-  criar: { label: "criar", cls: "bg-emerald-100 text-emerald-700" },
-  padronizar: { label: "padronizar", cls: "bg-sky-100 text-sky-700" },
-  separar: { label: "separar", cls: "bg-amber-100 text-amber-700" },
+  criar: { label: "create", cls: "bg-emerald-100 text-emerald-700" },
+  padronizar: { label: "standardize", cls: "bg-sky-100 text-sky-700" },
+  separar: { label: "split", cls: "bg-amber-100 text-amber-700" },
 };
 
 export default function CoaPage() {
@@ -14,25 +14,25 @@ export default function CoaPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-800">Contas a padronizar no QBO</h1>
+          <h1 className="text-2xl font-semibold text-slate-800">Accounts to standardize in QBO</h1>
           <p className="max-w-3xl text-sm text-slate-500">
-            Você usa o plano <strong>nativo do QBO</strong> — e pode continuar. O app lê os{" "}
-            <strong>totais de seção</strong> (Total Income/COGS/Expenses/Net Income; Assets/Liabilities/Equity),
-            que já existem. Só estas <strong>{ACCOUNT_SPECS.length} contas</strong> precisam de ação, porque o{" "}
-            <strong>nome ou a separação muda o cálculo do imposto</strong>.
+            You use the <strong>native QBO chart</strong> — and you can keep it. The app reads the{" "}
+            <strong>section totals</strong> (Total Income/COGS/Expenses/Net Income; Assets/Liabilities/Equity),
+            which already exist. Only these <strong>{ACCOUNT_SPECS.length} accounts</strong> need action, because the{" "}
+            <strong>name or the split changes the tax calculation</strong>.
           </p>
         </div>
         <Link href="/coa/guides" className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm text-white hover:bg-[#16304f]">
-          Ver guias de lançamento →
+          See posting guides →
         </Link>
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-3 text-xs text-slate-600">
-        <div className="font-medium text-slate-700">O que o app faz com suas contas filhas (sub-contas)</div>
+        <div className="font-medium text-slate-700">What the app does with your sub-accounts</div>
         <p className="mt-1">
-          Pode manter todas — o app soma as <strong>folhas</strong> (filhas) e ignora o total do pai (não duplica),
-          e a filha <strong>herda o conceito do pai</strong> (uma sub-conta dentro de “Meals” conta como refeição
-          mesmo sem “meal” no nome). Contas numeradas por empresa (bancos, “0417 (Office)”) são reais — não unificar.
+          You can keep them all — the app sums the <strong>leaves</strong> (sub-accounts) and ignores the parent total (no double-counting),
+          and the child <strong>inherits the parent&apos;s concept</strong> (a sub-account within “Meals” counts as meals
+          even without “meal” in the name). Accounts numbered by company (banks, “0417 (Office)”) are real — don&apos;t unify them.
         </p>
       </div>
 
@@ -40,10 +40,10 @@ export default function CoaPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-[11px] uppercase tracking-wide text-slate-400">
             <tr>
-              <th className="px-4 py-2 font-medium">Ação</th>
-              <th className="px-3 py-2 font-medium">Conta padronizada</th>
-              <th className="px-3 py-2 font-medium">Hoje</th>
-              <th className="px-3 py-2 font-medium">Tratamento fiscal</th>
+              <th className="px-4 py-2 font-medium">Action</th>
+              <th className="px-3 py-2 font-medium">Standardized account</th>
+              <th className="px-3 py-2 font-medium">Today</th>
+              <th className="px-3 py-2 font-medium">Tax treatment</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -68,16 +68,16 @@ export default function CoaPage() {
       </div>
 
       <div className="rounded-xl border border-sky-200 bg-sky-50/50 px-4 py-3 text-xs text-sky-900">
-        <div className="font-medium">Intercompany — nomear a coligada igual em todas</div>
+        <div className="font-medium">Intercompany — name the affiliate the same across all</div>
         <p className="mt-1">{INTERCOMPANY_NOTE.problem}</p>
         <p className="mt-1">{INTERCOMPANY_NOTE.rule}</p>
       </div>
 
       <p className="text-[11px] text-slate-400">
-        <span className="rounded bg-emerald-100 px-1 text-emerald-700">criar</span> = conta nova ·{" "}
-        <span className="rounded bg-sky-100 px-1 text-sky-700">padronizar</span> = unificar as grafias num nome só ·{" "}
-        <span className="rounded bg-amber-100 px-1 text-amber-700">separar</span> = quebrar uma conta que junta dois
-        tratamentos. Feito isso, o app lê e coloca cada valor no lugar certo — sem regex adivinhando.
+        <span className="rounded bg-emerald-100 px-1 text-emerald-700">create</span> = new account ·{" "}
+        <span className="rounded bg-sky-100 px-1 text-sky-700">standardize</span> = unify the spellings into a single name ·{" "}
+        <span className="rounded bg-amber-100 px-1 text-amber-700">split</span> = break up an account that mixes two
+        treatments. Once that&apos;s done, the app reads and places each value in the right spot — no regex guessing.
       </p>
     </div>
   );

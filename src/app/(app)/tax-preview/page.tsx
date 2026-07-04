@@ -32,15 +32,15 @@ export default async function TaxPreviewPage({
       <div>
         <h1 className="text-2xl font-semibold text-slate-800">Tax preview</h1>
         <p className="text-sm text-slate-500">
-          IR estimado por entidade a partir do QBO: lucro líquido + despesas não dedutíveis ± ajuste
-          de depreciação (livro → MACRS) + K-1 recebido = base tributável → imposto. C-corp 21%
-          federal; pass-through repassa via K-1; PF nas faixas federais (MFJ 2024, só federal).
-          Estimativa de controle — confirme com o contador.
+          Estimated tax return per entity from QBO: net income + non-deductible expenses ± depreciation
+          adjustment (book → MACRS) + K-1 received = taxable income → tax. C-corp 21%
+          federal; pass-through passes through via K-1; individuals at the federal brackets (MFJ 2024, federal only).
+          Control estimate — confirm with your accountant.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="mr-1 text-slate-400">Ano:</span>
+        <span className="mr-1 text-slate-400">Year:</span>
         {years.map((y) => (
           <Link
             key={y}
@@ -54,59 +54,59 @@ export default async function TaxPreviewPage({
           href={`/api/export/tax-preview?year=${year}`}
           className="ml-auto rounded-lg border border-slate-200 px-3 py-1 text-slate-600 hover:bg-slate-50"
         >
-          ↓ Exportar CSV
+          ↓ Export CSV
         </a>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border-2 border-[#8DC63F]/60 bg-[#8DC63F]/[0.08] p-4">
-          <div className="text-xs text-slate-600">IR estimado do grupo ({year})</div>
+          <div className="text-xs text-slate-600">Estimated group tax return ({year})</div>
           <div className="mt-1 text-2xl font-semibold tabular-nums text-[#3B6D11]">{m(data.groupTax)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">IR de C-corps (21%)</div>
+          <div className="text-xs text-slate-500">C-corp tax (21%)</div>
           <div className="mt-1 text-xl font-semibold tabular-nums text-slate-800">{m(data.corpTax)}</div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-500">IR de pessoas físicas (1040)</div>
+          <div className="text-xs text-slate-500">Individual tax (1040)</div>
           <div className="mt-1 text-xl font-semibold tabular-nums text-slate-800">{m(data.pfTax)}</div>
         </div>
       </div>
 
       {data.missingPnl.length > 0 && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2 text-xs text-amber-800">
-          Sem P&L de {year} importado para: {data.missingPnl.join(", ")} — essas entidades entram com
-          lucro $0. Importe o P&L para o cálculo ficar completo.
+          No P&L for {year} imported for: {data.missingPnl.join(", ")} — these entities enter with
+          $0 income. Import the P&L for the calculation to be complete.
         </p>
       )}
 
       {data.excludedNonUsd.length > 0 && (
         <p className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs text-slate-600">
-          Fora deste cálculo (imposto federal US, só USD): {data.excludedNonUsd.join(", ")} — entidades
-          em moeda estrangeira são tributadas no próprio país (PT/BR), não a 21% federal.
+          Outside this calculation (US federal tax, USD only): {data.excludedNonUsd.join(", ")} — entities
+          in foreign currency are taxed in their own country (PT/BR), not at 21% federal.
         </p>
       )}
 
       {data.excludedClosed.length > 0 && (
         <p className="rounded-lg border border-slate-300 bg-slate-50 px-4 py-2 text-xs text-slate-600">
-          Encerradas (IR final já declarado em ano anterior) — fora do cálculo: {data.excludedClosed.join(", ")}.
+          Closed (final tax return already filed in a prior year) — outside the calculation: {data.excludedClosed.join(", ")}.
         </p>
       )}
 
       <TaxPreviewTable rows={data.rows} year={year} confidence={confidence} />
 
       <p className="text-xs text-slate-400">
-        Não dedutíveis detectados do P&L: 50% de refeições, multas/penalidades, seguro de vida,
-        imposto federal, contribuições políticas/clube. Imposto estadual: o add-back do ano vem do
-        controle em <strong>Florida → Apuração</strong> (principal + multa do que foi pago no ano;
-        os juros são dedutíveis p/ C-corp e ficam de fora). Depreciação: a base{" "}
-        <strong>confia no livro</strong> (P&L) — a depreciação já aplicada permanece, sem recálculo;
-        quando livro e MACRS divergem, isso vira só uma <strong>flag</strong> com o catch-up acumulado
-        (ver Conferência), não imposto. A MACRS do app só entra na base quando o livro{" "}
-        <strong>não tem</strong> depreciação no ano (preenche a lacuna como dedução). K-1 repassa a base tributável
-        das pass-through pela % de participação (árvore de ownership). PF: faixas federais MFJ 2024
-        com dedução padrão, só federal, sem créditos — teto aproximado. Confirme com o contador
-        (estado, créditos, limites, Form 3115).
+        Non-deductibles detected from the P&L: 50% of meals, fines/penalties, life insurance,
+        federal tax, political/club contributions. State tax: the year&apos;s add-back comes from the
+        control in <strong>Florida → Assessment</strong> (principal + penalty of what was paid in the year;
+        interest is deductible for C-corp and stays out). Depreciation: the base{" "}
+        <strong>trusts the book</strong> (P&L) — the depreciation already applied stays, no recalculation;
+        when book and MACRS diverge, that becomes just a <strong>flag</strong> with the accumulated catch-up
+        (see Review), not tax. The app&apos;s MACRS only enters the base when the book{" "}
+        <strong>has no</strong> depreciation in the year (fills the gap as a deduction). K-1 passes through the taxable income
+        of the pass-throughs by ownership % (ownership tree). Individuals: federal MFJ 2024 brackets
+        with the standard deduction, federal only, no credits — approximate ceiling. Confirm with your accountant
+        (state, credits, limits, Form 3115).
       </p>
     </div>
   );

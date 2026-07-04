@@ -62,14 +62,14 @@ export async function buildTaxSimulation(year: number): Promise<TaxSimulation> {
     scenarios.push({
       id: `election-${r.id}`,
       lever: "election",
-      title: `${r.name}: eleger S-corp?`,
+      title: `${r.name}: elect S-corp?`,
       entity: r.name,
       currentTax: cTotal,
       altTax: sTotal,
       saving,
-      detail: `Como C-corp com distribuição integral: ${corpTax.toLocaleString("en-US")} de imposto corporativo + dividendo sobre ${Math.max(0, afterCorp).toLocaleString("en-US")} = ${cTotal.toLocaleString("en-US")}. Como pass-through (S): a base ${r.taxable.toLocaleString("en-US")} passa aos donos ≈ ${sTotal.toLocaleString("en-US")}.`,
-      assumptions: [`Distribuição integral do lucro`, `Dividendo qualificado a ${Math.round(DIV_RATE * 100)}%`, `Pass-through na alíquota de ${yr.passPct}%`],
-      caveat: "A dupla tributação da C-corp só morde ao DISTRIBUIR — retendo, a C-corp difere a 2ª camada. Eleição S tem regras de elegibilidade (≤100 sócios PF/US, uma classe de ação) e efeitos não-fiscais. Confirmar com o contador.",
+      detail: `As a C-corp with full distribution: ${corpTax.toLocaleString("en-US")} of corporate tax + dividend on ${Math.max(0, afterCorp).toLocaleString("en-US")} = ${cTotal.toLocaleString("en-US")}. As a pass-through (S): the base ${r.taxable.toLocaleString("en-US")} passes to owners ≈ ${sTotal.toLocaleString("en-US")}.`,
+      assumptions: [`Full distribution of profit`, `Qualified dividend at ${Math.round(DIV_RATE * 100)}%`, `Pass-through at a rate of ${yr.passPct}%`],
+      caveat: "The C-corp's double taxation only bites when DISTRIBUTING — by retaining, the C-corp defers the 2nd layer. An S election has eligibility rules (≤100 individual/US owners, one class of stock) and non-tax effects. Confirm with your accountant.",
     });
   }
 

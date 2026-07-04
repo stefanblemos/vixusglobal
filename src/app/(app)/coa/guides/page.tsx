@@ -7,13 +7,13 @@ export default function PostingGuidesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/coa" className="text-xs text-sky-700 hover:underline">← Plano de contas</Link>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-800">Guias de lançamento</h1>
+        <Link href="/coa" className="text-xs text-sky-700 hover:underline">← Chart of accounts</Link>
+        <h1 className="mt-1 text-2xl font-semibold text-slate-800">Posting guides</h1>
         <p className="max-w-3xl text-sm text-slate-500">
-          Como lançar cada operação no QBO usando o plano canônico — para o app ler certo e o cálculo
-          do imposto sair exato, sem interpretação do contador nem do sistema. Cada guia mostra o{" "}
-          <span className="rounded bg-emerald-50 px-1 text-emerald-700">débito</span> /{" "}
-          <span className="rounded bg-sky-50 px-1 text-sky-700">crédito</span> e o erro comum que evita.
+          How to post each transaction in QBO using the canonical chart — so the app reads it right and the tax
+          calculation comes out exact, without interpretation by the accountant or the system. Each guide shows the{" "}
+          <span className="rounded bg-emerald-50 px-1 text-emerald-700">debit</span> /{" "}
+          <span className="rounded bg-sky-50 px-1 text-sky-700">credit</span> and the common mistake it avoids.
         </p>
       </div>
 
@@ -43,7 +43,7 @@ export default function PostingGuidesPage() {
 
               {g.wrong && (
                 <div className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-800">
-                  <span className="font-medium">✗ Erro comum:</span> {g.wrong}
+                  <span className="font-medium">✗ Common mistake:</span> {g.wrong}
                 </div>
               )}
               {g.note && <p className="mt-2 text-[11px] text-slate-500">{g.note}</p>}
@@ -53,9 +53,9 @@ export default function PostingGuidesPage() {
       </div>
 
       <p className="text-[11px] text-slate-400">
-        Convenção contábil: <strong>D</strong> (débito) aumenta ativo/despesa; <strong>C</strong> (crédito)
-        aumenta passivo/patrimônio/receita. Na dúvida, confirme com o contador — estes guias existem para
-        alinhar todos no mesmo padrão.
+        Accounting convention: <strong>D</strong> (debit) increases assets/expenses; <strong>C</strong> (credit)
+        increases liabilities/equity/revenue. When in doubt, confirm with your accountant — these guides exist to
+        align everyone on the same standard.
       </p>
     </div>
   );

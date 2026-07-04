@@ -137,14 +137,14 @@ export async function buildConsolidation(year: number): Promise<Consolidation> {
     if (r.status === "RECONCILED") {
       const amt = Math.round(((r.creditorAmount ?? r.debtorAmount ?? 0)) * 100) / 100;
       intercompanyEliminated += amt;
-      eliminations.push({ creditor: nameOf(r.creditorId), debtor: nameOf(r.debtorId), amount: amt, status: "confirmado", note: "dívida intercompany — os dois lados batem" });
+      eliminations.push({ creditor: nameOf(r.creditorId), debtor: nameOf(r.debtorId), amount: amt, status: "confirmado", note: "intercompany debt — both sides match" });
     } else {
       flaggedCount++;
       eliminations.push({
         creditor: nameOf(r.creditorId), debtor: nameOf(r.debtorId),
         amount: Math.round(((r.creditorAmount ?? r.debtorAmount ?? 0)) * 100) / 100,
         status: "a-conferir",
-        note: r.status === "MISMATCH" ? `os dois lados divergem (Δ ${Math.round(r.diff).toLocaleString("en-US")})` : "só um lado reportou",
+        note: r.status === "MISMATCH" ? `both sides diverge (Δ ${Math.round(r.diff).toLocaleString("en-US")})` : "only one side reported",
       });
     }
   }

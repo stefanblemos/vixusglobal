@@ -34,22 +34,22 @@ export async function buildDigest(year: number): Promise<Digest> {
     const tax = r.metrics.find((m) => m.key === "taxable");
     if (r.severity === "diverge" && tax && tax.status === "diverge" && tax.diff != null) {
       alerts.push({
-        severity: "alta", category: "Conferência IR",
-        title: `${r.name}: base tributável diverge do IR`,
-        detail: `Preview ${M(tax.preview ?? 0)} vs IR ${M(tax.ir ?? 0)} (Δ ${M(tax.diff)}).`,
+        severity: "alta", category: "Tax return review",
+        title: `${r.name}: taxable income diverges from the tax return`,
+        detail: `Preview ${M(tax.preview ?? 0)} vs tax return ${M(tax.ir ?? 0)} (Δ ${M(tax.diff)}).`,
         href: `/tax-audit?year=${year}`,
       });
     }
     // flags (estadual sem cadastro, depreciação sem ativo, etc.)
     for (const f of r.flags) {
-      alerts.push({ severity: "media", category: "Conferência IR", title: `${r.name}`, detail: f, href: `/tax-audit?year=${year}` });
+      alerts.push({ severity: "media", category: "Tax return review", title: `${r.name}`, detail: f, href: `/tax-audit?year=${year}` });
     }
     // tem QBO mas não tem IR do ano para conferir
     if (r.severity === "no-ir") {
       alerts.push({
-        severity: "media", category: "IR faltando",
-        title: `${r.name}: sem IR de ${year}`,
-        detail: `Há QBO mas não há a declaração para conferir. Subir o IR destrava a conferência e a base distribuível.`,
+        severity: "media", category: "Tax return missing",
+        title: `${r.name}: no tax return for ${year}`,
+        detail: `There's QBO but no return to review. Uploading the tax return unlocks the review and the distributable base.`,
         href: `/tax`,
       });
     }
@@ -65,9 +65,9 @@ export async function buildDigest(year: number): Promise<Digest> {
       if (i.status !== "PENDING") continue;
       const due = new Date(i.dueDate).getTime();
       if (i.overdue && due >= staleCut) {
-        alerts.push({ severity: "alta", category: "Obrigação", title: `${i.companyName}: ${i.name} VENCIDA`, detail: `Venceu em ${i.dueDate} (${i.authority}).`, href: `/obligations?year=${year}` });
+        alerts.push({ severity: "alta", category: "Obligation", title: `${i.companyName}: ${i.name} OVERDUE`, detail: `Was due on ${i.dueDate} (${i.authority}).`, href: `/obligations?year=${year}` });
       } else if (!i.overdue && due <= soon) {
-        alerts.push({ severity: "media", category: "Obrigação", title: `${i.companyName}: ${i.name}`, detail: `Vence em ${i.dueDate} (${i.authority}).`, href: `/obligations?year=${year}` });
+        alerts.push({ severity: "media", category: "Obligation", title: `${i.companyName}: ${i.name}`, detail: `Due on ${i.dueDate} (${i.authority}).`, href: `/obligations?year=${year}` });
       }
     }
   }
