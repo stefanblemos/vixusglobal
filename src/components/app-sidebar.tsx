@@ -42,70 +42,94 @@ import { logout } from "@/lib/actions/auth";
 type Item = { href: string; label: string; icon: LucideIcon };
 type Entry =
   | ({ type: "link" } & Item)
-  | { type: "group"; label: string; icon: LucideIcon; items: Item[] };
+  | { type: "group"; label: string; icon: LucideIcon; items: Item[]; defaultOpen?: boolean };
 
 // Menu agrupado por assunto. Itens soltos (Overview, Documents) ficam no topo/fim;
 // os demais entram em grupos colapsáveis.
 const NAV: Entry[] = [
   { type: "link", href: "/", label: "Overview", icon: LayoutDashboard },
-  { type: "link", href: "/digest", label: "Alertas", icon: Bell },
+  { type: "link", href: "/digest", label: "Alerts", icon: Bell },
   {
     type: "group",
-    label: "Entities",
+    label: "Group",
+    icon: Layers,
+    defaultOpen: true,
+    items: [
+      { href: "/consolidation", label: "Consolidation", icon: Layers },
+      { href: "/faturamento", label: "Revenue & profit", icon: TrendingUp },
+      { href: "/exposure", label: "Exposure", icon: Scale },
+      { href: "/org-chart", label: "Org chart", icon: Network },
+    ],
+  },
+  {
+    type: "group",
+    label: "Taxes",
+    icon: ReceiptText,
+    defaultOpen: true,
+    items: [
+      { href: "/tax-preview", label: "Tax preview", icon: Calculator },
+      { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
+      { href: "/florida", label: "Florida tax", icon: Landmark },
+      { href: "/tax-simulator", label: "Tax analyzer", icon: Lightbulb },
+      { href: "/distributable", label: "Distributable basis", icon: HandCoins },
+      { href: "/1099", label: "1099 worklist", icon: FileText },
+    ],
+  },
+  {
+    type: "group",
+    label: "Verification",
+    icon: ShieldCheck,
+    defaultOpen: true,
+    items: [
+      { href: "/tax-audit", label: "Return check", icon: ShieldCheck },
+      { href: "/m1-bridge", label: "M-1 bridge", icon: GitCompare },
+      { href: "/gl-check", label: "GL check", icon: GitCompare },
+      { href: "/reports", label: "Intercompany", icon: PieChart },
+      { href: "/audit", label: "Ledger anomalies", icon: Activity },
+    ],
+  },
+  {
+    type: "group",
+    label: "Companies",
     icon: Building2,
     items: [
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/parties", label: "Owners", icon: Users },
-      { href: "/org-chart", label: "Org chart", icon: Network },
-      { href: "/assets", label: "Assets & depreciation", icon: Boxes },
+      { href: "/assets", label: "Assets", icon: Boxes },
     ],
   },
   {
     type: "group",
-    label: "Finance",
-    icon: ArrowLeftRight,
+    label: "Books",
+    icon: BookOpen,
     items: [
-      { href: "/loans", label: "Loans", icon: ArrowLeftRight },
       { href: "/bank", label: "Bank", icon: Landmark },
       { href: "/ledger", label: "Ledger", icon: BookOpen },
-      { href: "/faturamento", label: "Revenue & profit", icon: TrendingUp },
-      { href: "/consolidation", label: "Consolidado do grupo", icon: Layers },
-      { href: "/exposure", label: "Exposure", icon: Scale },
+      { href: "/loans", label: "Loans", icon: ArrowLeftRight },
     ],
   },
   {
     type: "group",
-    label: "Tax",
-    icon: ReceiptText,
-    items: [
-      { href: "/tax", label: "Tax", icon: ReceiptText },
-      { href: "/tax-preview", label: "Tax preview", icon: Calculator },
-      { href: "/tax-audit", label: "Conferência IR", icon: ShieldCheck },
-      { href: "/m1-bridge", label: "Ponte M-1", icon: GitCompare },
-      { href: "/1099", label: "1099 worklist", icon: FileText },
-      { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
-      { href: "/tax-simulator", label: "Simulador (análise)", icon: Lightbulb },
-      { href: "/florida", label: "Florida tax", icon: Landmark },
-      { href: "/distributable", label: "Base distribuível", icon: HandCoins },
-      { href: "/tax-settings", label: "Tax settings", icon: Settings },
-    ],
-  },
-  {
-    type: "group",
-    label: "Audit & Review",
-    icon: ListChecks,
+    label: "Compliance",
+    icon: CalendarClock,
     items: [
       { href: "/closing", label: "Closing", icon: ClipboardCheck },
       { href: "/closing-sequence", label: "Closing sequence", icon: ListChecks },
       { href: "/obligations", label: "Obligations", icon: CalendarClock },
       { href: "/review", label: "Review", icon: ListChecks },
-      { href: "/audit", label: "Audit", icon: Activity },
-      { href: "/gl-check", label: "GL check", icon: GitCompare },
-      { href: "/reports", label: "Reports", icon: PieChart },
     ],
   },
-  { type: "link", href: "/coa", label: "Plano de contas", icon: ClipboardList },
-  { type: "link", href: "/import", label: "Uploads", icon: FolderOpen },
+  {
+    type: "group",
+    label: "Setup",
+    icon: Settings,
+    items: [
+      { href: "/tax", label: "Tax returns", icon: ReceiptText },
+      { href: "/coa", label: "Chart of accounts", icon: ClipboardList },
+      { href: "/tax-settings", label: "Tax settings", icon: Settings },
+      { href: "/import", label: "Uploads", icon: FolderOpen },
+    ],
+  },
 ];
 
 export function AppSidebar({ email, role }: { email?: string | null; role?: string | null }) {
@@ -118,7 +142,14 @@ export function AppSidebar({ email, role }: { email?: string | null; role?: stri
       e.type === "group" && e.items.some((i) => isActive(i.href)),
   )?.label;
 
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [open, setOpen] = useState<Set<string>>(
+    () =>
+      new Set(
+        NAV.filter(
+          (e): e is Extract<Entry, { type: "group" }> => e.type === "group" && !!e.defaultOpen,
+        ).map((e) => e.label),
+      ),
+  );
   useEffect(() => {
     if (activeGroup) setOpen((prev) => (prev.has(activeGroup) ? prev : new Set(prev).add(activeGroup)));
   }, [activeGroup]);
