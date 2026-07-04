@@ -32,6 +32,7 @@ import {
   ClipboardList,
   Layers,
   Lightbulb,
+  Bell,
   LogOut,
   ChevronDown,
   type LucideIcon,
@@ -47,6 +48,7 @@ type Entry =
 // os demais entram em grupos colapsáveis.
 const NAV: Entry[] = [
   { type: "link", href: "/", label: "Overview", icon: LayoutDashboard },
+  { type: "link", href: "/digest", label: "Alertas", icon: Bell },
   {
     type: "group",
     label: "Entities",
