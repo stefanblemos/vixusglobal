@@ -46,7 +46,7 @@ const withinTol = (a: number, b: number) => Math.abs(a - b) <= Math.max(1000, 0.
 // "taxable income" (1120 linha 30); pass-through não tem taxable income no nível — o que passa no
 // K-1 é o "ordinary business income" (1065/1120-S). Sem essas, cai no lucro por livro (NET_INCOME).
 // (Antes só se olhava TAXABLE_INCOME → toda pass-through ficava sem conferência, mesmo tendo o dado.)
-function baselineFig(entityType: string, figs: IrFigure[]): { key: string; value: number } | null {
+export function baselineFig(entityType: string, figs: IrFigure[]): { key: string; value: number } | null {
   const get = (k: string) => {
     const f = figs.find((f) => f.key === k && f.value != null);
     return f ? { key: k, value: Number(f.value) } : null;

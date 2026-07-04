@@ -79,6 +79,7 @@ const NAV: Entry[] = [
       { href: "/tax", label: "Tax", icon: ReceiptText },
       { href: "/tax-preview", label: "Tax preview", icon: Calculator },
       { href: "/tax-audit", label: "Conferência IR", icon: ShieldCheck },
+      { href: "/m1-bridge", label: "Ponte M-1", icon: GitCompare },
       { href: "/1099", label: "1099 worklist", icon: FileText },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
       { href: "/tax-simulator", label: "Simulador (análise)", icon: Lightbulb },
