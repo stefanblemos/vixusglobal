@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildDigest, type Severity } from "@/lib/digest/build";
 
@@ -12,7 +13,7 @@ const SEV: Record<Severity, { label: string; dot: string; cls: string }> = {
 export default async function DigestPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const { year: yParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
-  const wanted = yParam && /^\d{4}$/.test(yParam) ? Number(yParam) : null;
+  const wanted = await resolveWanted(yParam);
 
   const probe = await buildDigest(wanted ?? currentYear - 1);
   const years = probe.years.length ? probe.years : [currentYear - 1];

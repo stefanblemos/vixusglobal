@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
@@ -57,7 +58,7 @@ export default async function Form1099Page({
     );
   }
 
-  const wantedYear = yearParam && /^\d{4}$/.test(yearParam) ? Number(yearParam) : undefined;
+  const wantedYear = (await resolveWanted(yearParam)) ?? undefined;
   const w = await build1099Worklist(company, wantedYear);
   const totalNec = w.payees.reduce((s, p) => s + p.total, 0);
 

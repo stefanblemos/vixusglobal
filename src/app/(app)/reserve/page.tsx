@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import {
   buildReserveByEntity,
@@ -29,7 +30,8 @@ export default async function ReservePage({
   const { year: yearRaw, tab: tabRaw, q: qRaw } = await searchParams;
   const years = await reserveYears();
   const fallbackYear = years[0] ?? new Date().getFullYear();
-  const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallbackYear;
+  const wanted = await resolveWanted(yearRaw);
+  const year = wanted && years.includes(wanted) ? wanted : fallbackYear;
   const quarter = [1, 2, 3, 4].includes(Number(qRaw)) ? Number(qRaw) : Math.ceil((new Date().getUTCMonth() + 1) / 3);
   const TABS = [
     { key: "annual", label: "By entity" },

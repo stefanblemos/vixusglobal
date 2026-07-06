@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildM1Bridge } from "@/lib/tax/m1-bridge";
 
@@ -9,7 +10,7 @@ const FIG: Record<string, string> = { TAXABLE_INCOME: "taxable income", ORDINARY
 export default async function M1BridgePage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const { year: yParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
-  const wanted = yParam && /^\d{4}$/.test(yParam) ? Number(yParam) : null;
+  const wanted = await resolveWanted(yParam);
 
   const probe = await buildM1Bridge(wanted ?? currentYear - 1);
   const years = probe.years.length ? probe.years : [currentYear - 1];

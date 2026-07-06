@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildTaxPreview } from "@/lib/tax/preview";
 import { irTaxableConfidence } from "@/lib/tax/audit-vs-ir";
@@ -15,7 +16,7 @@ export default async function TaxPreviewPage({
 }) {
   const { year: yParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
-  const wanted = yParam && /^\d{4}$/.test(yParam) ? Number(yParam) : null;
+  const wanted = await resolveWanted(yParam);
 
   const probe = await buildTaxPreview(wanted ?? currentYear - 1);
   const years = probe.years.length ? probe.years : [currentYear - 1];

@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildOrgChart } from "@/lib/org/chart";
 import { OrgChartSvg } from "./org-chart-svg";
@@ -11,7 +12,7 @@ export default async function OrgChartPage({
 }) {
   const { year: yParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
-  const wanted = yParam && /^\d{4}$/.test(yParam) ? Number(yParam) : null;
+  const wanted = await resolveWanted(yParam);
 
   const probe = await buildOrgChart(wanted ?? currentYear - 1);
   const years = probe.years.length ? probe.years : [currentYear - 1];

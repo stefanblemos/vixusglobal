@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildDistributableReport } from "@/lib/tax/distributable";
 import { reserveYears } from "@/lib/tax/reserve";
@@ -14,7 +15,8 @@ export default async function DistributablePage({
   const { year: yearRaw } = await searchParams;
   const years = await reserveYears();
   const fallback = years[0] ?? new Date().getFullYear();
-  const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallback;
+  const wanted = await resolveWanted(yearRaw);
+  const year = wanted && years.includes(wanted) ? wanted : fallback;
   const report = await buildDistributableReport(year);
 
   return (

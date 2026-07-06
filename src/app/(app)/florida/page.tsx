@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import {
   buildFloridaForecast,
@@ -25,7 +26,8 @@ export default async function FloridaPage({
   const { year: yearRaw, tab: tabRaw } = await searchParams;
   const years = await reserveYears();
   const fallback = years[0] ?? new Date().getFullYear();
-  const year = yearRaw && years.includes(Number(yearRaw)) ? Number(yearRaw) : fallback;
+  const wanted = await resolveWanted(yearRaw);
+  const year = wanted && years.includes(wanted) ? wanted : fallback;
   const tab: (typeof TABS)[number] = TABS.includes(tabRaw as (typeof TABS)[number])
     ? (tabRaw as (typeof TABS)[number])
     : "forecast";

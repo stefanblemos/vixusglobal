@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildConsolidation, buildConsolidationSeries } from "@/lib/consolidation/build";
 
@@ -9,7 +10,7 @@ const C = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", cur
 export default async function ConsolidationPage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const { year: yParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
-  const wanted = yParam && /^\d{4}$/.test(yParam) ? Number(yParam) : null;
+  const wanted = await resolveWanted(yParam);
 
   const probe = await buildConsolidation(wanted ?? currentYear - 1);
   const years = probe.years.length ? probe.years : [currentYear - 1];

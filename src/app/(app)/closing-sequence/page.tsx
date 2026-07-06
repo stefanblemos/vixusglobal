@@ -1,3 +1,4 @@
+import { resolveWanted } from "@/lib/year";
 import Link from "next/link";
 import { buildClosingSequence, type SeqNode } from "@/lib/closing/sequence";
 
@@ -16,7 +17,7 @@ export default async function ClosingSequencePage({
 }) {
   const { year: yParam } = await searchParams;
   const currentYear = new Date().getUTCFullYear();
-  const wanted = yParam && /^\d{4}$/.test(yParam) ? Number(yParam) : null;
+  const wanted = await resolveWanted(yParam);
 
   const probe = await buildClosingSequence(wanted ?? currentYear - 1);
   const years = probe.years.length ? probe.years : [currentYear - 1];

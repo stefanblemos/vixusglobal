@@ -38,6 +38,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
+import { GlobalYear } from "@/components/global-year";
 
 type Item = { href: string; label: string; icon: LucideIcon };
 type Entry =
@@ -132,7 +133,17 @@ const NAV: Entry[] = [
   },
 ];
 
-export function AppSidebar({ email, role }: { email?: string | null; role?: string | null }) {
+export function AppSidebar({
+  email,
+  role,
+  year,
+  years,
+}: {
+  email?: string | null;
+  role?: string | null;
+  year?: number;
+  years?: number[];
+}) {
   const pathname = usePathname();
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
@@ -182,6 +193,12 @@ export function AppSidebar({ email, role }: { email?: string | null; role?: stri
           unoptimized
         />
       </div>
+
+      {year != null && years && years.length > 0 && (
+        <div className="px-4 pb-2">
+          <GlobalYear year={year} years={years} />
+        </div>
+      )}
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
         {NAV.map((entry) => {
