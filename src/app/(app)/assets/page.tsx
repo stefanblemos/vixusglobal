@@ -110,10 +110,10 @@ export default async function AssetsPage({
   const usCompanies = formCompanies.filter((c) => c.jurisdiction === "US");
   // Opções do seletor de empresa: todas as US, marcando as que não têm ativos.
   const companyOptions = [
-    { value: "", label: "Todas as empresas" },
+    { value: "", label: "All companies" },
     ...usCompanies.map((c) => ({
       value: c.id,
-      label: c.legalName + (assetCompanies.some((a) => a.id === c.id) ? "" : " (sem ativos)"),
+      label: c.legalName + (assetCompanies.some((a) => a.id === c.id) ? "" : " (no assets)"),
     })),
   ];
   const hasPt = ptReg.companies.length > 0;
@@ -137,7 +137,7 @@ export default async function AssetsPage({
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Ano:</span>
+          <span className="text-slate-400">Year:</span>
           <YearSelect
             years={vsIr.years}
             value={year}
@@ -146,7 +146,7 @@ export default async function AssetsPage({
           />
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-slate-400">Empresa:</span>
+          <span className="text-slate-400">Company:</span>
           <CompanySelect
             options={companyOptions}
             value={company ?? ""}
@@ -158,13 +158,13 @@ export default async function AssetsPage({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <Stat label={`Depreciation ${year}`} value={formatMoney(reg.totalYearDep, "USD")} />
-        <Stat label={`Ativos em uso (${year})`} value={String(inUseCount)} />
+        <Stat label={`Assets in use (${year})`} value={String(inUseCount)} />
         <Stat label="Companies with assets" value={String(reg.byCompany.length)} />
       </div>
 
       {/* Abas */}
       <div className="flex gap-1 border-b border-slate-200 text-sm">
-        {([["ativos", "Ativos"], ["conferencia", "Conferência"], ...(hasPt ? [["portugal", "Portugal"]] : [])] as [string, string][]).map(([key, label]) => (
+        {([["ativos", "Assets"], ["conferencia", "Reconciliation"], ...(hasPt ? [["portugal", "Portugal"]] : [])] as [string, string][]).map(([key, label]) => (
           <Link
             key={key}
             href={`/assets?tab=${key}&year=${year}${company ? `&company=${company}` : ""}`}
@@ -219,21 +219,21 @@ export default async function AssetsPage({
 
       {tab === "conferencia" && vsRows.length > 0 && (
         <section className="space-y-2">
-          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return (acumulado)</h2>
+          <h2 className="text-lg font-medium text-slate-800">Computed vs tax return (accumulated)</h2>
           <p className="text-sm text-slate-500">
-            A MACRS <strong>acumulada</strong> contra a depreciação <strong>acumulada</strong> lançada
-            no IR (Form 4562), medidas <strong>até o último IR declarado</strong> de cada empresa — anos
-            seguintes ainda não declarados não entram (senão a diferença infla comparando projeção com
-            IR parado). A diferença é o <strong>catch-up real</strong> — o mesmo número da conferência
-            por ano abaixo.
+            The <strong>accumulated</strong> MACRS against the <strong>accumulated</strong> depreciation
+            reported on the tax return (Form 4562), measured <strong>up to the last filed return</strong>{" "}
+            of each company — later years not yet filed don&apos;t count (otherwise the difference
+            inflates by comparing a projection against a frozen return). The difference is the{" "}
+            <strong>real catch-up</strong> — the same number as the year-by-year reconciliation below.
           </p>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-sm">
               <thead className="bg-slate-50 text-left text-slate-500">
                 <tr>
                   <th className="px-4 py-2 font-medium">Company</th>
-                  <th className="px-3 py-2 text-right font-medium">Computed acum. (MACRS)</th>
-                  <th className="px-3 py-2 text-right font-medium">IR acum.</th>
+                  <th className="px-3 py-2 text-right font-medium">Computed accum. (MACRS)</th>
+                  <th className="px-3 py-2 text-right font-medium">Tax return accum.</th>
                   <th className="px-3 py-2 text-right font-medium">Catch-up</th>
                   <th className="px-3 py-2 text-center font-medium"></th>
                 </tr>
@@ -254,7 +254,7 @@ export default async function AssetsPage({
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-700">
                       {r.reportedAccum == null ? (
-                        <span className="text-xs text-amber-600">no IR figure</span>
+                        <span className="text-xs text-amber-600">no tax return figure</span>
                       ) : (
                         formatMoney(r.reportedAccum, "USD")
                       )}
@@ -270,7 +270,7 @@ export default async function AssetsPage({
                     >
                       {r.irWithoutAssets ? (
                         <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">
-                          IR sem ativos cadastrados
+                          tax return with no registered assets
                         </span>
                       ) : (
                         formatMoney(r.catchUp, "USD")
@@ -278,7 +278,7 @@ export default async function AssetsPage({
                     </td>
                     <td className="px-3 py-2 text-center">
                       {r.irWithoutAssets ? (
-                        <span title="O IR tem depreciação mas não há ativos cadastrados — cadastre os ativos. A Conferência mostra 0 (nada a conciliar)." className="text-amber-600">⚠</span>
+                        <span title="The tax return has depreciation but no assets are registered — register the assets. Reconciliation shows 0 (nothing to reconcile)." className="text-amber-600">⚠</span>
                       ) : r.ok ? (
                         <span className="text-green-600">✓</span>
                       ) : (
@@ -291,10 +291,10 @@ export default async function AssetsPage({
             </table>
           </div>
           <p className="text-xs text-slate-400">
-            ✓ alinhado (catch-up dentro de 1%). <strong>Catch-up</strong> = MACRS acumulada − IR
-            acumulado, <strong>até o último IR declarado</strong> de cada empresa (o que, no total,
-            ainda falta lançar dos anos já entregues). &ldquo;no IR figure&rdquo; = empresa sem nenhum
-            IR com linha de depreciação — conta como não lançado.
+            ✓ aligned (catch-up within 1%). <strong>Catch-up</strong> = accumulated MACRS − accumulated
+            tax return, <strong>up to the last filed return</strong> of each company (what, in total,
+            still needs to be reported from the years already filed). &ldquo;no tax return figure&rdquo;
+            = company with no tax return that has a depreciation line — counts as not reported.
           </p>
         </section>
       )}
@@ -329,8 +329,8 @@ export default async function AssetsPage({
           <DepReconcile data={reconData} assets={reconAssets} />
         ) : (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-500">
-            Selecione uma empresa no seletor acima para ver a conferência da depreciação ano a ano
-            (MACRS × IR) e o catch-up.
+            Select a company in the selector above to see the year-by-year depreciation reconciliation
+            (MACRS × tax return) and the catch-up.
           </p>
         )
       )}
@@ -338,10 +338,11 @@ export default async function AssetsPage({
       {tab === "portugal" && ptReg.companies.length > 0 && (
         <section className="space-y-3 border-t border-slate-200 pt-6">
           <div>
-            <h2 className="text-xl font-semibold text-slate-800">Portugal — depreciação</h2>
+            <h2 className="text-xl font-semibold text-slate-800">Portugal — depreciation</h2>
             <p className="text-sm text-slate-500">
-              Método das quotas constantes (Decreto Regulamentar 25/2009) — taxa anual fixa, na moeda
-              nativa da empresa. O terreno não deprecia; benfeitorias e IMT entram no custo.
+              Straight-line method (Decreto Regulamentar 25/2009) — fixed annual rate, in the
+              company&apos;s native currency. Land does not depreciate; improvements and IMT go into the
+              cost.
             </p>
           </div>
 
@@ -351,9 +352,9 @@ export default async function AssetsPage({
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
-                      <th className="px-4 py-2 font-medium">Empresa</th>
-                      <th className="px-4 py-2 text-right font-medium">Depreciação {year}</th>
-                      <th className="px-4 py-2 text-right font-medium">Acumulada até {year}</th>
+                      <th className="px-4 py-2 font-medium">Company</th>
+                      <th className="px-4 py-2 text-right font-medium">Depreciation {year}</th>
+                      <th className="px-4 py-2 text-right font-medium">Accumulated thru {year}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -376,15 +377,15 @@ export default async function AssetsPage({
                 <table className="w-full text-sm">
                   <thead className="bg-slate-50 text-left text-slate-500">
                     <tr>
-                      <th className="px-3 py-2 font-medium">Ativo</th>
-                      <th className="px-3 py-2 font-medium">Empresa</th>
-                      <th className="px-3 py-2 font-medium">Tipo</th>
-                      <th className="px-3 py-2 font-medium whitespace-nowrap">Entrada</th>
-                      <th className="px-3 py-2 text-right font-medium">Custo</th>
-                      <th className="px-3 py-2 text-right font-medium">Terreno</th>
+                      <th className="px-3 py-2 font-medium">Asset</th>
+                      <th className="px-3 py-2 font-medium">Company</th>
+                      <th className="px-3 py-2 font-medium">Type</th>
+                      <th className="px-3 py-2 font-medium whitespace-nowrap">In service</th>
+                      <th className="px-3 py-2 text-right font-medium">Cost</th>
+                      <th className="px-3 py-2 text-right font-medium">Land</th>
                       <th className="px-3 py-2 text-right font-medium">Base</th>
                       <th className="px-3 py-2 text-right font-medium">Dep {year}</th>
-                      <th className="px-3 py-2 text-right font-medium">Acum.</th>
+                      <th className="px-3 py-2 text-right font-medium">Accum.</th>
                       <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
@@ -395,7 +396,7 @@ export default async function AssetsPage({
                         <td className="px-3 py-2 text-slate-600">{a.companyName}</td>
                         <td className="px-3 py-2 text-xs text-slate-500">
                           {a.categoryLabel}
-                          <span className="text-slate-400"> · {a.ratePct}%/ano</span>
+                          <span className="text-slate-400"> · {a.ratePct}%/year</span>
                         </td>
                         <td className="px-3 py-2 whitespace-nowrap text-slate-600">
                           {a.acquisitionDate}
@@ -431,8 +432,8 @@ export default async function AssetsPage({
             </>
           ) : (
             <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-400">
-              Nenhum ativo PT cadastrado. Selecione uma empresa de Portugal no formulário acima para
-              cadastrar (ex.: imóvel) — depreciação por quotas constantes.
+              No PT assets registered. Select a Portugal company in the form above to register one
+              (e.g. real estate) — straight-line depreciation.
             </p>
           )}
         </section>

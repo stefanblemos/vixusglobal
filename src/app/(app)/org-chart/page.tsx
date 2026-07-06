@@ -21,16 +21,16 @@ export default async function OrgChartPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Organograma</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">Org chart</h1>
         <p className="text-sm text-slate-500">
-          Estrutura de donos × investidas (pass-through) com os percentuais, vigente no ano
-          escolhido. Donos finais (PF/holdings de topo) ficam em cima; a renda flui de baixo para
-          cima (via K-1). Trocar dono no cadastro para um ano se reflete aqui.
+          Structure of owners × holdings (pass-through) with the percentages, effective for the
+          selected year. Ultimate owners (individuals/top holdings) sit at the top; income flows from
+          the bottom up (via K-1). Changing an owner in the records for a year is reflected here.
         </p>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="mr-1 text-slate-400">Ano:</span>
+        <span className="mr-1 text-slate-400">Year:</span>
         {years.map((y) => (
           <Link
             key={y}
@@ -44,21 +44,21 @@ export default async function OrgChartPage({
 
       <div className="flex flex-wrap items-center gap-4 text-xs text-slate-500">
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded bg-[#1f3a5f]" /> Pessoa (PF · 1040)
+          <span className="inline-block h-3 w-3 rounded bg-[#1f3a5f]" /> Person (individual · 1040)
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded border border-slate-300 bg-white" /> Empresa pass-through
+          <span className="inline-block h-3 w-3 rounded border border-slate-300 bg-white" /> Pass-through company
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-white" /> C-corp (paga no nível)
+          <span className="inline-block h-3 w-3 rounded border-2 border-amber-500 bg-white" /> C-corp (pays at the entity level)
         </span>
-        <span className="text-slate-400">% na linha = participação do dono na investida.</span>
-        <span className="text-slate-400">Passe o mouse numa caixa para destacar a linhagem.</span>
+        <span className="text-slate-400">% on the line = the owner&apos;s stake in the holding.</span>
+        <span className="text-slate-400">Hover over a box to highlight the lineage.</span>
       </div>
 
       {chart.nodes.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          Nenhuma participação cadastrada vigente em {year}. Cadastre em{" "}
+          No ownership registered effective in {year}. Register it in{" "}
           <Link href="/parties" className="text-[#1f3a5f] hover:underline">
             Owners / Ownership
           </Link>
@@ -76,9 +76,9 @@ export default async function OrgChartPage({
       )}
 
       <p className="text-xs text-slate-400">
-        Dados do cadastro de Ownership (vigência por data). Se a soma dos donos de uma entidade for
-        menor que 100%, falta cadastrar participação — aparece em cinza no rótulo &ldquo;donos:
-        x%&rdquo;.
+        Data from the Ownership records (effective by date). If the owners of an entity add up to less
+        than 100%, some ownership is not yet registered — it shows in gray in the &ldquo;owners:
+        x%&rdquo; label.
       </p>
     </div>
   );

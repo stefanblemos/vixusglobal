@@ -66,12 +66,12 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
         penalty: numStr(d.penalty),
         interest: numStr(d.interest),
         paidDate: d.paidDate || "",
-        source: d.source || "Recibo (PDF)",
+        source: d.source || "Receipt (PDF)",
         fromReceipt: true,
       });
       setOpen(true);
     } catch (err) {
-      setReadError(err instanceof Error ? err.message : "Falha ao ler o recibo.");
+      setReadError(err instanceof Error ? err.message : "Failed to read the receipt.");
     } finally {
       setReading(false);
     }
@@ -82,11 +82,11 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-lg font-medium text-slate-800">
-            Controle do imposto estadual (F-1120) — apurado &amp; pago
+            State tax control (F-1120) — assessed &amp; paid
           </h2>
           <p className="text-sm text-slate-500">
-            O que de fato foi apurado e pago por ano, separando principal · multa · juros. É a fonte
-            que explica o add-back de “State income tax” no Schedule M-1 do ano seguinte.
+            What was actually assessed and paid per year, splitting principal · penalty · interest. It
+            is the source that explains the “State income tax” add-back on the next year&apos;s Schedule M-1.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -96,13 +96,13 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
             disabled={reading}
             className="rounded-lg border border-[#1f3a5f] px-3 py-1.5 text-sm font-medium text-[#1f3a5f] hover:bg-slate-50 disabled:opacity-50"
           >
-            {reading ? "Lendo recibo…" : "Ler recibo (PDF)"}
+            {reading ? "Reading receipt…" : "Read receipt (PDF)"}
           </button>
           <button
             onClick={openManual}
             className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-sm font-medium text-white hover:bg-[#16304f]"
           >
-            Adicionar apuração
+            Add assessment
           </button>
         </div>
       </div>
@@ -112,8 +112,8 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
 
       {companies.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-          Nenhuma apuração estadual registrada. Clique em “Adicionar apuração” e lance, por ano de
-          competência, o principal, a multa e os juros (do recibo/notice do F-1120).
+          No state assessment registered. Click “Add assessment” and enter, per assessment year, the
+          principal, the penalty and the interest (from the F-1120 receipt/notice).
         </div>
       ) : (
         <div className="space-y-4">
@@ -126,12 +126,12 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
               <table className="w-full text-sm">
                 <thead className="text-left text-[11px] text-slate-400">
                   <tr>
-                    <th className="px-4 py-1.5 font-medium">Competência</th>
+                    <th className="px-4 py-1.5 font-medium">Assessment year</th>
                     <th className="px-3 py-1.5 text-right font-medium">Principal</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Multa</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Juros</th>
-                    <th className="px-3 py-1.5 text-right font-medium">Total pago</th>
-                    <th className="px-3 py-1.5 text-center font-medium">Pago em</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Penalty</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Interest</th>
+                    <th className="px-3 py-1.5 text-right font-medium">Total paid</th>
+                    <th className="px-3 py-1.5 text-center font-medium">Paid on</th>
                     <th className="px-3 py-1.5 text-right font-medium">Add-back M-1</th>
                     <th className="px-2 py-1.5"></th>
                   </tr>
@@ -152,16 +152,16 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
                         {f.paidYear ? (
                           <div>
                             <div className="font-semibold tabular-nums text-slate-900">{money2(f.addBack)}</div>
-                            <div className="text-[10px] text-slate-400">no M-1 de {f.paidYear}</div>
+                            <div className="text-[10px] text-slate-400">on the {f.paidYear} M-1</div>
                           </div>
                         ) : (
-                          <span className="text-xs text-slate-400">sem data</span>
+                          <span className="text-xs text-slate-400">no date</span>
                         )}
                       </td>
                       <td className="px-2 py-2 text-right">
                         <form action={deleteStateTaxFiling}>
                           <input type="hidden" name="id" value={f.id} />
-                          <button className="text-xs text-slate-300 hover:text-red-600" title="Remover">✕</button>
+                          <button className="text-xs text-slate-300 hover:text-red-600" title="Remove">✕</button>
                         </form>
                       </td>
                     </tr>
@@ -174,14 +174,14 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
                   .filter((f) => f.paidYear)
                   .map((f) => (
                     <div key={f.id}>
-                      <span className="font-medium text-slate-600">Add-back M-1 de {f.paidYear}:</span>{" "}
-                      {money2(f.addBack)} = principal {money2(f.principal)} (deduzido em {f.taxYear})
-                      {f.penalty > 0 && <> + multa {money2(f.penalty)} (não dedutível)</>}.
+                      <span className="font-medium text-slate-600">{f.paidYear} M-1 add-back:</span>{" "}
+                      {money2(f.addBack)} = principal {money2(f.principal)} (deducted in {f.taxYear})
+                      {f.penalty > 0 && <> + penalty {money2(f.penalty)} (not deductible)</>}.
                       {f.interest > 0 && (
                         <span className="text-sky-700">
                           {" "}
-                          Juros {money2(f.interest)} são dedutíveis p/ C-corp — se também foram
-                          adicionados de volta, há ~{money(f.interestDeductible * 0.21)} a recuperar.
+                          Interest {money2(f.interest)} is deductible for a C-corp — if it was also
+                          added back, there is ~{money(f.interestDeductible * 0.21)} to recover.
                         </span>
                       )}
                     </div>
@@ -190,18 +190,18 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
             </div>
           ))}
           <div className="flex flex-wrap gap-4 rounded-xl border border-slate-200 bg-slate-50/60 px-4 py-2 text-xs text-slate-600">
-            <span>Principal total: <span className="font-semibold tabular-nums">{money2(totals.principal)}</span></span>
-            <span>Multas: <span className="font-semibold tabular-nums text-amber-700">{money2(totals.penalty)}</span></span>
-            <span>Juros: <span className="font-semibold tabular-nums">{money2(totals.interest)}</span></span>
-            <span>Total pago: <span className="font-semibold tabular-nums">{money2(totals.total)}</span></span>
+            <span>Total principal: <span className="font-semibold tabular-nums">{money2(totals.principal)}</span></span>
+            <span>Penalties: <span className="font-semibold tabular-nums text-amber-700">{money2(totals.penalty)}</span></span>
+            <span>Interest: <span className="font-semibold tabular-nums">{money2(totals.interest)}</span></span>
+            <span>Total paid: <span className="font-semibold tabular-nums">{money2(totals.total)}</span></span>
           </div>
         </div>
       )}
 
       <p className="text-xs text-slate-400">
-        Tratamento: principal é dedutível no federal no ano de competência (§164); multa não é
-        dedutível (§162(f)); juros sobre imposto são dedutíveis para C-corp (§163, sujeito a 163(j)).
-        O add-back de “State income tax” do ano do pagamento = principal + multa.
+        Treatment: principal is federally deductible in the assessment year (§164); penalty is not
+        deductible (§162(f)); interest on tax is deductible for a C-corp (§163, subject to 163(j)).
+        The “State income tax” add-back in the payment year = principal + penalty.
       </p>
 
       {open && (
@@ -211,55 +211,55 @@ export function StateTaxControl({ data }: { data: StateTaxControl }) {
         >
           <div className="w-full max-w-lg rounded-xl border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-medium text-slate-800">Apuração estadual (F-1120)</h3>
+              <h3 className="text-base font-medium text-slate-800">State assessment (F-1120)</h3>
               <button onClick={() => setOpen(false)} className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100">✕</button>
             </div>
             {prefill.fromReceipt && (
               <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
-                Pré-preenchido do recibo — confira os valores antes de salvar.
-                {!prefill.companyId && " Não consegui casar a empresa automaticamente; selecione abaixo."}
+                Pre-filled from the receipt — check the values before saving.
+                {!prefill.companyId && " Couldn't match the company automatically; select it below."}
               </div>
             )}
             <form key={prefill.source + prefill.taxYear} action={saveStateTaxFiling} onSubmit={() => setTimeout(() => setOpen(false), 50)} className="grid grid-cols-2 gap-3">
               <label className="col-span-2 flex flex-col gap-1 text-xs text-slate-600">
-                Empresa
+                Company
                 <select name="companyId" required defaultValue={prefill.companyId} className={inputCls}>
-                  <option value="">Selecione…</option>
+                  <option value="">Select…</option>
                   {companyOptions.map((c) => (
                     <option key={c.id} value={c.id}>{c.legalName}</option>
                   ))}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
-                Estado
+                State
                 <input name="jurisdiction" defaultValue={prefill.jurisdiction} className={inputCls} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
-                Ano de competência
+                Assessment year
                 <input name="taxYear" type="number" placeholder="2024" required defaultValue={prefill.taxYear} className={inputCls} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
-                Principal (imposto)
+                Principal (tax)
                 <input name="principal" inputMode="decimal" placeholder="21765.00" required defaultValue={prefill.principal} className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
-                Multa
+                Penalty
                 <input name="penalty" inputMode="decimal" placeholder="7679.05" defaultValue={prefill.penalty} className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
-                Juros
+                Interest
                 <input name="interest" inputMode="decimal" placeholder="1791.78" defaultValue={prefill.interest} className={`${inputCls} text-right tabular-nums`} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-600">
-                Pago em
+                Paid on
                 <input name="paidDate" type="date" defaultValue={prefill.paidDate} className={inputCls} />
               </label>
               <label className="col-span-2 flex flex-col gap-1 text-xs text-slate-600">
-                Origem (opcional)
-                <input name="source" placeholder="F-1120 notice / recibo" defaultValue={prefill.source} className={inputCls} />
+                Source (optional)
+                <input name="source" placeholder="F-1120 notice / receipt" defaultValue={prefill.source} className={inputCls} />
               </label>
               <div className="col-span-2 flex justify-end gap-2 pt-1">
-                <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">Cancelar</button>
+                <button type="button" onClick={() => setOpen(false)} className="rounded-lg px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100">Cancel</button>
                 <SaveButton />
               </div>
             </form>
@@ -277,7 +277,7 @@ function SaveButton() {
       disabled={pending}
       className="rounded-lg bg-[#1f3a5f] px-4 py-1.5 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-50"
     >
-      {pending ? "Salvando…" : "Salvar"}
+      {pending ? "Saving…" : "Save"}
     </button>
   );
 }

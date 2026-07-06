@@ -118,7 +118,7 @@ function NodeBox({
         </text>
         <text x={n.x + 10} y={n.y + 33} fontSize={8.5} fill={subColor}>
           {n.acronym} · {n.tag}
-          {n.ownedPct != null && n.ownedPct < 100 ? `  · donos: ${n.ownedPct}%` : ""}
+          {n.ownedPct != null && n.ownedPct < 100 ? `  · owners: ${n.ownedPct}%` : ""}
         </text>
       </g>
     </a>

@@ -25,7 +25,7 @@ export function MergePartyInto({
           e.preventDefault();
           return;
         }
-        const msg = `Marcar "${dropName}" como a MESMA pessoa que "${keepName}"? As participações, declarações e vendors movem para "${keepName}", o nome "${dropName}" vira alias, e o registro duplicado é removido.`;
+        const msg = `Mark "${dropName}" as the SAME person as "${keepName}"? The ownership stakes, tax returns and vendors move to "${keepName}", the name "${dropName}" becomes an alias, and the duplicate record is removed.`;
         if (!confirm(msg)) e.preventDefault();
       }}
       className="flex flex-wrap items-end gap-3"
@@ -34,14 +34,14 @@ export function MergePartyInto({
       <input type="hidden" name="dropId" value={dropId} />
       <div className="min-w-72 flex-1">
         <label className="mb-1 block text-xs font-medium text-slate-600">
-          Mesma pessoa que esta (nome divergente)
+          Same person as this one (divergent name)
         </label>
         <select
           value={dropId}
           onChange={(e) => setDropId(e.target.value)}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         >
-          <option value="">— Selecione o registro a mesclar —</option>
+          <option value="">— Select the record to merge —</option>
           {others.map((o) => (
             <option key={o.id} value={o.id}>
               {o.name}
@@ -54,7 +54,7 @@ export function MergePartyInto({
         disabled={!dropId}
         className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-50"
       >
-        Mesclar nesta
+        Merge into this
       </button>
     </form>
   );

@@ -4,9 +4,9 @@ import { buildClosingSequence, type SeqNode } from "@/lib/closing/sequence";
 export const dynamic = "force-dynamic";
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  done: { label: "fechado", cls: "bg-green-50 text-green-700" },
-  ready: { label: "pronta p/ fechar", cls: "bg-sky-50 text-sky-700" },
-  blocked: { label: "aguardando", cls: "bg-slate-100 text-slate-500" },
+  done: { label: "closed", cls: "bg-green-50 text-green-700" },
+  ready: { label: "ready to close", cls: "bg-sky-50 text-sky-700" },
+  blocked: { label: "waiting", cls: "bg-slate-100 text-slate-500" },
 };
 
 export default async function ClosingSequencePage({
@@ -29,9 +29,9 @@ export default async function ClosingSequencePage({
         <div>
           <h1 className="text-2xl font-semibold text-slate-800">Closing sequence</h1>
           <p className="text-sm text-slate-500">
-            A ordem de fechar o IR seguindo a árvore pass-through: cada entidade só fecha depois das
-            investidas que lhe emitem K-1. Feche de cima para baixo (passo 1 → último). Pagador final
-            (final) = C-corp ou PF.
+            The order to close the tax return following the pass-through tree: each entity only closes
+            after the investees that issue it a K-1. Close from top to bottom (step 1 → last). Final
+            payer (final) = C-corp or individual.
           </p>
         </div>
         <a
@@ -40,12 +40,12 @@ export default async function ClosingSequencePage({
           rel="noopener"
           className="shrink-0 rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
         >
-          Abrir PDF
+          Open PDF
         </a>
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <span className="mr-1 text-slate-400">Ano:</span>
+        <span className="mr-1 text-slate-400">Year:</span>
         {years.map((y) => (
           <Link
             key={y}
@@ -60,12 +60,12 @@ export default async function ClosingSequencePage({
       {seq.outOfOrder.length > 0 && (
         <div className="space-y-2 rounded-xl border border-red-200 bg-red-50/60 p-4">
           <div className="text-sm font-medium text-red-800">
-            ⚠ Fechou fora de ordem ({seq.outOfOrder.length}) — confira se o K-1 entrou
+            ⚠ Closed out of order ({seq.outOfOrder.length}) — check whether the K-1 came in
           </div>
           {seq.outOfOrder.map((n) => (
             <div key={n.key} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm">
               <span className="font-medium text-slate-800">{n.name}</span>
-              <span className="text-slate-500"> fechou, mas estas investidas ainda estão abertas: </span>
+              <span className="text-slate-500"> closed, but these investees are still open: </span>
               <span className="font-medium text-red-700">{n.outOfOrder.join(", ")}</span>
             </div>
           ))}
@@ -74,7 +74,7 @@ export default async function ClosingSequencePage({
 
       {seq.nextUp.length > 0 && (
         <div className="rounded-xl border border-sky-200 bg-sky-50/60 px-4 py-3 text-sm text-sky-800">
-          <span className="font-medium">Próximas a fechar agora:</span>{" "}
+          <span className="font-medium">Next to close now:</span>{" "}
           {seq.nextUp.map((n) => n.name).join(", ")}
         </div>
       )}
@@ -83,7 +83,7 @@ export default async function ClosingSequencePage({
         {seq.tiers.map((tier, i) => (
           <div key={i} className="overflow-hidden rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 bg-slate-50 px-4 py-2 text-sm font-medium text-slate-600">
-              Passo {i + 1}
+              Step {i + 1}
             </div>
             <div className="divide-y divide-slate-100">
               {tier.map((n) => (
@@ -95,9 +95,9 @@ export default async function ClosingSequencePage({
       </div>
 
       <p className="text-xs text-slate-400">
-        Dependência vem dos K-1 declarados no IR (autêntico) e, como fallback, da posse de
-        pass-through no cadastro de ownership. ✓ = investida já fechada. Trave o ano em cada empresa
-        para marcar como fechado.
+        Dependency comes from the K-1s declared on the tax return (authoritative) and, as a fallback,
+        from pass-through ownership in the ownership records. ✓ = investee already closed. Lock the year
+        on each company to mark it as closed.
       </p>
     </div>
   );
@@ -127,7 +127,7 @@ function Row({ n }: { n: SeqNode }) {
         )}
         {n.passesTo.length > 0 ? (
           <span className="block text-xs text-slate-500">
-            ↑ repassa para{" "}
+            ↑ passes to{" "}
             {n.passesTo.map((r, k) => (
               <span key={r.acronym + k} title={r.name}>
                 {k > 0 && " · "}
@@ -137,11 +137,11 @@ function Row({ n }: { n: SeqNode }) {
             ))}
           </span>
         ) : (
-          n.finalPayer && <span className="block text-xs text-slate-400">↑ pagador final (não repassa)</span>
+          n.finalPayer && <span className="block text-xs text-slate-400">↑ final payer (doesn&apos;t pass through)</span>
         )}
         {n.deps.length > 0 && (
           <span className="block text-xs text-slate-400">
-            ← depende de{" "}
+            ← depends on{" "}
             {n.deps.map((d, k) => (
               <span key={d.key} className={d.done ? "text-emerald-600" : "text-slate-400"}>
                 {k > 0 && ", "}
@@ -152,17 +152,17 @@ function Row({ n }: { n: SeqNode }) {
           </span>
         )}
         {n.inCycle && (
-          <span className="block text-xs text-amber-600">⚠ posse circular — revisar o cadastro</span>
+          <span className="block text-xs text-amber-600">⚠ circular ownership — review the records</span>
         )}
       </div>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
         <span className={`rounded-full px-2 py-0.5 text-xs whitespace-nowrap ${st.cls}`}>{st.label}</span>
         {n.outOfOrder.length > 0 && (
           <span
-            title={`Fechou antes de ${n.outOfOrder.join(", ")} — confira se o K-1 dessa(s) investida(s) entrou.`}
+            title={`Closed before ${n.outOfOrder.join(", ")} — check whether the K-1 from that investee(s) came in.`}
             className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium whitespace-nowrap text-amber-700"
           >
-            ⚠ revisar
+            ⚠ review
           </span>
         )}
       </div>

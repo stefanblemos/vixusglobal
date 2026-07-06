@@ -52,7 +52,7 @@ export function AssetCreateForm({ companies }: { companies: Co[] }) {
           <input
             name="name"
             required
-            placeholder={regime === "PT" ? "ex.: Imóvel Campolide" : "e.g. Ford F-150"}
+            placeholder={regime === "PT" ? "e.g. Campolide property" : "e.g. Ford F-150"}
             className={input}
           />
         </div>
@@ -63,7 +63,7 @@ export function AssetCreateForm({ companies }: { companies: Co[] }) {
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div>
-              <label className={label}>Tipo de ativo</label>
+              <label className={label}>Asset type</label>
               <select
                 name="category"
                 value={ptCategory}
@@ -78,15 +78,15 @@ export function AssetCreateForm({ companies }: { companies: Co[] }) {
               </select>
             </div>
             <div>
-              <label className={label}>Entrada em uso *</label>
+              <label className={label}>In service *</label>
               <input name="acquisitionDate" type="date" required className={input} />
             </div>
             <div>
-              <label className={label}>Custo total *</label>
+              <label className={label}>Total cost *</label>
               <input name="cost" inputMode="decimal" placeholder="0.00" className={input} />
             </div>
             <div>
-              <label className={label}>Taxa anual (%)</label>
+              <label className={label}>Annual rate (%)</label>
               <input
                 name="ratePct"
                 key={ptCategory}
@@ -99,7 +99,7 @@ export function AssetCreateForm({ companies }: { companies: Co[] }) {
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <div>
               <label className={label}>
-                Valor do terreno {ptCat.isBuilding ? "" : "(s/ aplicação)"}
+                Land value {ptCat.isBuilding ? "" : "(not applicable)"}
               </label>
               <input
                 name="landValue"
@@ -110,14 +110,14 @@ export function AssetCreateForm({ companies }: { companies: Co[] }) {
               />
             </div>
             <div className="md:col-span-3">
-              <label className={label}>Notas</label>
+              <label className={label}>Notes</label>
               <input name="notes" className={input} />
             </div>
           </div>
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-400">
-              Quotas constantes — {ptCat.ratePct}% ao ano{ptCat.hint ? ` (${ptCat.hint})` : ""}.
-              {ptCat.isBuilding ? " O terreno não deprecia — informe a parcela." : ""} Moeda:{" "}
+              Straight-line — {ptCat.ratePct}% per year{ptCat.hint ? ` (${ptCat.hint})` : ""}.
+              {ptCat.isBuilding ? " Land does not depreciate — enter the portion." : ""} Currency:{" "}
               {company?.baseCurrency ?? "EUR"}.
             </p>
             <SubmitBtn pending={pending} />

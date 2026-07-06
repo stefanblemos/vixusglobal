@@ -3,7 +3,7 @@ import { buildFaturamento, type Block, type PeriodFig } from "@/lib/reports/fatu
 
 export const dynamic = "force-dynamic";
 
-const MES_PT = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const MES_PT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const monthLabel = (ym: string) => {
   const [y, m] = ym.split("-").map(Number);
   return `${MES_PT[m - 1]}/${y}`;
@@ -34,18 +34,18 @@ export default async function FaturamentoPage({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-800">Faturamento × Lucro</h1>
+        <h1 className="text-2xl font-semibold text-slate-800">Revenue × Profit</h1>
         <p className="text-sm text-slate-500">
-          Comparativo de faturamento (receita), lucro e margem por período, derivado do General
-          Ledger. Escolha a empresa e o mês de referência — os blocos comparam com o mês anterior, o
-          mesmo mês do ano passado e a janela de 12 meses.
+          Comparison of revenue, profit and margin by period, derived from the General Ledger. Pick
+          the company and the reference month — the blocks compare against the previous month, the
+          same month last year and the trailing 12-month window.
         </p>
       </div>
 
       {/* Seletores (form GET — sem JS) */}
       <form className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4">
         <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-slate-600">Empresa</span>
+          <span className="mb-1 block text-xs font-medium text-slate-600">Company</span>
           <select name="company" defaultValue={companyId ?? ""} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
             {companies.map((c) => (
               <option key={c.id} value={c.id}>{c.legalName}</option>
@@ -54,7 +54,7 @@ export default async function FaturamentoPage({
         </label>
         {data && data.months.length > 0 && (
           <label className="text-sm">
-            <span className="mb-1 block text-xs font-medium text-slate-600">Mês de referência</span>
+            <span className="mb-1 block text-xs font-medium text-slate-600">Reference month</span>
             <select name="month" defaultValue={data.refMonth} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">
               {data.months.map((m) => (
                 <option key={m} value={m}>{monthLabel(m)}</option>
@@ -63,35 +63,35 @@ export default async function FaturamentoPage({
           </label>
         )}
         <button className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
-          Ver
+          View
         </button>
       </form>
 
       {!data || data.months.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
           {companies.length === 0
-            ? "Nenhuma empresa com General Ledger importado ainda."
-            : "Esta empresa não tem General Ledger importado — suba o GL em Documents para ver o faturamento por mês."}
+            ? "No company with an imported General Ledger yet."
+            : "This company has no imported General Ledger — upload the GL in Documents to see revenue by month."}
         </div>
       ) : (
         <>
           {!data.canComputeNet && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <span className="font-medium">Lucro indisponível para esta empresa.</span> Há GL, mas
-              sem P&L nem Balance Sheet importado — e o lucro precisa de um deles para separar despesas
-              de contas de balanço (ativos, empréstimos, intercompany) com segurança. O{" "}
-              <strong>faturamento abaixo já vem do GL</strong>; importe o P&L ou o BS em Documents
-              para liberar o lucro.
+              <span className="font-medium">Profit unavailable for this company.</span> There is a GL,
+              but no P&L or Balance Sheet imported — and profit needs one of them to reliably separate
+              expenses from balance-sheet accounts (assets, loans, intercompany). The{" "}
+              <strong>revenue below already comes from the GL</strong>; import the P&L or the BS in
+              Documents to unlock profit.
             </div>
           )}
           {data.canComputeNet && !data.coverage.hasPnl && (
             <div className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <span className="font-medium">Sem P&L importado — receita e lucro podem não bater com o QBO.</span>{" "}
-              Sem o P&L, a receita é identificada pelo nome da conta (Sales/Income), então contas de
-              receita com outro nome (ex.: <strong>Services</strong>) ou contra-receita (ex.:{" "}
-              <strong>Discounts given</strong>) ficam de fora — e ainda entram como despesa, reduzindo
-              o lucro. <strong>Importe o P&L</strong> (anual serve) em Documents para a classificação
-              ficar igual à do QBO.
+              <span className="font-medium">No P&L imported — revenue and profit may not match QBO.</span>{" "}
+              Without the P&L, revenue is identified by the account name (Sales/Income), so revenue
+              accounts with a different name (e.g. <strong>Services</strong>) or contra-revenue (e.g.{" "}
+              <strong>Discounts given</strong>) are left out — and even count as an expense, reducing
+              profit. <strong>Import the P&L</strong> (annual is fine) in Documents so the
+              classification matches QBO.
             </div>
           )}
           <div className="grid gap-4 md:grid-cols-2">
@@ -103,39 +103,39 @@ export default async function FaturamentoPage({
           {/* Painel de conferência — para confiar nos números */}
           <details className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
             <summary className="cursor-pointer font-medium text-slate-700">
-              Conferência dos dados ({Math.round(data.coverage.classifiedPct * 100)}% do movimento classificado)
+              Data review ({Math.round(data.coverage.classifiedPct * 100)}% of activity classified)
             </summary>
             <div className="mt-3 space-y-2 text-slate-600">
               <p>
-                <span className="text-slate-400">GL cobre:</span> {monthLabel(data.coverage.glSpan.min ?? "")} —{" "}
+                <span className="text-slate-400">GL covers:</span> {monthLabel(data.coverage.glSpan.min ?? "")} —{" "}
                 {monthLabel(data.coverage.glSpan.max ?? "")}.{" "}
-                <span className="text-slate-400">Base do lucro:</span>{" "}
+                <span className="text-slate-400">Profit basis:</span>{" "}
                 {data.coverage.netBasis === "nenhum" ? (
-                  <span className="text-amber-700">nenhuma (importe P&L ou BS) — só faturamento.</span>
+                  <span className="text-amber-700">none (import P&L or BS) — revenue only.</span>
                 ) : (
                   <span>{data.coverage.netBasis}.</span>
                 )}
               </p>
               {data.coverage.depreciationByYear.length > 0 && (
                 <p>
-                  <span className="text-slate-400">Depreciação diluída (1/12 ao mês):</span>{" "}
+                  <span className="text-slate-400">Depreciation spread (1/12 per month):</span>{" "}
                   {data.coverage.depreciationByYear.map((d) => `${d.year}: ${fmt(d.total, data.currency)}`).join(" · ")}.
-                  Evita o &ldquo;tombo de dezembro&rdquo;; o total do ano não muda.
+                  Avoids the &ldquo;December drop&rdquo;; the yearly total doesn&apos;t change.
                 </p>
               )}
               {data.coverage.missingMonths.length > 0 && (
                 <p className="text-amber-700">
-                  ⚠ Faltam meses no GL para o comparativo completo: {data.coverage.missingMonths.map(monthLabel).join(", ")}.
-                  Os períodos afetados ficam parciais.
+                  ⚠ Missing months in the GL for the full comparison: {data.coverage.missingMonths.map(monthLabel).join(", ")}.
+                  The affected periods stay partial.
                 </p>
               )}
               <p>
-                <span className="text-slate-400">Contas de receita usadas:</span>{" "}
+                <span className="text-slate-400">Revenue accounts used:</span>{" "}
                 {data.coverage.incomeAccounts.length ? data.coverage.incomeAccounts.join(", ") : "—"}
               </p>
               {data.coverage.unknownAccounts.length > 0 && (
                 <div>
-                  <span className="text-slate-400">Contas fora do P&L/BS (assumidas como despesa — confira se alguma é, na verdade, balanço ou receita):</span>
+                  <span className="text-slate-400">Accounts outside the P&L/BS (assumed to be expenses — check whether any is actually a balance-sheet or revenue account):</span>
                   <ul className="mt-1 space-y-0.5 text-xs">
                     {data.coverage.unknownAccounts.map((u) => (
                       <li key={u.account} className="tabular-nums">
@@ -146,8 +146,8 @@ export default async function FaturamentoPage({
                 </div>
               )}
               <p className="text-xs text-slate-400">
-                O faturamento sai das contas de receita (preciso). O lucro = receita − despesas
-                classificadas; confira contra o P&L do QBO do mesmo período se houver divergência.
+                Revenue comes from the revenue accounts (precise). Profit = revenue − classified
+                expenses; check against the QBO P&L for the same period if there is any discrepancy.
               </p>
             </div>
           </details>
@@ -182,8 +182,8 @@ function BlockCard({
         <div className="font-semibold tabular-nums text-slate-800">{fmt(f.income, currency)}</div>
         <div className="text-xs tabular-nums text-slate-500">
           {f.net == null
-            ? "Lucro —"
-            : `Lucro ${fmt(f.net, currency)} · ${f.margin == null ? "—" : `${(f.margin * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`}`}
+            ? "Profit —"
+            : `Profit ${fmt(f.net, currency)} · ${f.margin == null ? "—" : `${(f.margin * 100).toLocaleString("en-US", { maximumFractionDigits: 1 })}%`}`}
         </div>
       </div>
     ) : (
@@ -208,11 +208,11 @@ function BlockCard({
       {b.compare && (
         <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-100 pt-3 text-xs">
           <span>
-            <span className="text-slate-400">Receita:</span>{" "}
+            <span className="text-slate-400">Revenue:</span>{" "}
             <span className={`font-medium ${pctColor(b.revVar)}`}>{pctText(b.revVar)}</span>
           </span>
           <span>
-            <span className="text-slate-400">Lucro:</span>{" "}
+            <span className="text-slate-400">Profit:</span>{" "}
             <span className={`font-medium ${pctColor(b.profitVar)}`}>{pctText(b.profitVar)}</span>
           </span>
         </div>

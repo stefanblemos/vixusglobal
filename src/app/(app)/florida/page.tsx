@@ -44,7 +44,7 @@ export default async function FloridaPage({
           <p className="text-sm text-slate-500">
             {tab === "forecast"
               ? `Florida Corporate Income Tax (F-1120) on C-corporations only — ${f.rate}% of Florida net income above the ${money(f.exemption)} exemption.`
-              : "Apuração & pagamento real do imposto estadual (principal · multa · juros) por ano — base do add-back do Schedule M-1."}
+              : "Assessment & actual payment of state tax (principal · penalty · interest) per year — basis for the Schedule M-1 add-back."}
           </p>
         </div>
         {tab !== "apuracao" && years.length > 0 && (
@@ -54,7 +54,7 @@ export default async function FloridaPage({
 
       {/* Abas */}
       <div className="flex gap-1 border-b border-slate-200 text-sm">
-        {([["forecast", "Forecast"], ["apuracao", "Apuração & pagamento"], ["reconciliacao", "Reconciliação"]] as [string, string][]).map(([key, label]) => (
+        {([["forecast", "Forecast"], ["apuracao", "Assessment & payment"], ["reconciliacao", "Reconciliation"]] as [string, string][]).map(([key, label]) => (
           <Link
             key={key}
             href={`/florida?tab=${key}`}
@@ -72,28 +72,28 @@ export default async function FloridaPage({
       {tab === "reconciliacao" && (
         <section className="space-y-3">
           <div>
-            <h2 className="text-lg font-medium text-slate-800">Reconciliação — livro × pagamentos ({year})</h2>
+            <h2 className="text-lg font-medium text-slate-800">Reconciliation — book × payments ({year})</h2>
             <p className="text-sm text-slate-500">
-              A linha <strong>&ldquo;State Taxes&rdquo;</strong> do P&amp;L de {year} é estadual de anos{" "}
-              <strong>anteriores</strong> pago em {year} (pode misturar vários anos). O add-back do M-1
-              (principal + multa voltam; juros fica dedutível) só é confiável quando{" "}
-              <strong>Σ pagamentos cadastrados = a linha do P&amp;L</strong>. Onde não fecha, falta
-              cadastrar o pagamento em{" "}
-              <Link href="/florida?tab=apuracao" className="text-[#1f3a5f] hover:underline">Apuração</Link>.
+              The <strong>&ldquo;State Taxes&rdquo;</strong> line on the {year} P&amp;L is state tax from{" "}
+              <strong>prior</strong> years paid in {year} (may mix several years). The M-1 add-back
+              (principal + penalty come back; interest stays deductible) is only reliable when{" "}
+              <strong>Σ registered payments = the P&amp;L line</strong>. Where it doesn&apos;t reconcile, the
+              payment still needs to be registered in{" "}
+              <Link href="/florida?tab=apuracao" className="text-[#1f3a5f] hover:underline">Assessment</Link>.
             </p>
           </div>
           {recon.rows.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
-              Nenhuma empresa com &ldquo;State Taxes&rdquo; no P&amp;L nem pagamento em {year}.
+              No company with &ldquo;State Taxes&rdquo; on the P&amp;L nor a payment in {year}.
             </div>
           ) : (
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
               <table className="w-full text-sm">
                 <thead className="bg-slate-50 text-left text-slate-500">
                   <tr>
-                    <th className="px-4 py-2 font-medium">Empresa</th>
+                    <th className="px-4 py-2 font-medium">Company</th>
                     <th className="px-3 py-2 text-right font-medium">State Taxes (P&amp;L)</th>
-                    <th className="px-3 py-2 text-right font-medium">Pago (filings)</th>
+                    <th className="px-3 py-2 text-right font-medium">Paid (filings)</th>
                     <th className="px-3 py-2 text-right font-medium">Δ</th>
                     <th className="px-3 py-2 text-right font-medium">Add-back / juros</th>
                     <th className="px-3 py-2 text-center font-medium">Status</th>
@@ -111,24 +111,24 @@ export default async function FloridaPage({
                                 {i > 0 && " · "}
                                 {f.taxYear}: {money(f.total)}{" "}
                                 {f.irPrincipal == null ? (
-                                  <span className="text-slate-400" title="IR do ano não está no app — principal não verificado">(IR ausente)</span>
+                                  <span className="text-slate-400" title="Tax return for the year is not in the app — principal not verified">(return missing)</span>
                                 ) : f.principalOk ? (
-                                  <span className="text-green-600" title={`principal bate com o IR (${money(f.irPrincipal)})`}>(IR ✓)</span>
+                                  <span className="text-green-600" title={`principal matches the tax return (${money(f.irPrincipal)})`}>(return ✓)</span>
                                 ) : (
-                                  <span className="text-rose-600" title={`principal ≠ IR (${money(f.irPrincipal)}) — conferir`}>(IR ≠)</span>
+                                  <span className="text-rose-600" title={`principal ≠ tax return (${money(f.irPrincipal)}) — check`}>(return ≠)</span>
                                 )}
                               </span>
                             ))}
                           </div>
                         )}
-                        {!r.hasPnl && <span className="ml-1 text-[10px] text-amber-600">sem P&amp;L</span>}
+                        {!r.hasPnl && <span className="ml-1 text-[10px] text-amber-600">no P&amp;L</span>}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(r.pnlStateTaxes)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-700">{money(r.filingsPaid)}</td>
                       <td className={`px-3 py-2 text-right tabular-nums ${r.reconciles ? "text-slate-400" : "font-medium text-amber-700"}`}>{money(r.delta)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                         {r.reconciles ? (
-                          <span title="principal + multa voltam à base; juros fica dedutível">
+                          <span title="principal + penalty come back to the base; interest stays deductible">
                             {money(r.addBack)} <span className="text-[11px] text-slate-400">/ {money(r.deductibleInterest)}</span>
                           </span>
                         ) : (
@@ -137,10 +137,10 @@ export default async function FloridaPage({
                       </td>
                       <td className="px-3 py-2 text-center">
                         {r.reconciles ? (
-                          <span className="text-green-600" title="fecha — add-back confiável">✓</span>
+                          <span className="text-green-600" title="reconciles — add-back reliable">✓</span>
                         ) : (
-                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" title="falta cadastrar pagamento — não confie no add-back">
-                            falta {money(Math.abs(r.delta))}
+                          <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" title="payment still to be registered — don't trust the add-back">
+                            missing {money(Math.abs(r.delta))}
                           </span>
                         )}
                       </td>
@@ -152,8 +152,8 @@ export default async function FloridaPage({
           )}
           {recon.unreconciled > 0 && (
             <p className="text-xs text-amber-700">
-              ⚠ {recon.unreconciled} empresa(s) não fecham — o preview/reserve <strong>não</strong> deve
-              adicionar de volta o estadual delas até cadastrar os pagamentos.
+              ⚠ {recon.unreconciled} company(ies) don&apos;t reconcile — the preview/reserve should <strong>not</strong>
+              add their state tax back until the payments are registered.
             </p>
           )}
         </section>

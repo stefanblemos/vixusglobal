@@ -18,9 +18,9 @@ export type AssetForRecon = {
 
 const STATUS: Record<ReconStatus, { label: string; cls: string }> = {
   ok: { label: "ok", cls: "bg-green-50 text-green-700" },
-  faltou: { label: "não lançou", cls: "bg-red-50 text-red-700" },
-  diferente: { label: "diverge", cls: "bg-amber-50 text-amber-700" },
-  "sem-ir": { label: "sem IR", cls: "bg-slate-100 text-slate-500" },
+  faltou: { label: "not reported", cls: "bg-red-50 text-red-700" },
+  diferente: { label: "diverges", cls: "bg-amber-50 text-amber-700" },
+  "sem-ir": { label: "no return", cls: "bg-slate-100 text-slate-500" },
   na: { label: "—", cls: "text-slate-300" },
 };
 
@@ -45,13 +45,13 @@ export function DepReconcileTable({
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-slate-500">
             <tr>
-              <th className="px-4 py-2 font-medium">Ano</th>
-              <th className="px-3 py-2 text-right font-medium">MACRS (ano)</th>
-              <th className="px-3 py-2 text-right font-medium">MACRS acumulada</th>
-              <th className="px-3 py-2 text-right font-medium">IR (ano)</th>
-              <th className="px-3 py-2 text-right font-medium">IR acum.</th>
-              <th className="px-3 py-2 text-right font-medium">Diferença acum.</th>
-              <th className="px-3 py-2 text-center font-medium">Situação</th>
+              <th className="px-4 py-2 font-medium">Year</th>
+              <th className="px-3 py-2 text-right font-medium">MACRS (year)</th>
+              <th className="px-3 py-2 text-right font-medium">MACRS accumulated</th>
+              <th className="px-3 py-2 text-right font-medium">Tax return (year)</th>
+              <th className="px-3 py-2 text-right font-medium">Tax return accum.</th>
+              <th className="px-3 py-2 text-right font-medium">Accum. difference</th>
+              <th className="px-3 py-2 text-center font-medium">Status</th>
               <th className="px-2 py-2"></th>
             </tr>
           </thead>
@@ -66,14 +66,14 @@ export function DepReconcileTable({
                   {showDivider && (
                     <tr className="bg-slate-50/70">
                       <td colSpan={8} className="px-4 py-1.5 text-[11px] font-medium text-slate-400">
-                        Projeção — anos ainda não declarados (depreciação normal a lançar; não é atraso)
+                        Projection — years not yet filed (normal depreciation to report; not arrears)
                       </td>
                     </tr>
                   )}
                   <tr
                     onClick={() => setOpenYear(r.year)}
                     className={`cursor-pointer hover:bg-sky-50/60 ${r.status === "faltou" ? "bg-red-50/40" : r.beyondFiled ? "text-slate-400" : ""}`}
-                    title="Clique para ver e registrar a depreciação por ativo neste ano"
+                    title="Click to view and record depreciation per asset for this year"
                   >
                     <td className="px-4 py-2 font-medium">{r.year}{future ? " (proj.)" : ""}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{r.macrs ? m(r.macrs) : "—"}</td>
@@ -81,8 +81,8 @@ export function DepReconcileTable({
                     <td className="px-3 py-2 text-right tabular-nums">{r.ir == null ? "—" : m(r.ir)}</td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-500">{r.beyondFiled ? "—" : m(r.irAccum)}</td>
                     {r.beyondFiled ? (
-                      <td className="px-3 py-2 text-right text-[11px] text-slate-300" title="Anos ainda não declarados: a MACRS é apenas projeção; o catch-up só conta até o último IR.">
-                        a declarar
+                      <td className="px-3 py-2 text-right text-[11px] text-slate-300" title="Years not yet filed: MACRS is only a projection; the catch-up counts only up to the last tax return.">
+                        to report
                       </td>
                     ) : (
                       <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(r.accumDiff) <= 1 ? "text-slate-400" : r.accumDiff < 0 ? "font-medium text-rose-700" : "font-medium text-amber-700"}`}>
@@ -101,12 +101,13 @@ export function DepReconcileTable({
         </table>
       </div>
       <p className="text-xs text-slate-400">
-        <strong>Diferença acum.</strong> = MACRS acumulado − IR acumulado, só até o último ano{" "}
-        <strong>declarado</strong> (é o catch-up real). Depois disso o IR ainda não foi entregue, então
-        a diferença vira <strong>&ldquo;a declarar&rdquo;</strong> (depreciação normal, não atraso). Clique
-        numa linha para ver e <strong>registrar a depreciação real por ativo</strong> naquele ano. Confira
-        com o contador antes de deduzir tudo de uma vez (pode haver forma própria de recuperar
-        depreciação omitida, ex.: Form 3115).
+        <strong>Accum. difference</strong> = accumulated MACRS − accumulated tax return, only up to the
+        last <strong>filed</strong> year (it&apos;s the real catch-up). After that the tax return
+        hasn&apos;t been filed yet, so the difference becomes <strong>&ldquo;to report&rdquo;</strong>{" "}
+        (normal depreciation, not arrears). Click a row to view and{" "}
+        <strong>record the actual depreciation per asset</strong> for that year. Confirm with your
+        accountant before deducting it all at once (there may be a proper way to recover omitted
+        depreciation, e.g. Form 3115).
       </p>
 
       {openYear != null && (
@@ -213,16 +214,16 @@ function YearModal({
       <div className="flex max-h-[88vh] w-full max-w-4xl flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex shrink-0 flex-wrap items-start justify-between gap-2">
           <div>
-            <div className="text-base font-medium text-slate-800">Depreciação por ativo — {year}</div>
+            <div className="text-base font-medium text-slate-800">Depreciation per asset — {year}</div>
             <div className="mt-0.5 text-xs text-slate-500">
-              O que a MACRS diz que <strong>deveria</strong> ter sido depreciado × o que foi de fato
-              lançado no livro. Edite no lápis para registrar o valor real por ativo. Em{" "}
-              <strong>Acumulado</strong>, veja o total que deveria vs o real e o <strong>catch-up</strong>{" "}
-              por ativo — positivo = falta lançar; negativo = já foi <strong>depreciado a maior</strong>{" "}
-              (atenção, nada a lançar).
+              What MACRS says <strong>should</strong> have been depreciated × what was actually reported
+              in the book. Edit with the pencil to record the actual value per asset. Under{" "}
+              <strong>Accumulated</strong>, see the total that should be vs the actual and the{" "}
+              <strong>catch-up</strong> per asset — positive = still to report; negative = already{" "}
+              <strong>over-depreciated</strong> (careful, nothing to report).
             </div>
           </div>
-          <button onClick={onClose} aria-label="Fechar" className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700">
+          <button onClick={onClose} aria-label="Close" className="rounded-lg px-2 py-1 text-lg leading-none text-slate-400 hover:bg-slate-100 hover:text-slate-700">
             ✕
           </button>
         </div>
@@ -231,45 +232,45 @@ function YearModal({
         <div className="my-3 flex shrink-0 flex-wrap items-center gap-2 text-xs">
           <div className="inline-flex overflow-hidden rounded-lg border border-slate-200">
             <button onClick={() => setView("ano")} className={`px-3 py-1.5 ${view === "ano" ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
-              Por ano
+              By year
             </button>
             <button onClick={() => setView("acum")} className={`px-3 py-1.5 ${view === "acum" ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
-              Acumulado
+              Accumulated
             </button>
           </div>
           {view === "ano" ? (
             <>
               <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-                MACRS do ano (deveria): <span className="font-semibold tabular-nums text-slate-800">{m(macrsForYear)}</span>
+                MACRS for the year (should): <span className="font-semibold tabular-nums text-slate-800">{m(macrsForYear)}</span>
               </span>
               <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-                IR declarado no ano:{" "}
+                Reported on the return for the year:{" "}
                 <span className="font-semibold tabular-nums text-slate-800">{irForYear == null ? "—" : m(irForYear)}</span>
               </span>
               <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-                Registrado por ativo: <span className="font-semibold tabular-nums text-slate-800">{m(totDepreciado)}</span>{" "}
+                Recorded per asset: <span className="font-semibold tabular-nums text-slate-800">{m(totDepreciado)}</span>{" "}
                 ({registrados}/{rowsForYear.length})
               </span>
             </>
           ) : (
             <>
               <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-                MACRS acum. (deveria) até {year}: <span className="font-semibold tabular-nums text-slate-800">{m(totMacrsAccum)}</span>
+                MACRS accum. (should) thru {year}: <span className="font-semibold tabular-nums text-slate-800">{m(totMacrsAccum)}</span>
               </span>
               <span className="rounded-lg bg-slate-50 px-3 py-1.5 text-slate-600">
-                Depreciado acum. (livro): <span className="font-semibold tabular-nums text-slate-800">{m(totBookAccum)}</span>
+                Depreciated accum. (book): <span className="font-semibold tabular-nums text-slate-800">{m(totBookAccum)}</span>
               </span>
               {Math.abs(totCatchUp) <= 1 ? (
                 <span className="rounded-lg bg-emerald-50 px-3 py-1.5 text-emerald-700">
-                  Conciliado: nada a lançar
+                  Reconciled: nothing to report
                 </span>
               ) : totCatchUp > 0 ? (
                 <span className="rounded-lg bg-amber-50 px-3 py-1.5 text-amber-700">
-                  Catch-up a lançar: <span className="font-semibold tabular-nums">{m(totCatchUp)}</span>
+                  Catch-up to report: <span className="font-semibold tabular-nums">{m(totCatchUp)}</span>
                 </span>
               ) : (
                 <span className="rounded-lg bg-rose-50 px-3 py-1.5 text-rose-700">
-                  ⚠ Depreciado a maior: <span className="font-semibold tabular-nums">{m(Math.abs(totCatchUp))}</span> — nada a lançar
+                  ⚠ Over-depreciated: <span className="font-semibold tabular-nums">{m(Math.abs(totCatchUp))}</span> — nothing to report
                 </span>
               )}
             </>
@@ -280,12 +281,12 @@ function YearModal({
           <table className="w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-left text-slate-500 shadow-[0_1px_0_0_rgb(226,232,240)]">
               <tr>
-                <th className="px-3 py-2 font-medium">Ativo</th>
-                <th className="px-3 py-2 text-right font-medium">Valor original</th>
-                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Deveria (MACRS)" : "MACRS acum. (deveria)"}</th>
-                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Depreciado (livro)" : "Depreciado acum. (livro)"}</th>
-                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Diferença" : "Catch-up"}</th>
-                <th className="px-3 py-2 text-right font-medium">Saldo real</th>
+                <th className="px-3 py-2 font-medium">Asset</th>
+                <th className="px-3 py-2 text-right font-medium">Original cost</th>
+                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Should (MACRS)" : "MACRS accum. (should)"}</th>
+                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Depreciated (book)" : "Depreciated accum. (book)"}</th>
+                <th className="px-3 py-2 text-right font-medium">{view === "ano" ? "Difference" : "Catch-up"}</th>
+                <th className="px-3 py-2 text-right font-medium">Actual balance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -299,7 +300,7 @@ function YearModal({
                     <td className="px-3 py-2 font-medium text-slate-700">
                       {a.name}
                       {disposedHere && (
-                        <span className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">baixado {year}</span>
+                        <span className="ml-1.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700">disposed {year}</span>
                       )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-slate-600">{m0(a.cost)}</td>
@@ -338,18 +339,18 @@ function YearModal({
                             {depreciado == null ? "—" : m(depreciado)}
                           </span>
                           {notDepreciated && (
-                            <span className="rounded bg-rose-50 px-1 py-0.5 text-[9px] text-rose-700" title={`O livro não depreciou este ativo no ano, mas a MACRS dizia ${m(deveria)}. ${disposedHere ? "Na baixa, a depreciação do ano não foi tomada — vira maior perda na venda (Section 1231)." : "Falta lançar essa depreciação."}`}>
-                              não depreciado
+                            <span className="rounded bg-rose-50 px-1 py-0.5 text-[9px] text-rose-700" title={`The book didn't depreciate this asset for the year, but MACRS said ${m(deveria)}. ${disposedHere ? "At disposal, the year's depreciation wasn't taken — it becomes a larger loss on the sale (Section 1231)." : "This depreciation still needs to be reported."}`}>
+                              not depreciated
                             </span>
                           )}
                           {isDerived && !notDepreciated && (
-                            <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] text-emerald-700" title="Vem do cadastro do ativo (totalmente depreciado / baixa). Edite no lápis para sobrescrever.">
-                              cadastro
+                            <span className="rounded bg-emerald-50 px-1 py-0.5 text-[9px] text-emerald-700" title="Comes from the asset record (fully depreciated / disposal). Edit with the pencil to override.">
+                              record
                             </span>
                           )}
                           <button
                             onClick={() => setEditing(a.id)}
-                            title="Editar valor depreciado no livro"
+                            title="Edit the depreciated amount in the book"
                             className="rounded px-1 py-0.5 text-slate-400 hover:bg-slate-100 hover:text-sky-700"
                           >
                             ✎
@@ -362,7 +363,7 @@ function YearModal({
                         {diff == null ? "—" : m(diff)}
                       </td>
                     ) : (
-                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(catchUp) <= 1 ? "text-slate-400" : catchUp < 0 ? "font-medium text-rose-700" : "font-medium text-amber-700"}`} title={catchUp < -1 ? "Depreciado a maior — nada a lançar" : undefined}>
+                      <td className={`px-3 py-2 text-right tabular-nums ${Math.abs(catchUp) <= 1 ? "text-slate-400" : catchUp < 0 ? "font-medium text-rose-700" : "font-medium text-amber-700"}`} title={catchUp < -1 ? "Over-depreciated — nothing to report" : undefined}>
                         {m(catchUp)}
                       </td>
                     )}
@@ -373,7 +374,7 @@ function YearModal({
               {rowsForYear.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-3 py-4 text-center text-sm text-slate-400">
-                    Nenhum ativo em serviço em {year}.
+                    No asset in service in {year}.
                   </td>
                 </tr>
               )}
@@ -405,19 +406,19 @@ function YearModal({
           >
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 tabular-nums">
               <span className="text-slate-600">
-                IR declarado (Form 4562): <span className="font-semibold text-slate-800">{m(irForYear)}</span>
+                Reported on the return (Form 4562): <span className="font-semibold text-slate-800">{m(irForYear)}</span>
               </span>
               <span className="text-slate-600">
-                Registrado no livro: <span className="font-semibold text-slate-800">{m(totDepreciado)}</span>
+                Recorded in the book: <span className="font-semibold text-slate-800">{m(totDepreciado)}</span>
               </span>
             </div>
             <div className="flex items-center gap-3">
               <div className={`font-medium ${matched ? "text-emerald-700" : "text-amber-700"}`}>
                 {matched ? (
-                  "✓ bate com o IR declarado"
+                  "✓ matches the reported tax return"
                 ) : (
                   <>
-                    {matchDiff! > 0 ? "falta alocar" : "alocado a mais"} {m(Math.abs(matchDiff!))}
+                    {matchDiff! > 0 ? "still to allocate" : "over-allocated"} {m(Math.abs(matchDiff!))}
                   </>
                 )}
               </div>
@@ -427,9 +428,9 @@ function YearModal({
                   <input type="hidden" name="allocations" value={JSON.stringify(allocations)} />
                   <button
                     className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16304f]"
-                    title={`Preenche os ${candidates.length} ativos sem valor, proporcional à MACRS (Deveria), até bater com o IR declarado. Você pode ajustar cada um no lápis depois.`}
+                    title={`Fills the ${candidates.length} assets without a value, proportional to MACRS (Should), until it matches the reported tax return. You can adjust each one with the pencil afterward.`}
                   >
-                    Distribuir {m(remaining)} proporcional
+                    Distribute {m(remaining)} proportionally
                   </button>
                 </form>
               )}
@@ -438,12 +439,12 @@ function YearModal({
         )}
 
         <p className="mt-2 shrink-0 text-[11px] text-slate-400">
-          <strong>Deveria</strong> = MACRS do ano por ativo. <strong>Depreciado</strong> = o que foi
-          lançado no livro. Quando o ativo já está marcado &ldquo;totalmente depreciado no livro&rdquo;
-          ou &ldquo;baixado&rdquo; (na ficha), o valor vem do <strong>cadastro</strong> automaticamente
-          (badge); o lápis sobrescreve. Vazio = ainda não registrado. <strong>Saldo real</strong> =
-          custo − depreciação real acumulada. A soma de &ldquo;Depreciado&rdquo; deveria bater com o
-          IR declarado no ano.
+          <strong>Should</strong> = MACRS for the year per asset. <strong>Depreciated</strong> = what
+          was reported in the book. When the asset is already marked &ldquo;fully depreciated in the
+          book&rdquo; or &ldquo;disposed&rdquo; (on its detail), the value comes from the{" "}
+          <strong>record</strong> automatically (badge); the pencil overrides it. Empty = not yet
+          recorded. <strong>Actual balance</strong> = cost − accumulated actual depreciation. The sum
+          of &ldquo;Depreciated&rdquo; should match the tax return reported for the year.
         </p>
       </div>
     </div>
@@ -454,7 +455,7 @@ function SaveBtn() {
   const { pending } = useFormStatus();
   return (
     <button disabled={pending} className="rounded bg-[#1f3a5f] px-2 py-1 text-[11px] font-medium text-white hover:bg-[#16304f] disabled:opacity-50">
-      {pending ? "…" : "Salvar"}
+      {pending ? "…" : "Save"}
     </button>
   );
 }

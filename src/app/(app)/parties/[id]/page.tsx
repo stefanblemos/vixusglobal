@@ -100,14 +100,14 @@ export default async function PartyDetailPage({
               <input type="hidden" name="controlsTax" value={party.controlsTax ? "false" : "true"} />
               <button
                 type="submit"
-                title="Define se esta pessoa entra na sequência de fechamento do IR. Desligue para sócios externos cujo 1040 você não faz."
+                title="Sets whether this person is part of the tax return closing sequence. Turn off for external owners whose 1040 you don't prepare."
                 className={`rounded-full px-2 py-0.5 text-xs transition ${
                   party.controlsTax
                     ? "bg-green-50 text-green-700 hover:bg-green-100"
                     : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                 }`}
               >
-                {party.controlsTax ? "IR: você controla ✓" : "IR: fora do escopo"}
+                {party.controlsTax ? "Tax return: you control ✓" : "Tax return: out of scope"}
               </button>
             </form>
           )}
@@ -386,16 +386,16 @@ export default async function PartyDetailPage({
       {/* Mesclar pessoa duplicada (nomes divergentes) */}
       {party.kind === "PERSON" && (
         <section className="space-y-2">
-          <h2 className="text-lg font-medium text-slate-800">Mesclar registro duplicado</h2>
+          <h2 className="text-lg font-medium text-slate-800">Merge duplicate record</h2>
           <p className="text-sm text-slate-500">
-            Se a mesma pessoa está cadastrada com nome diferente, selecione o outro registro para
-            mesclá-lo nesta. Participações, declarações (1040) e vendores do razão passam para{" "}
-            <span className="font-medium text-slate-700">{party.name}</span>, o nome do duplicado
-            vira alias (imports futuros casam) e o registro extra é removido.
+            If the same person is registered under a different name, select the other record to
+            merge it into this one. Ownership stakes, tax returns (1040) and ledger vendors pass to{" "}
+            <span className="font-medium text-slate-700">{party.name}</span>, the duplicate&apos;s
+            name becomes an alias (future imports match) and the extra record is removed.
           </p>
           {party.aliases.length > 0 && (
             <p className="text-xs text-slate-500">
-              <span className="text-slate-400">Também conhecida como:</span>{" "}
+              <span className="text-slate-400">Also known as:</span>{" "}
               {party.aliases.join(" · ")}
             </p>
           )}
@@ -404,7 +404,7 @@ export default async function PartyDetailPage({
               <MergePartyInto keepId={party.id} keepName={party.name} others={otherParties} />
             </div>
           ) : (
-            <p className="text-sm text-slate-400">Nenhum outro registro de pessoa para mesclar.</p>
+            <p className="text-sm text-slate-400">No other person record to merge.</p>
           )}
         </section>
       )}

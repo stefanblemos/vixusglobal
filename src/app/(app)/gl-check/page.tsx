@@ -77,7 +77,7 @@ export default async function GlCheckPage({
         </p>
         {x.availableYears.length > 1 && (
           <div className="mt-3 flex flex-wrap items-center gap-1.5 text-sm">
-            <span className="mr-1 text-slate-400">Ano:</span>
+            <span className="mr-1 text-slate-400">Year:</span>
             {x.availableYears.map((y) => (
               <Link
                 key={y}
