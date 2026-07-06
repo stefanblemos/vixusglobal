@@ -1,6 +1,9 @@
 import Link from "next/link";
-import { Landmark, ClipboardCheck, CalendarClock, FolderOpen, type LucideIcon } from "lucide-react";
+import { Landmark, ClipboardCheck, CalendarClock, FolderOpen, Layers, PiggyBank, Bell, type LucideIcon } from "lucide-react";
 import { buildOverview } from "@/lib/overview/data";
+import { buildConsolidation } from "@/lib/consolidation/build";
+import { buildReserveByEntity } from "@/lib/tax/reserve";
+import { buildDigest } from "@/lib/digest/build";
 import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +17,13 @@ const isoToShort = (iso: string) =>
 
 export default async function DashboardPage() {
   const o = await buildOverview();
+  // Cockpit financeiro do grupo — dos mesmos builders das telas de detalhe (catch → não derruba a home).
+  const [consol, reserve, digest] = await Promise.all([
+    buildConsolidation(o.year).catch(() => null),
+    buildReserveByEntity(o.year).catch(() => null),
+    buildDigest(o.year).catch(() => null),
+  ]);
+  const m = (n: number) => formatMoney(n, "USD");
 
   const bankIssues = o.bank.outOfBalance + o.bank.flagged;
 
@@ -28,6 +38,38 @@ export default async function DashboardPage() {
           </p>
         </div>
       </div>
+
+      {/* 0 — Group at a glance (cockpit) */}
+      <section className="space-y-2">
+        <h2 className="text-xs font-medium uppercase tracking-wide text-slate-400">
+          Group at a glance — {o.year}
+        </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <Kpi
+            href="/consolidation"
+            icon={Layers}
+            label="Consolidated net income"
+            value={consol ? m(consol.consolidated.netIncome) : "—"}
+            sub={consol ? `assets ${m(consol.consolidated.assets)}` : "not available"}
+            accent
+          />
+          <Kpi
+            href="/reserve"
+            icon={PiggyBank}
+            label="Tax to set aside"
+            value={reserve ? m(reserve.totalReserve) : "—"}
+            sub="group reserve (federal + state)"
+          />
+          <Kpi
+            href="/digest"
+            icon={Bell}
+            label="Alerts"
+            value={digest ? String(digest.alerts.length) : "—"}
+            sub={digest ? `${digest.counts.alta} high priority` : "not available"}
+            tone={digest && digest.counts.alta > 0 ? "danger" : "ok"}
+          />
+        </div>
+      </section>
 
       {/* 1 — Needs attention */}
       <section className="space-y-2">
@@ -212,6 +254,40 @@ function Attention({
         {label}
       </div>
       <div className={`mt-1 text-2xl font-semibold ${valueCls}`}>{value}</div>
+      <div className="text-xs text-slate-400">{sub}</div>
+    </Link>
+  );
+}
+
+function Kpi({
+  href,
+  icon: Icon,
+  label,
+  value,
+  sub,
+  accent,
+  tone = "ok",
+}: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  sub: string;
+  accent?: boolean;
+  tone?: "ok" | "danger";
+}) {
+  return (
+    <Link
+      href={href}
+      className={`rounded-xl border p-4 transition hover:shadow-sm ${accent ? "border-2 border-[#8DC63F]/60 bg-[#8DC63F]/[0.08] hover:border-[#8DC63F]" : "border-slate-200 bg-white hover:border-[#1f3a5f]/40"}`}
+    >
+      <div className="flex items-center gap-1.5 text-sm text-slate-500">
+        <Icon className="h-4 w-4 text-slate-400" aria-hidden />
+        {label}
+      </div>
+      <div className={`mt-1 text-2xl font-semibold tabular-nums ${accent ? "text-[#3B6D11]" : tone === "danger" ? "text-rose-600" : "text-slate-800"}`}>
+        {value}
+      </div>
       <div className="text-xs text-slate-400">{sub}</div>
     </Link>
   );
