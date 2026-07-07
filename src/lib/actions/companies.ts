@@ -8,6 +8,24 @@ import { EntityType, Jurisdiction, CompanyRelationship } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
 
+// Marca (ou limpa) a empresa como DESCONSIDERADA declarada dentro de outra (disregarded SMLLC). Guarda:
+// não pode apontar para si mesma nem encadear (a dona não pode ela mesma ser desconsiderada).
+export async function setDisregardedInto(formData: FormData): Promise<void> {
+  const companyId = String(formData.get("companyId") ?? "");
+  const raw = String(formData.get("disregardedIntoId") ?? "").trim();
+  const parentId = raw === "" ? null : raw;
+  if (!companyId) return;
+  if (parentId === companyId) throw new Error("A company cannot be disregarded into itself.");
+  if (parentId) {
+    const parent = await prisma.company.findUnique({ where: { id: parentId }, select: { disregardedIntoId: true } });
+    if (parent?.disregardedIntoId) throw new Error("The owner is itself a disregarded entity — pick the entity that actually files the return.");
+  }
+  await prisma.company.update({ where: { id: companyId }, data: { disregardedIntoId: parentId } });
+  revalidatePath(`/companies/${companyId}`);
+  revalidatePath("/tax-preview");
+  revalidatePath("/tax-audit");
+}
+
 export async function createCompany(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = companyCreateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {

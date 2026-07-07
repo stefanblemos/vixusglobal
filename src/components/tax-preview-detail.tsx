@@ -74,7 +74,17 @@ export function TaxPreviewTable({
                         {CONF[confidence[r.id]].label}
                       </span>
                     )}
-                    {!r.hasPnl && r.kind === "company" && <span className="ml-1 text-[10px] text-amber-600">no P&L</span>}
+                    {!r.hasPnl && r.kind === "company" && !r.disregardedInto && <span className="ml-1 text-[10px] text-amber-600">no P&L</span>}
+                    {r.disregardedInto && (
+                      <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700" title={`Disregarded entity — no separate return; result folded into ${r.disregardedInto}`}>
+                        → {r.disregardedInto} · disregarded
+                      </span>
+                    )}
+                    {r.foldedIn.length > 0 && (
+                      <span className="ml-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[10px] text-violet-700" title={`Consolidates disregarded entities: ${r.foldedIn.map((f) => `${f.name} (${m(f.book)})`).join(", ")}`}>
+                        + {r.foldedIn.map((f) => f.acronym).join(", ")} folded in
+                      </span>
+                    )}
                     {r.inCycle && (
                       <span className="ml-1 rounded-full bg-rose-50 px-1.5 py-0.5 text-[10px] text-rose-700" title="Circular ownership — cross K-1 approximated.">
                         ⚠ cycle

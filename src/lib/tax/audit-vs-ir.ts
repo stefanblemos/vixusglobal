@@ -102,6 +102,9 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
 
   for (const r of preview.rows) {
     if (r.kind !== "company") continue;
+    // Entidade desconsiderada: não declara IR próprio (o resultado está no IR da dona) → não é "IR
+    // faltando". Sai da Conferência; a dona é conferida já com a base consolidada dobrada.
+    if (r.disregardedInto) { seen.add(r.id); continue; }
     seen.add(r.id);
     const hasIr = irByCo.has(r.id);
     const hasQbo = r.hasPnl;

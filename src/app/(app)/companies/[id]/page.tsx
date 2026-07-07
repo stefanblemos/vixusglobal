@@ -13,6 +13,7 @@ import { ownerNameMatches } from "@/lib/ownership/reconcile";
 import { computeLoanBalance } from "@/lib/loans/interest";
 import { normalizeName } from "@/lib/qbo/match";
 import { finalClosingYear } from "@/lib/companies/closed";
+import { DisregardedForm } from "@/components/disregarded-form";
 import {
   labelForEntityType,
   labelForJurisdiction,
@@ -270,12 +271,16 @@ export default async function CompanyDetailPage({
     (company.status === "INACTIVE" && yearsWithReturns.size > 0
       ? Math.max(...yearsWithReturns)
       : new Date().getFullYear() - 1);
-  const missingYears = formationYear
+  // Empresa desconsiderada (disregarded) não declara IR próprio → nunca é "IR faltando".
+  const missingYears = formationYear && !company.disregardedIntoId
     ? Array.from(
         { length: Math.max(0, lastExpectedYear - formationYear + 1) },
         (_, i) => formationYear + i,
       ).filter((y) => !yearsWithReturns.has(y))
     : [];
+  const disregardedParent = company.disregardedIntoId
+    ? companies.find((c) => c.id === company.disregardedIntoId) ?? null
+    : null;
 
   // O raio-x atual usa sempre o relatório de PERÍODO mais recente (não o último importado),
   // p/ que subir um BS antigo não apague os assets/saldos do ano corrente.
@@ -629,6 +634,23 @@ export default async function CompanyDetailPage({
               The company&apos;s situation each year, built from the filed documents (tax
               classification + income tax returns). Ownership and address per year will join here.
             </p>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 px-4 py-3">
+              <DisregardedForm
+                companyId={company.id}
+                currentParentId={company.disregardedIntoId}
+                currentParentName={disregardedParent?.legalName ?? null}
+                candidates={companies
+                  .filter((c) => c.id !== company.id && !c.disregardedIntoId)
+                  .map((c) => ({ id: c.id, legalName: c.legalName }))}
+              />
+              {disregardedParent && (
+                <p className="mt-2 text-xs text-violet-700">
+                  Single-member LLC treated as a disregarded entity: no separate federal return — its P&amp;L
+                  is consolidated into {disregardedParent.legalName}&apos;s return (still keeps its own EIN for
+                  payroll/sales tax). It won&apos;t be flagged as a missing return.
+                </p>
+              )}
+            </div>
             {company.formationDate && (
               <div
                 className={`rounded-lg border px-4 py-2 text-sm ${

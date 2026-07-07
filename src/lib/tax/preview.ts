@@ -44,6 +44,8 @@ export interface TaxPreviewRow {
   k1From: { fromKey: string; fromName: string; fromAcronym: string; amount: number }[]; // origem do K-1
   taxable: number;
   tax: number; // 0 p/ pass-through (repassa)
+  disregardedInto: string | null; // se é entidade desconsiderada: acrônimo da dona onde o resultado foi dobrado (taxable/tax = 0 aqui)
+  foldedIn: { name: string; acronym: string; book: number }[]; // filhos desconsiderados dobrados NESTA (a dona)
   passesTo: { name: string; acronym: string; pct: number }[];
   tier: number;
   inCycle: boolean; // posse circular → o K-1 cruzado é aproximado (a base pode não fechar)
@@ -164,7 +166,7 @@ export async function buildTaxPreview(
       select: { companyId: true, principal: true, penalty: true, interest: true, paidDate: true },
     }),
     prisma.company.findMany({
-      select: { id: true, legalName: true, baseCurrency: true, monitored: true, relationship: true, controlsTax: true, closedDate: true, status: true },
+      select: { id: true, legalName: true, baseCurrency: true, monitored: true, relationship: true, controlsTax: true, closedDate: true, status: true, disregardedIntoId: true },
     }),
     loadTreatmentResolver(),
     loadClosedResolver(),
@@ -340,13 +342,45 @@ export async function buildTaxPreview(
     self.set(n.key, { bookNet: r2(bookNet), nonDed, nonDedItems: ded.items, stateAddBack, stateInterest, stateSource, statePnlUnfiled, depAdj, bookDep: r2(bookDep), macrsDep, macrsApplied, depCatchUp, hasPnl: true });
   }
 
+  const nodeByKey = new Map(nodes.map((n) => [n.key, n]));
+
+  // ENTIDADE DESCONSIDERADA (disregarded): dobra a base própria do filho na DONA e zera o filho. O filho
+  // não declara IR próprio (é consolidado no da dona), então: (a) sua base entra no `self` da dona ANTES
+  // do K-1, (b) o filho fica com base 0 → taxable/tax/K-1 = 0 (não conta duas vezes, não repassa K-1
+  // fantasma). Fonte única: Company.disregardedIntoId. Só dobra se a dona também está no preview.
+  const disregardedInto = new Map<string, string>(); // childKey → acrônimo da dona
+  const foldedInByKey = new Map<string, { name: string; acronym: string; book: number }[]>(); // parentKey → filhos
+  for (const n of nodes) {
+    if (n.kind !== "company") continue;
+    const pid = companyById.get(n.id)?.disregardedIntoId;
+    if (!pid) continue;
+    const parentKey = ck(pid);
+    const parent = self.get(parentKey);
+    if (!parent) continue; // dona fora do preview (encerrada/não-USD/sem P&L) → não dobra, segue normal
+    const child = self.get(n.key)!;
+    parent.bookNet = r2(parent.bookNet + child.bookNet);
+    parent.nonDed = r2(parent.nonDed + child.nonDed);
+    parent.nonDedItems = [...parent.nonDedItems, ...child.nonDedItems.map((i) => ({ label: `${n.acronym}: ${i.label}`, amount: i.amount }))];
+    parent.stateAddBack = r2(parent.stateAddBack + child.stateAddBack);
+    parent.stateInterest = r2(parent.stateInterest + child.stateInterest);
+    parent.statePnlUnfiled = r2(parent.statePnlUnfiled + child.statePnlUnfiled);
+    parent.depAdj = r2(parent.depAdj + child.depAdj);
+    parent.bookDep = r2(parent.bookDep + child.bookDep);
+    parent.macrsDep = r2(parent.macrsDep + child.macrsDep);
+    disregardedInto.set(n.key, nodeByKey.get(parentKey)?.acronym ?? "");
+    const arr = foldedInByKey.get(parentKey) ?? [];
+    arr.push({ name: n.name, acronym: n.acronym, book: child.bookNet });
+    foldedInByKey.set(parentKey, arr);
+    self.set(n.key, { ...blank, hasPnl: false }); // filho zerado (base já dobrada na dona)
+  }
+
   // K-1 acumulado de baixo para cima. k1FromByKey guarda a ORIGEM (quem repassou e quanto) — para o
   // drill-down "das empresas formadoras de K-1 até os owners".
-  const nodeByKey = new Map(nodes.map((n) => [n.key, n]));
   const k1In = new Map<string, number>();
   const k1FromByKey = new Map<string, { fromKey: string; amount: number }[]>();
   const taxableByKey = new Map<string, number>();
   for (const n of nodes) {
+    if (disregardedInto.has(n.key)) { taxableByKey.set(n.key, 0); continue; } // desconsiderada: já dobrada na dona, não repassa
     const s = self.get(n.key)!;
     const taxable = r2(s.bookNet + s.nonDed + s.stateAddBack + s.depAdj + (k1In.get(n.key) ?? 0));
     taxableByKey.set(n.key, taxable);
@@ -390,7 +424,8 @@ export async function buildTaxPreview(
       k1From: (k1FromByKey.get(n.key) ?? [])
         .map((f) => ({ fromKey: f.fromKey, fromName: nodeByKey.get(f.fromKey)?.name ?? "—", fromAcronym: nodeByKey.get(f.fromKey)?.acronym ?? "?", amount: r2(f.amount) }))
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
-      taxable, tax, passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
+      taxable, tax, disregardedInto: disregardedInto.get(n.key) ?? null, foldedIn: foldedInByKey.get(n.key) ?? [],
+      passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
       pnlImportId: n.kind === "company" ? (pnlImportIdByCompany.get(n.id) ?? null) : null,
       bsImportId: n.kind === "company" ? (bsImportIdByCompany.get(n.id) ?? null) : null,
     };

@@ -43,6 +43,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
         taxId: true,
         formationDate: true,
         status: true,
+        disregardedIntoId: true,
       },
     }),
     prisma.taxReturn.findMany({
@@ -155,6 +156,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
     else returnsByCompany.set(r.companyId, [mini]);
   }
   for (const c of companies) {
+    if (c.disregardedIntoId) continue; // desconsiderada: declara dentro da dona, não tem IR próprio a cobrar
     const formationYear = c.formationDate
       ? Number((c.formationDate.match(/(?:19|20)\d{2}/) ?? [])[0]) || null
       : null;
