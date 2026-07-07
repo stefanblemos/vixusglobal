@@ -35,6 +35,7 @@ export interface CapYear {
   distributions: number | null; // distribuições do ano
   capEnd: number | null; // capital (fim) — a base acumulada até este ano
   capEndComputed: boolean; // true = capEnd CALCULADO (rolagem início/anterior + renda − dist), não lido do IR
+  isFinal: boolean; // IR "final" (ex.: 1120-S final na conversão S-corp→partnership) — vem ANTES do continuador
 }
 
 // O que uma pass-through possui (para o drill-down do holding: ver o que há "dentro" da capital account).
@@ -109,7 +110,7 @@ export async function buildDistributableReport(year: number): Promise<Distributa
   // select explícito: NÃO carrega o blob `pdf` (pesado) — só o que a extração/rastreio precisa.
   const returns = await prisma.taxReturn.findMany({
     where: { companyId: { not: null } },
-    select: { id: true, companyId: true, year: true, figures: true, manualFigures: true, pdfSize: true },
+    select: { id: true, companyId: true, year: true, figures: true, manualFigures: true, pdfSize: true, isFinalReturn: true },
     orderBy: { year: "asc" },
   });
   const hasIr = new Set<string>();
@@ -133,13 +134,16 @@ export async function buildDistributableReport(year: number): Promise<Distributa
       distributions: pickFig(figs, DISTRIBUTIONS),
       capEnd: pickFig(figs, CAPITAL_END) ?? pickFig(figs, CAPITAL_END_BARE),
       capEndComputed: false,
+      isFinal: ret.isFinalReturn,
     };
     (detailByCo.get(ret.companyId) ?? detailByCo.set(ret.companyId, []).get(ret.companyId)!).push(row);
   }
   // FILL calculado: onde o IR não trouxe o capEnd, rola do último conhecido: prior + renda − distribuições
   // (marcado como calculado, ≠ do IR). Anos ANTES do 1º capEnd conhecido não têm âncora → ficam null.
   for (const detail of detailByCo.values()) {
-    detail.sort((a, b) => a.year - b.year);
+    // Ano asc; no MESMO ano, o IR "final" vem antes do continuador (não-final) → o capEnd going-forward
+    // é o do continuador (o 1065 na conversão S-corp→partnership), pego como o mais recente com capEnd.
+    detail.sort((a, b) => a.year - b.year || Number(b.isFinal) - Number(a.isFinal));
     let running: number | null = null;
     for (const d of detail) {
       if (d.capEnd != null) running = d.capEnd;

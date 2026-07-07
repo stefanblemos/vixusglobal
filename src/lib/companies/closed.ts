@@ -14,18 +14,43 @@ const yearFrom = (s: string | null | undefined): number | null =>
   s ? Number((s.match(/(?:19|20)\d\d/) ?? [])[0]) || null : null;
 
 export async function loadClosedResolver(): Promise<ClosedResolver> {
-  const [companies, finalReturns] = await Promise.all([
+  const [companies, allReturns] = await Promise.all([
     prisma.company.findMany({ select: { id: true, closedDate: true } }),
     prisma.taxReturn.findMany({
-      where: { isFinalReturn: true, companyId: { not: null } },
-      select: { companyId: true, year: true },
+      where: { companyId: { not: null }, year: { not: null } },
+      select: { id: true, companyId: true, year: true, isFinalReturn: true, taxForm: true },
     }),
   ]);
-  const finalYear = new Map<string, number>();
-  for (const r of finalReturns) {
+  // Retornos por empresa (todos, não só os finais) — para saber se há CONTINUAÇÃO após um IR final.
+  const normForm = (s: string | null): string | null => (s ?? "").replace(/^form\s+/i, "").trim().toUpperCase() || null;
+  const byCompany = new Map<string, { id: string; year: number; isFinal: boolean; form: string | null }[]>();
+  for (const r of allReturns) {
     if (!r.companyId || r.year == null) continue;
-    const cur = finalYear.get(r.companyId);
-    if (cur == null || r.year > cur) finalYear.set(r.companyId, r.year);
+    (byCompany.get(r.companyId) ?? byCompany.set(r.companyId, []).get(r.companyId)!).push({
+      id: r.id,
+      year: r.year,
+      isFinal: r.isFinalReturn,
+      form: normForm(r.taxForm),
+    });
+  }
+  // Ano do IR final que REALMENTE encerra. Um "final return" só fecha se NÃO houver CONTINUAÇÃO da
+  // entidade — onde continuação = um IR de ano POSTERIOR, ou de FORMULÁRIO DIFERENTE no mesmo ano (o
+  // caso da conversão: 4U trocou S-corp→partnership em 2025 e o 1120-S "final" convive com o 1065 do
+  // mesmo ano → a 4U não fechou). Um IR do MESMO formulário/ano é duplicata, NÃO continuação (senão um
+  // upload duplicado des-fecharia uma empresa realmente encerrada). Antes, qualquer isFinalReturn fechava.
+  const finalYear = new Map<string, number>();
+  for (const [id, rs] of byCompany) {
+    for (const f of rs) {
+      if (!f.isFinal) continue;
+      const continues = rs.some(
+        (r) =>
+          r.id !== f.id &&
+          (r.year > f.year || (r.year === f.year && !!r.form && !!f.form && r.form !== f.form)),
+      );
+      if (continues) continue;
+      const cur = finalYear.get(id);
+      if (cur == null || f.year < cur) finalYear.set(id, f.year);
+    }
   }
   const closedDateById = new Map(companies.map((c) => [c.id, c.closedDate]));
   const closedYearOf = (id: string): number | null => {

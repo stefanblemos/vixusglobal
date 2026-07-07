@@ -17,3 +17,37 @@ export function effectiveFigures(figures: unknown, manualFigures: unknown): IrFi
 export function effectiveFiguresOf(ret: { figures?: unknown; manualFigures?: unknown }): IrFigure[] {
   return effectiveFigures(ret.figures ?? null, ret.manualFigures ?? null);
 }
+
+// Soma as figuras de VÁRIOS IRs do mesmo ano/empresa por `key` — para conversão de tipo no meio do
+// ano (ex.: 4U trocou S-corp→partnership em 2025: dois IRs de período curto cujas figuras de FLUXO —
+// renda, deduções, imposto — se completam no ano). Para 1 IR (o caso normal) é IDENTIDADE (devolve as
+// próprias figuras, sem mudar nada). Figuras de estoque (capital account) NÃO passam por aqui — a base
+// distribuível usa a do IR final (partnership), tratada à parte.
+export function sumFiguresByKey(figureLists: IrFigure[][]): IrFigure[] {
+  if (figureLists.length === 1) return figureLists[0];
+  const byKey = new Map<string, IrFigure>();
+  for (const list of figureLists) {
+    for (const f of list) {
+      if (f.value == null) continue;
+      const cur = byKey.get(f.key);
+      if (cur) cur.value = (cur.value ?? 0) + Number(f.value);
+      else byKey.set(f.key, { ...f, value: Number(f.value) });
+    }
+  }
+  return [...byKey.values()];
+}
+
+// Figuras efetivas por empresa, SOMANDO os IRs do mesmo ano (conversão de tipo). 1 IR por empresa =
+// idêntico ao de antes. Usado pela Conferência IR, M-1 e selo de confiança (camada de comparação).
+export function figuresByCompany(
+  rets: { companyId: string | null; figures?: unknown; manualFigures?: unknown }[],
+): Map<string, IrFigure[]> {
+  const groups = new Map<string, IrFigure[][]>();
+  for (const r of rets) {
+    if (!r.companyId) continue;
+    (groups.get(r.companyId) ?? groups.set(r.companyId, []).get(r.companyId)!).push(effectiveFiguresOf(r));
+  }
+  const out = new Map<string, IrFigure[]>();
+  for (const [cid, lists] of groups) out.set(cid, sumFiguresByKey(lists));
+  return out;
+}

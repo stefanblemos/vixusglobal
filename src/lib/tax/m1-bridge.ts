@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildTaxPreview } from "@/lib/tax/preview";
 import { baselineFig } from "@/lib/tax/audit-vs-ir";
-import { effectiveFiguresOf, type IrFigure } from "@/lib/ir/figures";
+import { figuresByCompany } from "@/lib/ir/figures";
 
 // PONTE M-1 (livro → imposto), por entidade, nas LINHAS reais do Schedule M-1: começa no lucro por
 // livro (QBO) e reconstrói cada ajuste até o taxable income — o mesmo caminho do tax preview, agora
@@ -42,8 +42,7 @@ export async function buildM1Bridge(year: number): Promise<M1Bridge> {
     where: { companyId: { not: null }, year },
     select: { companyId: true, figures: true, manualFigures: true },
   });
-  const figsByCo = new Map<string, IrFigure[]>();
-  for (const r of rets) if (r.companyId) figsByCo.set(r.companyId, effectiveFiguresOf(r));
+  const figsByCo = figuresByCompany(rets);
 
   const entities: M1Entity[] = [];
   for (const r of preview.rows) {

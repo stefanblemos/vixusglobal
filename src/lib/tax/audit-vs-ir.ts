@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildTaxPreview } from "@/lib/tax/preview";
-import { effectiveFiguresOf, type IrFigure } from "@/lib/ir/figures";
+import { figuresByCompany, type IrFigure } from "@/lib/ir/figures";
 
 // Auditoria QBO × IR: confronta o que o app CALCULA (tax preview, a partir do QBO) com o que o
 // contador DECLAROU (as figuras do IR). Cada métrica bate, diverge, é divergência esperada (holding:
@@ -72,8 +72,7 @@ export async function irTaxableConfidence(
     where: { companyId: { not: null }, year },
     select: { companyId: true, figures: true, manualFigures: true },
   });
-  const figsByCo = new Map<string, IrFigure[]>();
-  for (const r of rets) if (r.companyId) figsByCo.set(r.companyId, effectiveFiguresOf(r));
+  const figsByCo = figuresByCompany(rets);
   const out: Record<string, IrConfidence> = {};
   for (const row of rows) {
     if (row.kind !== "company" || !row.hasPnl) continue;
@@ -90,13 +89,9 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
     where: { companyId: { not: null }, year },
     select: { companyId: true, figures: true, manualFigures: true, company: { select: { legalName: true } } },
   });
-  const irByCo = new Map<string, IrFigure[]>();
+  const irByCo = figuresByCompany(rets);
   const irCoName = new Map<string, string>();
-  for (const r of rets) {
-    if (!r.companyId) continue;
-    irByCo.set(r.companyId, effectiveFiguresOf(r));
-    irCoName.set(r.companyId, r.company?.legalName ?? r.companyId);
-  }
+  for (const r of rets) if (r.companyId) irCoName.set(r.companyId, r.company?.legalName ?? r.companyId);
   const irFig = (cid: string, key: string): number | null => {
     const f = irByCo.get(cid)?.find((f) => f.key === key && f.value != null);
     return f ? Number(f.value) : null;
