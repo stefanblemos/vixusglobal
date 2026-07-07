@@ -31,7 +31,7 @@ export async function drawPdfHeader(
   doc: PDFDocument,
   page: PDFPage,
   fonts: { bold: PDFFont; font: PDFFont },
-  opts: { title: string; subtitle?: string; right?: string; pageWidth: number; pageHeight: number; margin?: number },
+  opts: { title: string; subtitle?: string; right?: string; pageWidth: number; pageHeight: number; margin?: number; logoHeight?: number },
 ): Promise<number> {
   const M = opts.margin ?? 40;
   const top = opts.pageHeight - M;
@@ -40,7 +40,7 @@ export async function drawPdfHeader(
   let cursorY = top;
   if (bytes) {
     const img = await doc.embedPng(bytes);
-    const h = 22;
+    const h = opts.logoHeight ?? 22;
     const w = (img.width / img.height) * h;
     page.drawImage(img, { x: M, y: top - h, width: w, height: h });
     cursorY = top - h - 8;
