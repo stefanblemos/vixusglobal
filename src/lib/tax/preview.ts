@@ -45,6 +45,7 @@ export interface TaxPreviewRow {
   taxable: number;
   tax: number; // 0 p/ pass-through (repassa)
   disregardedInto: string | null; // se é entidade desconsiderada: acrônimo da dona onde o resultado foi dobrado (taxable/tax = 0 aqui)
+  disregardedBook: number | null; // o próprio book (P&L) do filho desconsiderado — dobrado na dona, mostrado aqui p/ conferência
   foldedIn: { name: string; acronym: string; book: number }[]; // filhos desconsiderados dobrados NESTA (a dona)
   passesTo: { name: string; acronym: string; pct: number }[];
   tier: number;
@@ -349,6 +350,7 @@ export async function buildTaxPreview(
   // do K-1, (b) o filho fica com base 0 → taxable/tax/K-1 = 0 (não conta duas vezes, não repassa K-1
   // fantasma). Fonte única: Company.disregardedIntoId. Só dobra se a dona também está no preview.
   const disregardedInto = new Map<string, string>(); // childKey → acrônimo da dona
+  const disregardedBookByKey = new Map<string, number>(); // childKey → book próprio do filho (p/ exibir na conferência)
   const foldedInByKey = new Map<string, { name: string; acronym: string; book: number }[]>(); // parentKey → filhos
   for (const n of nodes) {
     if (n.kind !== "company") continue;
@@ -368,6 +370,7 @@ export async function buildTaxPreview(
     parent.bookDep = r2(parent.bookDep + child.bookDep);
     parent.macrsDep = r2(parent.macrsDep + child.macrsDep);
     disregardedInto.set(n.key, nodeByKey.get(parentKey)?.acronym ?? "");
+    disregardedBookByKey.set(n.key, child.bookNet);
     const arr = foldedInByKey.get(parentKey) ?? [];
     arr.push({ name: n.name, acronym: n.acronym, book: child.bookNet });
     foldedInByKey.set(parentKey, arr);
@@ -424,7 +427,7 @@ export async function buildTaxPreview(
       k1From: (k1FromByKey.get(n.key) ?? [])
         .map((f) => ({ fromKey: f.fromKey, fromName: nodeByKey.get(f.fromKey)?.name ?? "—", fromAcronym: nodeByKey.get(f.fromKey)?.acronym ?? "?", amount: r2(f.amount) }))
         .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
-      taxable, tax, disregardedInto: disregardedInto.get(n.key) ?? null, foldedIn: foldedInByKey.get(n.key) ?? [],
+      taxable, tax, disregardedInto: disregardedInto.get(n.key) ?? null, disregardedBook: disregardedBookByKey.get(n.key) ?? null, foldedIn: foldedInByKey.get(n.key) ?? [],
       passesTo: n.passesTo, tier: n.tier, inCycle: n.inCycle,
       pnlImportId: n.kind === "company" ? (pnlImportIdByCompany.get(n.id) ?? null) : null,
       bsImportId: n.kind === "company" ? (bsImportIdByCompany.get(n.id) ?? null) : null,

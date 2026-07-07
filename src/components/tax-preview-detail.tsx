@@ -91,7 +91,9 @@ export function TaxPreviewTable({
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">{r.kind === "person" ? "—" : m(r.bookNet)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums text-slate-600">
+                    {r.kind === "person" ? "—" : r.disregardedInto ? <span className="text-violet-500" title="Book folded into the owner's return">({m(r.disregardedBook ?? 0)})</span> : m(r.bookNet)}
+                  </td>
                   <td className="px-3 py-2 text-right tabular-nums text-slate-600">
                     {r.nonDeductible + r.stateTaxAddBack ? m(r.nonDeductible + r.stateTaxAddBack) : "—"}
                     {r.stateTaxAddBack > 0 && (

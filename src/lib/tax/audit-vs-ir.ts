@@ -8,7 +8,7 @@ import { figuresByCompany, type IrFigure } from "@/lib/ir/figures";
 // Vixus — conferir o contador — feita pelo app, sem dado novo. Só leitura.
 
 export type ReconStatus = "match" | "diverge" | "expected" | "no-ir";
-export type RowSeverity = "diverge" | "warn" | "no-ir" | "no-qbo" | "ok";
+export type RowSeverity = "diverge" | "warn" | "no-ir" | "no-qbo" | "folded" | "ok";
 
 export interface ReconMetric {
   key: string;
@@ -102,9 +102,19 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
 
   for (const r of preview.rows) {
     if (r.kind !== "company") continue;
-    // Entidade desconsiderada: não declara IR próprio (o resultado está no IR da dona) → não é "IR
-    // faltando". Sai da Conferência; a dona é conferida já com a base consolidada dobrada.
-    if (r.disregardedInto) { seen.add(r.id); continue; }
+    // Entidade desconsiderada: não declara IR próprio (o resultado está no IR da dona). Aparece na
+    // Conferência EXPLÍCITA (não some) com status "folded" — para amarrar linha a linha com o
+    // "Analysis of Net Income" do 1065 da dona. Não é pendência.
+    if (r.disregardedInto) {
+      seen.add(r.id);
+      rows.push({
+        companyId: r.id, name: r.name, acronym: r.acronym, entityType: r.entityType,
+        hasQbo: true, hasIr: false, metrics: [],
+        flags: [`Disregarded SMLLC — no separate return. Book ${Math.round(r.disregardedBook ?? 0).toLocaleString("en-US")} is consolidated into ${r.disregardedInto}'s return (Analysis of Net Income).`],
+        severity: "folded",
+      });
+      continue;
+    }
     seen.add(r.id);
     const hasIr = irByCo.has(r.id);
     const hasQbo = r.hasPnl;
@@ -162,6 +172,10 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
       flags.push(`Tax return has ${Math.round(irDep).toLocaleString("en-US")} of depreciation, but the company has no assets registered`);
     if (r.statePnlUnfiled > 0)
       flags.push(`${Math.round(r.statePnlUnfiled).toLocaleString("en-US")} in State Taxes on the P&L with no registration in Florida`);
+    // Dona de entidade(s) desconsiderada(s): torna EXPLÍCITO o que foi consolidado no book (amarra com
+    // o "Analysis of Net Income" do 1065, que lista cada uma em separado).
+    if (r.foldedIn.length > 0)
+      flags.push(`Consolidates disregarded ${r.foldedIn.map((f) => `${f.name} (book ${Math.round(f.book).toLocaleString("en-US")})`).join(", ")} — folded into this book, matching the 1065 Analysis of Net Income`);
 
     let severity: RowSeverity;
     if (!hasQbo) severity = "no-qbo";
@@ -189,7 +203,7 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
     });
   }
 
-  const rank: Record<RowSeverity, number> = { diverge: 0, warn: 1, "no-ir": 2, "no-qbo": 3, ok: 4 };
+  const rank: Record<RowSeverity, number> = { diverge: 0, warn: 1, "no-ir": 2, "no-qbo": 3, folded: 4, ok: 4 };
   rows.sort((a, b) => rank[a.severity] - rank[b.severity] || a.name.localeCompare(b.name));
 
   const summary = {

@@ -53,8 +53,15 @@ export async function buildM1Bridge(year: number): Promise<M1Bridge> {
     const line5Items = r.nonDeductibleItems.filter((i) => !/federal/i.test(i.label));
     const line5Total = r2(line5Items.reduce((s, i) => s + i.amount, 0) + r.stateTaxAddBack);
 
+    // Se consolida entidade(s) desconsiderada(s), o book é a soma (own + filhos). Detalha para amarrar
+    // com o "Analysis of Net Income" do 1065, que lista cada uma em separado.
+    const foldTotal = r.foldedIn.reduce((s, f) => s + f.book, 0);
+    const bookDetail = r.foldedIn.length
+      ? `${r.acronym} ${Math.round(r.bookNet - foldTotal).toLocaleString("en-US")}` +
+        r.foldedIn.map((f) => ` + ${f.acronym} ${Math.round(f.book).toLocaleString("en-US")} (disregarded)`).join("")
+      : undefined;
     const lines: M1Line[] = [
-      { code: "1", label: "Net income per book (QBO)", amount: r2(r.bookNet), sign: "=" },
+      { code: "1", label: "Net income per book (QBO)", amount: r2(r.bookNet), sign: "=", detail: bookDetail },
     ];
     if (federalItem) lines.push({ code: "2", label: "Federal income tax", amount: r2(federalItem.amount), sign: "+", detail: "never deductible" });
     if (r.k1In) lines.push({ code: "4", label: "Taxable income outside the book (K-1 received)", amount: r2(r.k1In), sign: "+", detail: "from pass-through investees" });

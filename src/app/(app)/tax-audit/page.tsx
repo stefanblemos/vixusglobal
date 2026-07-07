@@ -12,6 +12,7 @@ const SEV: Record<RowSeverity, { label: string; cls: string }> = {
   warn: { label: "attention", cls: "bg-amber-100 text-amber-700" },
   "no-ir": { label: "no return to check", cls: "bg-slate-100 text-slate-500" },
   "no-qbo": { label: "no QBO for year", cls: "bg-slate-100 text-slate-500" },
+  folded: { label: "consolidated in owner", cls: "bg-violet-100 text-violet-700" },
   ok: { label: "matches", cls: "bg-[#8DC63F]/20 text-[#3B6D11]" },
 };
 
