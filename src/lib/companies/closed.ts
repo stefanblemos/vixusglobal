@@ -13,6 +13,30 @@ export type ClosedResolver = {
 const yearFrom = (s: string | null | undefined): number | null =>
   s ? Number((s.match(/(?:19|20)\d\d/) ?? [])[0]) || null : null;
 
+const normForm = (s: string | null): string | null =>
+  (s ?? "").replace(/^form\s+/i, "").trim().toUpperCase() || null;
+
+// Ano em que um "final return" REALMENTE encerra a entidade, a partir dos IRs DE UMA empresa. Um final
+// return só fecha se não houver CONTINUAÇÃO: IR de ano posterior OU de formulário DIFERENTE no mesmo ano
+// (conversão, ex.: 1120-S final + 1065). IR do mesmo formulário/ano = duplicata, não continuação. null =
+// não encerra. FONTE ÚNICA — usada pelo resolver e pelas telas (empresa/lista) para não divergirem.
+export type MiniReturn = { id: string; year: number | null; isFinalReturn: boolean; taxForm: string | null };
+export function finalClosingYear(returns: MiniReturn[]): number | null {
+  let closing: number | null = null;
+  for (const f of returns) {
+    if (!f.isFinalReturn || f.year == null) continue;
+    const continues = returns.some(
+      (r) =>
+        r.id !== f.id &&
+        r.year != null &&
+        (r.year > f.year! ||
+          (r.year === f.year && !!normForm(r.taxForm) && !!normForm(f.taxForm) && normForm(r.taxForm) !== normForm(f.taxForm))),
+    );
+    if (!continues) closing = closing == null ? f.year : Math.min(closing, f.year);
+  }
+  return closing;
+}
+
 export async function loadClosedResolver(): Promise<ClosedResolver> {
   const [companies, allReturns] = await Promise.all([
     prisma.company.findMany({ select: { id: true, closedDate: true } }),
@@ -21,36 +45,17 @@ export async function loadClosedResolver(): Promise<ClosedResolver> {
       select: { id: true, companyId: true, year: true, isFinalReturn: true, taxForm: true },
     }),
   ]);
-  // Retornos por empresa (todos, não só os finais) — para saber se há CONTINUAÇÃO após um IR final.
-  const normForm = (s: string | null): string | null => (s ?? "").replace(/^form\s+/i, "").trim().toUpperCase() || null;
-  const byCompany = new Map<string, { id: string; year: number; isFinal: boolean; form: string | null }[]>();
+  // Retornos por empresa; o ano de encerramento vem do helper finalClosingYear (fonte única, ciente de
+  // conversão: um final return só fecha se não houver continuação — ver o helper acima).
+  const byCompany = new Map<string, MiniReturn[]>();
   for (const r of allReturns) {
     if (!r.companyId || r.year == null) continue;
-    (byCompany.get(r.companyId) ?? byCompany.set(r.companyId, []).get(r.companyId)!).push({
-      id: r.id,
-      year: r.year,
-      isFinal: r.isFinalReturn,
-      form: normForm(r.taxForm),
-    });
+    (byCompany.get(r.companyId) ?? byCompany.set(r.companyId, []).get(r.companyId)!).push(r);
   }
-  // Ano do IR final que REALMENTE encerra. Um "final return" só fecha se NÃO houver CONTINUAÇÃO da
-  // entidade — onde continuação = um IR de ano POSTERIOR, ou de FORMULÁRIO DIFERENTE no mesmo ano (o
-  // caso da conversão: 4U trocou S-corp→partnership em 2025 e o 1120-S "final" convive com o 1065 do
-  // mesmo ano → a 4U não fechou). Um IR do MESMO formulário/ano é duplicata, NÃO continuação (senão um
-  // upload duplicado des-fecharia uma empresa realmente encerrada). Antes, qualquer isFinalReturn fechava.
   const finalYear = new Map<string, number>();
   for (const [id, rs] of byCompany) {
-    for (const f of rs) {
-      if (!f.isFinal) continue;
-      const continues = rs.some(
-        (r) =>
-          r.id !== f.id &&
-          (r.year > f.year || (r.year === f.year && !!r.form && !!f.form && r.form !== f.form)),
-      );
-      if (continues) continue;
-      const cur = finalYear.get(id);
-      if (cur == null || f.year < cur) finalYear.set(id, f.year);
-    }
+    const cy = finalClosingYear(rs);
+    if (cy != null) finalYear.set(id, cy);
   }
   const closedDateById = new Map(companies.map((c) => [c.id, c.closedDate]));
   const closedYearOf = (id: string): number | null => {

@@ -12,6 +12,7 @@ import { deleteCorporateDoc } from "@/lib/actions/corporate";
 import { ownerNameMatches } from "@/lib/ownership/reconcile";
 import { computeLoanBalance } from "@/lib/loans/interest";
 import { normalizeName } from "@/lib/qbo/match";
+import { finalClosingYear } from "@/lib/companies/closed";
 import {
   labelForEntityType,
   labelForJurisdiction,
@@ -260,9 +261,9 @@ export default async function CompanyDetailPage({
   const yearsWithReturns = new Set(
     taxReturns.map((r) => r.year).filter((y): y is number => y != null),
   );
-  // Ano de encerramento: o IR marcado como "Final return" (entidade fechou nesse ano).
-  const finalReturnYear =
-    taxReturns.find((r) => r.isFinalReturn && r.year != null)?.year ?? null;
+  // Ano de encerramento: fonte única finalClosingYear — um "final return" só encerra se não houver
+  // continuação (IR posterior ou de formulário diferente no mesmo ano, ex.: 4U 1120-S final + 1065).
+  const finalReturnYear = finalClosingYear(taxReturns);
   // Anos esperados vão até o encerramento (se houver), senão o último ano-fiscal fechado.
   const lastExpectedYear =
     finalReturnYear ??

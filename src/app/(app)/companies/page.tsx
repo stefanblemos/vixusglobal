@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { labelForEntityType, labelForJurisdiction, labelForRelationship } from "@/lib/catalog";
+import { finalClosingYear } from "@/lib/companies/closed";
 
 export const dynamic = "force-dynamic";
 
@@ -14,13 +15,14 @@ export default async function CompaniesPage({
 
   const companies = await prisma.company.findMany({
     orderBy: { legalName: "asc" },
-    include: { taxReturns: { where: { isFinalReturn: true }, select: { year: true } } },
+    // Todos os IRs (não só os finais): finalClosingYear precisa ver as continuações para decidir se um
+    // "final return" realmente encerra — conversão S-corp→partnership não fecha a empresa (caso 4U).
+    include: { taxReturns: { select: { id: true, year: true, isFinalReturn: true, taxForm: true } } },
   });
 
   const currentYear = new Date().getFullYear();
   const enriched = companies.map((c) => {
-    const finalYears = c.taxReturns.map((t) => t.year).filter((y): y is number => y != null);
-    const finalReturnYear = finalYears.length > 0 ? Math.max(...finalYears) : null;
+    const finalReturnYear = finalClosingYear(c.taxReturns);
     const isClosed = finalReturnYear != null || c.status === "INACTIVE";
     // Sai da lista quando o ano fiscal do encerramento já virou (ou inativa sem IR final).
     const pastClosure = isClosed && (finalReturnYear == null || currentYear > finalReturnYear);

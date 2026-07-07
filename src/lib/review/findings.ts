@@ -6,6 +6,7 @@ import {
   type K1Company,
 } from "@/lib/ir/k1-reconcile";
 import { booksIncomeNotOnReturnOf, type Figure } from "@/lib/ir/income-bridge";
+import { finalClosingYear, type MiniReturn } from "@/lib/companies/closed";
 import { effectiveFiguresOf } from "@/lib/ir/figures";
 import { loadTreatmentDivergences } from "@/lib/tax/treatment";
 import { pnlTotals } from "@/lib/qbo/pnl";
@@ -46,6 +47,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
     }),
     prisma.taxReturn.findMany({
       select: {
+        id: true,
         companyId: true,
         matchedName: true,
         taxId: true,
@@ -55,6 +57,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
         figures: true,
         manualFigures: true,
         isFinalReturn: true,
+        taxForm: true,
       },
     }),
     prisma.qboImport.findMany({
@@ -143,12 +146,13 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
 
   // ── 3) Anos de IR faltantes (do ano de abertura ao encerramento/último fechado) ─
   const currentYear = new Date().getFullYear();
-  const returnsByCompany = new Map<string, { year: number | null; isFinalReturn: boolean }[]>();
+  const returnsByCompany = new Map<string, MiniReturn[]>();
   for (const r of returns) {
     if (!r.companyId) continue;
+    const mini: MiniReturn = { id: r.id, year: r.year, isFinalReturn: r.isFinalReturn, taxForm: r.taxForm };
     const arr = returnsByCompany.get(r.companyId);
-    if (arr) arr.push({ year: r.year, isFinalReturn: r.isFinalReturn });
-    else returnsByCompany.set(r.companyId, [{ year: r.year, isFinalReturn: r.isFinalReturn }]);
+    if (arr) arr.push(mini);
+    else returnsByCompany.set(r.companyId, [mini]);
   }
   for (const c of companies) {
     const formationYear = c.formationDate
@@ -157,7 +161,7 @@ export async function buildReviewFindings(): Promise<ReviewFinding[]> {
     if (!formationYear) continue;
     const rs = returnsByCompany.get(c.id) ?? [];
     const yearsWith = new Set(rs.map((r) => r.year).filter((y): y is number => y != null));
-    const finalYear = rs.find((r) => r.isFinalReturn && r.year != null)?.year ?? null;
+    const finalYear = finalClosingYear(rs);
     const lastExpected =
       finalYear ?? (c.status === "INACTIVE" && yearsWith.size > 0 ? Math.max(...yearsWith) : currentYear - 1);
     const missing: number[] = [];
