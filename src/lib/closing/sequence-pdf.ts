@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFPage } from "pdf-lib";
 import { buildClosingSequence, type SeqNode } from "./sequence";
-import { drawPdfHeader } from "@/lib/pdf/header";
+import { embedLogo } from "@/lib/pdf/header";
 
 // PDF da sequência de fechamento do IR (para enviar ao contador). Logo Vixus no topo,
 // alertas de fora-de-ordem, e cada passo com as entidades + "repassa para" + "depende de".
@@ -39,20 +39,43 @@ export async function buildSequencePdf(year: number, generatedLabel?: string): P
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const bold = await doc.embedFont(StandardFonts.HelveticaBold);
 
+  const logo = await embedLogo(doc);
+  // Cabeçalho (logo + titulo) desenhado em TODA pagina — nas continuacoes vem compacto ("cont.").
+  const drawHeader = (pg: PDFPage, continued: boolean): number => {
+    const top = H - M;
+    let cy = top;
+    if (logo) {
+      const h = 32;
+      const w = (logo.width / logo.height) * h;
+      pg.drawImage(logo, { x: M, y: top - h, width: w, height: h });
+      cy = top - h - 8;
+    } else {
+      pg.drawText("VIXUS GLOBAL INVESTMENTS", { x: M, y: top - 6, size: 11, font: bold, color: NAVY });
+      cy = top - 24;
+    }
+    if (generatedLabel && !continued) {
+      const t = `Generated ${generatedLabel}`;
+      const tw = font.widthOfTextAtSize(t, 8);
+      pg.drawText(t, { x: W - M - tw, y: top - 4, size: 8, font, color: GRAY });
+    }
+    const title = continued ? `Closing sequence — ${year} (cont.)` : `Closing sequence — ${year}`;
+    pg.drawText(clean(title), { x: M, y: cy - 14, size: 15, font: bold, color: INK });
+    let yy = cy - 30;
+    if (!continued) {
+      pg.drawText(clean("Ordem de fechamento do IR seguindo a arvore pass-through (feche do passo 1 ao ultimo)."), { x: M, y: yy, size: 9, font, color: GRAY });
+      yy -= 14;
+    }
+    pg.drawLine({ start: { x: M, y: yy - 2 }, end: { x: W - M, y: yy - 2 }, thickness: 0.5, color: LINE });
+    return yy - 16;
+  };
+
   let page = doc.addPage([W, H]);
-  let y = await drawPdfHeader(doc, page, { bold, font }, {
-    title: `Closing sequence — ${year}`,
-    subtitle: "Ordem de fechamento do IR seguindo a arvore pass-through (feche do passo 1 ao ultimo).",
-    right: generatedLabel ? `Generated ${generatedLabel}` : undefined,
-    pageWidth: W,
-    pageHeight: H,
-    logoHeight: 32,
-  });
+  let y = drawHeader(page, false);
 
   const ensure = (need: number) => {
     if (y - need < M) {
       page = doc.addPage([W, H]);
-      y = H - M;
+      y = drawHeader(page, true);
     }
   };
   const text = (s: string, x: number, size: number, f = font, color = INK) =>
