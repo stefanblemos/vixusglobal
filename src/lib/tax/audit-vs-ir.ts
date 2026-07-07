@@ -43,21 +43,30 @@ export interface IrReconciliation {
 const withinTol = (a: number, b: number) => Math.abs(a - b) <= Math.max(1000, 0.08 * Math.abs(b));
 
 // Figura do IR comparável com a BASE TRIBUTÁVEL do preview, por tipo de entidade: C-corp declara
-// "taxable income" (1120 linha 30); pass-through não tem taxable income no nível — o que passa no
-// K-1 é o "ordinary business income" (1065/1120-S). Sem essas, cai no lucro por livro (NET_INCOME).
-// (Antes só se olhava TAXABLE_INCOME → toda pass-through ficava sem conferência, mesmo tendo o dado.)
+// "taxable income" (1120 linha 30). Pass-through não tem taxable income no nível; a base comparável é o
+// "Analysis of Net Income (Loss) per Return" (1065 pág. 5) — a renda TOTAL alocada aos sócios (ordinary
+// + portfolio/separately-stated − deduções), que é exatamente o que o nosso taxable soma. O "ordinary
+// business income" sozinho EXCLUI a renda de portfolio (juros/dividendos/ganhos, Schedule K) → dava
+// falso desvio em holdings. Cai para ordinary, depois lucro por livro (NET_INCOME) quando não há o dado.
+export const ANALYSIS_NET_INCOME = "ANALYSIS_NET_INCOME";
 export function baselineFig(entityType: string, figs: IrFigure[]): { key: string; value: number } | null {
   const get = (k: string) => {
     const f = figs.find((f) => f.key === k && f.value != null);
     return f ? { key: k, value: Number(f.value) } : null;
   };
+  // A figura vem da IA como OTHER com esse rótulo (não há chave dedicada) → busca por label.
+  const byLabel = (re: RegExp, key: string) => {
+    const f = figs.find((f) => f.value != null && re.test(f.label ?? ""));
+    return f ? { key, value: Number(f.value) } : null;
+  };
   if (entityType === "C-corp") return get("TAXABLE_INCOME") ?? get("NET_INCOME");
-  return get("ORDINARY_INCOME") ?? get("NET_INCOME");
+  return byLabel(/analysis of net income/i, ANALYSIS_NET_INCOME) ?? get("ORDINARY_INCOME") ?? get("NET_INCOME");
 }
 const FIG_LABEL: Record<string, string> = {
   TAXABLE_INCOME: "taxable income",
   ORDINARY_INCOME: "ordinary income",
   NET_INCOME: "book income",
+  ANALYSIS_NET_INCOME: "analysis of net income per return",
 };
 
 // Selo de confiança de UM número (base tributável) contra o IR — para badgear o preview/reserve sem
@@ -172,10 +181,11 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
       flags.push(`Tax return has ${Math.round(irDep).toLocaleString("en-US")} of depreciation, but the company has no assets registered`);
     if (r.statePnlUnfiled > 0)
       flags.push(`${Math.round(r.statePnlUnfiled).toLocaleString("en-US")} in State Taxes on the P&L with no registration in Florida`);
-    // Dona de entidade(s) desconsiderada(s): torna EXPLÍCITO o que foi consolidado no book (amarra com
-    // o "Analysis of Net Income" do 1065, que lista cada uma em separado).
+    // Dona de entidade(s) desconsiderada(s): nota INFORMATIVA (não é issue) — torna EXPLÍCITO o que foi
+    // consolidado no book (amarra com o "Analysis of Net Income" do 1065). Não deve acender "warn".
+    const notes: string[] = [];
     if (r.foldedIn.length > 0)
-      flags.push(`Consolidates disregarded ${r.foldedIn.map((f) => `${f.name} (book ${Math.round(f.book).toLocaleString("en-US")})`).join(", ")} — folded into this book, matching the 1065 Analysis of Net Income`);
+      notes.push(`Consolidates disregarded ${r.foldedIn.map((f) => `${f.name} (book ${Math.round(f.book).toLocaleString("en-US")})`).join(", ")} — folded into this book, matching the 1065 Analysis of Net Income`);
 
     let severity: RowSeverity;
     if (!hasQbo) severity = "no-qbo";
@@ -184,7 +194,8 @@ export async function buildIrReconciliation(year: number): Promise<IrReconciliat
     else if (flags.length) severity = "warn";
     else severity = "ok";
 
-    rows.push({ companyId: r.id, name: r.name, acronym: r.acronym, entityType: r.entityType, hasQbo, hasIr, metrics, flags, severity });
+    // As notas informativas entram no fim (aparecem na tela) mas NÃO influenciam a severity.
+    rows.push({ companyId: r.id, name: r.name, acronym: r.acronym, entityType: r.entityType, hasQbo, hasIr, metrics, flags: [...flags, ...notes], severity });
   }
 
   // IR presente mas empresa fora do preview (sem QBO do ano, encerrada ou não-USD).

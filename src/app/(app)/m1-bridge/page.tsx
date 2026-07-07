@@ -5,7 +5,7 @@ import { buildM1Bridge } from "@/lib/tax/m1-bridge";
 export const dynamic = "force-dynamic";
 
 const M = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(n);
-const FIG: Record<string, string> = { TAXABLE_INCOME: "taxable income", ORDINARY_INCOME: "ordinary income", NET_INCOME: "book income" };
+const FIG: Record<string, string> = { TAXABLE_INCOME: "taxable income", ORDINARY_INCOME: "ordinary income", NET_INCOME: "book income", ANALYSIS_NET_INCOME: "analysis of net income per return" };
 
 export default async function M1BridgePage({ searchParams }: { searchParams: Promise<{ year?: string }> }) {
   const { year: yParam } = await searchParams;
@@ -54,23 +54,35 @@ export default async function M1BridgePage({ searchParams }: { searchParams: Pro
             <div className="border-t border-slate-100 px-4 py-3">
               <table className="w-full text-sm">
                 <tbody>
-                  {e.lines.map((l, i) => (
-                    <tr key={i} className={l.code === "10" ? "border-t-2 border-slate-200 font-semibold" : ""}>
-                      <td className="w-10 py-1.5 font-mono text-[11px] text-slate-400">M-1.{l.code}</td>
+                  {e.lines.map((l, i) => {
+                    const isTotal = l.code === "10";
+                    return (
+                    <tr key={i} className={isTotal ? "border-t-2 border-slate-300" : ""}>
+                      <td className="w-10 py-1.5 align-top font-mono text-[11px] text-slate-400">M-1.{l.code}</td>
                       <td className="py-1.5">
-                        <span className="text-slate-700">{l.label}</span>
-                        {l.detail && <div className="text-[11px] text-slate-400">{l.detail}</div>}
+                        <span className={isTotal ? "text-base font-semibold text-slate-900" : "text-slate-700"}>{l.label}</span>
+                        {l.detail && <div className="mt-0.5 text-xs text-slate-500">{l.detail}</div>}
                       </td>
-                      <td className={`py-1.5 text-right tabular-nums ${l.sign === "−" ? "text-emerald-600" : l.code === "10" ? "text-slate-900" : "text-slate-700"}`}>
+                      <td className={`py-1.5 text-right tabular-nums ${isTotal ? "text-base font-bold text-slate-900" : l.sign === "−" ? "text-emerald-600" : "text-slate-700"}`}>
                         {l.sign === "−" ? "(" : ""}{M(l.amount)}{l.sign === "−" ? ")" : ""}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {e.irTaxable != null && (
-                    <tr className="text-slate-500">
+                    <tr className="text-slate-600">
                       <td></td>
-                      <td className="py-1.5 text-[12px]">Filed tax return ({FIG[e.irKey ?? ""] ?? e.irKey})</td>
-                      <td className="py-1.5 text-right tabular-nums text-[12px]">{M(e.irTaxable)}</td>
+                      <td className="py-1.5 text-[13px]">
+                        Filed tax return <span className="text-slate-400">({FIG[e.irKey ?? ""] ?? e.irKey})</span>
+                      </td>
+                      <td className="py-1.5 text-right tabular-nums text-[13px]">
+                        <span className="font-medium">{M(e.irTaxable)}</span>
+                        {e.diff != null && (
+                          <span className={`ml-2 rounded px-1.5 py-0.5 text-[11px] ${e.matches ? "bg-[#8DC63F]/15 text-[#3B6D11]" : "bg-rose-100 text-rose-700"}`}>
+                            Δ {M(e.diff)}
+                          </span>
+                        )}
+                      </td>
                     </tr>
                   )}
                 </tbody>
