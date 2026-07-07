@@ -31,8 +31,9 @@ export async function buildCompleteness(year: number): Promise<{
   const yearEnd = new Date(Date.UTC(year, 11, 31, 23, 59, 59));
   const [companies, returns, imports, banks, glSpans] = await Promise.all([
     prisma.company.findMany({
-      // Grupo + entidades geridas cujo IR tomamos conta (controlsTax) — ambas no fechamento.
-      where: { monitored: true, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
+      // Grupo + entidades geridas cujo IR tomamos conta (controlsTax) — ambas no fechamento. Entidade
+      // desconsiderada (disregarded) sai: não tem IR próprio (consolida no da dona), não conta como faltante.
+      where: { monitored: true, disregardedIntoId: null, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
       select: { id: true, legalName: true, formationDate: true, closedDate: true, status: true },
       orderBy: { legalName: "asc" },
     }),

@@ -70,7 +70,9 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       // Quem não controlamos (ex.: monitored=false, ou pessoa externa) some, e o contador não
       // pensa que pedimos o IR delas. Trocar o flag em Edit (empresa) / na ficha (pessoa) ajusta.
       prisma.company.findMany({
-        where: { monitored: true, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
+        // Entidade desconsiderada (disregarded) NÃO declara IR próprio (é consolidada no da dona) → não
+        // é um passo do fechamento nem cria dependência para a dona (a posse 100% não gera K-1 a esperar).
+        where: { monitored: true, disregardedIntoId: null, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
         select: { id: true, legalName: true, tradeName: true, aliases: true, entityType: true },
       }),
       prisma.party.findMany({
