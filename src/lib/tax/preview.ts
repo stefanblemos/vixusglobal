@@ -289,6 +289,7 @@ export async function buildTaxPreview(
       key: ck(id), kind: "company", id, name: c.legalName, acronym: acronymOf(c.legalName, "company"),
       form: null, finalPayer: isCorpTreatment(resolveTreatment(id, year).treatment),
       passesTo: [], tier: 1, deps: [], status: "ready", done: false, outOfOrder: [], inCycle: false,
+      disregardedInto: null,
     });
   }
 

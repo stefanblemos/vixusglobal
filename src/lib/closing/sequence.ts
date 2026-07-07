@@ -52,6 +52,7 @@ export interface SeqNode {
   done: boolean;
   outOfOrder: string[]; // investidas ainda abertas, apesar desta já estar fechada
   inCycle: boolean;
+  disregardedInto: string | null; // se desconsiderada: acrônimo da dona onde consolida (fecha LIVROS, sem IR próprio)
 }
 export interface ClosingSequence {
   year: number;
@@ -63,17 +64,15 @@ export interface ClosingSequence {
 
 export async function buildClosingSequence(year: number): Promise<ClosingSequence> {
   const asOf = new Date(Date.UTC(year, 11, 31));
-  const [companies, parties, ownerships, taxReturns, personalReturns, yearCloses, taxStatuses] =
+  const [companies, parties, ownerships, taxReturns, personalReturns, yearCloses, taxStatuses, pnlImports] =
     await Promise.all([
       // Só entra na sequência quem está no escopo do fechamento: grupo + geridas cujo IR
       // tomamos conta (controlsTax). Mesmo filtro do "closing completeness" — as duas telas batem.
       // Quem não controlamos (ex.: monitored=false, ou pessoa externa) some, e o contador não
       // pensa que pedimos o IR delas. Trocar o flag em Edit (empresa) / na ficha (pessoa) ajusta.
       prisma.company.findMany({
-        // Entidade desconsiderada (disregarded) NÃO declara IR próprio (é consolidada no da dona) → não
-        // é um passo do fechamento nem cria dependência para a dona (a posse 100% não gera K-1 a esperar).
-        where: { monitored: true, disregardedIntoId: null, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
-        select: { id: true, legalName: true, tradeName: true, aliases: true, entityType: true },
+        where: { monitored: true, OR: [{ relationship: "GROUP_MEMBER" }, { controlsTax: true }] },
+        select: { id: true, legalName: true, tradeName: true, aliases: true, entityType: true, disregardedIntoId: true },
       }),
       prisma.party.findMany({
         where: { kind: "PERSON", controlsTax: true },
@@ -97,7 +96,26 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       prisma.personalReturn.findMany({ select: { partyId: true, year: true, matchedName: true } }),
       prisma.yearClose.findMany({ select: { companyId: true, year: true } }),
       prisma.companyTaxStatus.findMany({ select: { companyId: true, year: true, taxTreatment: true } }),
+      // P&L importado — para uma entidade desconsiderada, "fechar" = ter os LIVROS do ano prontos
+      // (não há IR próprio); o P&L presente é o sinal de que os números estão prontos p/ consolidar.
+      prisma.qboImport.findMany({
+        where: { reportKind: "PROFIT_AND_LOSS", companyId: { not: null } },
+        select: { companyId: true, periodLabel: true },
+      }),
     ]);
+
+  const yearOf = (s: string | null) => {
+    const m = (s ?? "").match(/(?:19|20)\d{2}/);
+    return m ? Number(m[0]) : null;
+  };
+  // Empresas com P&L do ano (livros prontos) e mapa de desconsideradas → acrônimo da dona.
+  const pnlYearSet = new Set(pnlImports.filter((i) => yearOf(i.periodLabel) === year).map((i) => i.companyId));
+  const disregardedParentAcr = new Map<string, string>();
+  for (const c of companies)
+    if (c.disregardedIntoId) {
+      const parent = companies.find((p) => p.id === c.disregardedIntoId);
+      if (parent) disregardedParentAcr.set(c.id, acronymOf(parent.legalName, "company"));
+    }
 
   const years = [
     ...new Set([...taxReturns.map((t) => t.year), ...personalReturns.map((p) => p.year)].filter((y): y is number => y != null)),
@@ -141,6 +159,7 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       done: false,
       outOfOrder: [],
       inCycle: false,
+      disregardedInto: disregardedParentAcr.get(c.id) ?? null,
     });
   }
   for (const pt of parties) {
@@ -159,6 +178,7 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
       done: false,
       outOfOrder: [],
       inCycle: false,
+      disregardedInto: null,
     });
   }
 
@@ -198,7 +218,11 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
   const lockedYears = new Set(yearCloses.filter((y) => y.year === year).map((y) => y.companyId));
   const prByParty = personalReturns.filter((p) => p.year === year);
   const isDone = (n: SeqNode) => {
-    if (n.kind === "company") return irYears.has(n.id) || lockedYears.has(n.id);
+    if (n.kind === "company") {
+      // Desconsiderada: não tem IR próprio → "fechado" = livros do ano prontos (P&L importado) ou ano travado.
+      if (n.disregardedInto) return pnlYearSet.has(n.id) || lockedYears.has(n.id);
+      return irYears.has(n.id) || lockedYears.has(n.id);
+    }
     const party = parties.find((p) => p.id === n.id);
     return prByParty.some((r) => r.partyId === n.id || (r.matchedName && party && looseNameMatch(party.name, r.matchedName)));
   };

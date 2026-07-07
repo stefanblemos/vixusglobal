@@ -121,12 +121,20 @@ function Row({ n }: { n: SeqNode }) {
         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] text-slate-600">
           {n.acronym}
         </span>
-        {n.finalPayer && (
+        {n.disregardedInto ? (
+          <span className="ml-2 rounded-full bg-violet-100 px-1.5 py-0.5 text-[11px] text-violet-700">
+            disregarded → {n.disregardedInto}
+          </span>
+        ) : n.finalPayer ? (
           <span className="ml-2 rounded-full bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500">
             {n.kind === "person" ? "1040" : "C-corp"} · final
           </span>
-        )}
-        {n.passesTo.length > 0 ? (
+        ) : null}
+        {n.disregardedInto ? (
+          <span className="block text-xs text-violet-600">
+            closes its books (no separate return) — consolidated into {n.disregardedInto}&apos;s return
+          </span>
+        ) : n.passesTo.length > 0 ? (
           <span className="block text-xs text-slate-500">
             ↑ passes to{" "}
             {n.passesTo.map((r, k) => (

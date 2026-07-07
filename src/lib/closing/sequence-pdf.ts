@@ -121,15 +121,21 @@ export async function buildSequencePdf(year: number, generatedLabel?: string): P
       const depLines = 12 * deps.length;
       ensure(30 + depLines);
 
-      const tag = n.finalPayer ? `  [${n.kind === "person" ? "1040" : "C-corp"} - final]` : "";
-      text(`${n.name}  (${n.acronym})${tag}`, M + 6, 10, bold, INK);
+      const tag = n.disregardedInto
+        ? `  [disregarded -> ${n.disregardedInto}]`
+        : n.finalPayer ? `  [${n.kind === "person" ? "1040" : "C-corp"} - final]` : "";
+      text(`${n.name}  (${n.acronym})${tag}`, M + 6, 10, bold, n.disregardedInto ? SKY : INK);
       // Badge de status à direita; se fechou fora de ordem, um badge "REVISAR" vermelho à esquerda dele.
       const p = statusPill[n.status] ?? { fg: GRAY, bg: LINE };
       const left = pill(statusText[n.status] ?? n.status, p.fg, p.bg);
       if (n.outOfOrder.length > 0) pill("REVISAR", RED, RED_BG, left - 5);
       y -= 14;
 
-      if (n.passesTo.length) {
+      if (n.disregardedInto) {
+        ensure(12);
+        text(`fecha os LIVROS (sem IR proprio) - consolida no IR de ${n.disregardedInto}`, M + 12, 8.5, font, SKY);
+        y -= 12;
+      } else if (n.passesTo.length) {
         const ptxt = "repassa para: " + n.passesTo.map((r) => `${r.acronym} ${r.pct.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`).join(" · ");
         for (const ln of wrap(ptxt, W - 2 * M - 12, 8.5)) {
           ensure(12);
