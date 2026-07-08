@@ -55,9 +55,10 @@ export type SimUnitInput = {
   lotLeadDays: number;
   saleDays: number;
   buildMonths: number;
-  directCost: number;
-  contractorFee: number; // 0 em modo performance
-  lotCost: number;
+  costPerformance: number; // custo de obra na modalidade performance (por local)
+  costContractor: number; // custo-base contractor SEM o fee (por local)
+  contractorFee: number; // fee fixo do tipo (ou override do modelo)
+  lotCost: number; // sempre o lotCostEstimate do location
   salePrice: number;
 };
 
@@ -215,7 +216,8 @@ export function simulate(input: SimInput): SimResult {
   const units: SimUnitResult[] = input.units.map((u, i) => {
     const s = schedule(u, i, input);
     const adjLot = u.lotCost * (1 + sc.lotCostBufferPct / 100);
-    const baseBuild = u.directCost + (perfOn ? 0 : u.contractorFee);
+    // Performance: custo próprio do local; contractor: custo-base do local + fee do tipo.
+    const baseBuild = perfOn ? u.costPerformance : u.costContractor + u.contractorFee;
     const adjBuild = baseBuild * (1 + sc.constructionCostBufferPct / 100);
     const adjSaleGross = u.salePrice * (1 + sc.salePriceBufferPct / 100);
     const adjSaleNet = adjSaleGross * (1 - closingFee);

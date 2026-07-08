@@ -17,7 +17,8 @@ export type SimCatalog = {
     modelId: string;
     modelName: string;
     salePrice: number;
-    directCost: number;
+    costPerformance: number | null;
+    costContractor: number | null;
   }>;
   scenarios: Array<{ code: string; name: string }>;
   banks: Array<{ id: string; name: string }>;
@@ -201,7 +202,10 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                 </select>
                 {sel && (
                   <span className="text-xs text-slate-400">
-                    cost ${sel.directCost.toLocaleString()} · sale ${sel.salePrice.toLocaleString()}
+                    {compMode === "PERFORMANCE"
+                      ? `cost ${sel.costPerformance != null ? `$${sel.costPerformance.toLocaleString()}` : "—"}`
+                      : `cost ${sel.costContractor != null ? `$${sel.costContractor.toLocaleString()}+fee` : "—"}`}{" "}
+                    · sale ${sel.salePrice.toLocaleString()}
                   </span>
                 )}
                 <button

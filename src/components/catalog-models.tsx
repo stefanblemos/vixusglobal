@@ -33,7 +33,6 @@ export type ModelRow = {
   name: string;
   houseType: string;
   buildMonths: string;
-  directCost: string;
   contractorFee: string | null;
   notes: string | null;
   locations: Array<{
@@ -41,7 +40,8 @@ export type ModelRow = {
     locationId: string;
     locationName: string;
     salePrice: string;
-    lotCost: string | null;
+    costPerformance: string | null;
+    costContractor: string | null;
     locationLotEstimate: string | null;
   }>;
 };
@@ -72,18 +72,17 @@ function ModelLocationEditor({
       <input type="hidden" name="modelId" value={modelId} />
       <input type="hidden" name="locationId" value={loc.locationId} />
       <input type="hidden" name="id" value={loc.id} />
-      <div className="w-36">
+      <div className="w-32">
         <label className={labelClass}>Sale price *</label>
         <input name="salePrice" defaultValue={loc.salePrice} required className={inputClass} />
       </div>
+      <div className="w-32">
+        <label className={labelClass}>Cost (performance)</label>
+        <input name="costPerformance" defaultValue={loc.costPerformance ?? ""} className={inputClass} />
+      </div>
       <div className="w-36">
-        <label className={labelClass}>Lot cost</label>
-        <input
-          name="lotCost"
-          defaultValue={loc.lotCost ?? ""}
-          placeholder={loc.locationLotEstimate ? `região: ${money(loc.locationLotEstimate)}` : ""}
-          className={inputClass}
-        />
+        <label className={labelClass}>Cost (contractor base)</label>
+        <input name="costContractor" defaultValue={loc.costContractor ?? ""} placeholder="sem o fee" className={inputClass} />
       </div>
       <button
         type="submit"
@@ -127,7 +126,7 @@ function AddModelLocation({
   return (
     <form action={formAction} className="mt-3 flex flex-wrap items-end gap-3">
       <input type="hidden" name="modelId" value={modelId} />
-      <div className="w-44">
+      <div className="w-40">
         <label className={labelClass}>Add to location</label>
         <select name="locationId" defaultValue="" required className={inputClass}>
           <option value="" disabled>
@@ -140,13 +139,17 @@ function AddModelLocation({
           ))}
         </select>
       </div>
-      <div className="w-36">
+      <div className="w-32">
         <label className={labelClass}>Sale price *</label>
         <input name="salePrice" required className={inputClass} />
       </div>
+      <div className="w-32">
+        <label className={labelClass}>Cost (performance)</label>
+        <input name="costPerformance" className={inputClass} />
+      </div>
       <div className="w-36">
-        <label className={labelClass}>Lot cost (opt)</label>
-        <input name="lotCost" className={inputClass} />
+        <label className={labelClass}>Cost (contractor base)</label>
+        <input name="costContractor" placeholder="sem o fee" className={inputClass} />
       </div>
       <button
         type="submit"
@@ -214,10 +217,6 @@ function ModelModal({
             <div>
               <label htmlFor="mod-months" className={labelClass}>Build months</label>
               <input id="mod-months" name="buildMonths" defaultValue={model?.buildMonths ?? "4"} className={inputClass} />
-            </div>
-            <div>
-              <label htmlFor="mod-cost" className={labelClass}>Direct cost *</label>
-              <input id="mod-cost" name="directCost" required defaultValue={model?.directCost ?? ""} className={inputClass} />
             </div>
             <div>
               <label htmlFor="mod-fee" className={labelClass}>Contractor fee override</label>
@@ -289,8 +288,9 @@ function ModelModal({
                   >
                     <span className="font-medium text-slate-700">{loc.locationName}</span>
                     <span className="text-xs text-slate-500">
-                      venda {money(loc.salePrice)} · lote{" "}
-                      {loc.lotCost != null ? money(loc.lotCost) : `${money(loc.locationLotEstimate)} (região)`}
+                      venda {money(loc.salePrice)} · perf {money(loc.costPerformance)} · contractor{" "}
+                      {money(loc.costContractor)}
+                      {loc.costContractor != null && " + fee"} · lote {money(loc.locationLotEstimate)}
                     </span>
                   </button>
                   {openLoc === loc.id && (
@@ -380,7 +380,6 @@ export function CatalogModels({
               <th className={th}>Model</th>
               <th className={th}>Type</th>
               <th className={th}>Months</th>
-              <th className={th}>Direct cost</th>
               <th className={th}>Contractor fee</th>
               <th className={th}>Locations</th>
             </tr>
@@ -388,7 +387,7 @@ export function CatalogModels({
           <tbody>
             {models.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-6 text-center text-sm text-slate-400">
+                <td colSpan={5} className="px-5 py-6 text-center text-sm text-slate-400">
                   No models yet.
                 </td>
               </tr>
@@ -402,7 +401,6 @@ export function CatalogModels({
                 <td className={`${td} font-medium text-slate-800`}>{m.name}</td>
                 <td className={td}>{HOUSE_TYPE_LABEL[m.houseType] ?? m.houseType}</td>
                 <td className={td}>{m.buildMonths}</td>
-                <td className={td}>{money(m.directCost)}</td>
                 <td className={td}>
                   {m.contractorFee != null ? (
                     money(m.contractorFee)

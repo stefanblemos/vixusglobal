@@ -23,16 +23,17 @@ const LOCATIONS = [
   { name: "Port Charlotte", permitDays: 90, lotLeadDays: 30, saleDays: 30, lotCostEstimate: 25000 },
 ];
 
-// directCost = perfCost do mock; contractorFee = buildCost − perfCost do mock.
+// Valores POR local: sale + costPerformance (perfCost do mock). costContractor (custo-base
+// sem o fee do tipo) fica null — preenchido pelo usuário no catálogo. Fee vem do TIPO.
 const MODELS = [
-  { name: "Arpoador", houseType: "MID_RANGE", buildMonths: 4, directCost: 202000, contractorFee: 8000, sales: { "Marion Oaks": 310000 } },
-  { name: "Grumari", houseType: "MID_RANGE", buildMonths: 4, directCost: 212000, contractorFee: 8000, sales: { "Marion Oaks": 349000 } },
-  { name: "Ilhabela", houseType: "AFFORDABLE", buildMonths: 4, directCost: 198000, contractorFee: 7000, sales: { Citrus: 269000, "Rainbow Lakes": 280000 } },
-  { name: "Ubatuba", houseType: "AFFORDABLE", buildMonths: 4, directCost: 198000, contractorFee: 9000, sales: { Citrus: 274000, "Rainbow Lakes": 290000 } },
-  { name: "Maragogi", houseType: "UPPER_MIDDLE", buildMonths: 4, directCost: 305000, contractorFee: 15000, sales: { "Rolling Hills": 485000 } },
-  { name: "Vivada", houseType: "LUXURY", buildMonths: 8, directCost: 760000, contractorFee: 20000, sales: { Orlando: 1680000 } },
-  { name: "Copacabana", houseType: "MID_RANGE", buildMonths: 6, directCost: 282000, contractorFee: 8000, sales: { "Port Charlotte": 359000 } },
-  { name: "Leblon", houseType: "MID_RANGE", buildMonths: 6, directCost: 257000, contractorFee: 8000, sales: { "Port Charlotte": 345000 } },
+  { name: "Arpoador", houseType: "MID_RANGE", buildMonths: 4, values: { "Marion Oaks": { sale: 310000, perf: 202000 } } },
+  { name: "Grumari", houseType: "MID_RANGE", buildMonths: 4, values: { "Marion Oaks": { sale: 349000, perf: 212000 } } },
+  { name: "Ilhabela", houseType: "AFFORDABLE", buildMonths: 4, values: { Citrus: { sale: 269000, perf: 198000 }, "Rainbow Lakes": { sale: 280000, perf: 198000 } } },
+  { name: "Ubatuba", houseType: "AFFORDABLE", buildMonths: 4, values: { Citrus: { sale: 274000, perf: 198000 }, "Rainbow Lakes": { sale: 290000, perf: 198000 } } },
+  { name: "Maragogi", houseType: "UPPER_MIDDLE", buildMonths: 4, values: { "Rolling Hills": { sale: 485000, perf: 305000 } } },
+  { name: "Vivada", houseType: "LUXURY", buildMonths: 8, values: { Orlando: { sale: 1680000, perf: 760000 } } },
+  { name: "Copacabana", houseType: "MID_RANGE", buildMonths: 6, values: { "Port Charlotte": { sale: 359000, perf: 282000 } } },
+  { name: "Leblon", houseType: "MID_RANGE", buildMonths: 6, values: { "Port Charlotte": { sale: 345000, perf: 257000 } } },
 ];
 
 async function main() {
@@ -50,20 +51,22 @@ async function main() {
     },
     update: {},
   });
+  // Locais/modelos são CREATE-ONLY: o seed cria o que faltar e nunca sobrescreve valores
+  // ajustados pela tela (que têm trilha de auditoria em CatalogChangeLog).
   const locByName = {};
   for (const l of LOCATIONS) {
-    const row = await prisma.catalogLocation.upsert({ where: { name: l.name }, create: l, update: l });
+    const row = await prisma.catalogLocation.upsert({ where: { name: l.name }, create: l, update: {} });
     locByName[l.name] = row.id;
   }
   for (const m of MODELS) {
-    const { sales, ...data } = m;
-    const row = await prisma.catalogModel.upsert({ where: { name: m.name }, create: data, update: data });
-    for (const [locName, salePrice] of Object.entries(sales)) {
+    const { values, ...data } = m;
+    const row = await prisma.catalogModel.upsert({ where: { name: m.name }, create: data, update: {} });
+    for (const [locName, v] of Object.entries(values)) {
       const locationId = locByName[locName];
       await prisma.catalogModelLocation.upsert({
         where: { modelId_locationId: { modelId: row.id, locationId } },
-        create: { modelId: row.id, locationId, salePrice },
-        update: { salePrice },
+        create: { modelId: row.id, locationId, salePrice: v.sale, costPerformance: v.perf },
+        update: {},
       });
     }
   }

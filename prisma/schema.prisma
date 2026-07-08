@@ -1000,7 +1000,6 @@ model CatalogModel {
   name          String    @unique
   houseType     HouseType
   buildMonths   Decimal   @db.Decimal(4, 1)
-  directCost    Decimal   @db.Decimal(20, 2) // custo direto de obra (sem margem da 4U)
   contractorFee Decimal?  @db.Decimal(20, 2) // override; null = usa o fee do tipo (HouseTypeFee)
   notes         String?
   createdAt     DateTime  @default(now())
@@ -1009,16 +1008,19 @@ model CatalogModel {
   locations CatalogModelLocation[]
 }
 
-// Preço de venda (e lote, se diferente do estimado da região) POR local — evita o bug do
-// mockup onde o mesmo modelo em 2 locais sobrescrevia o outro.
+// Valores do modelo POR local: venda e os DOIS custos de obra. Performance = custo quando a
+// 4U participa do lucro (ex.: Arpoador em Marion Oaks $202k). Contractor = custo-base SEM o
+// fee; o custo final é costContractor + fee do tipo (ex.: $185k + $25k = $210k). O lote vem
+// sempre do lotCostEstimate do location — não é definido aqui.
 model CatalogModelLocation {
-  id         String          @id @default(cuid())
-  modelId    String
-  model      CatalogModel    @relation(fields: [modelId], references: [id], onDelete: Cascade)
-  locationId String
-  location   CatalogLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  salePrice  Decimal         @db.Decimal(20, 2)
-  lotCost    Decimal?        @db.Decimal(20, 2) // null = lotCostEstimate do local
+  id              String          @id @default(cuid())
+  modelId         String
+  model           CatalogModel    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  locationId      String
+  location        CatalogLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  salePrice       Decimal         @db.Decimal(20, 2)
+  costPerformance Decimal?        @db.Decimal(20, 2) // custo de obra na modalidade performance
+  costContractor  Decimal?        @db.Decimal(20, 2) // custo-base contractor (sem o fee do tipo)
 
   @@unique([modelId, locationId])
 }

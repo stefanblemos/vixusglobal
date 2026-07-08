@@ -39,9 +39,14 @@ async function buildSimInput(sim: {
       include: { model: true, location: true },
     });
     if (!ml) return { error: "A selected model is not available in the selected location." };
-    const lotCost = ml.lotCost ?? ml.location.lotCostEstimate;
+    const lotCost = ml.location.lotCostEstimate;
     if (lotCost == null)
       return { error: `Set the estimated lot cost for ${ml.location.name} in the catalog.` };
+    const perfMode = sim.compMode === "PERFORMANCE";
+    if (perfMode && ml.costPerformance == null)
+      return { error: `Set the performance cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
+    if (!perfMode && ml.costContractor == null)
+      return { error: `Set the contractor cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
     units.push({
       label: `${ml.model.name} — ${ml.location.name}`,
       locationName: ml.location.name,
@@ -50,7 +55,8 @@ async function buildSimInput(sim: {
       lotLeadDays: ml.location.lotLeadDays,
       saleDays: ml.location.saleDays,
       buildMonths: Number(ml.model.buildMonths),
-      directCost: Number(ml.model.directCost),
+      costPerformance: Number(ml.costPerformance ?? 0),
+      costContractor: Number(ml.costContractor ?? 0),
       contractorFee: Number(ml.model.contractorFee ?? fees.get(ml.model.houseType) ?? 0),
       lotCost: Number(lotCost),
       salePrice: Number(ml.salePrice),

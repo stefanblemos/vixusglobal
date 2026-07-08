@@ -131,7 +131,6 @@ export async function saveModel(
     name,
     houseType: String(formData.get("houseType") ?? "MID_RANGE") as HouseType,
     buildMonths: num(formData.get("buildMonths"), 4),
-    directCost: num(formData.get("directCost")),
     contractorFee: optNum(formData.get("contractorFee")),
     notes: String(formData.get("notes") ?? "").trim() || null,
   };
@@ -147,7 +146,6 @@ export async function saveModel(
         name: before.name,
         houseType: before.houseType,
         buildMonths: before.buildMonths,
-        directCost: before.directCost,
         contractorFee: before.contractorFee,
         notes: before.notes,
       },
@@ -174,8 +172,8 @@ export async function deleteModel(formData: FormData): Promise<void> {
   revalidatePath(CATALOG);
 }
 
-// Valores do modelo NUM local (venda / lote). O log entra no histórico do MODELO,
-// com o nome do local no campo — um só lugar para auditar o modelo inteiro.
+// Valores do modelo NUM local: venda + custo performance + custo-base contractor (o lote
+// vem do location). O log entra no histórico do MODELO, com o nome do local no campo.
 export async function saveModelLocation(
   _prev: CatalogFormState,
   formData: FormData,
@@ -185,7 +183,8 @@ export async function saveModelLocation(
   if (!modelId || !locationId) return { error: "Pick a location." };
   const salePrice = num(formData.get("salePrice"));
   if (salePrice <= 0) return { error: "Sale price must be greater than 0." };
-  const lotCost = optNum(formData.get("lotCost"));
+  const costPerformance = optNum(formData.get("costPerformance"));
+  const costContractor = optNum(formData.get("costContractor"));
 
   const [model, location, before] = await Promise.all([
     prisma.catalogModel.findUnique({ where: { id: modelId } }),
@@ -197,15 +196,25 @@ export async function saveModelLocation(
   if (!model || !location) return { error: "Model or location not found." };
 
   const changes = diff(
-    before ? { [`${location.name} — sale price`]: before.salePrice, [`${location.name} — lot cost`]: before.lotCost } : null,
-    { [`${location.name} — sale price`]: salePrice, [`${location.name} — lot cost`]: lotCost },
+    before
+      ? {
+          [`${location.name} — sale price`]: before.salePrice,
+          [`${location.name} — cost (performance)`]: before.costPerformance,
+          [`${location.name} — cost (contractor base)`]: before.costContractor,
+        }
+      : null,
+    {
+      [`${location.name} — sale price`]: salePrice,
+      [`${location.name} — cost (performance)`]: costPerformance,
+      [`${location.name} — cost (contractor base)`]: costContractor,
+    },
   );
   if (before && changes.length === 0) return { ok: true };
 
   await prisma.catalogModelLocation.upsert({
     where: { modelId_locationId: { modelId, locationId } },
-    create: { modelId, locationId, salePrice, lotCost },
-    update: { salePrice, lotCost },
+    create: { modelId, locationId, salePrice, costPerformance, costContractor },
+    update: { salePrice, costPerformance, costContractor },
   });
   await logChange("MODEL", modelId, model.name, before ? "UPDATE" : "CREATE", changes);
   revalidatePath(CATALOG);

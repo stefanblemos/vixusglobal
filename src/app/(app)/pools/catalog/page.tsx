@@ -129,7 +129,7 @@ export default async function PoolCatalogPage({
             models: l.models.map((ml) => ({
               name: ml.model.name,
               salePrice: ml.salePrice.toString(),
-              lotCost: ml.lotCost?.toString() ?? null,
+              costPerformance: ml.costPerformance?.toString() ?? null,
             })),
           }))}
           history={history("LOCATION")}
@@ -143,7 +143,6 @@ export default async function PoolCatalogPage({
             name: m.name,
             houseType: m.houseType,
             buildMonths: m.buildMonths.toString(),
-            directCost: m.directCost.toString(),
             contractorFee: m.contractorFee?.toString() ?? null,
             notes: m.notes,
             locations: m.locations.map((ml) => ({
@@ -151,7 +150,8 @@ export default async function PoolCatalogPage({
               locationId: ml.locationId,
               locationName: ml.location.name,
               salePrice: ml.salePrice.toString(),
-              lotCost: ml.lotCost?.toString() ?? null,
+              costPerformance: ml.costPerformance?.toString() ?? null,
+              costContractor: ml.costContractor?.toString() ?? null,
               locationLotEstimate: ml.location.lotCostEstimate?.toString() ?? null,
             })),
           }))}

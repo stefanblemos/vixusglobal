@@ -18,7 +18,7 @@ export type LocationRow = {
   saleDays: number;
   lotCostEstimate: string | null;
   notes: string | null;
-  models: Array<{ name: string; salePrice: string; lotCost: string | null }>;
+  models: Array<{ name: string; salePrice: string; costPerformance: string | null }>;
 };
 
 export type HistoryEntry = {
@@ -150,7 +150,7 @@ function LocationModal({
                 {location.models.map((m) => (
                   <span key={m.name} className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-600">
                     {m.name} · venda {money(m.salePrice)}
-                    {m.lotCost != null && ` · lote ${money(m.lotCost)}`}
+                    {m.costPerformance != null && ` · custo ${money(m.costPerformance)}`}
                   </span>
                 ))}
               </div>
