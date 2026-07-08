@@ -117,48 +117,113 @@ export async function deleteLocation(formData: FormData): Promise<void> {
   revalidatePath(CATALOG);
 }
 
-// ── Modelos ──────────────────────────────────────────────────
+// ── Modelos (modal + histórico; log unificado no MODEL) ──────
 
-export async function saveModel(formData: FormData): Promise<void> {
+export async function saveModel(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return { error: "Name is required." };
+
   const data = {
     name,
     houseType: String(formData.get("houseType") ?? "MID_RANGE") as HouseType,
     buildMonths: num(formData.get("buildMonths"), 4),
     directCost: num(formData.get("directCost")),
     contractorFee: optNum(formData.get("contractorFee")),
+    notes: String(formData.get("notes") ?? "").trim() || null,
   };
-  if (id) await prisma.catalogModel.update({ where: { id }, data });
-  else await prisma.catalogModel.create({ data });
+
+  const dup = await prisma.catalogModel.findUnique({ where: { name } });
+  if (dup && dup.id !== id) return { error: `Model "${name}" already exists.` };
+
+  if (id) {
+    const before = await prisma.catalogModel.findUnique({ where: { id } });
+    if (!before) return { error: "Model not found." };
+    const changes = diff(
+      {
+        name: before.name,
+        houseType: before.houseType,
+        buildMonths: before.buildMonths,
+        directCost: before.directCost,
+        contractorFee: before.contractorFee,
+        notes: before.notes,
+      },
+      data,
+    );
+    if (changes.length === 0) return { ok: true };
+    await prisma.catalogModel.update({ where: { id }, data });
+    await logChange("MODEL", id, data.name, "UPDATE", changes);
+  } else {
+    const row = await prisma.catalogModel.create({ data });
+    await logChange("MODEL", row.id, data.name, "CREATE", diff(null, data));
+  }
   revalidatePath(CATALOG);
+  return { ok: true };
 }
 
 export async function deleteModel(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
-  if (id) await prisma.catalogModel.delete({ where: { id } });
+  if (!id) return;
+  const before = await prisma.catalogModel.findUnique({ where: { id } });
+  if (!before) return;
+  await prisma.catalogModel.delete({ where: { id } });
+  await logChange("MODEL", id, before.name, "DELETE", []);
   revalidatePath(CATALOG);
 }
 
-// Disponibiliza (ou atualiza) um modelo num local, com preço de venda daquele local.
-export async function saveModelLocation(formData: FormData): Promise<void> {
+// Valores do modelo NUM local (venda / lote). O log entra no histórico do MODELO,
+// com o nome do local no campo — um só lugar para auditar o modelo inteiro.
+export async function saveModelLocation(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
   const modelId = String(formData.get("modelId") ?? "");
   const locationId = String(formData.get("locationId") ?? "");
-  if (!modelId || !locationId) return;
+  if (!modelId || !locationId) return { error: "Pick a location." };
   const salePrice = num(formData.get("salePrice"));
+  if (salePrice <= 0) return { error: "Sale price must be greater than 0." };
   const lotCost = optNum(formData.get("lotCost"));
+
+  const [model, location, before] = await Promise.all([
+    prisma.catalogModel.findUnique({ where: { id: modelId } }),
+    prisma.catalogLocation.findUnique({ where: { id: locationId } }),
+    prisma.catalogModelLocation.findUnique({
+      where: { modelId_locationId: { modelId, locationId } },
+    }),
+  ]);
+  if (!model || !location) return { error: "Model or location not found." };
+
+  const changes = diff(
+    before ? { [`${location.name} — sale price`]: before.salePrice, [`${location.name} — lot cost`]: before.lotCost } : null,
+    { [`${location.name} — sale price`]: salePrice, [`${location.name} — lot cost`]: lotCost },
+  );
+  if (before && changes.length === 0) return { ok: true };
+
   await prisma.catalogModelLocation.upsert({
     where: { modelId_locationId: { modelId, locationId } },
     create: { modelId, locationId, salePrice, lotCost },
     update: { salePrice, lotCost },
   });
+  await logChange("MODEL", modelId, model.name, before ? "UPDATE" : "CREATE", changes);
   revalidatePath(CATALOG);
+  return { ok: true };
 }
 
 export async function deleteModelLocation(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
-  if (id) await prisma.catalogModelLocation.delete({ where: { id } });
+  if (!id) return;
+  const before = await prisma.catalogModelLocation.findUnique({
+    where: { id },
+    include: { model: true, location: true },
+  });
+  if (!before) return;
+  await prisma.catalogModelLocation.delete({ where: { id } });
+  await logChange("MODEL", before.modelId, before.model.name, "UPDATE", [
+    { field: `${before.location.name} — removed`, from: show(before.salePrice), to: null },
+  ]);
   revalidatePath(CATALOG);
 }
 
