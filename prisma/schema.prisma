@@ -1077,6 +1077,21 @@ model BufferScenario {
   simulations PoolSimulation[]
 }
 
+// Trilha de auditoria dos catálogos do simulador: cada save registra quem mudou o quê
+// (campo a campo, valor anterior → novo). Nunca é apagada — histórico exibido no modal.
+model CatalogChangeLog {
+  id         String   @id @default(cuid())
+  entity     String // LOCATION | MODEL | MODEL_LOCATION | BANK | SCENARIO | TYPE_FEE
+  entityId   String
+  entityName String // nome no momento da mudança (sobrevive a delete/rename)
+  action     String   @default("UPDATE") // CREATE | UPDATE | DELETE
+  changedBy  String // e-mail do usuário logado
+  changes    Json // [{ field, from, to }]
+  createdAt  DateTime @default(now())
+
+  @@index([entity, entityId])
+}
+
 // Simulação salva (a "tese" enviada ao investidor). `units` = [{locationId, modelId}];
 // `result` = snapshot do ledger/KPIs no momento do run (o que foi apresentado).
 model PoolSimulation {

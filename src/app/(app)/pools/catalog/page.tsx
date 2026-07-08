@@ -2,16 +2,15 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import {
   deleteBankProfile,
-  deleteLocation,
   deleteModel,
   deleteModelLocation,
   saveBankProfile,
   saveHouseTypeFee,
-  saveLocation,
   saveModel,
   saveModelLocation,
   saveScenario,
 } from "@/lib/actions/catalog";
+import { CatalogLocations, type HistoryEntry } from "@/components/catalog-locations";
 
 export const dynamic = "force-dynamic";
 
@@ -65,8 +64,11 @@ function Section({
 }
 
 export default async function PoolCatalogPage() {
-  const [locations, models, fees, banks, scenarios] = await Promise.all([
-    prisma.catalogLocation.findMany({ orderBy: { name: "asc" } }),
+  const [locations, models, fees, banks, scenarios, locationLog] = await Promise.all([
+    prisma.catalogLocation.findMany({
+      orderBy: { name: "asc" },
+      include: { models: { include: { model: true }, orderBy: { model: { name: "asc" } } } },
+    }),
     prisma.catalogModel.findMany({
       orderBy: { name: "asc" },
       include: { locations: { include: { location: true } } },
@@ -74,8 +76,20 @@ export default async function PoolCatalogPage() {
     prisma.houseTypeFee.findMany(),
     prisma.bankProfile.findMany({ orderBy: { name: "asc" } }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.catalogChangeLog.findMany({
+      where: { entity: "LOCATION" },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+    }),
   ]);
   const feeByType = new Map(fees.map((f) => [f.type as string, f.fee.toString()]));
+  const locationHistory: HistoryEntry[] = locationLog.map((h) => ({
+    entityId: h.entityId,
+    action: h.action,
+    changedBy: h.changedBy,
+    createdAt: h.createdAt.toISOString(),
+    changes: (h.changes as HistoryEntry["changes"]) ?? [],
+  }));
 
   return (
     <div className="space-y-6">
@@ -90,48 +104,23 @@ export default async function PoolCatalogPage() {
         </p>
       </div>
 
-      <Section
-        title="Locations"
-        hint="Timing per region (days) and estimated lot cost used when the model has no override."
-      >
-        <table className="w-full min-w-175">
-          <thead>
-            <tr>
-              <th className={th}>Name</th>
-              <th className={th}>Permit days</th>
-              <th className={th}>Lot lead days</th>
-              <th className={th}>Sale days</th>
-              <th className={th}>Lot cost (est.)</th>
-              <th className={th}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...locations, null].map((l) => (
-              <tr key={l?.id ?? "new"} className="border-t border-slate-50">
-                <td colSpan={6} className="py-1">
-                  <form action={saveLocation} className="flex items-center gap-2">
-                    {l && <input type="hidden" name="id" value={l.id} />}
-                    <input name="name" defaultValue={l?.name ?? ""} placeholder="New location…" className={`${input} w-44`} required />
-                    <input name="permitDays" defaultValue={l?.permitDays ?? 45} className={`${input} w-24`} />
-                    <input name="lotLeadDays" defaultValue={l?.lotLeadDays ?? 30} className={`${input} w-24`} />
-                    <input name="saleDays" defaultValue={l?.saleDays ?? 60} className={`${input} w-24`} />
-                    <input name="lotCostEstimate" defaultValue={l?.lotCostEstimate?.toString() ?? ""} className={`${input} w-32`} />
-                    <button type="submit" className={saveBtn}>{l ? "Save" : "Add"}</button>
-                  </form>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <div className="mt-2 flex gap-3">
-          {locations.map((l) => (
-            <form key={l.id} action={deleteLocation}>
-              <input type="hidden" name="id" value={l.id} />
-              <button type="submit" className={delBtn}>✕ {l.name}</button>
-            </form>
-          ))}
-        </div>
-      </Section>
+      <CatalogLocations
+        locations={locations.map((l) => ({
+          id: l.id,
+          name: l.name,
+          permitDays: l.permitDays,
+          lotLeadDays: l.lotLeadDays,
+          saleDays: l.saleDays,
+          lotCostEstimate: l.lotCostEstimate?.toString() ?? null,
+          notes: l.notes,
+          models: l.models.map((ml) => ({
+            name: ml.model.name,
+            salePrice: ml.salePrice.toString(),
+            lotCost: ml.lotCost?.toString() ?? null,
+          })),
+        }))}
+        history={locationHistory}
+      />
 
       <Section
         title="House models"

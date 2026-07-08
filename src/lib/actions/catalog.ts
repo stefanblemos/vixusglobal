@@ -2,10 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { auth } from "@/auth";
 import type { HouseType } from "@prisma/client";
 
-// CRUD dos catálogos do simulador. Ações void (forms server-side); números aceitam
-// vírgulas; campos vazios viram null onde o schema permite.
+// CRUD dos catálogos do simulador. Locais seguem o padrão novo: linha somente leitura,
+// edição via modal, e CADA save grava a trilha em CatalogChangeLog (quem mudou o quê,
+// valor anterior → novo). Demais entidades ainda no padrão inline (migração gradual).
 
 const num = (v: FormDataEntryValue | null, fallback = 0) => {
   const n = Number(String(v ?? "").replace(/,/g, "").trim());
@@ -19,27 +21,99 @@ const optNum = (v: FormDataEntryValue | null) => {
 };
 const CATALOG = "/pools/catalog";
 
-// ── Locais ───────────────────────────────────────────────────
+export type CatalogFormState = { error?: string; ok?: boolean } | undefined;
 
-export async function saveLocation(formData: FormData): Promise<void> {
+type FieldChange = { field: string; from: string | null; to: string | null };
+
+const show = (v: unknown): string | null =>
+  v == null ? null : typeof v === "object" ? String(v) : String(v);
+
+function diff(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown>,
+): FieldChange[] {
+  const changes: FieldChange[] = [];
+  for (const [field, to] of Object.entries(after)) {
+    const from = before?.[field];
+    if (show(from) !== show(to)) changes.push({ field, from: show(from), to: show(to) });
+  }
+  return changes;
+}
+
+async function logChange(
+  entity: string,
+  entityId: string,
+  entityName: string,
+  action: "CREATE" | "UPDATE" | "DELETE",
+  changes: FieldChange[],
+): Promise<void> {
+  const session = await auth();
+  await prisma.catalogChangeLog.create({
+    data: {
+      entity,
+      entityId,
+      entityName,
+      action,
+      changedBy: session?.user?.email ?? "unknown",
+      changes: changes as object[],
+    },
+  });
+}
+
+// ── Locais (modal + histórico) ───────────────────────────────
+
+export async function saveLocation(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
   const id = String(formData.get("id") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
+  if (!name) return { error: "Name is required." };
+
   const data = {
     name,
     permitDays: Math.round(num(formData.get("permitDays"), 45)),
     lotLeadDays: Math.round(num(formData.get("lotLeadDays"), 30)),
     saleDays: Math.round(num(formData.get("saleDays"), 60)),
     lotCostEstimate: optNum(formData.get("lotCostEstimate")),
+    notes: String(formData.get("notes") ?? "").trim() || null,
   };
-  if (id) await prisma.catalogLocation.update({ where: { id }, data });
-  else await prisma.catalogLocation.create({ data });
+
+  const dup = await prisma.catalogLocation.findUnique({ where: { name } });
+  if (dup && dup.id !== id) return { error: `Location "${name}" already exists.` };
+
+  if (id) {
+    const before = await prisma.catalogLocation.findUnique({ where: { id } });
+    if (!before) return { error: "Location not found." };
+    const changes = diff(
+      {
+        name: before.name,
+        permitDays: before.permitDays,
+        lotLeadDays: before.lotLeadDays,
+        saleDays: before.saleDays,
+        lotCostEstimate: before.lotCostEstimate,
+        notes: before.notes,
+      },
+      data,
+    );
+    if (changes.length === 0) return { ok: true }; // nada mudou — não polui o histórico
+    await prisma.catalogLocation.update({ where: { id }, data });
+    await logChange("LOCATION", id, data.name, "UPDATE", changes);
+  } else {
+    const row = await prisma.catalogLocation.create({ data });
+    await logChange("LOCATION", row.id, data.name, "CREATE", diff(null, data));
+  }
   revalidatePath(CATALOG);
+  return { ok: true };
 }
 
 export async function deleteLocation(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
-  if (id) await prisma.catalogLocation.delete({ where: { id } });
+  if (!id) return;
+  const before = await prisma.catalogLocation.findUnique({ where: { id } });
+  if (!before) return;
+  await prisma.catalogLocation.delete({ where: { id } });
+  await logChange("LOCATION", id, before.name, "DELETE", []);
   revalidatePath(CATALOG);
 }
 
