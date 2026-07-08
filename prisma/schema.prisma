@@ -135,6 +135,7 @@ model Party {
   ownerStakes Ownership[] @relation("OwnerParty")
   ownedStakes Ownership[] @relation("OwnedParty")
   personalReturns PersonalReturn[]
+  poolMemberships PoolMember[] @relation("PoolMemberParty")
 }
 
 model Company {
@@ -182,6 +183,8 @@ model Company {
   fixedAssets     FixedAsset[]
   reserveDeposits ReserveDeposit[]
   stateTaxFilings StateTaxFiling[]
+  poolsAsEntity   InvestmentPool[]   @relation("PoolEntity")
+  poolMemberships PoolMember[]       @relation("PoolMemberCompany")
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o
@@ -721,6 +724,7 @@ model IntercompanyLoan {
 
   transactions LoanTransaction[]
   years        LoanYear[]
+  poolAsNote   InvestmentPool?   @relation("PoolNote")
 }
 
 // Valores FORNECIDOS por ano de um empréstimo intercompany (do contador/QBO). O app não
@@ -753,4 +757,366 @@ model LoanTransaction {
   date      DateTime
   memo      String?
   createdAt DateTime    @default(now())
+}
+
+// ─────────────────────────────────────────────────────────────
+// Investment pools — LLCs de investimento por projeto (VHP-N)
+// Cada pool = uma empresa (cap table congelado, encerra com o projeto). Funcionários
+// investem via empresas deles (Party/Company); a Vixus entra como MANAGER e sócia de
+// equilíbrio. Units de valor fixo: % de cada sócio é derivado, nunca digitado.
+// ─────────────────────────────────────────────────────────────
+
+enum PoolStatus {
+  FUNDING // captando (aportes emitem units)
+  ACTIVE // cap table congelado; obra/vendas em andamento (só transferências de units)
+  CLOSING // vendas concluídas; distribuindo capital + lucro
+  CLOSED // encerrado (IR final)
+}
+
+enum PoolHouseStatus {
+  PLANNED
+  LOT_PURCHASED
+  UNDER_CONSTRUCTION
+  FOR_SALE
+  UNDER_CONTRACT
+  SOLD
+}
+
+enum PoolMemberRole {
+  MANAGER // Vixus — gestão e sócia de equilíbrio
+  INVESTOR // classe sem voto
+}
+
+enum PoolEntryKind {
+  CONTRIBUTION // aporte na janela de captação (emite units)
+  TRANSFER_IN // compra de units de outro sócio (par com TRANSFER_OUT)
+  TRANSFER_OUT
+}
+
+enum PoolDistributionKind {
+  RETURN_OF_CAPITAL
+  PROFIT
+}
+
+model InvestmentPool {
+  id    String  @id @default(cuid())
+  code  String  @unique // sequencial: "VHP-I", "VHP-II"…
+  name  String // razão social: "Vixus Home Partners I LLC"
+  alias String? // nome legado do projeto (ex.: "PH3")
+
+  // Pool LLC registrada como empresa do grupo (org-chart, IR, year-close funcionam nela).
+  companyId String?  @unique
+  company   Company? @relation("PoolEntity", fields: [companyId], references: [id], onDelete: SetNull)
+
+  // Nota participativa única do pool para a Vixus (formato empréstimo). Os juros-base
+  // vivem no loan; os contingentes saem do waterfall do pool.
+  noteLoanId String?           @unique
+  noteLoan   IntercompanyLoan? @relation("PoolNote", fields: [noteLoanId], references: [id], onDelete: SetNull)
+
+  status   PoolStatus @default(FUNDING)
+  currency String     @default("USD")
+
+  unitPrice      Decimal  @default(1000) @db.Decimal(20, 4) // 1 unit = $1.000
+  targetAmount   Decimal? @db.Decimal(20, 2) // orçamento de captação (own capital do pool)
+  profitSharePct Decimal? @db.Decimal(9, 6) // fração do lucro que vai aos investidores (0.35 = 35%)
+  profitShareTiming String? // PER_SALE | PROJECT_COMPLETION
+
+  fundingDeadline  DateTime? @db.Date // corte da janela de captação (compra dos lotes)
+  startDate        DateTime? @db.Date
+  plannedEndDate   DateTime? @db.Date
+  effectiveEndDate DateTime? @db.Date
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  houses        PoolHouse[]
+  members       PoolMember[]
+  distributions PoolDistribution[]
+  documents     PoolDocument[]
+  simulations   PoolSimulation[]
+}
+
+// Uma casa do pool: pro forma (esperado) + premissas do banco + realizado. O nº de casas é
+// variável — dimensionado pelo volume captado + alavancagem por casa.
+model PoolHouse {
+  id     String         @id @default(cuid())
+  poolId String
+  pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  address String
+  status  PoolHouseStatus @default(PLANNED)
+
+  // Pro forma (esperado)
+  plannedLotCost     Decimal? @db.Decimal(20, 2)
+  plannedBuildCost   Decimal? @db.Decimal(20, 2)
+  plannedSalePrice   Decimal? @db.Decimal(20, 2)
+  plannedClosingCost Decimal? @db.Decimal(20, 2)
+
+  // Premissas do construction loan
+  bankName            String?
+  bankLoanAmount      Decimal? @db.Decimal(20, 2)
+  bankOriginationFee  Decimal? @db.Decimal(20, 2)
+  bankInterestReserve Decimal? @db.Decimal(20, 2)
+  bankCashToClose     Decimal? @db.Decimal(20, 2)
+  bankBudgetReviewFee Decimal? @db.Decimal(20, 2)
+  bankCharges         Decimal? @db.Decimal(20, 2)
+
+  // Realizado
+  actualLotCost   Decimal?  @db.Decimal(20, 2)
+  actualBuildCost Decimal?  @db.Decimal(20, 2)
+  ownCapital      Decimal?  @db.Decimal(20, 2) // capital próprio efetivamente usado na casa
+  soldPrice       Decimal?  @db.Decimal(20, 2)
+  payoffAmount    Decimal?  @db.Decimal(20, 2) // quitação do banco na venda
+  closingCost     Decimal?  @db.Decimal(20, 2)
+  contractDate    DateTime? @db.Date
+  saleDate        DateTime? @db.Date
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  distributions PoolDistribution[]
+
+  @@index([poolId])
+}
+
+// Sócio do pool — Party OU Company (exatamente um, validado na app; mesmo padrão de Ownership).
+model PoolMember {
+  id     String         @id @default(cuid())
+  poolId String
+  pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  partyId   String?
+  party     Party?   @relation("PoolMemberParty", fields: [partyId], references: [id])
+  companyId String?
+  company   Company? @relation("PoolMemberCompany", fields: [companyId], references: [id])
+
+  role PoolMemberRole @default(INVESTOR)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  entries           PoolContribution[]
+  distributionLines PoolDistributionLine[]
+
+  @@index([poolId])
+}
+
+// Lançamento de capital do sócio (o "extrato"): aporte emite units; transferência move units
+// entre sócios sem diluir ninguém (par OUT/IN com o mesmo transferGroupId). Valores sempre
+// positivos — TRANSFER_OUT subtrai no cálculo da posição.
+model PoolContribution {
+  id       String     @id @default(cuid())
+  memberId String
+  member   PoolMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  kind            PoolEntryKind @default(CONTRIBUTION)
+  date            DateTime      @db.Date
+  amount          Decimal       @db.Decimal(20, 2)
+  units           Decimal       @db.Decimal(20, 4)
+  transferGroupId String? // liga o par TRANSFER_OUT/TRANSFER_IN
+  memo            String?
+  createdAt       DateTime      @default(now())
+
+  @@index([memberId])
+}
+
+// Distribuição aos sócios (devolução de capital ou lucro), rateada pro rata por units na
+// data. As linhas guardam o valor de cada sócio como ficou no rateio (auditável).
+model PoolDistribution {
+  id     String         @id @default(cuid())
+  poolId String
+  pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  kind        PoolDistributionKind
+  date        DateTime             @db.Date
+  totalAmount Decimal              @db.Decimal(20, 2)
+  houseId     String? // venda que originou a distribuição (opcional)
+  house       PoolHouse?           @relation(fields: [houseId], references: [id], onDelete: SetNull)
+  memo        String?
+  createdAt   DateTime             @default(now())
+
+  lines PoolDistributionLine[]
+
+  @@index([poolId])
+}
+
+model PoolDistributionLine {
+  id             String           @id @default(cuid())
+  distributionId String
+  distribution   PoolDistribution @relation(fields: [distributionId], references: [id], onDelete: Cascade)
+  memberId       String
+  member         PoolMember       @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amount         Decimal          @db.Decimal(20, 2)
+}
+
+// ─────────────────────────────────────────────────────────────
+// Simulador de tese de investimento (pré-pool)
+// Catálogos de locais/modelos/fees + perfis de banco + cenários de buffer, e as
+// simulações salvas (ledger enviado ao investidor antes do projeto).
+// ─────────────────────────────────────────────────────────────
+
+enum HouseType {
+  AFFORDABLE
+  MID_RANGE
+  UPPER_MIDDLE
+  HIGH_END
+  LUXURY
+  DUPLEX
+  TRIPLEX
+  MULTIFAMILY
+}
+
+enum SimFundingMode {
+  EQUITY
+  BANK
+}
+
+// Remuneração da 4U (construtora): fee fixo por tipo de casa (sem participação) OU
+// performance = % do lucro líquido ANTES do split com investidores (default 35%).
+enum BuilderCompMode {
+  CONTRACTOR_FEE
+  PERFORMANCE
+}
+
+model CatalogLocation {
+  id              String   @id @default(cuid())
+  name            String   @unique
+  permitDays      Int
+  lotLeadDays     Int // dias até fechar a compra do lote
+  saleDays        Int // dias para vender após CO
+  lotCostEstimate Decimal? @db.Decimal(20, 2) // valor estimado de lote na região
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  models CatalogModelLocation[]
+}
+
+model CatalogModel {
+  id            String    @id @default(cuid())
+  name          String    @unique
+  houseType     HouseType
+  buildMonths   Decimal   @db.Decimal(4, 1)
+  directCost    Decimal   @db.Decimal(20, 2) // custo direto de obra (sem margem da 4U)
+  contractorFee Decimal?  @db.Decimal(20, 2) // override; null = usa o fee do tipo (HouseTypeFee)
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  locations CatalogModelLocation[]
+}
+
+// Preço de venda (e lote, se diferente do estimado da região) POR local — evita o bug do
+// mockup onde o mesmo modelo em 2 locais sobrescrevia o outro.
+model CatalogModelLocation {
+  id         String          @id @default(cuid())
+  modelId    String
+  model      CatalogModel    @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  locationId String
+  location   CatalogLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  salePrice  Decimal         @db.Decimal(20, 2)
+  lotCost    Decimal?        @db.Decimal(20, 2) // null = lotCostEstimate do local
+
+  @@unique([modelId, locationId])
+}
+
+// Contractor fee fixo por tipo de casa (preenchido pelo usuário).
+model HouseTypeFee {
+  type      HouseType @id
+  fee       Decimal   @default(0) @db.Decimal(20, 2)
+  updatedAt DateTime  @updatedAt
+}
+
+// Premissas de um banco de construction loan — ajustável por banco (selects de taxa).
+model BankProfile {
+  id                   String   @id @default(cuid())
+  name                 String   @unique
+  ltcBuildPct          Decimal  @default(80) @db.Decimal(5, 2) // % do custo de obra
+  ltcLandPct           Decimal  @default(50) @db.Decimal(5, 2) // % do lote (se financia)
+  financeLand          Boolean  @default(false)
+  ltvPct               Decimal  @default(70) @db.Decimal(5, 2) // % do ARV
+  haircutPct           Decimal  @default(5) @db.Decimal(5, 2) // desconto de avaliação sobre ARV
+  perUnitCap           Decimal? @db.Decimal(20, 2)
+  aprPct               Decimal  @default(12) @db.Decimal(5, 2) // juros a.a. sobre saldo sacado
+  originationPct       Decimal  @default(1) @db.Decimal(5, 2)
+  originationFlat      Decimal  @default(0) @db.Decimal(20, 2)
+  closingFeePct        Decimal  @default(3) @db.Decimal(5, 2) // sobre o comprometido
+  appraisalFee         Decimal  @default(1500) @db.Decimal(20, 2)
+  legalFee             Decimal  @default(1800) @db.Decimal(20, 2)
+  inspectionFeePerDraw Decimal  @default(205) @db.Decimal(20, 2)
+  servicingMonthly     Decimal  @default(95) @db.Decimal(20, 2)
+  hasInterestReserve   Boolean  @default(false) // sem reserve → juros da obra viram aporte
+  feesFinanced         Boolean  @default(true) // fees de closing capitalizam no loan
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  simulations PoolSimulation[]
+}
+
+// Cenário de buffers (docx "Investment Thesis Simulator - Buffers"): OPT/REAL/CONS + customs.
+model BufferScenario {
+  code                        String   @id // "OPT" | "REAL" | "CONS" | customizados
+  name                        String
+  salePriceBufferPct          Decimal  @default(0) @db.Decimal(6, 2) // +5 / 0 / −7
+  constructionCostBufferPct   Decimal  @default(0) @db.Decimal(6, 2) // −2 / 0 / +10
+  lotCostBufferPct            Decimal  @default(0) @db.Decimal(6, 2) // −1 / 0 / +5
+  closingFeePct               Decimal  @default(8) @db.Decimal(6, 2) // 7.5 / 8 / 9 (% da venda)
+  contingencyReservePct       Decimal  @default(5) @db.Decimal(6, 2) // 3 / 5 / 8 (% de lote+obra)
+  landAcquisitionDays         Int      @default(20) // atraso na compra do lote: 10 / 20 / 30
+  constructionDurationBufferM Decimal  @default(0) @db.Decimal(4, 1) // −1 / 0 / +2 meses
+  salesAbsorptionMonths       Decimal? @db.Decimal(4, 1) // 1 / 2 / 4 (null = saleDays do local)
+  emdPct                      Decimal  @default(10) @db.Decimal(6, 2) // 5 / 10 / 10
+  stressSlippagePct           Decimal  @default(0) @db.Decimal(6, 2)
+  sortOrder                   Int      @default(0)
+  updatedAt                   DateTime @updatedAt
+
+  simulations PoolSimulation[]
+}
+
+// Simulação salva (a "tese" enviada ao investidor). `units` = [{locationId, modelId}];
+// `result` = snapshot do ledger/KPIs no momento do run (o que foi apresentado).
+model PoolSimulation {
+  id     String          @id @default(cuid())
+  poolId String?
+  pool   InvestmentPool? @relation(fields: [poolId], references: [id], onDelete: SetNull)
+
+  name          String
+  fundingMode   SimFundingMode  @default(BANK)
+  bankProfileId String?
+  bankProfile   BankProfile?    @relation(fields: [bankProfileId], references: [id])
+  scenarioCode  String          @default("REAL")
+  scenario      BufferScenario  @relation(fields: [scenarioCode], references: [code])
+  compMode      BuilderCompMode @default(PERFORMANCE)
+  perfPct       Decimal         @default(35) @db.Decimal(5, 2) // % do lucro p/ 4U, ANTES do split
+  equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
+  parallelPermit Boolean        @default(false)
+  unitGapDays   Int             @default(3)
+
+  units  Json // [{ locationId, modelId }]
+  result Json? // snapshot: { kpis, events[], monthly[], units[] }
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// PDFs do pool (subscription agreement, cap table, nota, novação, extratos, closing
+// statement) — gerados pela plataforma ou anexados; Bytes no Postgres como CorporateDoc.
+model PoolDocument {
+  id     String         @id @default(cuid())
+  poolId String
+  pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  memberId String? // documento de um sócio específico (ex.: subscription, extrato)
+  docType  String // SUBSCRIPTION | OPERATING_AGREEMENT | NOTE | NOVATION | CAP_TABLE | STATEMENT | DISTRIBUTION_STMT | CLOSING_STMT | OTHER
+  fileName String
+  pdf      Bytes?
+  pdfSize  Int?
+  signedAt DateTime? @db.Date
+  createdAt DateTime @default(now())
+
+  @@index([poolId])
 }

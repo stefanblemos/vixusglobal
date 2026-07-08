@@ -15,4 +15,12 @@ if (process.env.VERCEL_ENV === "production") {
 }
 
 run("npx prisma generate");
+
+if (process.env.VERCEL_ENV === "production") {
+  // Catálogo do simulador de pools (cenários OPT/REAL/CONS, locais, modelos, banco) —
+  // upserts idempotentes; precisa do client gerado e das migrations aplicadas.
+  console.log("▲ Seeding pool simulator catalog (idempotent)");
+  run("node scripts/seed-catalog.mjs");
+}
+
 run("next build");

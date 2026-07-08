@@ -35,6 +35,7 @@ import {
   Bell,
   LogOut,
   ChevronDown,
+  Home,
   type LucideIcon,
 } from "lucide-react";
 import { logout } from "@/lib/actions/auth";
@@ -97,6 +98,17 @@ const NAV: Entry[] = [
       { href: "/companies", label: "Companies", icon: Building2 },
       { href: "/parties", label: "Owners", icon: Users },
       { href: "/assets", label: "Assets", icon: Boxes },
+    ],
+  },
+  {
+    type: "group",
+    label: "Investments",
+    icon: Home,
+    defaultOpen: true,
+    items: [
+      { href: "/pools", label: "Pools", icon: Home },
+      { href: "/pools/simulator", label: "Simulator", icon: Calculator },
+      { href: "/pools/catalog", label: "Catalog", icon: ClipboardList },
     ],
   },
   {
