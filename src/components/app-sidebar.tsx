@@ -55,7 +55,6 @@ const NAV: Entry[] = [
     type: "group",
     label: "Group",
     icon: Layers,
-    defaultOpen: true,
     items: [
       { href: "/consolidation", label: "Consolidation", icon: Layers },
       { href: "/faturamento", label: "Revenue & profit", icon: TrendingUp },
@@ -67,7 +66,6 @@ const NAV: Entry[] = [
     type: "group",
     label: "Taxes",
     icon: ReceiptText,
-    defaultOpen: true,
     items: [
       { href: "/tax-preview", label: "Tax preview", icon: Calculator },
       { href: "/reserve", label: "Tax reserve", icon: PiggyBank },
@@ -81,7 +79,6 @@ const NAV: Entry[] = [
     type: "group",
     label: "Verification",
     icon: ShieldCheck,
-    defaultOpen: true,
     items: [
       { href: "/tax-audit", label: "Return check", icon: ShieldCheck },
       { href: "/m1-bridge", label: "M-1 bridge", icon: GitCompare },
@@ -104,7 +101,6 @@ const NAV: Entry[] = [
     type: "group",
     label: "Investments",
     icon: Home,
-    defaultOpen: true,
     items: [
       { href: "/pools", label: "Pools", icon: Home },
       { href: "/pools/simulator", label: "Simulator", icon: Calculator },
