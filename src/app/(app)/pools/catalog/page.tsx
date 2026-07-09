@@ -7,7 +7,8 @@ import {
   saveScenario,
 } from "@/lib/actions/catalog";
 import { CatalogLocations, type HistoryEntry } from "@/components/catalog-locations";
-import { CatalogModels, HOUSE_TYPE_LABEL } from "@/components/catalog-models";
+import { CatalogModels } from "@/components/catalog-models";
+import { HOUSE_TYPES, HOUSE_TYPE_LABEL } from "@/lib/pools/house-types";
 
 export const dynamic = "force-dynamic";
 
@@ -16,8 +17,6 @@ const input =
 const saveBtn =
   "rounded bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]";
 const delBtn = "text-xs text-slate-300 hover:text-red-500";
-
-const HOUSE_TYPES = Object.keys(HOUSE_TYPE_LABEL);
 
 const TABS = [
   ["locations", "Locations"],

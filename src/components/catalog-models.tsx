@@ -10,23 +10,13 @@ import {
   type CatalogFormState,
 } from "@/lib/actions/catalog";
 import type { HistoryEntry } from "@/components/catalog-locations";
+import { HOUSE_TYPE_LABEL } from "@/lib/pools/house-types";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20";
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 const th = "px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400";
 const td = "px-3 py-2.5 text-sm text-slate-600";
-
-export const HOUSE_TYPE_LABEL: Record<string, string> = {
-  AFFORDABLE: "Affordable",
-  MID_RANGE: "Mid-range",
-  UPPER_MIDDLE: "Upper-middle",
-  HIGH_END: "High-end",
-  LUXURY: "Luxury",
-  DUPLEX: "Duplex",
-  TRIPLEX: "Triplex",
-  MULTIFAMILY: "Multifamily",
-};
 
 export type ModelRow = {
   id: string;
