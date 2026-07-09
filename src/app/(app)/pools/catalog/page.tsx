@@ -4,8 +4,8 @@ import {
   deleteBankProfile,
   saveBankProfile,
   saveHouseTypeFee,
-  saveScenario,
 } from "@/lib/actions/catalog";
+import { CatalogScenarios } from "@/components/catalog-scenarios";
 import { CatalogLocations, type HistoryEntry } from "@/components/catalog-locations";
 import { CatalogModels } from "@/components/catalog-models";
 import { HOUSE_TYPES, HOUSE_TYPE_LABEL } from "@/lib/pools/house-types";
@@ -69,7 +69,7 @@ export default async function PoolCatalogPage({
     prisma.bankProfile.findMany({ orderBy: { name: "asc" } }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.catalogChangeLog.findMany({
-      where: { entity: { in: ["LOCATION", "MODEL"] } },
+      where: { entity: { in: ["LOCATION", "MODEL", "SCENARIO"] } },
       orderBy: { createdAt: "desc" },
       take: 400,
     }),
@@ -236,49 +236,24 @@ export default async function PoolCatalogPage({
       )}
 
       {tab === "scenarios" && (
-        <Section
-          title="Buffer scenarios"
-          hint="Ótimo / Real / Conservador (from the Buffers spec) plus customs. Buffers apply on top of catalog values: sale/cost/lot in %, land acquisition in days, duration in months."
-        >
-          <div className="space-y-3">
-            {[...scenarios, null].map((s) => (
-              <form
-                key={s?.code ?? "new"}
-                action={saveScenario}
-                className="flex flex-wrap items-end gap-x-3 gap-y-2 rounded-lg border border-slate-100 p-3"
-              >
-                {(
-                  [
-                    ["code", "Code", s?.code ?? "", "w-24", Boolean(s)],
-                    ["name", "Name", s?.name ?? "", "w-32", false],
-                    ["salePriceBufferPct", "Sale %", s?.salePriceBufferPct?.toString() ?? "0", "w-16", false],
-                    ["constructionCostBufferPct", "Cost %", s?.constructionCostBufferPct?.toString() ?? "0", "w-16", false],
-                    ["lotCostBufferPct", "Lot %", s?.lotCostBufferPct?.toString() ?? "0", "w-16", false],
-                    ["closingFeePct", "Closing fee %", s?.closingFeePct?.toString() ?? "8", "w-20", false],
-                    ["contingencyReservePct", "Contingency %", s?.contingencyReservePct?.toString() ?? "5", "w-20", false],
-                    ["landAcquisitionDays", "Land days", s?.landAcquisitionDays?.toString() ?? "20", "w-16", false],
-                    ["constructionDurationBufferM", "Duration +m", s?.constructionDurationBufferM?.toString() ?? "0", "w-16", false],
-                    ["salesAbsorptionMonths", "Absorption m", s?.salesAbsorptionMonths?.toString() ?? "", "w-16", false],
-                    ["emdPct", "EMD %", s?.emdPct?.toString() ?? "10", "w-16", false],
-                    ["sortOrder", "Order", s?.sortOrder?.toString() ?? "9", "w-14", false],
-                  ] as Array<[string, string, string, string, boolean]>
-                ).map(([name, label, value, w, ro]) => (
-                  <label key={name} className="block text-xs text-slate-400">
-                    {label}
-                    <input
-                      name={name}
-                      defaultValue={value}
-                      readOnly={ro}
-                      className={`${input} ${w} mt-0.5 ${ro ? "bg-slate-50 text-slate-400" : ""}`}
-                      required={name === "code"}
-                    />
-                  </label>
-                ))}
-                <button type="submit" className={saveBtn}>{s ? "Save" : "Add scenario"}</button>
-              </form>
-            ))}
-          </div>
-        </Section>
+        <CatalogScenarios
+          scenarios={scenarios.map((s) => ({
+            code: s.code,
+            name: s.name,
+            salePriceBufferPct: s.salePriceBufferPct.toString(),
+            constructionCostBufferPct: s.constructionCostBufferPct.toString(),
+            lotCostBufferPct: s.lotCostBufferPct.toString(),
+            closingFeePct: s.closingFeePct.toString(),
+            contingencyReservePct: s.contingencyReservePct.toString(),
+            landAcquisitionDays: s.landAcquisitionDays.toString(),
+            constructionDurationBufferM: s.constructionDurationBufferM.toString(),
+            salesAbsorptionMonths: s.salesAbsorptionMonths?.toString() ?? null,
+            emdPct: s.emdPct.toString(),
+            stressSlippagePct: s.stressSlippagePct.toString(),
+            sortOrder: s.sortOrder.toString(),
+          }))}
+          history={history("SCENARIO")}
+        />
       )}
     </div>
   );

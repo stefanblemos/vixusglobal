@@ -285,12 +285,17 @@ export async function deleteBankProfile(formData: FormData): Promise<void> {
   revalidatePath(CATALOG);
 }
 
-// ── Cenários de buffer ───────────────────────────────────────
+// ── Cenários de buffer (modal + histórico) ───────────────────
 
-export async function saveScenario(formData: FormData): Promise<void> {
+const CORE_SCENARIOS = new Set(["OPT", "REAL", "CONS"]);
+
+export async function saveScenario(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
   const code = String(formData.get("code") ?? "").trim().toUpperCase();
   const name = String(formData.get("name") ?? "").trim() || code;
-  if (!code) return;
+  if (!code) return { error: "Code is required." };
   const data = {
     name,
     salePriceBufferPct: num(formData.get("salePriceBufferPct")),
@@ -305,6 +310,46 @@ export async function saveScenario(formData: FormData): Promise<void> {
     stressSlippagePct: num(formData.get("stressSlippagePct")),
     sortOrder: Math.round(num(formData.get("sortOrder"), 9)),
   };
-  await prisma.bufferScenario.upsert({ where: { code }, create: { code, ...data }, update: data });
+
+  const before = await prisma.bufferScenario.findUnique({ where: { code } });
+  if (before) {
+    const changes = diff(
+      {
+        name: before.name,
+        salePriceBufferPct: before.salePriceBufferPct,
+        constructionCostBufferPct: before.constructionCostBufferPct,
+        lotCostBufferPct: before.lotCostBufferPct,
+        closingFeePct: before.closingFeePct,
+        contingencyReservePct: before.contingencyReservePct,
+        landAcquisitionDays: before.landAcquisitionDays,
+        constructionDurationBufferM: before.constructionDurationBufferM,
+        salesAbsorptionMonths: before.salesAbsorptionMonths,
+        emdPct: before.emdPct,
+        stressSlippagePct: before.stressSlippagePct,
+        sortOrder: before.sortOrder,
+      },
+      data,
+    );
+    if (changes.length === 0) return { ok: true };
+    await prisma.bufferScenario.update({ where: { code }, data });
+    await logChange("SCENARIO", code, name, "UPDATE", changes);
+  } else {
+    await prisma.bufferScenario.create({ data: { code, ...data } });
+    await logChange("SCENARIO", code, name, "CREATE", diff(null, data));
+  }
+  revalidatePath(CATALOG);
+  return { ok: true };
+}
+
+// Só cenários customizados podem ser apagados — OPT/REAL/CONS são o padrão do sistema.
+export async function deleteScenario(formData: FormData): Promise<void> {
+  const code = String(formData.get("code") ?? "").trim().toUpperCase();
+  if (!code || CORE_SCENARIOS.has(code)) return;
+  const before = await prisma.bufferScenario.findUnique({ where: { code } });
+  if (!before) return;
+  const inUse = await prisma.poolSimulation.count({ where: { scenarioCode: code } });
+  if (inUse > 0) return; // simulações salvas referenciam o cenário
+  await prisma.bufferScenario.delete({ where: { code } });
+  await logChange("SCENARIO", code, before.name, "DELETE", []);
   revalidatePath(CATALOG);
 }
