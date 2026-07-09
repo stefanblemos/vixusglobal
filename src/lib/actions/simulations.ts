@@ -216,6 +216,74 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
   revalidatePath(`/pools/simulator/${id}`);
 }
 
+// Converte a simulação aprovada num pool real: casas nascem com o pro forma do CENÁRIO
+// (lote/obra/venda/closing ajustados), profit share e meta herdados; se for loan, o
+// PoolLoan já nasce com o banco e o comprometido estimado. Daí é ajuste sobre o simulado.
+export async function convertSimulationToPool(formData: FormData): Promise<void> {
+  const id = String(formData.get("simulationId") ?? "");
+  if (!id) return;
+  const sim = await prisma.poolSimulation.findUnique({
+    where: { id },
+    include: { scenario: true, bankProfile: true },
+  });
+  if (!sim || sim.poolId) return; // inexistente ou já convertida
+  const result = sim.result as {
+    kpis?: { totalInvested?: number; bankCommitted?: number };
+    units?: Array<{ label: string; salePrice: number; adjLot: number; adjBuild: number; adjSaleNet: number }>;
+  } | null;
+  if (!result?.units?.length) return; // rode a simulação antes
+
+  const count = await prisma.investmentPool.count();
+  const { roman } = await import("@/lib/pools/math");
+  const code = `VHP-${roman(count + 1)}`;
+
+  const saleBuffer = Number(sim.scenario.salePriceBufferPct) / 100;
+  const round2 = (v: number) => Math.round(v * 100) / 100;
+
+  const pool = await prisma.investmentPool.create({
+    data: {
+      code,
+      name: `Vixus Home Partners ${roman(count + 1)} LLC`,
+      alias: sim.name,
+      status: "FUNDING",
+      targetAmount: result.kpis?.totalInvested ?? null,
+      profitSharePct: sim.compMode === "PERFORMANCE" ? Number(sim.perfPct) / 100 : null,
+      profitShareTiming: sim.compMode === "PERFORMANCE" ? "PROJECT_COMPLETION" : null,
+      notes: `Criado da simulação "${sim.name}" (cenário ${sim.scenario.name}, ${sim.fundingMode === "BANK" ? `loan ${sim.bankProfile?.name ?? ""}` : "equity"}).`,
+      houses: {
+        create: result.units.map((u, i) => {
+          const gross = round2(u.salePrice * (1 + saleBuffer));
+          return {
+            address: `Casa ${i + 1} — ${u.label} (endereço a definir)`,
+            status: "PLANNED" as const,
+            plannedLotCost: u.adjLot,
+            plannedBuildCost: u.adjBuild,
+            plannedSalePrice: gross,
+            plannedClosingCost: round2(gross - u.adjSaleNet),
+            notes: `Pro forma do cenário ${sim.scenario.name}`,
+          };
+        }),
+      },
+    },
+  });
+
+  await prisma.poolSimulation.update({ where: { id }, data: { poolId: pool.id } });
+
+  if (sim.fundingMode === "BANK" && sim.bankProfileId) {
+    await prisma.poolLoan.create({
+      data: {
+        poolId: pool.id,
+        bankProfileId: sim.bankProfileId,
+        committed: result.kpis?.bankCommitted ?? null,
+        notes: `Estimado pela simulação "${sim.name}" — substituir pelo loan real no closing.`,
+      },
+    });
+  }
+
+  revalidatePath("/pools");
+  redirect(`/pools/${pool.id}`);
+}
+
 export async function deleteSimulation(formData: FormData): Promise<void> {
   const id = String(formData.get("simulationId") ?? "");
   if (id) await prisma.poolSimulation.delete({ where: { id } });

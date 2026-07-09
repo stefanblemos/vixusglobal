@@ -66,7 +66,7 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
           <label htmlFor="sim-scenario" className={labelClass}>
             Scenario
           </label>
-          <select id="sim-scenario" name="scenarioCode" defaultValue="REAL" className={inputClass}>
+          <select id="sim-scenario" name="scenarioCode" defaultValue="CONS" className={inputClass}>
             {catalog.scenarios.map((s) => (
               <option key={s.code} value={s.code}>
                 {s.name}

@@ -2,7 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
-import { deleteSimulation, rerunSimulation } from "@/lib/actions/simulations";
+import {
+  convertSimulationToPool,
+  deleteSimulation,
+  rerunSimulation,
+} from "@/lib/actions/simulations";
 import type { SimResult } from "@/lib/pools/simulator";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +72,24 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
           </p>
         </div>
         <div className="flex gap-2">
+          {sim.pool ? (
+            <Link
+              href={`/pools/${sim.pool.id}`}
+              className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 hover:bg-emerald-100"
+            >
+              Pool criado: {sim.pool.code} →
+            </Link>
+          ) : (
+            <form action={convertSimulationToPool}>
+              <input type="hidden" name="simulationId" value={sim.id} />
+              <button
+                type="submit"
+                className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"
+              >
+                + Criar pool desta simulação
+              </button>
+            </form>
+          )}
           <form action={rerunSimulation}>
             <input type="hidden" name="simulationId" value={sim.id} />
             <button
