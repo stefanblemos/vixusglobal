@@ -838,6 +838,7 @@ model InvestmentPool {
   simulations   PoolSimulation[]
   loan          PoolLoan?
   capitalCalls  PoolCapitalCall[]
+  expenses      PoolExpense[]
 }
 
 // Uma casa do pool: pro forma (esperado) + premissas do banco + realizado. O nº de casas é
@@ -899,6 +900,23 @@ model HouseChangeOrder {
   createdAt   DateTime  @default(now())
 
   @@index([houseId])
+}
+
+// Despesas do PRÓPRIO pool (não das casas): abertura da LLC, annual report, contabilidade/
+// IR para gerar os K-1s. PROVISIONED = previsto (reserva no caixa); PAID = pago. Saem do
+// caixa do pool antes do lucro → rateio automático pro rata às units (padrão do 1065/K-1).
+model PoolExpense {
+  id          String         @id @default(cuid())
+  poolId      String
+  pool        InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  date        DateTime       @db.Date
+  category    String // FORMATION | ANNUAL_REPORT | TAX_PREP | ACCOUNTING | OTHER
+  description String
+  amount      Decimal        @db.Decimal(20, 2)
+  status      String         @default("PROVISIONED") // PROVISIONED | PAID
+  createdAt   DateTime       @default(now())
+
+  @@index([poolId])
 }
 
 // Chamada de capital: quando custos (ex.: COs) passam do captado, o pool chama capital

@@ -16,7 +16,8 @@ import {
   AddMemberForm,
   TransferUnitsForm,
 } from "@/components/pool-investor-forms";
-import { CreateCapitalCallForm } from "@/components/pool-capital-forms";
+import { AddPoolExpenseForm, CreateCapitalCallForm } from "@/components/pool-capital-forms";
+import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { AddMonthlyInterestForm } from "@/components/pool-interest-form";
 import { buildStatement } from "@/lib/pools/loan-statement";
 
@@ -82,6 +83,7 @@ export default async function PoolDetailPage({
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
       capitalCalls: { orderBy: { date: "asc" }, include: { lines: true } },
+      expenses: { orderBy: { date: "asc" } },
       loan: { include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } },
       simulations: {
         orderBy: { updatedAt: "desc" },
@@ -137,6 +139,30 @@ export default async function PoolDetailPage({
 
   const sold = pool.houses.filter((h) => h.status === "SOLD").length;
   const distributed = sum(pool.distributions.map((d) => d.totalAmount));
+
+  // Caixa & provisões: aportado × gasto × disponível (a diferença que o Stefan quer
+  // sempre visível — sobra sem previsão de gasto pode voltar aos investidores)
+  const spentOnHouses = sum(pool.houses.map((h) => h.ownCapital ?? 0));
+  const receivedFromSales = sum(
+    pool.houses.map((h) =>
+      h.netReceived != null
+        ? h.netReceived
+        : h.soldPrice != null
+          ? Number(h.soldPrice) - Number(h.payoffAmount ?? 0) - Number(h.closingCost ?? 0)
+          : 0,
+    ),
+  );
+  const expensesPaid = sum(pool.expenses.filter((e) => e.status === "PAID").map((e) => e.amount));
+  const expensesProvisioned = sum(
+    pool.expenses.filter((e) => e.status === "PROVISIONED").map((e) => e.amount),
+  );
+  const raised = sum(pool.members.flatMap((m) => m.entries.map((e) => (e.kind === "TRANSFER_OUT" ? -Number(e.amount) : Number(e.amount)))));
+  const available = raised
+    .add(receivedFromSales)
+    .sub(spentOnHouses)
+    .sub(expensesPaid)
+    .sub(distributed);
+  const freeToReturn = available.sub(expensesProvisioned);
 
   // somatórias do rodapé da tabela de casas (COs entram no lucro por custo)
   const houseEcos = pool.houses.map((h) =>
@@ -303,6 +329,70 @@ export default async function PoolDetailPage({
                   <div className="text-sm font-medium text-slate-800">{value}</div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">Caixa & provisões</h2>
+              <p className="text-xs text-slate-400">
+                Aportado × gasto × disponível. Sobra sem previsão de gasto pode ser devolvida aos
+                investidores (distribuição de retorno de capital). Despesas do pool saem do caixa
+                antes do lucro — rateio automático pro rata às units.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-3 p-5 md:grid-cols-3">
+              {(
+                [
+                  ["Aportado", formatMoney(raised, pool.currency), ""],
+                  ["(−) Gasto nas casas (capital próprio)", formatMoney(spentOnHouses, pool.currency), ""],
+                  ["(+) Recebido das vendas", formatMoney(receivedFromSales, pool.currency), ""],
+                  ["(−) Despesas do pool pagas", formatMoney(expensesPaid, pool.currency), ""],
+                  ["(−) Distribuído", formatMoney(distributed, pool.currency), ""],
+                  ["= Disponível (estimado)", formatMoney(available, pool.currency), "font-semibold"],
+                  ["(−) Provisões pendentes", formatMoney(expensesProvisioned, pool.currency), ""],
+                  ["= Livre para devolução", formatMoney(freeToReturn, pool.currency), "font-semibold"],
+                ] as Array<[string, string, string]>
+              ).map(([label, value, cls]) => (
+                <div key={label}>
+                  <div className="text-xs text-slate-400">{label}</div>
+                  <div className={`text-sm tabular-nums text-slate-800 ${cls}`}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <div className="border-t border-slate-100">
+              {pool.expenses.length > 0 && (
+                <div className="divide-y divide-slate-50">
+                  {pool.expenses.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between px-5 py-2 text-sm">
+                      <span className="text-slate-500">{fmtDate(e.date)}</span>
+                      <span className="flex-1 px-4 font-medium text-slate-700">{e.description}</span>
+                      <span className="tabular-nums text-slate-800">{formatMoney(e.amount, pool.currency)}</span>
+                      <form action={togglePoolExpensePaid} className="ml-3">
+                        <input type="hidden" name="expenseId" value={e.id} />
+                        <button
+                          type="submit"
+                          className={`rounded-full px-2 py-0.5 text-xs ${
+                            e.status === "PAID"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : "bg-amber-50 text-amber-700"
+                          }`}
+                          title="Clique para alternar provisionada/paga"
+                        >
+                          {e.status === "PAID" ? "Paga" : "Provisionada"}
+                        </button>
+                      </form>
+                      <form action={deletePoolExpense} className="ml-2">
+                        <input type="hidden" name="expenseId" value={e.id} />
+                        <button type="submit" className="text-xs text-slate-300 hover:text-red-500">✕</button>
+                      </form>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="border-t border-slate-100 px-5 py-4">
+                <AddPoolExpenseForm poolId={pool.id} />
+              </div>
             </div>
           </section>
 

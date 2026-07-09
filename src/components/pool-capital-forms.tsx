@@ -1,7 +1,12 @@
 "use client";
 
 import { useActionState } from "react";
-import { addChangeOrder, createCapitalCall, type FormState } from "@/lib/actions/pools";
+import {
+  addChangeOrder,
+  addPoolExpense,
+  createCapitalCall,
+  type FormState,
+} from "@/lib/actions/pools";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20";
@@ -27,10 +32,67 @@ export function AddChangeOrderForm({ houseId }: { houseId: string }) {
       </div>
       <div className="w-32">
         <label className={labelClass}>Valor $</label>
-        <input name="amount" required placeholder="negativo = crédito" className={inputClass} />
+        <input name="amount" required className={inputClass} />
       </div>
       <button type="submit" disabled={pending} className={buttonClass}>
         {pending ? "Adding…" : "+ Change order"}
+      </button>
+      <p className="w-full text-xs text-slate-400">
+        Positivo = CO (aumenta o valor do contrato/custo da obra); negativo = desconto (reduz o
+        contrato).
+      </p>
+      {state?.error && <p className="w-full text-sm text-red-600">{state.error}</p>}
+    </form>
+  );
+}
+
+const EXPENSE_CATEGORIES = [
+  ["FORMATION", "Abertura da LLC"],
+  ["ANNUAL_REPORT", "Annual report"],
+  ["TAX_PREP", "IR / K-1s"],
+  ["ACCOUNTING", "Contabilidade"],
+  ["OTHER", "Outra"],
+] as const;
+
+// Despesa do PRÓPRIO pool (não das casas) — provisionada ou paga.
+export function AddPoolExpenseForm({ poolId }: { poolId: string }) {
+  const [state, formAction, pending] = useActionState<FormState, FormData>(
+    addPoolExpense.bind(null, poolId),
+    undefined,
+  );
+  return (
+    <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <div className="w-40">
+        <label className={labelClass}>Data</label>
+        <input name="date" type="date" required className={inputClass} />
+      </div>
+      <div className="w-44">
+        <label className={labelClass}>Categoria</label>
+        <select name="category" defaultValue="TAX_PREP" className={inputClass}>
+          {EXPENSE_CATEGORIES.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="min-w-48 flex-1">
+        <label className={labelClass}>Descrição</label>
+        <input name="description" required placeholder="1065 + K-1s 2026 (contador)" className={inputClass} />
+      </div>
+      <div className="w-28">
+        <label className={labelClass}>Valor $</label>
+        <input name="amount" required className={inputClass} />
+      </div>
+      <div className="w-36">
+        <label className={labelClass}>Status</label>
+        <select name="status" defaultValue="PROVISIONED" className={inputClass}>
+          <option value="PROVISIONED">Provisionada</option>
+          <option value="PAID">Paga</option>
+        </select>
+      </div>
+      <button type="submit" disabled={pending} className={buttonClass}>
+        {pending ? "Adding…" : "+ Despesa"}
       </button>
       {state?.error && <p className="w-full text-sm text-red-600">{state.error}</p>}
     </form>

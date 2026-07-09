@@ -309,6 +309,46 @@ export async function deleteChangeOrder(formData: FormData): Promise<void> {
   revalidatePath(`/pools/${co.house.poolId}`);
 }
 
+// ── Despesas do pool (abertura, annual report, IR/K-1s) ─────
+
+export async function addPoolExpense(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
+  if (!dateRaw || !description) return { error: "Date and description are required." };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Amount must be greater than 0." };
+  const category = String(formData.get("category") ?? "OTHER");
+  const status = formData.get("status") === "PAID" ? "PAID" : "PROVISIONED";
+  await prisma.poolExpense.create({
+    data: { poolId, date: new Date(dateRaw), category, description, amount, status },
+  });
+  revalidatePath(`/pools/${poolId}`);
+  return undefined;
+}
+
+export async function togglePoolExpensePaid(formData: FormData): Promise<void> {
+  const id = String(formData.get("expenseId") ?? "");
+  if (!id) return;
+  const exp = await prisma.poolExpense.findUnique({ where: { id } });
+  if (!exp) return;
+  await prisma.poolExpense.update({
+    where: { id },
+    data: { status: exp.status === "PAID" ? "PROVISIONED" : "PAID" },
+  });
+  revalidatePath(`/pools/${exp.poolId}`);
+}
+
+export async function deletePoolExpense(formData: FormData): Promise<void> {
+  const id = String(formData.get("expenseId") ?? "");
+  if (!id) return;
+  const exp = await prisma.poolExpense.delete({ where: { id } });
+  revalidatePath(`/pools/${exp.poolId}`);
+}
+
 // ── Capital calls ────────────────────────────────────────────
 
 // Cria a chamada de capital PRO RATA às units atuais e gera as linhas por sócio.
