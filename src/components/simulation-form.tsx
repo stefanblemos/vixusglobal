@@ -27,6 +27,119 @@ export type SimCatalog = {
 
 type UnitRow = { locationId: string; modelId: string };
 
+// Modal de adição de casa: localização primeiro → modelos daquela localização, com os
+// valores de construção/venda; quantidade cria N linhas iguais de uma vez.
+function AddHouseModal({
+  catalog,
+  modelsFor,
+  onAdd,
+  onClose,
+}: {
+  catalog: SimCatalog;
+  modelsFor: Map<string, SimCatalog["modelLocations"]>;
+  onAdd: (locationId: string, modelId: string, qty: number) => void;
+  onClose: () => void;
+}) {
+  const [locationId, setLocationId] = useState("");
+  const [modelId, setModelId] = useState("");
+  const [qty, setQty] = useState("1");
+  const models = modelsFor.get(locationId) ?? [];
+  const sel = models.find((m) => m.modelId === modelId);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6"
+      onClick={onClose}
+    >
+      <div className="w-full max-w-md rounded-xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <h3 className="text-lg font-semibold text-slate-800">Adicionar casa</h3>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        <div className="space-y-4 px-6 py-4">
+          <div>
+            <label className={labelClass}>Localização *</label>
+            <select
+              value={locationId}
+              onChange={(e) => {
+                setLocationId(e.target.value);
+                setModelId("");
+              }}
+              className={inputClass}
+            >
+              <option value="">Selecione…</option>
+              {catalog.locations.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className={labelClass}>Modelo *</label>
+            <select
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              disabled={!locationId}
+              className={inputClass}
+            >
+              <option value="">{locationId ? "Selecione…" : "escolha a localização"}</option>
+              {models.map((m) => (
+                <option key={m.modelId} value={m.modelId}>
+                  {m.modelName}
+                </option>
+              ))}
+            </select>
+          </div>
+          {sel && (
+            <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-center">
+              <div>
+                <div className="text-xs text-slate-400">Construção (perf)</div>
+                <div className="text-sm font-medium tabular-nums">
+                  {sel.costPerformance != null ? `$${sel.costPerformance.toLocaleString("en-US")}` : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">Construção (contractor)</div>
+                <div className="text-sm font-medium tabular-nums">
+                  {sel.costContractor != null ? `$${sel.costContractor.toLocaleString("en-US")}+fee` : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">Venda</div>
+                <div className="text-sm font-medium tabular-nums">
+                  ${sel.salePrice.toLocaleString("en-US")}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="w-28">
+            <label className={labelClass}>Quantidade</label>
+            <input value={qty} onChange={(e) => setQty(e.target.value)} className={inputClass} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={!locationId || !modelId}
+              onClick={() => onAdd(locationId, modelId, Math.max(1, Math.round(Number(qty) || 1)))}
+              className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
+            >
+              Adicionar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     createSimulation,
@@ -34,7 +147,8 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   );
   const [fundingMode, setFundingMode] = useState("BANK");
   const [compMode, setCompMode] = useState("PERFORMANCE");
-  const [units, setUnits] = useState<UnitRow[]>([{ locationId: "", modelId: "" }]);
+  const [units, setUnits] = useState<UnitRow[]>([]);
+  const [modalOpen, setModalOpen] = useState(false);
   const [tiers, setTiers] = useState<Array<{ hurdlePct: string; promotePct: string }>>([
     { hurdlePct: "8", promotePct: "0" },
     { hurdlePct: "15", promotePct: "20" },
@@ -50,9 +164,6 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
     }
     return map;
   }, [catalog.modelLocations]);
-
-  const setUnit = (i: number, patch: Partial<UnitRow>) =>
-    setUnits((u) => u.map((row, j) => (j === i ? { ...row, ...patch } : row)));
 
   const validUnits = units.filter((u) => u.locationId && u.modelId);
 
@@ -252,68 +363,112 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
           <h3 className="text-sm font-semibold text-slate-700">Houses</h3>
           <button
             type="button"
-            onClick={() => setUnits((u) => [...u, { locationId: "", modelId: "" }])}
-            className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50"
+            onClick={() => setModalOpen(true)}
+            className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16304f]"
           >
             + Add house
           </button>
         </div>
-        <div className="space-y-2">
-          {units.map((u, i) => {
-            const models = modelsFor.get(u.locationId) ?? [];
-            const sel = models.find((m) => m.modelId === u.modelId);
-            return (
-              <div key={i} className="flex flex-wrap items-center gap-2">
-                <span className="w-6 text-xs text-slate-400">{i + 1}</span>
-                <select
-                  value={u.locationId}
-                  onChange={(e) => setUnit(i, { locationId: e.target.value, modelId: "" })}
-                  className={`${inputClass} w-48`}
-                >
-                  <option value="">Location…</option>
-                  {catalog.locations.map((l) => (
-                    <option key={l.id} value={l.id}>
-                      {l.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={u.modelId}
-                  onChange={(e) => setUnit(i, { modelId: e.target.value })}
-                  className={`${inputClass} w-48`}
-                  disabled={!u.locationId}
-                >
-                  <option value="">Model…</option>
-                  {models.map((m) => (
-                    <option key={m.modelId} value={m.modelId}>
-                      {m.modelName}
-                    </option>
-                  ))}
-                </select>
-                {sel && (
-                  <span className="text-xs text-slate-400">
-                    {compMode === "PERFORMANCE"
-                      ? `cost ${sel.costPerformance != null ? `$${sel.costPerformance.toLocaleString()}` : "—"}`
-                      : `cost ${sel.costContractor != null ? `$${sel.costContractor.toLocaleString()}+fee` : "—"}`}{" "}
-                    · sale ${sel.salePrice.toLocaleString()}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setUnits((rows) => rows.filter((_, j) => j !== i))}
-                  className="text-xs text-slate-300 hover:text-red-500"
-                >
-                  ✕
-                </button>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto rounded-lg border border-slate-100">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100">
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">#</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Local</th>
+                <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Modelo</th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
+                  Construção{compMode === "CONTRACTOR_FEE" ? " (+fee)" : ""}
+                </th>
+                <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400">Venda</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {validUnits.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-3 py-5 text-center text-sm text-slate-400">
+                    Nenhuma casa — clique em "+ Add house" para escolher local e modelo.
+                  </td>
+                </tr>
+              )}
+              {units.map((u, i) => {
+                const sel = (modelsFor.get(u.locationId) ?? []).find((m) => m.modelId === u.modelId);
+                if (!sel) return null;
+                const locName = catalog.locations.find((l) => l.id === u.locationId)?.name ?? "";
+                const cost = compMode === "CONTRACTOR_FEE" ? sel.costContractor : sel.costPerformance;
+                return (
+                  <tr key={i} className="border-b border-slate-50">
+                    <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-2 text-sm text-slate-600">{locName}</td>
+                    <td className="px-3 py-2 text-sm font-medium text-slate-800">{sel.modelName}</td>
+                    <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
+                      {cost != null ? `$${cost.toLocaleString("en-US")}` : "—"}
+                    </td>
+                    <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
+                      ${sel.salePrice.toLocaleString("en-US")}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setUnits((rows) => rows.filter((_, j) => j !== i))}
+                        className="text-xs text-slate-300 hover:text-red-500"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {validUnits.length > 0 && (
+                <tr className="bg-slate-50/60">
+                  <td colSpan={3} className="px-3 py-2 text-sm font-semibold text-slate-800">
+                    Total ({validUnits.length} casas)
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm font-semibold tabular-nums">
+                    $
+                    {validUnits
+                      .reduce((s, u) => {
+                        const sel = (modelsFor.get(u.locationId) ?? []).find((m) => m.modelId === u.modelId);
+                        const cost =
+                          compMode === "CONTRACTOR_FEE" ? sel?.costContractor : sel?.costPerformance;
+                        return s + (cost ?? 0);
+                      }, 0)
+                      .toLocaleString("en-US")}
+                  </td>
+                  <td className="px-3 py-2 text-right text-sm font-semibold tabular-nums">
+                    $
+                    {validUnits
+                      .reduce((s, u) => {
+                        const sel = (modelsFor.get(u.locationId) ?? []).find((m) => m.modelId === u.modelId);
+                        return s + (sel?.salePrice ?? 0);
+                      }, 0)
+                      .toLocaleString("en-US")}
+                  </td>
+                  <td></td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
         <p className="mt-2 text-xs text-slate-400">
-          {validUnits.length} house(s) ready. Costs, timing and lot values come from the catalog;
-          the scenario buffers are applied on top.
+          Custos, prazos e lotes vêm do catálogo; os buffers do cenário são aplicados por cima.
         </p>
       </div>
+
+      {modalOpen && (
+        <AddHouseModal
+          catalog={catalog}
+          modelsFor={modelsFor}
+          onAdd={(locationId, modelId, qty) => {
+            setUnits((rows) => [
+              ...rows.filter((r) => r.locationId && r.modelId),
+              ...Array.from({ length: qty }, () => ({ locationId, modelId })),
+            ]);
+            setModalOpen(false);
+          }}
+          onClose={() => setModalOpen(false)}
+        />
+      )}
 
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
 
