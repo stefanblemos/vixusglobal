@@ -32,6 +32,7 @@ export default async function NewPoolPage() {
           fundingDeadline: "",
           startDate: "",
           plannedEndDate: "",
+          effectiveEndDate: "",
           notes: "",
         }}
       />

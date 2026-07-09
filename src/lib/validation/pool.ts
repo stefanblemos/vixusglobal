@@ -39,6 +39,7 @@ export const poolSchema = z.object({
   fundingDeadline: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   startDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   plannedEndDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
+  effectiveEndDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
 });
 

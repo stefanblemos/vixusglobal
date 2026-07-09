@@ -40,6 +40,7 @@ export async function createPool(_prev: FormState, formData: FormData): Promise<
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,
       plannedEndDate: d.plannedEndDate,
+      effectiveEndDate: d.effectiveEndDate,
       notes: d.notes,
     },
   });
@@ -73,6 +74,7 @@ export async function updatePool(
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,
       plannedEndDate: d.plannedEndDate,
+      effectiveEndDate: d.effectiveEndDate,
       notes: d.notes,
       ...(status.success ? { status: status.data as PoolStatus } : {}),
     },

@@ -21,6 +21,7 @@ export type PoolFormValues = {
   fundingDeadline: string; // yyyy-mm-dd
   startDate: string;
   plannedEndDate: string;
+  effectiveEndDate: string;
   notes: string;
 };
 
@@ -151,6 +152,20 @@ export function PoolForm({ values }: { values: PoolFormValues }) {
             className={inputClass}
           />
         </div>
+        {editing && (
+          <div>
+            <label htmlFor="effectiveEndDate" className={labelClass}>
+              Effective end
+            </label>
+            <input
+              id="effectiveEndDate"
+              name="effectiveEndDate"
+              type="date"
+              defaultValue={values.effectiveEndDate}
+              className={inputClass}
+            />
+          </div>
+        )}
         {editing && (
           <div>
             <label htmlFor="status" className={labelClass}>

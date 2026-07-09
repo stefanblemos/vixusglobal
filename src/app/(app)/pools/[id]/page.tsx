@@ -22,10 +22,11 @@ import { buildStatement } from "@/lib/pools/loan-statement";
 export const dynamic = "force-dynamic";
 
 const TABS = [
+  ["overview", "Overview"],
   ["houses", "Casas"],
   ["investors", "Investidores"],
-  ["ledger", "Capital ledger"],
   ["interest", "Juros & reserve"],
+  ["ledger", "Capital ledger"],
   ["distributions", "Distribuições"],
 ] as const;
 
@@ -70,7 +71,7 @@ export default async function PoolDetailPage({
 }) {
   const { id } = await params;
   const { tab: rawTab } = await searchParams;
-  const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "houses";
+  const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
@@ -80,9 +81,16 @@ export default async function PoolDetailPage({
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
       loan: { include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } },
+      simulations: {
+        orderBy: { updatedAt: "desc" },
+        take: 1,
+        include: { scenario: true, bankProfile: true },
+      },
     },
   });
   if (!pool) notFound();
+  const sim = pool.simulations[0] ?? null;
+  const simKpis = (sim?.result as { kpis?: Record<string, number | null> } | null)?.kpis ?? null;
 
   // Juros & reserve (do loan statement)
   const loanApr =
@@ -248,6 +256,114 @@ export default async function PoolDetailPage({
           </Link>
         ))}
       </div>
+
+      {/* Overview — premissas + esperado da simulação */}
+      {tab === "overview" && (
+        <div className="space-y-4">
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">Premissas do pool</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-x-8 gap-y-4 p-5 md:grid-cols-4">
+              {(
+                [
+                  ["Início", fmtDate(pool.startDate)],
+                  ["Término previsto", fmtDate(pool.plannedEndDate)],
+                  ["Término real", fmtDate(pool.effectiveEndDate)],
+                  [
+                    "Forma de pagamento",
+                    pool.loan
+                      ? `Construction loan — ${pool.loan.bankProfile?.name ?? "banco a definir"}`
+                      : sim?.fundingMode === "BANK"
+                        ? `Construction loan — ${sim.bankProfile?.name ?? ""} (previsto)`
+                        : "Equity (100% investidores)",
+                  ],
+                  [
+                    "Aporte esperado",
+                    pool.targetAmount ? formatMoney(pool.targetAmount, pool.currency) : "—",
+                  ],
+                  [
+                    "Remuneração 4U",
+                    pool.profitSharePct
+                      ? `Performance ${(Number(pool.profitSharePct) * 100).toFixed(0)}% (antes do split)`
+                      : "Contractor fee",
+                  ],
+                  ["Unit price", formatMoney(pool.unitPrice, pool.currency)],
+                  ["Janela de captação até", fmtDate(pool.fundingDeadline)],
+                ] as Array<[string, string]>
+              ).map(([label, value]) => (
+                <div key={label}>
+                  <div className="text-xs text-slate-400">{label}</div>
+                  <div className="text-sm font-medium text-slate-800">{value}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">Esperado — da simulação</h2>
+              <p className="text-xs text-slate-400">
+                {sim
+                  ? `Simulação "${sim.name}" (cenário ${sim.scenario.name}) — o que foi apresentado aos investidores.`
+                  : "Nenhuma simulação vinculada a este pool."}
+              </p>
+            </div>
+            {sim && simKpis ? (
+              <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <div className="text-xs text-slate-400">Capital do investidor (pico)</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {simKpis.peakCapital != null ? formatMoney(simKpis.peakCapital, pool.currency) : "—"}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <div className="text-xs text-slate-400">Lucro esperado</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {simKpis.profit != null ? formatMoney(simKpis.profit, pool.currency) : "—"}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <div className="text-xs text-slate-400">TIR esperada (a.a.)</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {simKpis.irrAnnual != null ? `${(simKpis.irrAnnual * 100).toFixed(1)}%` : "—"}
+                  </div>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-4">
+                  <div className="text-xs text-slate-400">ROI (multiple)</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {simKpis.equityMultiple != null ? `${simKpis.equityMultiple.toFixed(2)}x` : "—"}
+                  </div>
+                </div>
+                <div className="col-span-2 px-1 lg:col-span-4">
+                  <Link
+                    href={`/pools/simulator/${sim.id}`}
+                    className="text-xs text-[#1f3a5f] hover:underline"
+                  >
+                    Ver a simulação completa (ledger apresentado ao investidor) →
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <p className="p-5 text-sm text-slate-400">
+                Crie a simulação no{" "}
+                <Link href="/pools/simulator" className="text-[#1f3a5f] hover:underline">
+                  Simulator
+                </Link>{" "}
+                e converta em pool para os esperados aparecerem aqui — ou vincule uma simulação
+                existente escolhendo este pool no campo "Link to pool".
+              </p>
+            )}
+          </section>
+
+          {pool.notes && (
+            <section className="rounded-xl border border-slate-200 bg-white p-5">
+              <div className="text-xs text-slate-400">Notas</div>
+              <p className="mt-1 text-sm text-slate-600">{pool.notes}</p>
+            </section>
+          )}
+        </div>
+      )}
 
       {/* Casas */}
       {tab === "houses" && (

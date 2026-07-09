@@ -35,6 +35,7 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
           fundingDeadline: d(pool.fundingDeadline),
           startDate: d(pool.startDate),
           plannedEndDate: d(pool.plannedEndDate),
+          effectiveEndDate: d(pool.effectiveEndDate),
           notes: pool.notes ?? "",
         }}
       />
