@@ -16,8 +16,18 @@ import {
   AddMemberForm,
   TransferUnitsForm,
 } from "@/components/pool-investor-forms";
+import { AddMonthlyInterestForm } from "@/components/pool-interest-form";
+import { buildStatement } from "@/lib/pools/loan-statement";
 
 export const dynamic = "force-dynamic";
+
+const TABS = [
+  ["houses", "Casas"],
+  ["investors", "Investidores"],
+  ["ledger", "Capital ledger"],
+  ["interest", "Juros & reserve"],
+  ["distributions", "Distribuições"],
+] as const;
 
 const STATUS_STYLE: Record<string, string> = {
   FUNDING: "bg-amber-50 text-amber-700",
@@ -51,8 +61,16 @@ const thRight = "px-3 py-2 text-right text-xs font-medium uppercase tracking-wid
 const td = "px-3 py-2 text-sm text-slate-600";
 const tdRight = "px-3 py-2 text-right text-sm tabular-nums text-slate-700";
 
-export default async function PoolDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PoolDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const { tab: rawTab } = await searchParams;
+  const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "houses";
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
@@ -61,9 +79,45 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
       houses: { orderBy: { createdAt: "asc" } },
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
+      loan: { include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } },
     },
   });
   if (!pool) notFound();
+
+  // Juros & reserve (do loan statement)
+  const loanApr =
+    pool.loan?.aprPct != null
+      ? Number(pool.loan.aprPct)
+      : pool.loan?.bankProfile
+        ? pool.loan.bankProfile.rateType === "FIXED"
+          ? Number(pool.loan.bankProfile.aprPct)
+          : Number(pool.loan.bankProfile.indexPct) + Number(pool.loan.bankProfile.spreadPct)
+        : null;
+  const stmt = pool.loan
+    ? buildStatement(
+        pool.loan.entries.map((e) => ({
+          id: e.id,
+          type: e.type,
+          date: e.date,
+          amount: Number(e.amount),
+          houseLabel: null,
+          memo: e.memo,
+          reconciled: e.reconciled,
+          createdAt: e.createdAt,
+        })),
+        loanApr,
+      )
+    : null;
+  const reserveFunded = pool.loan
+    ? pool.loan.entries.filter((e) => e.type === "RESERVE").reduce((s, e) => s + Number(e.amount), 0)
+    : 0;
+  const reservePaidOut = pool.loan
+    ? -pool.loan.entries
+        .filter((e) => e.type === "INTEREST_PAYMENT")
+        .reduce((s, e) => s + Number(e.amount), 0)
+    : 0;
+  const reserveRemaining = Math.round((reserveFunded - reservePaidOut) * 100) / 100 + 0 || 0;
+  const reserveRefund = Math.max(0, Math.round((reservePaidOut - (stmt?.totalInterest ?? 0)) * 100) / 100);
 
   const table = capTable(pool.members);
   const memberById = new Map(pool.members.map((m) => [m.id, memberName(m)]));
@@ -169,12 +223,31 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
+      <div className="flex gap-1 border-b border-slate-200">
+        {TABS.map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/pools/${pool.id}?tab=${key}`}
+            className={`rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
+              tab === key
+                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
       {/* Casas */}
+      {tab === "houses" && (
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-medium text-slate-800">Houses</h2>
           <p className="text-xs text-slate-400">
-            Pro forma vs. actuals per house. Open a house to fill bank terms and results.
+            "Recebido" = o que entrou em conta na venda (caixa, não lucro — o payoff do sweep
+            amortiza o pool). "Lucro (custo)" = venda − closing − custos reais da casa; precisa
+            do lote/obra reais preenchidos na ficha.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -183,11 +256,11 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
               <tr className="border-b border-slate-100">
                 <th className={th}>Address</th>
                 <th className={th}>Status</th>
-                <th className={thRight}>Planned profit</th>
-                <th className={thRight}>Bank loan</th>
-                <th className={thRight}>Own capital</th>
-                <th className={thRight}>Sold price</th>
-                <th className={thRight}>Result</th>
+                <th className={thRight}>Lucro previsto</th>
+                <th className={thRight}>Capital próprio</th>
+                <th className={thRight}>Venda</th>
+                <th className={thRight}>Recebido</th>
+                <th className={thRight}>Lucro (custo)</th>
                 <th className={thRight}></th>
               </tr>
             </thead>
@@ -222,18 +295,18 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
                       {eco.plannedProfit ? formatMoney(eco.plannedProfit, pool.currency) : "—"}
                     </td>
                     <td className={tdRight}>
-                      {h.bankLoanAmount ? formatMoney(h.bankLoanAmount, pool.currency) : "—"}
-                    </td>
-                    <td className={tdRight}>
                       {h.ownCapital ? formatMoney(h.ownCapital, pool.currency) : "—"}
                     </td>
                     <td className={tdRight}>
                       {h.soldPrice ? formatMoney(h.soldPrice, pool.currency) : "—"}
                     </td>
+                    <td className={tdRight}>
+                      {eco.cashAtClosing ? formatMoney(eco.cashAtClosing, pool.currency) : "—"}
+                    </td>
                     <td
-                      className={`${tdRight} ${eco.result && eco.result.isNegative() ? "text-red-600" : eco.result ? "text-emerald-700" : ""}`}
+                      className={`${tdRight} ${eco.realProfit && eco.realProfit.isNegative() ? "text-red-600" : eco.realProfit ? "text-emerald-700" : ""}`}
                     >
-                      {eco.result ? formatMoney(eco.result, pool.currency) : "—"}
+                      {eco.realProfit ? formatMoney(eco.realProfit, pool.currency) : "—"}
                     </td>
                     <td className={tdRight}>
                       <form action={deleteHouse}>
@@ -257,8 +330,10 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
           <AddHouseForm poolId={pool.id} />
         </div>
       </section>
+      )}
 
       {/* Cap table */}
+      {tab === "investors" && (
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-medium text-slate-800">Cap table</h2>
@@ -341,8 +416,10 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
           <TransferUnitsForm poolId={pool.id} members={memberOptions} />
         </div>
       </section>
+      )}
 
       {/* Extrato de capital */}
+      {tab === "ledger" && (
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-medium text-slate-800">Capital ledger</h2>
@@ -411,8 +488,141 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
           </table>
         </div>
       </section>
+      )}
+
+      {/* Juros & reserve (do loan statement) */}
+      {tab === "interest" && (
+        <div className="space-y-4">
+          {!pool.loan || !stmt ? (
+            <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
+              O pool ainda não tem construction loan —{" "}
+              <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">
+                crie os termos no Loan statement
+              </Link>{" "}
+              para acompanhar juros e reserve.
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs text-slate-400">Reserve financiada</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {formatMoney(reserveFunded, pool.currency)}
+                  </div>
+                  <div className="text-xs text-slate-400">capitalizada no loan</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs text-slate-400">Juros reais cobrados</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {formatMoney(stmt.totalInterest, pool.currency)}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    esperado {formatMoney(stmt.totalExpectedInterest, pool.currency)}
+                    {loanApr != null ? ` (APR ${loanApr}%)` : ""}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs text-slate-400">Reserve restante</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {formatMoney(reserveRemaining, pool.currency)}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {reserveRefund > 0
+                      ? `devolvido na reconciliação: ${formatMoney(reserveRefund, pool.currency)}`
+                      : "não usada volta na reconciliação"}
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="text-xs text-slate-400">Próximo mês (previsto)</div>
+                  <div className="text-xl font-semibold tabular-nums text-slate-900">
+                    {stmt.balance > 0 && loanApr != null
+                      ? formatMoney((stmt.balance * loanApr) / 1200, pool.currency)
+                      : "—"}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    {stmt.balance > 0
+                      ? `sobre o saldo atual de ${formatMoney(stmt.balance, pool.currency)}`
+                      : "loan quitado"}
+                  </div>
+                </div>
+              </div>
+
+              <section className="rounded-xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h2 className="text-base font-medium text-slate-800">Juros por mês — previsto × realizado</h2>
+                  <p className="text-xs text-slate-400">
+                    "Esperado" = accrual diário (APR/360) sobre o saldo do statement. Desvio
+                    acima de 5% fica em âmbar — confira a cobrança com o banco.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full max-w-3xl">
+                    <thead>
+                      <tr className="border-b border-slate-100">
+                        <th className={th}>Data</th>
+                        <th className={thRight}>Real (banco)</th>
+                        <th className={thRight}>Esperado</th>
+                        <th className={thRight}>Delta</th>
+                        <th className={th}>Memo</th>
+                        <th className={thRight}>✓</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {stmt.rows.filter((r) => r.type === "INTEREST").length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-6 text-center text-sm text-slate-400">
+                            Nenhum juro lançado ainda — use o formulário abaixo a cada extrato mensal.
+                          </td>
+                        </tr>
+                      )}
+                      {stmt.rows
+                        .filter((r) => r.type === "INTEREST")
+                        .map((r) => (
+                          <tr key={r.id} className="border-b border-slate-50">
+                            <td className={td}>{fmtDate(r.date)}</td>
+                            <td className={`${tdRight} font-medium`}>{formatMoney(r.amount, pool.currency)}</td>
+                            <td className={tdRight}>
+                              {r.expectedInterest != null ? formatMoney(r.expectedInterest, pool.currency) : "—"}
+                            </td>
+                            <td
+                              className={`${tdRight} ${
+                                r.interestDelta != null &&
+                                Math.abs(r.interestDelta) > Math.abs(r.expectedInterest ?? 0) * 0.05
+                                  ? "text-amber-600"
+                                  : "text-slate-400"
+                              }`}
+                            >
+                              {r.interestDelta != null ? formatMoney(r.interestDelta, pool.currency) : "—"}
+                            </td>
+                            <td className={`${td} text-slate-400`}>{r.memo ?? ""}</td>
+                            <td className={`${tdRight} ${r.reconciled ? "text-emerald-600" : "text-slate-300"}`}>✓</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="border-t border-slate-100 px-5 py-4">
+                  <AddMonthlyInterestForm
+                    poolId={pool.id}
+                    hasReserve={reserveRemaining > 0}
+                  />
+                </div>
+              </section>
+
+              <p className="text-xs text-slate-400">
+                O extrato completo do loan (draws, fees, payoffs) fica no{" "}
+                <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">
+                  Loan statement
+                </Link>
+                .
+              </p>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Distribuições */}
+      {tab === "distributions" && (
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-medium text-slate-800">Distributions</h2>
@@ -481,6 +691,7 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
           />
         </div>
       </section>
+      )}
     </div>
   );
 }

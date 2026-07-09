@@ -112,6 +112,45 @@ export async function toggleLoanEntryReconciled(formData: FormData): Promise<voi
   if (poolId) revalidatePath(`/pools/${poolId}/loan`);
 }
 
+// Lança o juro REAL do mês (aba Juros & reserve): cria INTEREST e, se "pago da reserve",
+// o INTEREST_PAYMENT espelhado na mesma data (padrão Builders Capital — saldo não compõe).
+export async function addMonthlyInterest(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const loan = await prisma.poolLoan.findUnique({ where: { poolId } });
+  if (!loan) return { error: "Set up the loan terms first." };
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  if (!dateRaw) return { error: "Date is required." };
+  const raw = num(formData.get("amount"));
+  if (!Number.isFinite(raw) || raw <= 0) return { error: "Amount must be greater than 0." };
+  const fromReserve = formData.get("fromReserve") === "on";
+  const memo = String(formData.get("memo") ?? "").trim() || null;
+
+  await prisma.$transaction([
+    prisma.poolLoanEntry.create({
+      data: { loanId: loan.id, type: "INTEREST", date: new Date(dateRaw), amount: Math.abs(raw), memo },
+    }),
+    ...(fromReserve
+      ? [
+          prisma.poolLoanEntry.create({
+            data: {
+              loanId: loan.id,
+              type: "INTEREST_PAYMENT",
+              date: new Date(dateRaw),
+              amount: -Math.abs(raw),
+              memo: "Pago da interest reserve",
+            },
+          }),
+        ]
+      : []),
+  ]);
+  revalidatePath(`/pools/${poolId}`);
+  revalidatePath(`/pools/${poolId}/loan`);
+  return undefined;
+}
+
 // Gera o PAYOFF (e reconveyance, se o banco cobra) a partir dos dados de venda da casa —
 // evita digitar duas vezes o que já está na ficha da casa.
 export async function generatePayoffFromHouse(formData: FormData): Promise<void> {

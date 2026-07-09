@@ -41,9 +41,9 @@ export default async function PoolHousePage({
             <>own capital needed {formatMoney(eco.ownCapitalNeeded, cur)} · </>
           )}
           {eco.cashAtClosing != null && (
-            <>cash at closing {formatMoney(eco.cashAtClosing, cur)} · </>
+            <>recebido em conta {formatMoney(eco.cashAtClosing, cur)} · </>
           )}
-          {eco.result != null && <>result {formatMoney(eco.result, cur)}</>}
+          {eco.realProfit != null && <>lucro (custo) {formatMoney(eco.realProfit, cur)}</>}
         </p>
       </div>
       <PoolHouseForm
