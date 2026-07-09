@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { saveHouseTypeFee } from "@/lib/actions/catalog";
 import { CatalogScenarios } from "@/components/catalog-scenarios";
 import { CatalogBanks } from "@/components/catalog-banks";
+import { BankLoiUpload } from "@/components/bank-loi-upload";
 import { CatalogLocations, type HistoryEntry } from "@/components/catalog-locations";
 import { CatalogModels } from "@/components/catalog-models";
 import { HOUSE_TYPES, HOUSE_TYPE_LABEL } from "@/lib/pools/house-types";
@@ -51,7 +52,7 @@ export default async function PoolCatalogPage({
   const { tab: rawTab } = await searchParams;
   const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "locations";
 
-  const [locations, models, fees, banks, scenarios, changeLog] = await Promise.all([
+  const [locations, models, fees, banks, scenarios, changeLog, lois] = await Promise.all([
     prisma.catalogLocation.findMany({
       orderBy: { name: "asc" },
       include: { models: { include: { model: true }, orderBy: { model: { name: "asc" } } } },
@@ -72,6 +73,17 @@ export default async function PoolCatalogPage({
       where: { entity: { in: ["LOCATION", "MODEL", "SCENARIO", "BANK"] } },
       orderBy: { createdAt: "desc" },
       take: 400,
+    }),
+    prisma.bankLoi.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      select: {
+        id: true,
+        loiNumber: true,
+        loiDate: true,
+        propertyAddress: true,
+        bankProfile: { select: { name: true } },
+      },
     }),
   ]);
   const feeByType = new Map(fees.map((f) => [f.type as string, f.fee.toString()]));
@@ -228,6 +240,38 @@ export default async function PoolCatalogPage({
           }))}
           history={history("BANK")}
         />
+      )}
+
+      {tab === "banks" && (
+        <Section
+          title="Letters of intent (LOI)"
+          hint="Suba o LOI em PDF — a AI extrai os termos e cria/atualiza o perfil do banco. O documento fica arquivado abaixo."
+        >
+          <BankLoiUpload banks={banks.map((b) => ({ id: b.id, name: b.name }))} />
+          {lois.length > 0 && (
+            <div className="mt-4 divide-y divide-slate-50 border-t border-slate-100">
+              {lois.map((l) => (
+                <div key={l.id} className="flex items-center justify-between py-2 text-sm">
+                  <span className="font-medium text-slate-700">
+                    {l.bankProfile?.name ?? "(banco removido)"}
+                    {l.loiNumber ? ` · LOI ${l.loiNumber}` : ""}
+                  </span>
+                  <span className="flex-1 px-4 text-slate-500">{l.propertyAddress ?? ""}</span>
+                  <span className="text-xs text-slate-400">
+                    {l.loiDate ? l.loiDate.toISOString().slice(0, 10) : ""}
+                  </span>
+                  <a
+                    href={`/api/bank-lois/${l.id}/pdf`}
+                    target="_blank"
+                    className="ml-4 text-xs text-[#1f3a5f] hover:underline"
+                  >
+                    ver PDF
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
       )}
 
       {tab === "scenarios" && (

@@ -3,9 +3,11 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import {
+  compareSimulationBanks,
   convertSimulationToPool,
   deleteSimulation,
   rerunSimulation,
+  useComparedBank,
 } from "@/lib/actions/simulations";
 import type { SimResult } from "@/lib/pools/simulator";
 
@@ -46,6 +48,16 @@ function fmtDuration(days: number): string {
   return [y ? `${y}y` : null, m ? `${m}m` : null, `${d}d`].filter(Boolean).join(" ");
 }
 
+type CompareRow = {
+  bankId: string;
+  bankName: string;
+  irr: number | null;
+  profit: number;
+  peak: number;
+  bankCost: number;
+  best?: boolean;
+};
+
 export default async function SimulationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const sim = await prisma.poolSimulation.findUnique({
@@ -53,7 +65,12 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
     include: { scenario: true, bankProfile: true, pool: true },
   });
   if (!sim) notFound();
-  const r = sim.result as unknown as SimResult | null;
+  const r = sim.result as unknown as (SimResult & { comparison?: CompareRow[] }) | null;
+  const comparison = r?.comparison ?? null;
+  const allBanks = await prisma.bankProfile.findMany({
+    orderBy: { name: "asc" },
+    select: { id: true, name: true },
+  });
 
   return (
     <div className="space-y-6">
@@ -173,6 +190,90 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
               <Card label="Equity gate" value={formatMoney(r.kpis.equityGateAmount, "USD")} hint={`${Number(sim.equityGatePct)}% dos custos`} />
             )}
           </div>
+
+          {/* Comparador de bancos: mesma cesta de casas, N perfis, melhor opção marcada */}
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">Comparar bancos</h2>
+              <p className="text-xs text-slate-400">
+                Roda esta mesma simulação para cada banco (perfis do catálogo, incl. os lidos de
+                LOI) e marca a melhor opção — maior TIR do investidor, lucro desempata.
+              </p>
+            </div>
+            {comparison && comparison.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className={th}>Banco</th>
+                      <th className={thRight}>TIR investidor</th>
+                      <th className={thRight}>Lucro</th>
+                      <th className={thRight}>Aporte (pico)</th>
+                      <th className={thRight}>Custo do banco</th>
+                      <th className={thRight}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparison.map((c) => (
+                      <tr
+                        key={c.bankId}
+                        className={`border-b border-slate-50 ${c.best ? "bg-emerald-50/50" : ""}`}
+                      >
+                        <td className={`${td} font-medium text-slate-800`}>
+                          {c.bankName}
+                          {c.best && (
+                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
+                              ★ melhor opção
+                            </span>
+                          )}
+                          {sim.bankProfileId === c.bankId && (
+                            <span className="ml-2 text-xs text-slate-400">(atual)</span>
+                          )}
+                        </td>
+                        <td className={`${tdRight} font-semibold`}>
+                          {c.irr != null ? `${(c.irr * 100).toFixed(1)}%` : "—"}
+                        </td>
+                        <td className={`${tdRight} ${c.profit < 0 ? "text-red-600" : ""}`}>
+                          {formatMoney(c.profit, "USD")}
+                        </td>
+                        <td className={tdRight}>{formatMoney(c.peak, "USD")}</td>
+                        <td className={tdRight}>{formatMoney(c.bankCost, "USD")}</td>
+                        <td className={tdRight}>
+                          {sim.bankProfileId !== c.bankId && (
+                            <form action={useComparedBank} className="inline">
+                              <input type="hidden" name="simulationId" value={sim.id} />
+                              <input type="hidden" name="bankId" value={c.bankId} />
+                              <button
+                                type="submit"
+                                className="rounded bg-[#1f3a5f] px-2 py-1 text-xs font-medium text-white hover:bg-[#16304f]"
+                              >
+                                Usar este
+                              </button>
+                            </form>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <form action={compareSimulationBanks} className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-5 py-4">
+              <input type="hidden" name="simulationId" value={sim.id} />
+              {allBanks.map((b) => (
+                <label key={b.id} className="flex items-center gap-1.5 text-sm text-slate-600">
+                  <input type="checkbox" name="bankIds" value={b.id} defaultChecked={comparison?.some((c) => c.bankId === b.id) ?? false} />
+                  {b.name}
+                </label>
+              ))}
+              <button
+                type="submit"
+                className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"
+              >
+                ⚖ Comparar
+              </button>
+            </form>
+          </section>
 
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">

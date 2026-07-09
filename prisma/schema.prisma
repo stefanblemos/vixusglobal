@@ -1186,6 +1186,7 @@ model BankProfile {
   customFees  BankCustomFee[]
   simulations PoolSimulation[]
   poolLoans   PoolLoan[]
+  lois        BankLoi[]
 }
 
 enum BankRateType {
@@ -1252,6 +1253,25 @@ model BufferScenario {
   updatedAt                   DateTime @updatedAt
 
   simulations PoolSimulation[]
+}
+
+// Letter of Intent (LOI) de banco — PDF arquivado + extração da Claude. O upload cria ou
+// atualiza um BankProfile (revisado pelo usuário no modal do catálogo).
+model BankLoi {
+  id              String       @id @default(cuid())
+  bankProfileId   String?
+  bankProfile     BankProfile? @relation(fields: [bankProfileId], references: [id], onDelete: SetNull)
+  fileName        String
+  pdf             Bytes?
+  pdfSize         Int?
+  loiNumber       String?
+  loiDate         DateTime?    @db.Date
+  propertyAddress String?
+  extracted       Json // extração completa da Claude (auditável)
+  summary         String?
+  createdAt       DateTime     @default(now())
+
+  @@index([bankProfileId])
 }
 
 // Trilha de auditoria dos catálogos do simulador: cada save registra quem mudou o quê

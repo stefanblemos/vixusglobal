@@ -322,6 +322,100 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
   redirect(`/pools/${pool.id}`);
 }
 
+type CompareRow = {
+  bankId: string;
+  bankName: string;
+  irr: number | null;
+  profit: number;
+  peak: number;
+  bankCost: number;
+  best?: boolean;
+};
+
+function simFields(sim: {
+  fundingMode: string;
+  compMode: string;
+  perfPct: unknown;
+  perfTiming: string;
+  promoteTiers: unknown;
+  paymentPlan: string;
+  equityGatePct: unknown;
+  parallelPermit: boolean;
+  unitGapDays: number;
+  scenarioCode: string;
+  units: unknown;
+}) {
+  return {
+    compMode: sim.compMode,
+    perfPct: sim.perfPct,
+    perfTiming: sim.perfTiming,
+    promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    paymentPlan: sim.paymentPlan,
+    equityGatePct: sim.equityGatePct,
+    parallelPermit: sim.parallelPermit,
+    unitGapDays: sim.unitGapDays,
+    scenarioCode: sim.scenarioCode,
+    units: (sim.units as UnitRef[]) ?? [],
+  };
+}
+
+// Roda a MESMA simulação para N bancos e marca a melhor opção (maior TIR; lucro desempata).
+export async function compareSimulationBanks(formData: FormData): Promise<void> {
+  const id = String(formData.get("simulationId") ?? "");
+  const bankIds = formData.getAll("bankIds").map(String).filter(Boolean);
+  if (!id || bankIds.length === 0) return;
+  const sim = await prisma.poolSimulation.findUnique({ where: { id } });
+  if (!sim) return;
+
+  const rows: CompareRow[] = [];
+  for (const bankId of bankIds) {
+    const input = await buildSimInput({ ...simFields(sim), fundingMode: "BANK", bankProfileId: bankId });
+    if ("error" in input) continue;
+    const r = simulate(input);
+    const bank = await prisma.bankProfile.findUnique({ where: { id: bankId }, select: { name: true } });
+    rows.push({
+      bankId,
+      bankName: bank?.name ?? "?",
+      irr: r.kpis.irrAnnual,
+      profit: r.kpis.profit,
+      peak: r.kpis.totalInvested,
+      bankCost:
+        Math.round((r.kpis.bankUpfrontFees + r.kpis.bankInterestTotal + r.kpis.bankExtensionFee) * 100) / 100,
+    });
+  }
+  rows.sort((a, b) => (b.irr ?? -Infinity) - (a.irr ?? -Infinity) || b.profit - a.profit);
+  if (rows[0]) rows[0].best = true;
+
+  const result = (sim.result as Record<string, unknown> | null) ?? {};
+  await prisma.poolSimulation.update({
+    where: { id },
+    data: { result: { ...result, comparison: rows } as never },
+  });
+  revalidatePath(`/pools/simulator/${id}`);
+}
+
+// Adota o banco vencedor: define o perfil na simulação e re-roda (mantendo a comparação).
+export async function useComparedBank(formData: FormData): Promise<void> {
+  const id = String(formData.get("simulationId") ?? "");
+  const bankId = String(formData.get("bankId") ?? "");
+  if (!id || !bankId) return;
+  const sim = await prisma.poolSimulation.findUnique({ where: { id } });
+  if (!sim) return;
+  const input = await buildSimInput({ ...simFields(sim), fundingMode: "BANK", bankProfileId: bankId });
+  if ("error" in input) return;
+  const r = simulate(input);
+  const prev = (sim.result as Record<string, unknown> | null) ?? {};
+  await prisma.poolSimulation.update({
+    where: { id },
+    data: {
+      fundingMode: "BANK",
+      bankProfileId: bankId,
+      result: { ...JSON.parse(JSON.stringify(r)), comparison: prev.comparison ?? null } as never,
+    },
+  });
+  revalidatePath(`/pools/simulator/${id}`);
+}
+
 export async function deleteSimulation(formData: FormData): Promise<void> {
   const id = String(formData.get("simulationId") ?? "");
   if (id) await prisma.poolSimulation.delete({ where: { id } });

@@ -339,6 +339,120 @@ export async function deleteBankProfile(formData: FormData): Promise<void> {
   revalidatePath(CATALOG);
 }
 
+// ── LOI (Letter of Intent) → BankProfile via leitor AI ───────
+
+function pickFee(fees: Array<{ name: string; amount: number }>, needle: string): number | null {
+  const f = fees.find((x) => x.name.toLowerCase().includes(needle));
+  return f && f.amount > 0 ? f.amount : null;
+}
+
+// A extração usa sentinelas para "ausente" (0 em números, "" em strings) — o schema
+// estruturado da API não comporta tantos campos nullable. has()/txt() traduzem de volta.
+const has = (n: number) => n > 0;
+const txt = (s: string) => (s.trim() ? s.trim() : null);
+
+// Upload do LOI: Claude extrai os termos → cria um BankProfile novo (ou aplica a um
+// existente) para revisão no modal do catálogo → arquiva o PDF + JSON extraído.
+export async function uploadBankLoi(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Escolha o PDF do LOI." };
+  if (file.size > 10 * 1024 * 1024) return { error: "PDF acima de 10MB." };
+  const targetBankId = String(formData.get("targetBankId") ?? "").trim() || null;
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { analyzeLoiPdf } = await import("@/lib/pools/loi-analyze");
+  let ex;
+  try {
+    ex = await analyzeLoiPdf(bytes.toString("base64"));
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Falha na extração do LOI." };
+  }
+
+  const fees = ex.fixedFees ?? [];
+  const MAPPED = ["appraisal", "legal", "processing", "feasibility", "budget review"];
+  const mapped: Record<string, unknown> = {
+    rateType: ex.rateType === "UNKNOWN" ? "FIXED" : ex.rateType,
+    interestBasis: ex.interestBasis === "UNKNOWN" ? "DRAWN" : ex.interestBasis,
+    ...(has(ex.interestRatePct) ? { aprPct: ex.interestRatePct } : {}),
+    ...(has(ex.spreadPct) ? { spreadPct: ex.spreadPct } : {}),
+    ...(has(ex.termMonths) ? { termMonths: Math.round(ex.termMonths) } : {}),
+    ...(has(ex.maxLtcPct) ? { ltcBuildPct: ex.maxLtcPct } : {}),
+    ...(has(ex.maxLtvPct) ? { ltvPct: ex.maxLtvPct, haircutPct: 0 } : {}),
+    ...(has(ex.originationPct) ? { originationPct: ex.originationPct } : {}),
+    ...(has(ex.brokerPct) ? { brokerPct: ex.brokerPct } : {}),
+    ...(has(ex.drawFeePerInspection) ? { inspectionFeePerDraw: ex.drawFeePerInspection } : {}),
+    ...(pickFee(fees, "appraisal") != null ? { appraisalFee: pickFee(fees, "appraisal") } : {}),
+    ...(pickFee(fees, "legal") != null ? { legalFee: pickFee(fees, "legal") } : {}),
+    ...(pickFee(fees, "processing") != null ? { processingFee: pickFee(fees, "processing") } : {}),
+    ...((pickFee(fees, "feasibility") ?? pickFee(fees, "budget review")) != null
+      ? { budgetReviewFee: pickFee(fees, "feasibility") ?? pickFee(fees, "budget review") }
+      : {}),
+    hasInterestReserve: ex.interestReserve === "FINANCED",
+    ...(has(ex.interestReserveMonths) ? { reserveMonths: ex.interestReserveMonths } : {}),
+    feesFinanced: ex.feesFinanced,
+    notes: [
+      txt(`LOI ${txt(ex.loiNumber) ?? ""} ${txt(ex.loiDate) ?? ""}`),
+      txt(ex.propertyAddress) ? `propriedade: ${txt(ex.propertyAddress)}` : null,
+      ex.interestReserve === "LIQUIDITY_REQUIRED" ? "Reserve exigida como LIQUIDEZ (não financiada)" : null,
+      txt(ex.prepaymentPenalty) ? `prepayment: ${txt(ex.prepaymentPenalty)}` : null,
+      txt(ex.expiresNote),
+      txt(ex.summary),
+    ]
+      .filter(Boolean)
+      .join(" · "),
+  };
+
+  let bank;
+  if (targetBankId) {
+    bank = await prisma.bankProfile.findUnique({ where: { id: targetBankId } });
+    if (!bank) return { error: "Banco alvo não encontrado." };
+    await prisma.bankProfile.update({ where: { id: bank.id }, data: mapped });
+    await logChange("BANK", bank.id, bank.name, "UPDATE", [
+      { field: `LOI ${txt(ex.loiNumber) ?? ""} aplicado (AI)`, from: null, to: ex.summary },
+    ]);
+  } else {
+    let name = txt(ex.bankName) ?? `LOI ${txt(ex.loiNumber) ?? file.name}`;
+    if (await prisma.bankProfile.findUnique({ where: { name } }))
+      name = `${name} — LOI ${txt(ex.loiNumber) ?? new Date().toISOString().slice(0, 10)}`;
+    bank = await prisma.bankProfile.create({ data: { name, ...mapped } as never });
+    await logChange("BANK", bank.id, name, "CREATE", [
+      { field: "criado do LOI (AI)", from: null, to: ex.summary },
+    ]);
+  }
+
+  // fees fixos não mapeados viram taxas customizadas (sem duplicar por nome)
+  const existingFees = await prisma.bankCustomFee.findMany({ where: { bankProfileId: bank.id } });
+  for (const f of fees) {
+    const low = f.name.toLowerCase();
+    if (f.amount <= 0) continue;
+    if (MAPPED.some((m) => low.includes(m))) continue;
+    if (existingFees.some((e) => e.name.toLowerCase() === low)) continue;
+    await prisma.bankCustomFee.create({
+      data: { bankProfileId: bank.id, name: f.name, timing: "CLOSING", kind: "FLAT", amount: f.amount },
+    });
+  }
+
+  await prisma.bankLoi.create({
+    data: {
+      bankProfileId: bank.id,
+      fileName: file.name,
+      pdf: bytes,
+      pdfSize: bytes.length,
+      loiNumber: txt(ex.loiNumber),
+      loiDate: txt(ex.loiDate) ? new Date(ex.loiDate) : null,
+      propertyAddress: txt(ex.propertyAddress),
+      extracted: JSON.parse(JSON.stringify(ex)),
+      summary: ex.summary,
+    },
+  });
+
+  revalidatePath(CATALOG);
+  return { ok: true };
+}
+
 // Taxa customizada do banco — log entra no histórico do BANCO.
 export async function saveBankCustomFee(
   _prev: CatalogFormState,
