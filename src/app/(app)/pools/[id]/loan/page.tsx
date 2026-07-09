@@ -70,7 +70,8 @@ export default async function PoolLoanPage({
 
   const stmt = loan
     ? buildStatement(
-        loan.entries.map((e) => ({
+        // draws PENDENTES (aguardando o banco) ficam fora do saldo até a liberação
+        loan.entries.filter((e) => !e.pending).map((e) => ({
           id: e.id,
           type: e.type,
           date: e.date,

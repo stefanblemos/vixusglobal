@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
-import { toggleLoanEntryReconciled } from "@/lib/actions/pool-loan";
 import { AddDrawForm, type DrawPool } from "@/components/pool-draw-form";
+import { DrawList, type DrawRow } from "@/components/pool-draw-list";
 
 export const dynamic = "force-dynamic";
 
@@ -11,23 +10,32 @@ const thRight = "px-3 py-2 text-right text-xs font-medium uppercase tracking-wid
 const td = "px-3 py-1.5 text-sm text-slate-600";
 const tdRight = "px-3 py-1.5 text-right text-sm tabular-nums text-slate-700";
 
-const fmtDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "—");
+const fmtDate = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : null);
 
-// Tela GLOBAL de draws: lançar solicitações/liberações por casa em qualquer pool. O draw e
-// os fees previstos do contrato do banco entram no loan statement do pool para conciliação.
+// Tela GLOBAL de draws. Fluxo real: a solicitação é salva primeiro (aguardando o banco);
+// a liberação é registrada quando a resposta chega — só então entra no saldo com os fees
+// previstos. O painel por casa mostra aprovado (d=0), creditado, pendente e o DISPONÍVEL.
 export default async function DrawsPage() {
   const pools = await prisma.investmentPool.findMany({
     where: { loan: { isNot: null } },
     orderBy: { code: "asc" },
     include: {
-      houses: { orderBy: { createdAt: "asc" }, select: { id: true, address: true } },
-      loan: { include: { bankProfile: true } },
+      houses: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, address: true, bankLoanAmount: true },
+      },
+      loan: {
+        include: {
+          bankProfile: true,
+          entries: { where: { type: "DRAW" }, select: { houseId: true, amount: true, requestedAmount: true, pending: true } },
+        },
+      },
     },
   });
 
   const draws = await prisma.poolLoanEntry.findMany({
     where: { type: "DRAW" },
-    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    orderBy: [{ pending: "desc" }, { date: "desc" }, { createdAt: "desc" }],
     take: 100,
     include: { house: true, loan: { include: { pool: true } } },
   });
@@ -45,22 +53,115 @@ export default async function DrawsPage() {
       label: `${p.code}${p.alias ? ` · ${p.alias}` : ""} — ${b?.name ?? "banco a definir"}${p.loan!.loanNumber ? ` (${p.loan!.loanNumber})` : ""}`,
       feesHint:
         feeBits.length > 0
-          ? `Fees previstos lançados junto (contrato ${b?.name}): ${feeBits.join(" + ")} — validar depois na conciliação.`
+          ? `Fees previstos na liberação (contrato ${b?.name}): ${feeBits.join(" + ")}.`
           : "Sem fees de draw no perfil do banco.",
-      houses: p.houses,
+      houses: p.houses.map((h) => ({ id: h.id, address: h.address })),
     };
   });
+
+  const drawRows: DrawRow[] = draws.map((d) => ({
+    id: d.id,
+    poolId: d.loan.poolId,
+    poolCode: d.loan.pool.code,
+    houseId: d.houseId,
+    houseAddress: d.house?.address ?? null,
+    pending: d.pending,
+    requestedAmount: d.requestedAmount?.toString() ?? null,
+    requestDate: fmtDate(d.requestDate),
+    amount: d.amount.toString(),
+    date: fmtDate(d.date)!,
+    reconciled: d.reconciled,
+    memo: d.memo,
+  }));
+
+  const housesByPool = Object.fromEntries(
+    pools.map((p) => [p.id, p.houses.map((h) => ({ id: h.id, address: h.address }))]),
+  );
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold text-slate-800">Draws</h1>
         <p className="text-sm text-slate-500">
-          Solicitações e liberações do banco, por casa, em todos os pools. Cada lançamento entra
-          no loan statement do pool com os fees previstos do contrato, para conciliação com o
-          extrato.
+          Solicitações e liberações do banco, por casa. Peça olhando o painel de disponibilidade;
+          a liberação entra no loan statement com os fees do contrato, para conciliação.
         </p>
       </div>
+
+      {/* Painel por casa: aprovado (d=0) · creditado · pendente · disponível */}
+      {pools.map((p) => {
+        const byHouse = new Map<string, { credited: number; pending: number }>();
+        for (const e of p.loan!.entries) {
+          const k = e.houseId ?? "__none__";
+          const cur = byHouse.get(k) ?? { credited: 0, pending: 0 };
+          if (e.pending) cur.pending += Number(e.requestedAmount ?? 0);
+          else cur.credited += Number(e.amount);
+          byHouse.set(k, cur);
+        }
+        const totals = { budget: 0, credited: 0, pending: 0 };
+        return (
+          <section key={p.id} className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">
+                {p.code}
+                {p.alias ? ` · ${p.alias}` : ""} — disponibilidade por casa
+              </h2>
+              <p className="text-xs text-slate-400">
+                Disponível = aprovado pelo banco (d=0) − creditado − solicitado aguardando.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className={th}>Casa</th>
+                    <th className={thRight}>Aprovado (d=0)</th>
+                    <th className={thRight}>Creditado</th>
+                    <th className={thRight}>Aguardando</th>
+                    <th className={thRight}>Disponível</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.houses.map((h) => {
+                    const agg = byHouse.get(h.id) ?? { credited: 0, pending: 0 };
+                    const budget = Number(h.bankLoanAmount ?? 0);
+                    const available = budget - agg.credited - agg.pending;
+                    totals.budget += budget;
+                    totals.credited += agg.credited;
+                    totals.pending += agg.pending;
+                    return (
+                      <tr key={h.id} className="border-b border-slate-50">
+                        <td className={`${td} font-medium text-slate-800`}>{h.address}</td>
+                        <td className={tdRight}>
+                          {h.bankLoanAmount != null ? formatMoney(h.bankLoanAmount, "USD") : "—"}
+                        </td>
+                        <td className={tdRight}>{formatMoney(agg.credited, "USD")}</td>
+                        <td className={`${tdRight} ${agg.pending > 0 ? "text-blue-700" : ""}`}>
+                          {agg.pending > 0 ? formatMoney(agg.pending, "USD") : "—"}
+                        </td>
+                        <td
+                          className={`${tdRight} font-semibold ${available < 0 ? "text-red-600" : available === 0 ? "text-slate-400" : "text-emerald-700"}`}
+                        >
+                          {h.bankLoanAmount != null ? formatMoney(available, "USD") : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-slate-50/60">
+                    <td className={`${td} font-semibold text-slate-800`}>Total</td>
+                    <td className={`${tdRight} font-semibold`}>{formatMoney(totals.budget, "USD")}</td>
+                    <td className={`${tdRight} font-semibold`}>{formatMoney(totals.credited, "USD")}</td>
+                    <td className={`${tdRight} font-semibold`}>{formatMoney(totals.pending, "USD")}</td>
+                    <td className={`${tdRight} font-semibold`}>
+                      {formatMoney(totals.budget - totals.credited - totals.pending, "USD")}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        );
+      })}
 
       {drawPools.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
@@ -74,72 +175,12 @@ export default async function DrawsPage() {
       <section className="rounded-xl border border-slate-200 bg-white">
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-base font-medium text-slate-800">Draws lançados</h2>
-          <p className="text-xs text-slate-400">Últimos 100, todos os pools. ✓ = conciliado com o extrato.</p>
+          <p className="text-xs text-slate-400">
+            Pendentes primeiro. Clique na linha para editar / registrar a liberação. ✓ =
+            conciliado com o extrato.
+          </p>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className={th}>Pool</th>
-                <th className={th}>Casa</th>
-                <th className={th}>Solicitado em</th>
-                <th className={thRight}>Solicitado</th>
-                <th className={th}>Creditado em</th>
-                <th className={thRight}>Liberado</th>
-                <th className={thRight}>Δ</th>
-                <th className={thRight}>✓</th>
-              </tr>
-            </thead>
-            <tbody>
-              {draws.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-5 py-6 text-center text-sm text-slate-400">
-                    Nenhum draw lançado ainda.
-                  </td>
-                </tr>
-              )}
-              {draws.map((d) => {
-                const delta =
-                  d.requestedAmount != null ? Number(d.amount) - Number(d.requestedAmount) : null;
-                return (
-                  <tr key={d.id} className={`border-b border-slate-50 ${d.reconciled ? "" : "bg-amber-50/30"}`}>
-                    <td className={td}>
-                      <Link
-                        href={`/pools/${d.loan.poolId}/loan`}
-                        className="font-medium text-[#1f3a5f] hover:underline"
-                      >
-                        {d.loan.pool.code}
-                      </Link>
-                    </td>
-                    <td className={`${td} text-slate-500`}>{d.house?.address ?? "—"}</td>
-                    <td className={td}>{fmtDate(d.requestDate)}</td>
-                    <td className={tdRight}>
-                      {d.requestedAmount != null ? formatMoney(d.requestedAmount, "USD") : "—"}
-                    </td>
-                    <td className={td}>{fmtDate(d.date)}</td>
-                    <td className={`${tdRight} font-medium`}>{formatMoney(d.amount, "USD")}</td>
-                    <td className={`${tdRight} ${delta != null && delta !== 0 ? "text-amber-600" : "text-slate-400"}`}>
-                      {delta != null ? formatMoney(delta, "USD") : "—"}
-                    </td>
-                    <td className={tdRight}>
-                      <form action={toggleLoanEntryReconciled} className="inline">
-                        <input type="hidden" name="entryId" value={d.id} />
-                        <input type="hidden" name="poolId" value={d.loan.poolId} />
-                        <button
-                          type="submit"
-                          className={d.reconciled ? "text-emerald-600" : "text-slate-300 hover:text-emerald-600"}
-                          title={d.reconciled ? "Conciliado" : "Marcar conciliado"}
-                        >
-                          ✓
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <DrawList draws={drawRows} housesByPool={housesByPool} />
       </section>
     </div>
   );

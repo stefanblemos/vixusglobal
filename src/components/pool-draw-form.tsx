@@ -60,18 +60,22 @@ export function AddDrawForm({ pools }: { pools: DrawPool[] }) {
         </div>
         <div className="hidden md:block" />
         <div>
-          <label className={labelClass}>Valor liberado $ *</label>
-          <input name="releasedAmount" required className={inputClass} />
+          <label className={labelClass}>Valor liberado $</label>
+          <input name="releasedAmount" placeholder="vazio = aguardando banco" className={inputClass} />
         </div>
         <div>
-          <label className={labelClass}>Data do crédito *</label>
-          <input name="creditDate" type="date" required className={inputClass} />
+          <label className={labelClass}>Data do crédito</label>
+          <input name="creditDate" type="date" className={inputClass} />
         </div>
         <div>
           <label className={labelClass}>Memo</label>
           <input name="memo" className={inputClass} />
         </div>
       </div>
+      <p className="text-xs text-slate-400">
+        Só o solicitado preenchido = pedido salvo como <span className="font-medium">aguardando o banco</span> (não
+        entra no saldo). Quando a resposta chegar, clique no draw na lista e registre a liberação.
+      </p>
       {pool && <p className="text-xs text-slate-400">{pool.feesHint}</p>}
       {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
       <div className="flex justify-end">

@@ -1345,6 +1345,8 @@ model PoolLoanEntry {
   // Só para DRAW: o que foi SOLICITADO ao banco e quando (liberado pode diferir)
   requestedAmount Decimal?  @db.Decimal(20, 2)
   requestDate     DateTime? @db.Date
+  // Draw AGUARDANDO resposta do banco: não entra no saldo nem gera fees até a liberação
+  pending         Boolean   @default(false)
   memo       String?
   reconciled Boolean           @default(false) // conferido contra o extrato do banco
   createdAt  DateTime          @default(now())

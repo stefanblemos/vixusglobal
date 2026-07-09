@@ -108,7 +108,7 @@ export default async function PoolDetailPage({
         : null;
   const stmt = pool.loan
     ? buildStatement(
-        pool.loan.entries.map((e) => ({
+        pool.loan.entries.filter((e) => !e.pending).map((e) => ({
           id: e.id,
           type: e.type,
           date: e.date,
