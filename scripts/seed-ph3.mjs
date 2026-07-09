@@ -141,17 +141,26 @@ async function main() {
     }
   }
 
-  // 4. Casas (create-only por endereço)
+  // 4. Casas — create-only NO NÍVEL DO POOL: se já existe qualquer casa, não cria nada
+  // (senão renomear um placeholder faz o deploy recriá-lo). Limpeza: placeholders
+  // "endereco a preencher" que sobraram de deploys anteriores são removidos.
+  await prisma.poolHouse.deleteMany({
+    where: { poolId: pool.id, address: { contains: "endereco a preencher" } },
+  });
+  const existingHouses = await prisma.poolHouse.count({ where: { poolId: pool.id } });
   const houseByAddress = {};
-  for (const h of HOUSES) {
-    let house = await prisma.poolHouse.findFirst({ where: { poolId: pool.id, address: h.address } });
-    if (!house) {
+  if (existingHouses === 0) {
+    for (const h of HOUSES) {
       const { saleDate, ...rest } = h;
-      house = await prisma.poolHouse.create({
+      houseByAddress[h.address] = await prisma.poolHouse.create({
         data: { poolId: pool.id, ...rest, saleDate: saleDate ? new Date(saleDate) : null },
       });
     }
-    houseByAddress[h.address] = house;
+  } else {
+    for (const h of HOUSES) {
+      const house = await prisma.poolHouse.findFirst({ where: { poolId: pool.id, address: h.address } });
+      if (house) houseByAddress[h.address] = house;
+    }
   }
 
   // 5. Loan 77959 + statement completo do extrato (create-only)

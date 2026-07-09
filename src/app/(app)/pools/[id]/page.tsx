@@ -127,6 +127,16 @@ export default async function PoolDetailPage({
 
   const sold = pool.houses.filter((h) => h.status === "SOLD").length;
   const distributed = sum(pool.distributions.map((d) => d.totalAmount));
+
+  // somatórias do rodapé da tabela de casas
+  const houseEcos = pool.houses.map((h) => houseEconomics(h));
+  const houseTotals = {
+    plannedProfit: sum(houseEcos.map((e) => e.plannedProfit ?? 0)),
+    ownCapital: sum(pool.houses.map((h) => h.ownCapital ?? 0)),
+    soldPrice: sum(pool.houses.map((h) => h.soldPrice ?? 0)),
+    received: sum(houseEcos.map((e) => e.cashAtClosing ?? 0)),
+    realProfit: sum(houseEcos.map((e) => e.realProfit ?? 0)),
+  };
   const memberOptions = table.rows.map((r) => ({
     id: r.memberId,
     name: r.name,
@@ -323,6 +333,34 @@ export default async function PoolDetailPage({
                   </tr>
                 );
               })}
+              {pool.houses.length > 0 && (
+                <tr className="bg-slate-50/60">
+                  <td className={`${td} font-semibold text-slate-800`}>
+                    Total ({pool.houses.length} casas)
+                  </td>
+                  <td className={td}></td>
+                  <td className={`${tdRight} font-semibold`}>
+                    {houseTotals.plannedProfit.isZero()
+                      ? "—"
+                      : formatMoney(houseTotals.plannedProfit, pool.currency)}
+                  </td>
+                  <td className={`${tdRight} font-semibold`}>
+                    {formatMoney(houseTotals.ownCapital, pool.currency)}
+                  </td>
+                  <td className={`${tdRight} font-semibold`}>
+                    {formatMoney(houseTotals.soldPrice, pool.currency)}
+                  </td>
+                  <td className={`${tdRight} font-semibold`}>
+                    {formatMoney(houseTotals.received, pool.currency)}
+                  </td>
+                  <td className={`${tdRight} font-semibold`}>
+                    {houseTotals.realProfit.isZero()
+                      ? "—"
+                      : formatMoney(houseTotals.realProfit, pool.currency)}
+                  </td>
+                  <td></td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
