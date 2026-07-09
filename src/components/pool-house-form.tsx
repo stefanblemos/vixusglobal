@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { addHouse, updateHouse, type FormState } from "@/lib/actions/pools";
@@ -56,8 +57,9 @@ export function AddHouseForm({ poolId }: { poolId: string }) {
 }
 
 export type HouseCatalog = {
-  models: Array<{ id: string; name: string }>;
   locations: Array<{ id: string; name: string }>;
+  // combinações válidas modelo×local (só modelos disponíveis na localização escolhida)
+  modelLocations: Array<{ locationId: string; modelId: string; modelName: string }>;
 };
 
 export type HouseFormValues = {
@@ -129,6 +131,13 @@ export function PoolHouseForm({
     updateHouse.bind(null, values.id),
     undefined,
   );
+  // Localização primeiro; o modelo é filtrado pelos disponíveis nela (evita combinação errada)
+  const [locationId, setLocationId] = useState(values.catalogLocationId);
+  const [modelId, setModelId] = useState(values.catalogModelId);
+  const availableModels = useMemo(
+    () => catalog.modelLocations.filter((ml) => ml.locationId === locationId),
+    [catalog.modelLocations, locationId],
+  );
 
   return (
     <form action={formAction} className="space-y-6 rounded-xl border border-slate-200 bg-white p-6">
@@ -158,37 +167,46 @@ export function PoolHouseForm({
           </select>
         </div>
         <div>
-          <label htmlFor="house-model" className={labelClass}>
-            Modelo (simulador)
-          </label>
-          <select
-            id="house-model"
-            name="catalogModelId"
-            defaultValue={values.catalogModelId}
-            className={inputClass}
-          >
-            <option value="">—</option>
-            {catalog.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
           <label htmlFor="house-location" className={labelClass}>
             Localização
           </label>
           <select
             id="house-location"
             name="catalogLocationId"
-            defaultValue={values.catalogLocationId}
+            value={locationId}
+            onChange={(e) => {
+              const loc = e.target.value;
+              setLocationId(loc);
+              // modelo só permanece se existir na nova localização
+              if (!catalog.modelLocations.some((ml) => ml.locationId === loc && ml.modelId === modelId))
+                setModelId("");
+            }}
             className={inputClass}
           >
             <option value="">—</option>
             {catalog.locations.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="house-model" className={labelClass}>
+            Modelo (simulador)
+          </label>
+          <select
+            id="house-model"
+            name="catalogModelId"
+            value={modelId}
+            onChange={(e) => setModelId(e.target.value)}
+            disabled={!locationId}
+            className={inputClass}
+          >
+            <option value="">{locationId ? "—" : "escolha a localização"}</option>
+            {availableModels.map((ml) => (
+              <option key={ml.modelId} value={ml.modelId}>
+                {ml.modelName}
               </option>
             ))}
           </select>
