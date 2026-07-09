@@ -7,7 +7,7 @@ import { D, ZERO, type Decimal, type DecimalInput } from "@/lib/money";
  */
 
 export type PoolEntryLike = {
-  kind: "CONTRIBUTION" | "TRANSFER_IN" | "TRANSFER_OUT";
+  kind: "CONTRIBUTION" | "TRANSFER_IN" | "TRANSFER_OUT" | "CAPITAL_CALL";
   amount: DecimalInput;
   units: DecimalInput;
 };
@@ -89,11 +89,11 @@ type HouseLike = {
  * - cashAtClosing: o que entrou em conta na venda (netReceived informado, ou
  *   venda − payoff − closing). É CAIXA, não lucro: com sweep pooled do banco, o payoff
  *   de uma casa amortiza dívida das outras.
- * - realProfit: lucro POR CUSTO (venda − closing − lote real − obra real) — a medida
- *   correta por casa; precisa dos custos reais preenchidos. Não considera juros/fees do
- *   loan (que são do pool, não da casa).
+ * - realProfit: lucro POR CUSTO (venda − closing − lote real − obra real − change orders)
+ *   — a medida correta por casa; precisa dos custos reais preenchidos. Não considera
+ *   juros/fees do loan (que são do pool, não da casa).
  */
-export function houseEconomics(h: HouseLike) {
+export function houseEconomics(h: HouseLike, changeOrdersTotal: DecimalInput = 0) {
   const hasPlannedCost = h.plannedLotCost != null || h.plannedBuildCost != null;
   const plannedCost = [h.plannedLotCost, h.plannedBuildCost, h.plannedClosingCost]
     .filter((v) => v != null)
@@ -108,14 +108,16 @@ export function houseEconomics(h: HouseLike) {
         ? null
         : D(h.soldPrice).sub(D(h.payoffAmount ?? 0)).sub(D(h.closingCost ?? 0));
   const hasActualCost = h.actualLotCost != null || h.actualBuildCost != null;
+  const changeOrders = D(changeOrdersTotal);
   const realProfit =
     h.soldPrice == null || !hasActualCost
       ? null
       : D(h.soldPrice)
           .sub(D(h.closingCost ?? 0))
           .sub(D(h.actualLotCost ?? 0))
-          .sub(D(h.actualBuildCost ?? 0));
-  return { plannedCost, plannedProfit, ownCapitalNeeded, cashAtClosing, realProfit };
+          .sub(D(h.actualBuildCost ?? 0))
+          .sub(changeOrders);
+  return { plannedCost, plannedProfit, ownCapitalNeeded, cashAtClosing, realProfit, changeOrders };
 }
 
 /** Numeral romano para o código sequencial dos pools (VHP-I, VHP-II…). */

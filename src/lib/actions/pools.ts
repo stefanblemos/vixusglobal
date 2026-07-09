@@ -277,6 +277,135 @@ export async function deleteContribution(formData: FormData): Promise<void> {
   if (poolId) revalidatePath(`/pools/${poolId}`);
 }
 
+// ── Change orders (CO) da casa ───────────────────────────────
+
+export async function addChangeOrder(
+  houseId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const description = String(formData.get("description") ?? "").trim();
+  const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
+  if (!dateRaw || !description) return { error: "Date and description are required." };
+  if (!Number.isFinite(amount) || amount === 0) return { error: "Amount must be a non-zero number." };
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house) return { error: "House not found." };
+  await prisma.houseChangeOrder.create({
+    data: { houseId, date: new Date(dateRaw), description, amount },
+  });
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+  revalidatePath(`/pools/${house.poolId}`);
+  return undefined;
+}
+
+export async function deleteChangeOrder(formData: FormData): Promise<void> {
+  const id = String(formData.get("changeOrderId") ?? "");
+  if (!id) return;
+  const co = await prisma.houseChangeOrder.findUnique({ where: { id }, include: { house: true } });
+  if (!co) return;
+  await prisma.houseChangeOrder.delete({ where: { id } });
+  revalidatePath(`/pools/${co.house.poolId}/houses/${co.houseId}`);
+  revalidatePath(`/pools/${co.house.poolId}`);
+}
+
+// ── Capital calls ────────────────────────────────────────────
+
+// Cria a chamada de capital PRO RATA às units atuais e gera as linhas por sócio.
+// O relatório sai em /pools/[id]/calls/[callId]; cada recebimento vira um aporte
+// (kind CAPITAL_CALL, valor exato — sem regra de múltiplo de $1.000).
+export async function createCapitalCall(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const reason = String(formData.get("reason") ?? "").trim();
+  const total = Number(String(formData.get("totalAmount") ?? "").replace(/,/g, ""));
+  if (!dateRaw || !reason) return { error: "Date and reason are required." };
+  if (!Number.isFinite(total) || total <= 0) return { error: "Total must be greater than 0." };
+
+  const members = await prisma.poolMember.findMany({
+    where: { poolId },
+    include: { entries: true, party: true, company: true },
+  });
+  const table = capTable(members);
+  if (table.totalUnits.isZero()) return { error: "No units issued — nothing to call." };
+
+  const totalD = D(total);
+  const lines = table.rows
+    .filter((r) => r.units.gt(0))
+    .map((r) => ({
+      memberId: r.memberId,
+      amount: totalD.mul(r.units).div(table.totalUnits).toDecimalPlaces(2),
+    }));
+  const allocated = lines.reduce((s, l) => s.add(l.amount), D(0));
+  const residue = totalD.sub(allocated);
+  if (!residue.isZero() && lines.length > 0) {
+    const biggest = lines.reduce((a, b) => (a.amount.gte(b.amount) ? a : b));
+    biggest.amount = biggest.amount.add(residue);
+  }
+
+  const call = await prisma.poolCapitalCall.create({
+    data: {
+      poolId,
+      date: new Date(dateRaw),
+      totalAmount: total,
+      reason,
+      memo: String(formData.get("memo") ?? "").trim() || null,
+      lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
+    },
+  });
+  revalidatePath(`/pools/${poolId}`);
+  redirect(`/pools/${poolId}/calls/${call.id}`);
+}
+
+export async function deleteCapitalCall(formData: FormData): Promise<void> {
+  const id = String(formData.get("callId") ?? "");
+  if (!id) return;
+  const call = await prisma.poolCapitalCall.findUnique({
+    where: { id },
+    include: { lines: { where: { paid: true } } },
+  });
+  if (!call || call.lines.length > 0) return; // com recebimento registrado não apaga
+  await prisma.poolCapitalCall.delete({ where: { id } });
+  revalidatePath(`/pools/${call.poolId}`);
+  redirect(`/pools/${call.poolId}?tab=investors`);
+}
+
+// Registra o recebimento de uma linha: cria o aporte (CAPITAL_CALL) e marca como pago.
+export async function registerCallPayment(formData: FormData): Promise<void> {
+  const lineId = String(formData.get("lineId") ?? "");
+  if (!lineId) return;
+  const line = await prisma.poolCapitalCallLine.findUnique({
+    where: { id: lineId },
+    include: { call: { include: { pool: true } } },
+  });
+  if (!line || line.paid) return;
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const date = dateRaw ? new Date(dateRaw) : new Date();
+  const units = D(line.amount).div(line.call.pool.unitPrice);
+
+  await prisma.$transaction(async (tx) => {
+    const contribution = await tx.poolContribution.create({
+      data: {
+        memberId: line.memberId,
+        kind: "CAPITAL_CALL",
+        date,
+        amount: line.amount,
+        units,
+        memo: `Capital call ${line.call.date.toISOString().slice(0, 10)} — ${line.call.reason}`,
+      },
+    });
+    await tx.poolCapitalCallLine.update({
+      where: { id: lineId },
+      data: { paid: true, contributionId: contribution.id },
+    });
+  });
+  revalidatePath(`/pools/${line.call.poolId}`);
+  revalidatePath(`/pools/${line.call.poolId}/calls/${line.callId}`);
+}
+
 // ── Distribuições ────────────────────────────────────────────
 
 export async function addDistribution(

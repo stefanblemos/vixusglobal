@@ -791,6 +791,7 @@ enum PoolEntryKind {
   CONTRIBUTION // aporte na janela de captação (emite units)
   TRANSFER_IN // compra de units de outro sócio (par com TRANSFER_OUT)
   TRANSFER_OUT
+  CAPITAL_CALL // aporte de chamada de capital (pro rata; valor exato, sem regra de múltiplo)
 }
 
 enum PoolDistributionKind {
@@ -836,6 +837,7 @@ model InvestmentPool {
   documents     PoolDocument[]
   simulations   PoolSimulation[]
   loan          PoolLoan?
+  capitalCalls  PoolCapitalCall[]
 }
 
 // Uma casa do pool: pro forma (esperado) + premissas do banco + realizado. O nº de casas é
@@ -880,8 +882,52 @@ model PoolHouse {
 
   distributions PoolDistribution[]
   loanEntries   PoolLoanEntry[]
+  changeOrders  HouseChangeOrder[]
 
   @@index([poolId])
+}
+
+// Change order (CO) da casa: despesa/crédito que altera o valor do contrato. Entra no
+// custo real da casa (lucro por custo) e na conta de necessidade de capital do pool.
+model HouseChangeOrder {
+  id          String    @id @default(cuid())
+  houseId     String
+  house       PoolHouse @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  date        DateTime  @db.Date
+  description String
+  amount      Decimal   @db.Decimal(20, 2) // positivo = custo extra; negativo = crédito
+  createdAt   DateTime  @default(now())
+
+  @@index([houseId])
+}
+
+// Chamada de capital: quando custos (ex.: COs) passam do captado, o pool chama capital
+// PRO RATA às units. Gera o relatório para os sócios; cada linha recebida vira um aporte
+// (kind CAPITAL_CALL) — aumentando a base de retorno do investidor.
+model PoolCapitalCall {
+  id          String         @id @default(cuid())
+  poolId      String
+  pool        InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  date        DateTime       @db.Date
+  totalAmount Decimal        @db.Decimal(20, 2)
+  reason      String // motivo (ex.: "Change orders casa X + juros sem reserve")
+  memo        String?
+  createdAt   DateTime       @default(now())
+
+  lines PoolCapitalCallLine[]
+
+  @@index([poolId])
+}
+
+model PoolCapitalCallLine {
+  id             String          @id @default(cuid())
+  callId         String
+  call           PoolCapitalCall @relation(fields: [callId], references: [id], onDelete: Cascade)
+  memberId       String
+  member         PoolMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  amount         Decimal         @db.Decimal(20, 2) // pro rata às units na data da chamada
+  paid           Boolean         @default(false)
+  contributionId String?         @unique // aporte gerado no recebimento
 }
 
 // Sócio do pool — Party OU Company (exatamente um, validado na app; mesmo padrão de Ownership).
@@ -903,6 +949,7 @@ model PoolMember {
 
   entries           PoolContribution[]
   distributionLines PoolDistributionLine[]
+  capitalCallLines  PoolCapitalCallLine[]
 
   @@index([poolId])
 }
@@ -1257,7 +1304,8 @@ model PoolLoan {
   loanNumber    String? // ex.: "77959"
   committed     Decimal?  @db.Decimal(20, 2) // valor comprometido
   aprPct        Decimal?  @db.Decimal(6, 3) // taxa contratual (p/ conferência dos juros)
-  closingDate   DateTime? @db.Date
+  expectedClosingDate DateTime? @db.Date // closing PREVISTO (regra dos 80% dos permits)
+  closingDate   DateTime? @db.Date // closing REAL
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt

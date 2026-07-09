@@ -112,6 +112,7 @@ export default async function PoolLoanPage({ params }: { params: Promise<{ id: s
                   loanNumber: loan.loanNumber,
                   committed: loan.committed?.toString() ?? null,
                   aprPct: loan.aprPct?.toString() ?? null,
+                  expectedClosingDate: loan.expectedClosingDate ? fmtDate(loan.expectedClosingDate) : null,
                   closingDate: loan.closingDate ? fmtDate(loan.closingDate) : null,
                   notes: loan.notes,
                 }

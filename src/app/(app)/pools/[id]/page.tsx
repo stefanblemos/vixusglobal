@@ -16,6 +16,7 @@ import {
   AddMemberForm,
   TransferUnitsForm,
 } from "@/components/pool-investor-forms";
+import { CreateCapitalCallForm } from "@/components/pool-capital-forms";
 import { AddMonthlyInterestForm } from "@/components/pool-interest-form";
 import { buildStatement } from "@/lib/pools/loan-statement";
 
@@ -77,9 +78,10 @@ export default async function PoolDetailPage({
     include: {
       company: true,
       noteLoan: { include: { borrower: true } },
-      houses: { orderBy: { createdAt: "asc" } },
+      houses: { orderBy: { createdAt: "asc" }, include: { changeOrders: true } },
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
+      capitalCalls: { orderBy: { date: "asc" }, include: { lines: true } },
       loan: { include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } },
       simulations: {
         orderBy: { updatedAt: "desc" },
@@ -136,8 +138,10 @@ export default async function PoolDetailPage({
   const sold = pool.houses.filter((h) => h.status === "SOLD").length;
   const distributed = sum(pool.distributions.map((d) => d.totalAmount));
 
-  // somatórias do rodapé da tabela de casas
-  const houseEcos = pool.houses.map((h) => houseEconomics(h));
+  // somatórias do rodapé da tabela de casas (COs entram no lucro por custo)
+  const houseEcos = pool.houses.map((h) =>
+    houseEconomics(h, sum(h.changeOrders.map((c) => c.amount))),
+  );
   const houseTotals = {
     plannedProfit: sum(houseEcos.map((e) => e.plannedProfit ?? 0)),
     ownCapital: sum(pool.houses.map((h) => h.ownCapital ?? 0)),
@@ -290,6 +294,8 @@ export default async function PoolDetailPage({
                   ],
                   ["Unit price", formatMoney(pool.unitPrice, pool.currency)],
                   ["Janela de captação até", fmtDate(pool.fundingDeadline)],
+                  ["Closing do loan (previsto)", fmtDate(pool.loan?.expectedClosingDate)],
+                  ["Closing do loan (real)", fmtDate(pool.loan?.closingDate)],
                 ] as Array<[string, string]>
               ).map(([label, value]) => (
                 <div key={label}>
@@ -398,8 +404,8 @@ export default async function PoolDetailPage({
                   </td>
                 </tr>
               )}
-              {pool.houses.map((h) => {
-                const eco = houseEconomics(h);
+              {pool.houses.map((h, hi) => {
+                const eco = houseEcos[hi];
                 return (
                   <tr key={h.id} className="border-b border-slate-50 hover:bg-slate-50/60">
                     <td className={td}>
@@ -572,6 +578,51 @@ export default async function PoolDetailPage({
       </section>
       )}
 
+      {/* Capital calls (dentro da aba Investidores) */}
+      {tab === "investors" && (
+        <section className="rounded-xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 px-5 py-4">
+            <h2 className="text-base font-medium text-slate-800">Capital calls</h2>
+            <p className="text-xs text-slate-400">
+              Quando custos e change orders passam do captado, a chamada rateia o valor pro rata
+              às units e gera o relatório para os sócios.
+            </p>
+          </div>
+          {pool.capitalCalls.length > 0 && (
+            <div className="divide-y divide-slate-50">
+              {pool.capitalCalls.map((c) => {
+                const paidCount = c.lines.filter((l) => l.paid).length;
+                return (
+                  <Link
+                    key={c.id}
+                    href={`/pools/${pool.id}/calls/${c.id}`}
+                    className="flex items-center justify-between px-5 py-2.5 text-sm hover:bg-slate-50/70"
+                  >
+                    <span className="text-slate-500">{fmtDate(c.date)}</span>
+                    <span className="flex-1 px-4 font-medium text-slate-700">{c.reason}</span>
+                    <span className="tabular-nums font-medium text-slate-800">
+                      {formatMoney(c.totalAmount, pool.currency)}
+                    </span>
+                    <span
+                      className={`ml-4 rounded-full px-2 py-0.5 text-xs ${
+                        paidCount === c.lines.length
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-amber-50 text-amber-700"
+                      }`}
+                    >
+                      {paidCount}/{c.lines.length} recebidos
+                    </span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+          <div className="border-t border-slate-100 px-5 py-4">
+            <CreateCapitalCallForm poolId={pool.id} suggestedAmount={null} />
+          </div>
+        </section>
+      )}
+
       {/* Extrato de capital */}
       {tab === "ledger" && (
       <section className="rounded-xl border border-slate-200 bg-white">
@@ -611,6 +662,8 @@ export default async function PoolDetailPage({
                   <td className={td}>
                     {e.kind === "CONTRIBUTION" ? (
                       <span className="text-xs text-slate-500">Contribution</span>
+                    ) : e.kind === "CAPITAL_CALL" ? (
+                      <span className="text-xs text-blue-700">Capital call</span>
                     ) : e.kind === "TRANSFER_IN" ? (
                       <span className="text-xs text-emerald-700">Transfer in</span>
                     ) : (

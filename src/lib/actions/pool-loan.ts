@@ -48,6 +48,7 @@ export async function savePoolLoan(
     loanNumber: String(formData.get("loanNumber") ?? "").trim() || null,
     committed: optNum(formData.get("committed")),
     aprPct: optNum(formData.get("aprPct")),
+    expectedClosingDate: optDate(formData.get("expectedClosingDate")),
     closingDate: optDate(formData.get("closingDate")),
     notes: String(formData.get("notes") ?? "").trim() || null,
   };

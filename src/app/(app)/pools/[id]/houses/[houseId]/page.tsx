@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, sum } from "@/lib/money";
 import { houseEconomics } from "@/lib/pools/math";
 import { PoolHouseForm } from "@/components/pool-house-form";
+import { AddChangeOrderForm } from "@/components/pool-capital-forms";
+import { deleteChangeOrder } from "@/lib/actions/pools";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +20,12 @@ export default async function PoolHousePage({
   const { id, houseId } = await params;
   const house = await prisma.poolHouse.findUnique({
     where: { id: houseId },
-    include: { pool: true },
+    include: { pool: true, changeOrders: { orderBy: { date: "asc" } } },
   });
   if (!house || house.poolId !== id) notFound();
 
-  const eco = houseEconomics(house);
+  const coTotal = sum(house.changeOrders.map((c) => c.amount));
+  const eco = houseEconomics(house, coTotal);
   const cur = house.pool.currency;
 
   return (
@@ -43,9 +46,42 @@ export default async function PoolHousePage({
           {eco.cashAtClosing != null && (
             <>recebido em conta {formatMoney(eco.cashAtClosing, cur)} · </>
           )}
-          {eco.realProfit != null && <>lucro (custo) {formatMoney(eco.realProfit, cur)}</>}
+          {!coTotal.isZero() && <>change orders {formatMoney(coTotal, cur)} · </>}
+          {eco.realProfit != null && <>lucro (custo, c/ COs) {formatMoney(eco.realProfit, cur)}</>}
         </p>
       </div>
+
+      <section className="rounded-xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <h2 className="text-base font-medium text-slate-800">
+            Change orders {house.changeOrders.length > 0 && `(${house.changeOrders.length} · ${formatMoney(coTotal, cur)})`}
+          </h2>
+          <p className="text-xs text-slate-400">
+            Despesas/créditos que alteram o valor do contrato. Se o total do pool passar do
+            captado, gere a chamada de capital na aba Investidores do pool.
+          </p>
+        </div>
+        {house.changeOrders.length > 0 && (
+          <div className="divide-y divide-slate-50">
+            {house.changeOrders.map((co) => (
+              <div key={co.id} className="flex items-center justify-between px-5 py-2 text-sm">
+                <span className="text-slate-500">{co.date.toISOString().slice(0, 10)}</span>
+                <span className="flex-1 px-4 font-medium text-slate-700">{co.description}</span>
+                <span className={`tabular-nums ${Number(co.amount) < 0 ? "text-emerald-700" : "text-slate-800"}`}>
+                  {formatMoney(co.amount, cur)}
+                </span>
+                <form action={deleteChangeOrder} className="ml-3">
+                  <input type="hidden" name="changeOrderId" value={co.id} />
+                  <button type="submit" className="text-xs text-slate-300 hover:text-red-500">✕</button>
+                </form>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="border-t border-slate-100 px-5 py-4">
+          <AddChangeOrderForm houseId={house.id} />
+        </div>
+      </section>
       <PoolHouseForm
         values={{
           id: house.id,

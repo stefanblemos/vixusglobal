@@ -22,6 +22,7 @@ export function PoolLoanTermsForm({
     loanNumber: string | null;
     committed: string | null;
     aprPct: string | null;
+    expectedClosingDate: string | null; // yyyy-mm-dd
     closingDate: string | null; // yyyy-mm-dd
     notes: string | null;
   } | null;
@@ -56,7 +57,16 @@ export function PoolLoanTermsForm({
         <input name="aprPct" defaultValue={loan?.aprPct ?? ""} className={inputClass} />
       </div>
       <div className="w-40">
-        <label className={labelClass}>Closing</label>
+        <label className={labelClass}>Closing previsto</label>
+        <input
+          name="expectedClosingDate"
+          type="date"
+          defaultValue={loan?.expectedClosingDate ?? ""}
+          className={inputClass}
+        />
+      </div>
+      <div className="w-40">
+        <label className={labelClass}>Closing real</label>
         <input name="closingDate" type="date" defaultValue={loan?.closingDate ?? ""} className={inputClass} />
       </div>
       <div className="min-w-40 flex-1">
