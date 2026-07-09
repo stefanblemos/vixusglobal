@@ -70,6 +70,7 @@ export const houseSchema = z.object({
   ownCapital: optMoney,
   soldPrice: optMoney,
   payoffAmount: optMoney,
+  netReceived: optMoney,
   closingCost: optMoney,
   contractDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   saleDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),

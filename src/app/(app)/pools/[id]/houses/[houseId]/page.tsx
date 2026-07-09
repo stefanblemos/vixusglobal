@@ -68,6 +68,7 @@ export default async function PoolHousePage({
           ownCapital: s(house.ownCapital),
           soldPrice: s(house.soldPrice),
           payoffAmount: s(house.payoffAmount),
+          netReceived: s(house.netReceived),
           closingCost: s(house.closingCost),
           contractDate: d(house.contractDate),
           saleDate: d(house.saleDate),

@@ -76,6 +76,7 @@ export type HouseFormValues = {
   ownCapital: string;
   soldPrice: string;
   payoffAmount: string;
+  netReceived: string;
   closingCost: string;
   contractDate: string;
   saleDate: string;
@@ -176,6 +177,7 @@ export function PoolHouseForm({ values }: { values: HouseFormValues }) {
           <Field name="ownCapital" label="Own capital used" values={values} />
           <Field name="soldPrice" label="Sold price" values={values} />
           <Field name="payoffAmount" label="Bank payoff" values={values} />
+          <Field name="netReceived" label="Received in account" values={values} />
           <Field name="closingCost" label="Closing cost (actual)" values={values} />
           <Field name="contractDate" label="Contract date" values={values} type="date" />
           <Field name="saleDate" label="Sale date" values={values} type="date" />

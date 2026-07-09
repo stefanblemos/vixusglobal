@@ -112,12 +112,20 @@ export default async function PoolDetailPage({ params }: { params: Promise<{ id:
             {pool.noteLoan ? ` · note to ${pool.noteLoan.borrower.legalName}` : ""}
           </p>
         </div>
-        <Link
-          href={`/pools/${pool.id}/edit`}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-        >
-          Edit pool
-        </Link>
+        <div className="flex gap-2">
+          <Link
+            href={`/pools/${pool.id}/loan`}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            Loan statement
+          </Link>
+          <Link
+            href={`/pools/${pool.id}/edit`}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            Edit pool
+          </Link>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

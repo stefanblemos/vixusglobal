@@ -835,6 +835,7 @@ model InvestmentPool {
   distributions PoolDistribution[]
   documents     PoolDocument[]
   simulations   PoolSimulation[]
+  loan          PoolLoan?
 }
 
 // Uma casa do pool: pro forma (esperado) + premissas do banco + realizado. O nº de casas é
@@ -868,7 +869,8 @@ model PoolHouse {
   ownCapital      Decimal?  @db.Decimal(20, 2) // capital próprio efetivamente usado na casa
   soldPrice       Decimal?  @db.Decimal(20, 2)
   payoffAmount    Decimal?  @db.Decimal(20, 2) // quitação do banco na venda
-  closingCost     Decimal?  @db.Decimal(20, 2)
+  netReceived     Decimal?  @db.Decimal(20, 2) // o que ENTROU em conta no closing
+  closingCost     Decimal?  @db.Decimal(20, 2) // = venda − payoff − recebido (derivável)
   contractDate    DateTime? @db.Date
   saleDate        DateTime? @db.Date
 
@@ -877,6 +879,7 @@ model PoolHouse {
   updatedAt DateTime @updatedAt
 
   distributions PoolDistribution[]
+  loanEntries   PoolLoanEntry[]
 
   @@index([poolId])
 }
@@ -1099,6 +1102,7 @@ model BankProfile {
 
   customFees  BankCustomFee[]
   simulations PoolSimulation[]
+  poolLoans   PoolLoan[]
 }
 
 enum BankRateType {
@@ -1206,6 +1210,63 @@ model PoolSimulation {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// Statement interno do construction loan (por pool) — replica o transaction history do
+// banco SEM depender de extrato: draws por casa, juros mensais reais, fees e payoffs
+// lançados manualmente; saldo devido calculado; cada linha pode ser conciliada (✓) contra
+// o extrato do banco. Convenção de sinal = extrato do banco: charge positivo, pagamento
+// negativo; saldo = soma acumulada.
+// ─────────────────────────────────────────────────────────────
+
+enum PoolLoanEntryType {
+  CLOSING_FEE // fees do closing (origination, broker, title, etc.)
+  RESERVE // interest reserve financiada (capitaliza)
+  DRAW // draw do banco (ligado à casa)
+  DRAW_FEE // inspection / processing / ACH
+  INTEREST // juro mensal REAL cobrado pelo banco
+  INTEREST_PAYMENT // pagamento do juro (ex.: debitado da reserve) — negativo
+  PAYOFF // principal quitado na venda — negativo
+  RECONVEYANCE // fee de release por payoff
+  CREDIT // créditos (LO credit, devolução de reserve) — negativo
+  OTHER
+}
+
+model PoolLoan {
+  id     String         @id @default(cuid())
+  poolId String         @unique // um construction loan por pool (v1)
+  pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+
+  bankProfileId String?
+  bankProfile   BankProfile? @relation(fields: [bankProfileId], references: [id])
+  loanNumber    String? // ex.: "77959"
+  committed     Decimal?  @db.Decimal(20, 2) // valor comprometido
+  aprPct        Decimal?  @db.Decimal(6, 3) // taxa contratual (p/ conferência dos juros)
+  closingDate   DateTime? @db.Date
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  entries PoolLoanEntry[]
+}
+
+model PoolLoanEntry {
+  id     String   @id @default(cuid())
+  loanId String
+  loan   PoolLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  houseId String? // draw/payoff/reconveyance de uma casa específica
+  house   PoolHouse? @relation(fields: [houseId], references: [id], onDelete: SetNull)
+
+  type       PoolLoanEntryType
+  date       DateTime          @db.Date
+  amount     Decimal           @db.Decimal(20, 2) // + aumenta a dívida, − reduz
+  memo       String?
+  reconciled Boolean           @default(false) // conferido contra o extrato do banco
+  createdAt  DateTime          @default(now())
+
+  @@index([loanId, date])
 }
 
 // PDFs do pool (subscription agreement, cap table, nota, novação, extratos, closing

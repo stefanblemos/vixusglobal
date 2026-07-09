@@ -118,9 +118,14 @@ export async function updateHouse(
 ): Promise<FormState> {
   const parsed = houseSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid data." };
+  const d = parsed.data;
+  // "O que entrou em conta" preenchido → closing cost é a diferença (venda − payoff − recebido)
+  if (d.closingCost == null && d.soldPrice != null && d.payoffAmount != null && d.netReceived != null) {
+    d.closingCost = Math.round((d.soldPrice - d.payoffAmount - d.netReceived) * 100) / 100;
+  }
   const house = await prisma.poolHouse.update({
     where: { id: houseId },
-    data: { ...parsed.data, status: parsed.data.status as PoolHouseStatus },
+    data: { ...d, status: d.status as PoolHouseStatus },
   });
   revalidatePath(`/pools/${house.poolId}`);
   redirect(`/pools/${house.poolId}`);
