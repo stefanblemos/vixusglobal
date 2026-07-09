@@ -260,6 +260,7 @@ function bankDataFrom(formData: FormData) {
     ltvPct: num(formData.get("ltvPct"), 70),
     haircutPct: num(formData.get("haircutPct"), 5),
     perUnitCap: optNum(formData.get("perUnitCap")),
+    closingPermitPct: num(formData.get("closingPermitPct"), 80),
     rateType: (["FIXED", "PRIME_SPREAD", "SOFR_SPREAD"].includes(String(formData.get("rateType")))
       ? String(formData.get("rateType"))
       : "FIXED") as "FIXED" | "PRIME_SPREAD" | "SOFR_SPREAD",

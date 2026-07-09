@@ -1048,6 +1048,9 @@ model BankProfile {
   ltvPct      Decimal  @default(70) @db.Decimal(5, 2) // % do ARV
   haircutPct  Decimal  @default(5) @db.Decimal(5, 2) // desconto de avaliação sobre ARV
   perUnitCap  Decimal? @db.Decimal(20, 2)
+  // O banco autoriza o closing quando X% dos permits estão emitidos (ex.: 10 casas → 8º
+  // permit libera). Arredonda para cima (ceil).
+  closingPermitPct Decimal @default(80) @db.Decimal(5, 2)
 
   // 2 · Juros
   rateType      BankRateType      @default(FIXED) // fixa | prime+spread | SOFR+spread

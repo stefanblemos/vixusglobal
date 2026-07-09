@@ -35,6 +35,7 @@ export type BankRow = {
   ltvPct: string;
   haircutPct: string;
   perUnitCap: string | null;
+  closingPermitPct: string;
   rateType: string;
   aprPct: string;
   indexPct: string;
@@ -228,6 +229,12 @@ function BankModal({
               <Field name="ltvPct" label="LTV %" value={bank?.ltvPct ?? "70"} />
               <Field name="haircutPct" label="Haircut %" value={bank?.haircutPct ?? "5"} hint="Desconto sobre o ARV avaliado" />
               <Field name="perUnitCap" label="Cap por casa" value={bank?.perUnitCap ?? ""} hint="Vazio = sem cap" />
+              <Field
+                name="closingPermitPct"
+                label="Closing com % permits"
+                value={bank?.closingPermitPct ?? "80"}
+                hint="Banco autoriza o closing com X% dos permits emitidos (10 casas a 80% → 8º permit)"
+              />
             </div>
             <label className="mt-1 flex items-center gap-2 text-sm text-slate-600">
               <input type="checkbox" name="financeLand" defaultChecked={bank?.financeLand ?? false} /> financia o lote

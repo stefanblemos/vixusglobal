@@ -43,6 +43,7 @@ export type SimBank = {
   ltvPct: number;
   haircutPct: number;
   perUnitCap: number | null;
+  closingPermitPct: number; // closing autorizado com X% dos permits emitidos (ceil)
   // juros
   effectiveAprPct: number; // fixa, ou índice+spread (resolvido no caller)
   interestBasis: "DRAWN" | "COMMITTED"; // non-Dutch | Dutch
@@ -304,8 +305,17 @@ export function simulate(input: SimInput): SimResult {
             ),
       )
     : 0;
-  // Closing do loan: no último permit aprovado (padrão do mock).
-  const loanClosingDay = bank ? Math.max(...units.map((u) => u.tPermitOk)) : 0;
+  // Closing do loan: o banco autoriza quando X% dos permits estão emitidos (ceil) — ex.:
+  // 10 casas a 80% → o 8º permit libera o closing. Antes disso, nada de draw nem juro.
+  let loanClosingDay = 0;
+  if (bank) {
+    const permitDays = units.map((u) => u.tPermitOk).sort((a, b) => a - b);
+    const k = Math.min(
+      permitDays.length,
+      Math.max(1, Math.ceil((bank.closingPermitPct / 100) * permitDays.length)),
+    );
+    loanClosingDay = permitDays[k - 1];
+  }
 
   // ── 3. Fluxos do projeto (lado owner/pool) + rastreio do saldo do banco ──
   // No modo BANK, o banco cobre o custo de obra até o elegível (owner-first no equity da

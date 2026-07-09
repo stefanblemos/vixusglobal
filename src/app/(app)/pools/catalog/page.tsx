@@ -189,6 +189,7 @@ export default async function PoolCatalogPage({
             ltvPct: b.ltvPct.toString(),
             haircutPct: b.haircutPct.toString(),
             perUnitCap: b.perUnitCap?.toString() ?? null,
+            closingPermitPct: b.closingPermitPct.toString(),
             rateType: b.rateType,
             aprPct: b.aprPct.toString(),
             indexPct: b.indexPct.toString(),

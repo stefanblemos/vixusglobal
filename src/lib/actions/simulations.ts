@@ -95,6 +95,7 @@ async function buildSimInput(sim: {
           ltvPct: Number(bank.ltvPct),
           haircutPct: Number(bank.haircutPct),
           perUnitCap: bank.perUnitCap == null ? null : Number(bank.perUnitCap),
+          closingPermitPct: Number(bank.closingPermitPct),
           effectiveAprPct:
             bank.rateType === "FIXED"
               ? Number(bank.aprPct)
