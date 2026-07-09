@@ -160,12 +160,16 @@ export default async function PoolLoanPage({
         <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card
-              label="Saldo devido"
+              label={
+                stmt.totalPayoffs > 0 && stmt.balance <= 0.01 ? "Saldo devido — QUITADO" : "Saldo devido"
+              }
               value={formatMoney(stmt.balance, pool.currency)}
               hint={
-                loan.committed
-                  ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do comprometido sacado`
-                  : undefined
+                stmt.totalPayoffs > 0 && stmt.balance <= 0.01
+                  ? `quitado em ${stmt.rows[stmt.rows.length - 1]?.date.toISOString().slice(0, 10)}${stmt.balance < -0.01 ? ` · crédito ${formatMoney(-stmt.balance, pool.currency)} volta ao caixa do pool` : ""}`
+                  : loan.committed
+                    ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do comprometido sacado`
+                    : undefined
               }
             />
             <Card

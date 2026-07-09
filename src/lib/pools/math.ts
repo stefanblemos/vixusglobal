@@ -120,6 +120,14 @@ export function houseEconomics(h: HouseLike, changeOrdersTotal: DecimalInput = 0
   return { plannedCost, plannedProfit, ownCapitalNeeded, cashAtClosing, realProfit, changeOrders };
 }
 
+/** Ordena casas pelo NÚMERO do endereço (411 < 6079 < 12659 < 21021), fallback alfabético. */
+export function byAddressNumber<T extends { address: string }>(a: T, b: T): number {
+  const na = parseInt(a.address.match(/\d+/)?.[0] ?? "", 10);
+  const nb = parseInt(b.address.match(/\d+/)?.[0] ?? "", 10);
+  if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+  return a.address.localeCompare(b.address);
+}
+
 /** Numeral romano para o código sequencial dos pools (VHP-I, VHP-II…). */
 export function roman(n: number): string {
   const table: Array<[number, string]> = [

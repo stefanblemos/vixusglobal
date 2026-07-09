@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { DrawHousesPanel, type HouseAvailability } from "@/components/pool-draw-houses";
 import { DrawList, type DrawRow } from "@/components/pool-draw-list";
+import { byAddressNumber } from "@/lib/pools/math";
+import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +39,6 @@ export default async function DrawLoanPage({
         include: {
           bankProfile: true,
           entries: {
-            where: { type: "DRAW" },
             orderBy: [{ pending: "desc" }, { date: "desc" }, { createdAt: "desc" }],
             include: { house: true },
           },
@@ -46,8 +47,18 @@ export default async function DrawLoanPage({
     },
   });
   if (!pool || !pool.loan) notFound();
-  const loan = pool.loan;
+  const loan = { ...pool.loan, entries: pool.loan.entries.filter((e) => e.type === "DRAW") };
   const b = loan.bankProfile;
+
+  // Quitação: saldo do statement ≤ 0 com payoffs → loan encerrado; data = último lançamento.
+  // Crédito residual (saldo negativo) volta ao caixa do pool para distribuição.
+  const realEntries = pool.loan.entries.filter((e) => !e.pending);
+  const loanBalance = realEntries.reduce((s, e) => s + Number(e.amount), 0);
+  const hasPayoffs = realEntries.some((e) => e.type === "PAYOFF");
+  const paidOff = hasPayoffs && loanBalance <= 0.01;
+  const quitDate = paidOff
+    ? realEntries.reduce((m, e) => (e.date > m ? e.date : m), realEntries[0].date)
+    : null;
 
   const feeBits: string[] = [];
   if (b) {
@@ -68,7 +79,7 @@ export default async function DrawLoanPage({
     else cur.credited += Number(e.amount);
     agg.set(k, cur);
   }
-  const houses: HouseAvailability[] = pool.houses.map((h) => {
+  const houses: HouseAvailability[] = [...pool.houses].sort(byAddressNumber).map((h) => {
     const a = agg.get(h.id) ?? { credited: 0, pending: 0 };
     const budget = h.bankLoanAmount == null ? null : Number(h.bankLoanAmount);
     const modelLabel =
@@ -119,7 +130,20 @@ export default async function DrawLoanPage({
         <Link href="/pools/draws" className="text-sm text-slate-500 hover:text-slate-700">
           ← Draws
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold text-slate-800">{poolLabel}</h1>
+        <div className="mt-1 flex items-center gap-3">
+          <h1 className="text-2xl font-semibold text-slate-800">{poolLabel}</h1>
+          {paidOff && (
+            <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+              Quitado em {quitDate!.toISOString().slice(0, 10)}
+            </span>
+          )}
+        </div>
+        {paidOff && loanBalance < -0.01 && (
+          <p className="text-xs text-emerald-700">
+            Crédito residual de {formatMoney(-loanBalance, "USD")} devolvido pelo banco — volta ao
+            caixa do pool e entra na distribuição.
+          </p>
+        )}
         <p className="text-sm text-slate-500">
           Solicite pelo bloco da casa; a liberação entra no{" "}
           <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney, sum } from "@/lib/money";
-import { capTable, houseEconomics, memberName } from "@/lib/pools/math";
+import { byAddressNumber, capTable, houseEconomics, memberName } from "@/lib/pools/math";
 import {
   deleteContribution,
   deleteDistribution,
@@ -80,7 +80,7 @@ export default async function PoolDetailPage({
     include: {
       company: true,
       noteLoan: { include: { borrower: true } },
-      houses: { orderBy: { createdAt: "asc" }, include: { changeOrders: true } },
+      houses: { include: { changeOrders: true } },
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
       capitalCalls: { orderBy: { date: "asc" }, include: { lines: true } },
@@ -94,6 +94,7 @@ export default async function PoolDetailPage({
     },
   });
   if (!pool) notFound();
+  pool.houses.sort(byAddressNumber); // ordem crescente pelo número do endereço
   const sim = pool.simulations[0] ?? null;
   const simKpis = (sim?.result as { kpis?: Record<string, number | null> } | null)?.kpis ?? null;
 

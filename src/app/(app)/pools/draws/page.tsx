@@ -14,10 +14,7 @@ export default async function DrawsDashboardPage() {
       loan: {
         include: {
           bankProfile: true,
-          entries: {
-            where: { type: "DRAW" },
-            select: { amount: true, requestedAmount: true, pending: true },
-          },
+          entries: { select: { amount: true, requestedAmount: true, pending: true, type: true, date: true } },
         },
       },
       houses: { select: { bankLoanAmount: true } },
@@ -43,15 +40,23 @@ export default async function DrawsDashboardPage() {
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {pools.map((p) => {
             const loan = p.loan!;
-            const credited = loan.entries
+            const draws = loan.entries.filter((e) => e.type === "DRAW");
+            const credited = draws
               .filter((e) => !e.pending)
               .reduce((s, e) => s + Number(e.amount), 0);
-            const awaiting = loan.entries
+            const awaiting = draws
               .filter((e) => e.pending)
               .reduce((s, e) => s + Number(e.requestedAmount ?? 0), 0);
             const budget = p.houses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
             const available = budget - credited - awaiting;
-            const pendingCount = loan.entries.filter((e) => e.pending).length;
+            const pendingCount = draws.filter((e) => e.pending).length;
+            // quitado: saldo total do loan ≤ 0 com payoffs; data = último lançamento
+            const real = loan.entries.filter((e) => !e.pending);
+            const balance = real.reduce((s, e) => s + Number(e.amount), 0);
+            const paidOff = real.some((e) => e.type === "PAYOFF") && balance <= 0.01;
+            const quitDate = paidOff
+              ? real.reduce((m, e) => (e.date > m ? e.date : m), real[0].date)
+              : null;
             return (
               <Link
                 key={p.id}
@@ -63,7 +68,11 @@ export default async function DrawsDashboardPage() {
                     {p.code}
                     {p.alias ? ` · ${p.alias}` : ""}
                   </span>
-                  {pendingCount > 0 ? (
+                  {paidOff ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      Quitado em {quitDate!.toISOString().slice(0, 10)}
+                    </span>
+                  ) : pendingCount > 0 ? (
                     <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
                       {pendingCount} aguardando
                     </span>
