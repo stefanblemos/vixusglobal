@@ -215,7 +215,7 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
   }
   revalidatePath(`/pools/${poolId}/loan`);
   revalidatePath("/pools/draws");
-  return undefined;
+  return { ok: true };
 }
 
 // Edita um draw. Pendente + valor liberado informado = REGISTRA A LIBERAÇÃO: entra no
@@ -274,7 +274,7 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
   ]);
   revalidatePath(`/pools/${entry.loan.poolId}/loan`);
   revalidatePath("/pools/draws");
-  return undefined;
+  return { ok: true };
 }
 
 // Lança o juro REAL do mês (aba Juros & reserve): cria INTEREST e, se "pago da reserve",
