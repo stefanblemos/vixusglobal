@@ -57,8 +57,8 @@ const HOUSES = [
   { address: "13222 Irwin Dr", status: "SOLD", soldPrice: 374900, payoffAmount: 319198, closingCost: 37414.74, netReceived: 18287.26, ownCapital: 47663.32, saleDate: "2026-06-05", notes: "Original cost 314,630.87" },
   { address: "12659 SW 64th Ln", status: "SOLD", soldPrice: 519900, payoffAmount: 221455.04, closingCost: 49088.89, netReceived: 249356.07, ownCapital: 68248.76, saleDate: "2026-07-02", notes: "Original cost 345,948.76; payoff final no extrato: 221,979.30" },
   { address: "16965 SW 50th Cir", status: "SOLD", soldPrice: 348900, payoffAmount: 285898, closingCost: 32911.54, netReceived: 30090.46, ownCapital: 48664.23, saleDate: "2026-06-15", notes: "Original cost 227,091.68" },
-  { address: "Casa 1 (endereco a preencher)", status: "SOLD", payoffAmount: 294103.35, saleDate: "2026-04-20", notes: "Endereço e valores a preencher — payoff do extrato 20/04/2026" },
-  { address: "Casa 2 (endereco a preencher)", status: "SOLD", payoffAmount: 287563, saleDate: "2026-06-03", notes: "Endereço e valores a preencher — payoff do extrato 03/06/2026" },
+  { address: "411 Marion Oaks Golf Rd", status: "SOLD", soldPrice: 350000, payoffAmount: 294103.35, saleDate: "2026-04-20", ownCapital: 48561.89, notes: "Payoff 20/04 atribuído — CONFIRMAR se é desta casa ou da 13663" },
+  { address: "13663 SW 42nd Ave", status: "SOLD", soldPrice: 349000, payoffAmount: 287563, saleDate: "2026-06-03", ownCapital: 49216.16, notes: "Payoff 03/06 atribuído — CONFIRMAR se é desta casa ou da 411 Marion Oaks" },
 ];
 
 async function findOrCreateCompany(inv) {
@@ -194,6 +194,65 @@ async function main() {
         },
       });
     }
+  }
+
+  // 6. Backfill: vincula os 16 draws às casas (planilha de draws do Stefan, jul/2026 —
+  // datas do STATEMENT, não da planilha) e grava o loan aprovado por casa (Bank Budget).
+  // Idempotente: só draws sem casa; budget só se ainda vazio (não sobrescreve ajustes).
+  const DRAW_MAP = [
+    { date: "2026-01-16", amount: 162000, address: "6079 SW 150th Ln" },
+    { date: "2026-01-16", amount: 91000, address: "12659 SW 64th Ln" },
+    { date: "2026-01-16", amount: 188000, address: "411 Marion Oaks Golf Rd" },
+    { date: "2026-01-16", amount: 188000, address: "16965 SW 50th Cir" },
+    { date: "2026-01-16", amount: 189349, address: "21021 Peachland Blvd" },
+    { date: "2026-01-16", amount: 164577, address: "6440 N Canfield Way" },
+    { date: "2026-01-16", amount: 156715, address: "13222 Irwin Dr" },
+    { date: "2026-03-05", amount: 35123, address: "6440 N Canfield Way" },
+    { date: "2026-03-24", amount: 22000, address: "411 Marion Oaks Golf Rd" },
+    { date: "2026-04-03", amount: 33000, address: "6079 SW 150th Ln" },
+    { date: "2026-04-08", amount: 22000, address: "16965 SW 50th Cir" },
+    { date: "2026-05-11", amount: 112975, address: "13222 Irwin Dr" },
+    { date: "2026-05-11", amount: 60705, address: "12659 SW 64th Ln" },
+    { date: "2026-05-19", amount: 60651, address: "21021 Peachland Blvd" },
+    { date: "2026-05-19", amount: 195000, address: "13663 SW 42nd Ave" },
+    { date: "2026-05-19", amount: 118295, address: "12659 SW 64th Ln" },
+  ];
+  const BANK_BUDGETS = {
+    "411 Marion Oaks Golf Rd": 210000,
+    "13663 SW 42nd Ave": 195000,
+    "21021 Peachland Blvd": 250000,
+    "6440 N Canfield Way": 200000,
+    "6079 SW 150th Ln": 195000,
+    "13222 Irwin Dr": 270000,
+    "12659 SW 64th Ln": 270000,
+    "16965 SW 50th Cir": 210000,
+  };
+  const allHouses = await prisma.poolHouse.findMany({ where: { poolId: pool.id } });
+  const byAddress = Object.fromEntries(allHouses.map((h) => [h.address, h]));
+  for (const [address, budget] of Object.entries(BANK_BUDGETS)) {
+    const h = byAddress[address];
+    if (h && h.bankLoanAmount == null) {
+      await prisma.poolHouse.update({ where: { id: h.id }, data: { bankLoanAmount: budget } });
+    }
+  }
+  // draws sem casa, agrupados por (data, valor); duplicatas (2× 188k em 16/01) atribuídas
+  // na ordem do statement (createdAt)
+  const unlinked = await prisma.poolLoanEntry.findMany({
+    where: { loanId: loan.id, type: "DRAW", houseId: null },
+    orderBy: { createdAt: "asc" },
+  });
+  const remaining = [...DRAW_MAP];
+  for (const entry of unlinked) {
+    const key = entry.date.toISOString().slice(0, 10);
+    const idx = remaining.findIndex(
+      (m) => m.date === key && Math.abs(m.amount - Number(entry.amount)) < 0.01,
+    );
+    if (idx === -1) continue;
+    const target = byAddress[remaining[idx].address];
+    if (target) {
+      await prisma.poolLoanEntry.update({ where: { id: entry.id }, data: { houseId: target.id } });
+    }
+    remaining.splice(idx, 1);
   }
 
   const [members, contribs, houses, loanEntries, totalRow] = await Promise.all([

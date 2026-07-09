@@ -20,10 +20,15 @@ export default async function PoolHousePage({
   const { id, houseId } = await params;
   const house = await prisma.poolHouse.findUnique({
     where: { id: houseId },
-    include: { pool: true, changeOrders: { orderBy: { date: "asc" } } },
+    include: {
+      pool: true,
+      changeOrders: { orderBy: { date: "asc" } },
+      loanEntries: { where: { type: "DRAW" } },
+    },
   });
   if (!house || house.poolId !== id) notFound();
 
+  const drawsTotal = sum(house.loanEntries.map((e) => e.amount));
   const coTotal = sum(house.changeOrders.map((c) => c.amount));
   const eco = houseEconomics(house, coTotal);
   const cur = house.pool.currency;
@@ -47,6 +52,13 @@ export default async function PoolHousePage({
             <>recebido em conta {formatMoney(eco.cashAtClosing, cur)} · </>
           )}
           {!coTotal.isZero() && <>change orders {formatMoney(coTotal, cur)} · </>}
+          {house.bankLoanAmount != null && (
+            <>
+              loan aprovado {formatMoney(house.bankLoanAmount, cur)} · draws{" "}
+              {formatMoney(drawsTotal, cur)} (saldo do budget{" "}
+              {formatMoney(Number(house.bankLoanAmount) - Number(drawsTotal), cur)}) ·{" "}
+            </>
+          )}
           {eco.realProfit != null && <>lucro (custo, c/ COs) {formatMoney(eco.realProfit, cur)}</>}
         </p>
       </div>
