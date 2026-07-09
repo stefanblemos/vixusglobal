@@ -29,7 +29,10 @@ export default async function DrawLoanPage({
   const pool = await prisma.investmentPool.findUnique({
     where: { id: poolId },
     include: {
-      houses: { orderBy: { createdAt: "asc" } },
+      houses: {
+        orderBy: { createdAt: "asc" },
+        include: { catalogModel: true, catalogLocation: true },
+      },
       loan: {
         include: {
           bankProfile: true,
@@ -68,9 +71,14 @@ export default async function DrawLoanPage({
   const houses: HouseAvailability[] = pool.houses.map((h) => {
     const a = agg.get(h.id) ?? { credited: 0, pending: 0 };
     const budget = h.bankLoanAmount == null ? null : Number(h.bankLoanAmount);
+    const modelLabel =
+      h.catalogModel || h.catalogLocation
+        ? [h.catalogModel?.name, h.catalogLocation?.name].filter(Boolean).join(" · ")
+        : null;
     return {
       id: h.id,
       address: h.address,
+      modelLabel,
       budget,
       credited: a.credited,
       pendingAmount: a.pending,
@@ -82,6 +90,7 @@ export default async function DrawLoanPage({
     houses.push({
       id: null,
       address: "(draws sem casa)",
+      modelLabel: null,
       budget: null,
       credited: none.credited,
       pendingAmount: none.pending,

@@ -28,6 +28,10 @@ export default async function PoolHousePage({
   });
   if (!house || house.poolId !== id) notFound();
 
+  const [models, locations] = await Promise.all([
+    prisma.catalogModel.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.catalogLocation.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
   const drawsTotal = sum(house.loanEntries.map((e) => e.amount));
   const coTotal = sum(house.changeOrders.map((c) => c.amount));
   const eco = houseEconomics(house, coTotal);
@@ -95,11 +99,14 @@ export default async function PoolHousePage({
         </div>
       </section>
       <PoolHouseForm
+        catalog={{ models, locations }}
         values={{
           id: house.id,
           poolId: house.poolId,
           address: house.address,
           status: house.status,
+          catalogModelId: house.catalogModelId ?? "",
+          catalogLocationId: house.catalogLocationId ?? "",
           plannedLotCost: s(house.plannedLotCost),
           plannedBuildCost: s(house.plannedBuildCost),
           plannedSalePrice: s(house.plannedSalePrice),

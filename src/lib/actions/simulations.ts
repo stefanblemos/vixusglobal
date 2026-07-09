@@ -287,9 +287,13 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
       houses: {
         create: result.units.map((u, i) => {
           const gross = round2(u.salePrice * (1 + saleBuffer));
+          const unitRef = (sim.units as Array<{ locationId?: string; modelId?: string }>)[i];
           return {
             address: `Casa ${i + 1} — ${u.label} (endereço a definir)`,
             status: "PLANNED" as const,
+            // modelo/localização de origem: a casa carrega o vínculo do simulador
+            catalogModelId: unitRef?.modelId ?? null,
+            catalogLocationId: unitRef?.locationId ?? null,
             plannedLotCost: u.adjLot,
             plannedBuildCost: u.adjBuild,
             plannedSalePrice: gross,

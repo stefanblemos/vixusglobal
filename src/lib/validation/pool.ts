@@ -47,6 +47,8 @@ export const poolStatusSchema = z.enum(["FUNDING", "ACTIVE", "CLOSING", "CLOSED"
 
 export const houseSchema = z.object({
   address: z.string().trim().min(1, "Address is required."),
+  catalogModelId: z.preprocess(emptyToNull, z.string().nullable()),
+  catalogLocationId: z.preprocess(emptyToNull, z.string().nullable()),
   status: z.enum([
     "PLANNED",
     "LOT_PURCHASED",

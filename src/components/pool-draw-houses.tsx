@@ -15,6 +15,7 @@ const tdRight = "px-3 py-2.5 text-right text-sm tabular-nums text-slate-700";
 export type HouseAvailability = {
   id: string | null; // null = linha "sem casa"
   address: string;
+  modelLabel: string | null; // "Ilhabela · Citrus" — modelo do simulador + localização
   budget: number | null; // aprovado (d=0)
   credited: number;
   pendingAmount: number;
@@ -167,6 +168,7 @@ export function DrawHousesPanel({
           <thead>
             <tr className="border-b border-slate-100">
               <th className={th}>Casa</th>
+              <th className={th}>Modelo · Local</th>
               <th className={thRight}>Aprovado (d=0)</th>
               <th className={thRight}>Creditado</th>
               <th className={thRight}>Aguardando</th>
@@ -181,6 +183,9 @@ export function DrawHousesPanel({
                 className="cursor-pointer border-b border-slate-50 hover:bg-slate-50/70"
               >
                 <td className={`${td} font-medium text-slate-800`}>{h.address}</td>
+                <td className={`${td} text-slate-500`}>
+                  {h.modelLabel ?? <span className="text-xs text-slate-300">definir na ficha</span>}
+                </td>
                 <td className={tdRight}>{money(h.budget)}</td>
                 <td className={tdRight}>{money(h.credited)}</td>
                 <td className={`${tdRight} ${h.pendingAmount > 0 ? "text-blue-700" : "text-slate-400"}`}>
@@ -203,6 +208,7 @@ export function DrawHousesPanel({
             ))}
             <tr className="bg-slate-50/60">
               <td className={`${td} font-semibold text-slate-800`}>Total</td>
+              <td className={td}></td>
               <td className={`${tdRight} font-semibold`}>{money(totals.budget)}</td>
               <td className={`${tdRight} font-semibold`}>{money(totals.credited)}</td>
               <td className={`${tdRight} font-semibold`}>{money(totals.pending)}</td>

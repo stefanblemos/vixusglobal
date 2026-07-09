@@ -55,11 +55,18 @@ export function AddHouseForm({ poolId }: { poolId: string }) {
   );
 }
 
+export type HouseCatalog = {
+  models: Array<{ id: string; name: string }>;
+  locations: Array<{ id: string; name: string }>;
+};
+
 export type HouseFormValues = {
   id: string;
   poolId: string;
   address: string;
   status: string;
+  catalogModelId: string;
+  catalogLocationId: string;
   plannedLotCost: string;
   plannedBuildCost: string;
   plannedSalePrice: string;
@@ -110,8 +117,14 @@ function Field({
   );
 }
 
-// Edição completa: pro forma + premissas do banco + realizado.
-export function PoolHouseForm({ values }: { values: HouseFormValues }) {
+// Edição completa: modelo/localização do catálogo + pro forma + banco + realizado.
+export function PoolHouseForm({
+  values,
+  catalog,
+}: {
+  values: HouseFormValues;
+  catalog: HouseCatalog;
+}) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateHouse.bind(null, values.id),
     undefined,
@@ -144,6 +157,46 @@ export function PoolHouseForm({ values }: { values: HouseFormValues }) {
             ))}
           </select>
         </div>
+        <div>
+          <label htmlFor="house-model" className={labelClass}>
+            Modelo (simulador)
+          </label>
+          <select
+            id="house-model"
+            name="catalogModelId"
+            defaultValue={values.catalogModelId}
+            className={inputClass}
+          >
+            <option value="">—</option>
+            {catalog.models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="house-location" className={labelClass}>
+            Localização
+          </label>
+          <select
+            id="house-location"
+            name="catalogLocationId"
+            defaultValue={values.catalogLocationId}
+            className={inputClass}
+          >
+            <option value="">—</option>
+            {catalog.locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="col-span-2 self-end pb-2 text-xs text-slate-400">
+          Toda casa nasce de um modelo numa localização; trocar é permitido (gera variação
+          simulado × real).
+        </p>
       </div>
 
       <div>

@@ -851,6 +851,13 @@ model PoolHouse {
   address String
   status  PoolHouseStatus @default(PLANNED)
 
+  // Toda casa nasce de um MODELO do simulador numa LOCALIZAÇÃO (regra inicial); o endereço
+  // vem depois do lote. Pode ser trocado (raro — gera variação simulado × real, ok).
+  catalogModelId    String?
+  catalogModel      CatalogModel?    @relation(fields: [catalogModelId], references: [id])
+  catalogLocationId String?
+  catalogLocation   CatalogLocation? @relation(fields: [catalogLocationId], references: [id])
+
   // Pro forma (esperado)
   plannedLotCost     Decimal? @db.Decimal(20, 2)
   plannedBuildCost   Decimal? @db.Decimal(20, 2)
@@ -1069,7 +1076,8 @@ model CatalogLocation {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  models CatalogModelLocation[]
+  models     CatalogModelLocation[]
+  poolHouses PoolHouse[]
 }
 
 model CatalogModel {
@@ -1082,7 +1090,8 @@ model CatalogModel {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  locations CatalogModelLocation[]
+  locations  CatalogModelLocation[]
+  poolHouses PoolHouse[]
 }
 
 // Valores do modelo POR local: venda e os DOIS custos de obra. Performance = custo quando a
