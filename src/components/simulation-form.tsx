@@ -35,6 +35,11 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   const [fundingMode, setFundingMode] = useState("BANK");
   const [compMode, setCompMode] = useState("PERFORMANCE");
   const [units, setUnits] = useState<UnitRow[]>([{ locationId: "", modelId: "" }]);
+  const [tiers, setTiers] = useState<Array<{ hurdlePct: string; promotePct: string }>>([
+    { hurdlePct: "8", promotePct: "0" },
+    { hurdlePct: "15", promotePct: "20" },
+    { hurdlePct: "", promotePct: "35" },
+  ]);
 
   const modelsFor = useMemo(() => {
     const map = new Map<string, SimCatalog["modelLocations"]>();
@@ -54,6 +59,16 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   return (
     <form action={formAction} className="space-y-5 rounded-xl border border-slate-200 bg-white p-6">
       <input type="hidden" name="units" value={JSON.stringify(validUnits)} />
+      <input
+        type="hidden"
+        name="promoteTiers"
+        value={JSON.stringify(
+          tiers.map((t) => ({
+            hurdlePct: t.hurdlePct.trim() === "" ? null : Number(t.hurdlePct),
+            promotePct: Number(t.promotePct),
+          })),
+        )}
+      />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div className="col-span-2">
@@ -139,23 +154,98 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
             className={inputClass}
           >
             <option value="PERFORMANCE">Performance (% of profit)</option>
+            <option value="PROMOTE">Promote (waterfall)</option>
             <option value="CONTRACTOR_FEE">Contractor fee (fixed)</option>
           </select>
         </div>
         {compMode === "PERFORMANCE" && (
-          <div>
-            <label htmlFor="sim-perf" className={labelClass}>
-              Performance % (before split)
-            </label>
-            <input id="sim-perf" name="perfPct" defaultValue="35" className={inputClass} />
-          </div>
+          <>
+            <div>
+              <label htmlFor="sim-perf" className={labelClass}>
+                Performance % (before split)
+              </label>
+              <input id="sim-perf" name="perfPct" defaultValue="35" className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="sim-perf-timing" className={labelClass}>
+                Performance paga
+              </label>
+              <select
+                id="sim-perf-timing"
+                name="perfTiming"
+                defaultValue="PROJECT_COMPLETION"
+                className={inputClass}
+              >
+                <option value="PROJECT_COMPLETION">Na conclusão do projeto</option>
+                <option value="PER_SALE">Na venda de cada casa</option>
+              </select>
+            </div>
+          </>
         )}
+        <div>
+          <label htmlFor="sim-plan" className={labelClass}>
+            Plano de desembolso
+          </label>
+          <select id="sim-plan" name="paymentPlan" defaultValue="STANDARD" className={inputClass}>
+            <option value="STANDARD">Padrão — 10/30/20/20/15/5</option>
+            <option value="LIGHT_START">Início leve — 10/15/25/25/20/5</option>
+          </select>
+        </div>
         <div>
           <label className="flex items-center gap-2 pt-6 text-sm text-slate-600">
             <input type="checkbox" name="parallelPermit" /> Permit parallel to lot purchase
           </label>
         </div>
       </div>
+
+      {compMode === "PROMOTE" && (
+        <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
+          <h3 className="text-sm font-semibold text-slate-700">Tiers do promote</h3>
+          <p className="mb-3 text-xs text-slate-400">
+            Hurdle = retorno a.a. do investidor sobre o capital médio em risco. Cada faixa
+            entrega o promote % à 4U; hurdle vazio = acima do último. Pago na conclusão.
+          </p>
+          <div className="space-y-2">
+            {tiers.map((t, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span className="w-12 text-xs text-slate-400">Tier {i + 1}</span>
+                <label className="text-xs text-slate-500">até</label>
+                <input
+                  value={t.hurdlePct}
+                  onChange={(e) =>
+                    setTiers((ts) => ts.map((x, j) => (j === i ? { ...x, hurdlePct: e.target.value } : x)))
+                  }
+                  placeholder="acima"
+                  className={`${inputClass} w-20`}
+                />
+                <label className="text-xs text-slate-500">% a.a. → 4U leva</label>
+                <input
+                  value={t.promotePct}
+                  onChange={(e) =>
+                    setTiers((ts) => ts.map((x, j) => (j === i ? { ...x, promotePct: e.target.value } : x)))
+                  }
+                  className={`${inputClass} w-20`}
+                />
+                <label className="text-xs text-slate-500">%</label>
+                <button
+                  type="button"
+                  onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))}
+                  className="text-xs text-slate-300 hover:text-red-500"
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setTiers((ts) => [...ts, { hurdlePct: "", promotePct: "" }])}
+            className="mt-2 rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
+          >
+            + Tier
+          </button>
+        </div>
+      )}
 
       <div>
         <div className="mb-2 flex items-center justify-between">

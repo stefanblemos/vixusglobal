@@ -66,8 +66,12 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
           <p className="text-sm text-slate-500">
             {sim.scenario.name} · {sim.fundingMode === "BANK" ? `bank: ${sim.bankProfile?.name}` : "equity"} ·{" "}
             {sim.compMode === "PERFORMANCE"
-              ? `performance ${Number(sim.perfPct)}% (before split)`
-              : "contractor fee"}
+              ? `performance ${Number(sim.perfPct)}% (${sim.perfTiming === "PER_SALE" ? "por venda" : "na conclusão"})`
+              : sim.compMode === "PROMOTE"
+                ? "promote (waterfall)"
+                : "contractor fee"}
+            {" · "}
+            {sim.paymentPlan === "LIGHT_START" ? "desembolso 10/15/25/25/20/5" : "desembolso 10/30/20/20/15/5"}
             {sim.pool ? ` · pool ${sim.pool.code}` : ""}
           </p>
         </div>
@@ -143,6 +147,8 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {sim.compMode === "PERFORMANCE" ? (
               <Card label="Performance 4U" value={formatMoney(r.kpis.perfFeeTotal, "USD")} hint="antes do split" />
+            ) : sim.compMode === "PROMOTE" ? (
+              <Card label="Promote 4U" value={formatMoney(r.kpis.perfFeeTotal, "USD")} hint="waterfall por tiers" />
             ) : (
               <Card label="Contractor fee 4U" value={formatMoney(r.kpis.contractorFeeTotal, "USD")} />
             )}

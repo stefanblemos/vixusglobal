@@ -92,11 +92,18 @@ export type SimUnitInput = {
   salePrice: number;
 };
 
+export type PromoteTier = {
+  hurdlePct: number | null; // retorno a.a. sobre o capital médio em risco; null = acima do último
+  promotePct: number; // % da faixa que vai para a 4U
+};
+
 export type SimInput = {
   fundingMode: "EQUITY" | "BANK";
-  compMode: "CONTRACTOR_FEE" | "PERFORMANCE";
-  perfPct: number; // fração (0.35)
+  compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE";
+  perfPct: number; // fração (0.35) — modo PERFORMANCE
   perfTiming: "PER_SALE" | "PROJECT_COMPLETION";
+  promoteTiers: PromoteTier[] | null; // modo PROMOTE (pago na conclusão)
+  paymentPlan: "STANDARD" | "LIGHT_START"; // 10/30/20/20/15/5 ou 10/15/25/25/20/5
   equityGatePct: number; // fração
   parallelPermit: boolean;
   unitGapDays: number;
@@ -218,15 +225,21 @@ function schedule(u: SimUnitInput, idx: number, input: SimInput) {
   return { tReq, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
 }
 
-// Fases de desembolso da obra (draw schedule do mock: 10/30/20/20/15/5).
-const PHASES: Array<{ pct: number; name: string }> = [
-  { pct: 0.1, name: "Permit application" },
-  { pct: 0.3, name: "Permit issued" },
-  { pct: 0.2, name: "Truss delivery" },
-  { pct: 0.2, name: "Drywall installation" },
-  { pct: 0.15, name: "Tile installation" },
-  { pct: 0.05, name: "CO issued" },
-];
+// Planos de desembolso da obra (6 fases). LIGHT_START alivia o início: até o permit caem
+// 25% (vs 40%) — exposição inicial ≈ lote + 25% da obra (+ juros estimados sem reserve).
+const PHASE_NAMES = [
+  "Permit application",
+  "Permit issued",
+  "Truss delivery",
+  "Drywall installation",
+  "Tile installation",
+  "CO issued",
+] as const;
+
+export const PAYMENT_PLANS: Record<"STANDARD" | "LIGHT_START", number[]> = {
+  STANDARD: [0.1, 0.3, 0.2, 0.2, 0.15, 0.05],
+  LIGHT_START: [0.1, 0.15, 0.25, 0.25, 0.2, 0.05],
+};
 
 function phaseDays(s: ReturnType<typeof schedule>): number[] {
   return [
@@ -244,13 +257,17 @@ export function simulate(input: SimInput): SimResult {
   const emd = sc.emdPct / 100;
   const closingFee = sc.closingFeePct / 100;
   const perfOn = input.compMode === "PERFORMANCE";
+  // PERFORMANCE e PROMOTE constroem ao custo direto (4U remunerada pelo resultado);
+  // CONTRACTOR_FEE constrói ao custo-base + fee fixo do tipo.
+  const directCostBasis = input.compMode !== "CONTRACTOR_FEE";
+  const phasePcts = PAYMENT_PLANS[input.paymentPlan] ?? PAYMENT_PLANS.STANDARD;
 
   // ── 1. Unidades: valores ajustados pelo cenário + cronograma ──
   const units: SimUnitResult[] = input.units.map((u, i) => {
     const s = schedule(u, i, input);
     const adjLot = u.lotCost * (1 + sc.lotCostBufferPct / 100);
-    // Performance: custo próprio do local; contractor: custo-base do local + fee do tipo.
-    const baseBuild = perfOn ? u.costPerformance : u.costContractor + u.contractorFee;
+    // Performance/promote: custo próprio do local; contractor: custo-base + fee do tipo.
+    const baseBuild = directCostBasis ? u.costPerformance : u.costContractor + u.contractorFee;
     const adjBuild = baseBuild * (1 + sc.constructionCostBufferPct / 100);
     const adjSaleGross = u.salePrice * (1 + sc.salePriceBufferPct / 100);
     const adjSaleNet = adjSaleGross * (1 - closingFee);
@@ -362,9 +379,9 @@ export function simulate(input: SimInput): SimResult {
       tLotClose: u.tLotClose,
       tCashIn: u.tCashIn,
     });
-    PHASES.forEach((p, pi) => {
-      let amt = u.adjBuild * p.pct;
-      const label = `Fase ${pi + 1} • ${p.name} • ${Math.round(p.pct * 100)}% • ${u.label}`;
+    phasePcts.forEach((pct, pi) => {
+      let amt = u.adjBuild * pct;
+      const label = `Fase ${pi + 1} • ${PHASE_NAMES[pi]} • ${Math.round(pct * 100)}% • ${u.label}`;
       if (!bank) {
         flows.push({ day: days[pi], amount: -round2(amt), label, kind: "PHASE" });
         return;
@@ -391,7 +408,7 @@ export function simulate(input: SimInput): SimResult {
       flows.push({ day: u.tCashIn, amount: contingency, label: `Contingency devolvida • ${u.label}`, kind: "CONTINGENCY" });
     }
 
-    if (!perfOn) contractorFeeTotal += u.contractorFee;
+    if (input.compMode === "CONTRACTOR_FEE") contractorFeeTotal += u.contractorFee;
 
     // Venda + performance fee (35% do lucro da casa, antes do split — sai como custo).
     const profitBase = u.adjSaleNet - u.adjLot - u.adjBuild;
@@ -602,10 +619,75 @@ export function simulate(input: SimInput): SimResult {
       push(f.day, -surplus, "Retorno ao investidor", "RETURN");
     }
   });
+  const finalDay = flows[n - 1]?.day ?? 0;
   if (cash > 0.01) {
     totalReturned += cash;
-    investorFlows.push({ day: flows[n - 1]?.day ?? 0, amount: cash });
-    push(flows[n - 1]?.day ?? 0, -cash, "Distribuição final", "RETURN");
+    investorFlows.push({ day: finalDay, amount: cash });
+    push(finalDay, -cash, "Distribuição final", "RETURN");
+  }
+
+  // ── 5b. Promote (waterfall) — pago na conclusão, deduzido dos retornos do dia final.
+  // Tiers sobre o retorno ANUALIZADO do investidor: TWC = Σ(capital em risco × anos);
+  // lucro equivalente a r% a.a. = r% × TWC; cada faixa entrega promotePct à 4U. Abaixo do
+  // primeiro hurdle (pref), a 4U não recebe nada.
+  if (input.compMode === "PROMOTE" && input.promoteTiers?.length) {
+    let twc = 0; // dólar-anos
+    let inv = 0;
+    let prevDay = investorFlows[0]?.day ?? 0;
+    for (const f of investorFlows) {
+      twc += (inv * (f.day - prevDay)) / 365;
+      prevDay = f.day;
+      inv = Math.max(0, inv - f.amount); // injeção (negativa) aumenta; retorno reduz
+    }
+    const profitBefore = round2(totalReturned - totalInjected);
+    let fee = 0;
+    if (profitBefore > 0 && twc > 0) {
+      let remaining = profitBefore;
+      let prevLimit = 0;
+      for (const t of input.promoteTiers) {
+        if (remaining <= 0) break;
+        const limit = t.hurdlePct == null ? Infinity : (t.hurdlePct / 100) * twc;
+        const band = Math.min(remaining, Math.max(0, limit - prevLimit));
+        fee += (band * t.promotePct) / 100;
+        remaining -= band;
+        if (limit !== Infinity) prevLimit = Math.max(prevLimit, limit);
+      }
+      fee = round2(fee);
+    }
+    if (fee > 0) {
+      // deduz dos RETURNs do dia final (é de onde o promote sai na prática)
+      let remainingFee = fee;
+      for (let i = events.length - 1; i >= 0 && remainingFee > 0.005; i--) {
+        const ev = events[i];
+        if (ev.kind !== "RETURN" || ev.day !== finalDay) continue;
+        const take = round2(Math.min(remainingFee, -ev.amount));
+        ev.amount = round2(ev.amount + take);
+        remainingFee = round2(remainingFee - take);
+      }
+      // ajusta investorFlows: consome dos retornos positivos do dia final, de trás p/ frente
+      let flowFee = round2(fee - remainingFee);
+      for (let i = investorFlows.length - 1; i >= 0 && flowFee > 0.005; i--) {
+        const f = investorFlows[i];
+        if (f.day !== finalDay || f.amount <= 0) continue;
+        const take = round2(Math.min(flowFee, f.amount));
+        f.amount = round2(f.amount - take);
+        flowFee = round2(flowFee - take);
+      }
+      const feeApplied = round2(fee - remainingFee);
+      if (feeApplied > 0) {
+        perfFeeTotal = feeApplied;
+        totalReturned = round2(totalReturned - feeApplied);
+        events.push({
+          day: finalDay,
+          amount: -feeApplied,
+          label: "Promote 4U (waterfall)",
+          kind: "PERF_FEE",
+          cash: 0,
+          invested: 0,
+          bankBalance: 0,
+        });
+      }
+    }
   }
 
   // ── 6. KPIs e resumo mensal ──

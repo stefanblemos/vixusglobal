@@ -10,11 +10,32 @@ export type FormState = { error?: string } | undefined;
 
 type UnitRef = { locationId: string; modelId: string };
 
+type PromoteTierInput = { hurdlePct: number | null; promotePct: number };
+
+function parsePromoteTiers(raw: string): PromoteTierInput[] | null {
+  try {
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    const tiers = arr
+      .map((t) => ({
+        hurdlePct: t.hurdlePct == null || t.hurdlePct === "" ? null : Number(t.hurdlePct),
+        promotePct: Number(t.promotePct),
+      }))
+      .filter((t) => Number.isFinite(t.promotePct) && (t.hurdlePct == null || Number.isFinite(t.hurdlePct)));
+    return tiers.length > 0 ? tiers : null;
+  } catch {
+    return null;
+  }
+}
+
 // Monta o SimInput a partir dos catálogos atuais (valores sempre frescos do banco).
 async function buildSimInput(sim: {
   fundingMode: string;
   compMode: string;
   perfPct: unknown;
+  perfTiming: string;
+  promoteTiers: PromoteTierInput[] | null;
+  paymentPlan: string;
   equityGatePct: unknown;
   parallelPermit: boolean;
   unitGapDays: number;
@@ -45,7 +66,7 @@ async function buildSimInput(sim: {
     const lotCost = ml.location.lotCostEstimate;
     if (lotCost == null)
       return { error: `Set the estimated lot cost for ${ml.location.name} in the catalog.` };
-    const perfMode = sim.compMode === "PERFORMANCE";
+    const perfMode = sim.compMode !== "CONTRACTOR_FEE"; // performance e promote = custo direto
     if (perfMode && ml.costPerformance == null)
       return { error: `Set the performance cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
     if (!perfMode && ml.costContractor == null)
@@ -69,9 +90,11 @@ async function buildSimInput(sim: {
 
   return {
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
-    compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE",
+    compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE",
     perfPct: Number(sim.perfPct) / 100,
-    perfTiming: "PROJECT_COMPLETION",
+    perfTiming: sim.perfTiming === "PER_SALE" ? "PER_SALE" : "PROJECT_COMPLETION",
+    promoteTiers: sim.promoteTiers,
+    paymentPlan: sim.paymentPlan === "LIGHT_START" ? "LIGHT_START" : "STANDARD",
     equityGatePct: Number(sim.equityGatePct) / 100,
     parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
@@ -158,6 +181,9 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
     fundingMode: String(formData.get("fundingMode") ?? "BANK"),
     compMode: String(formData.get("compMode") ?? "PERFORMANCE"),
     perfPct: Number(formData.get("perfPct") ?? 35),
+    perfTiming: String(formData.get("perfTiming") ?? "PROJECT_COMPLETION"),
+    promoteTiers: parsePromoteTiers(String(formData.get("promoteTiers") ?? "")),
+    paymentPlan: String(formData.get("paymentPlan") ?? "STANDARD"),
     equityGatePct: Number(formData.get("equityGatePct") ?? 10),
     parallelPermit: formData.get("parallelPermit") === "on",
     unitGapDays: Number(formData.get("unitGapDays") ?? 3) || 3,
@@ -166,6 +192,8 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
     poolId: String(formData.get("poolId") ?? "").trim() || null,
     units,
   };
+  if (sim.compMode === "PROMOTE" && !sim.promoteTiers)
+    return { error: "Defina pelo menos um tier do promote." };
   const input = await buildSimInput(sim);
   if ("error" in input) return { error: input.error };
   const result = simulate(input);
@@ -177,6 +205,9 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
       fundingMode: sim.fundingMode as SimFundingMode,
       compMode: sim.compMode as BuilderCompMode,
       perfPct: sim.perfPct,
+      perfTiming: sim.perfTiming,
+      promoteTiers: sim.promoteTiers ?? undefined,
+      paymentPlan: sim.paymentPlan as "STANDARD" | "LIGHT_START",
       equityGatePct: sim.equityGatePct,
       parallelPermit: sim.parallelPermit,
       unitGapDays: sim.unitGapDays,
@@ -200,6 +231,9 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
     fundingMode: sim.fundingMode,
     compMode: sim.compMode,
     perfPct: sim.perfPct,
+    perfTiming: sim.perfTiming,
+    promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
     parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,

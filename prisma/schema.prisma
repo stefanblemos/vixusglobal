@@ -977,11 +977,20 @@ enum SimFundingMode {
   BANK
 }
 
-// Remuneração da 4U (construtora): fee fixo por tipo de casa (sem participação) OU
-// performance = % do lucro líquido ANTES do split com investidores (default 35%).
+// Remuneração da 4U (construtora): fee fixo por tipo de casa (sem participação), OU
+// performance = % do lucro líquido ANTES do split com investidores (default 35%), OU
+// promote = waterfall com tiers programáveis (capital de volta → pref → promote por faixa).
 enum BuilderCompMode {
   CONTRACTOR_FEE
   PERFORMANCE
+  PROMOTE
+}
+
+// Plano de desembolso da obra (6 fases). LIGHT_START reduz a exposição inicial: até o
+// permit caem 25% (vs 40% no padrão) — capital inicial ≈ lote + 25% da obra.
+enum SimPaymentPlan {
+  STANDARD // 10/30/20/20/15/5
+  LIGHT_START // 10/15/25/25/20/5
 }
 
 model CatalogLocation {
@@ -1201,6 +1210,11 @@ model PoolSimulation {
   scenario      BufferScenario  @relation(fields: [scenarioCode], references: [code])
   compMode      BuilderCompMode @default(PERFORMANCE)
   perfPct       Decimal         @default(35) @db.Decimal(5, 2) // % do lucro p/ 4U, ANTES do split
+  perfTiming    String          @default("PROJECT_COMPLETION") // PER_SALE | PROJECT_COMPLETION
+  // Promote (waterfall): tiers programáveis [{hurdle: % a.a. sobre o capital médio em risco
+  // (null = acima do último), promote: % da faixa para a 4U}]. Pago na conclusão.
+  promoteTiers  Json?
+  paymentPlan   SimPaymentPlan  @default(STANDARD)
   equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
   parallelPermit Boolean        @default(false)
   unitGapDays   Int             @default(3)
