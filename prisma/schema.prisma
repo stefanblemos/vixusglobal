@@ -1032,31 +1032,116 @@ model HouseTypeFee {
   updatedAt DateTime  @updatedAt
 }
 
-// Premissas de um banco de construction loan — ajustável por banco (selects de taxa).
+// Premissas de um banco de construction loan — ajustável por banco. Estrutura validada
+// contra o transaction history real do loan 77959 (Builders Capital, "Vixus 8 SFR"):
+// fees itemizados no closing (podem ser % do comprometido, fixos ou CRÉDITOS negativos),
+// reserve capitalizada que paga o juro mensal e devolve o não usado na reconciliação,
+// fees por draw/lote de draws, reconveyance por payoff e sweep 85% com quitação na última.
 model BankProfile {
-  id                   String   @id @default(cuid())
-  name                 String   @unique
-  ltcBuildPct          Decimal  @default(80) @db.Decimal(5, 2) // % do custo de obra
-  ltcLandPct           Decimal  @default(50) @db.Decimal(5, 2) // % do lote (se financia)
-  financeLand          Boolean  @default(false)
-  ltvPct               Decimal  @default(70) @db.Decimal(5, 2) // % do ARV
-  haircutPct           Decimal  @default(5) @db.Decimal(5, 2) // desconto de avaliação sobre ARV
-  perUnitCap           Decimal? @db.Decimal(20, 2)
-  aprPct               Decimal  @default(12) @db.Decimal(5, 2) // juros a.a. sobre saldo sacado
-  originationPct       Decimal  @default(1) @db.Decimal(5, 2)
-  originationFlat      Decimal  @default(0) @db.Decimal(20, 2)
-  closingFeePct        Decimal  @default(3) @db.Decimal(5, 2) // sobre o comprometido
-  appraisalFee         Decimal  @default(1500) @db.Decimal(20, 2)
-  legalFee             Decimal  @default(1800) @db.Decimal(20, 2)
-  inspectionFeePerDraw Decimal  @default(205) @db.Decimal(20, 2)
-  servicingMonthly     Decimal  @default(95) @db.Decimal(20, 2)
-  hasInterestReserve   Boolean  @default(false) // sem reserve → juros da obra viram aporte
-  feesFinanced         Boolean  @default(true) // fees de closing capitalizam no loan
-  notes                String?
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id   String @id @default(cuid())
+  name String @unique
 
+  // 1 · Dimensionamento
+  ltcBuildPct Decimal  @default(80) @db.Decimal(5, 2) // % do custo de obra
+  ltcLandPct  Decimal  @default(50) @db.Decimal(5, 2) // % do lote (se financia)
+  financeLand Boolean  @default(false)
+  ltvPct      Decimal  @default(70) @db.Decimal(5, 2) // % do ARV
+  haircutPct  Decimal  @default(5) @db.Decimal(5, 2) // desconto de avaliação sobre ARV
+  perUnitCap  Decimal? @db.Decimal(20, 2)
+
+  // 2 · Juros
+  rateType      BankRateType      @default(FIXED) // fixa | prime+spread | SOFR+spread
+  aprPct        Decimal           @default(12) @db.Decimal(6, 3) // taxa fixa a.a.
+  indexPct      Decimal           @default(0) @db.Decimal(6, 3) // índice atual (prime/SOFR)
+  spreadPct     Decimal           @default(0) @db.Decimal(6, 3)
+  interestBasis BankInterestBasis @default(DRAWN) // sacado (non-Dutch) | comprometido (Dutch)
+
+  // 3 · No closing (vazio/0 = banco não cobra)
+  originationPct  Decimal @default(1) @db.Decimal(5, 2) // pontos, % do comprometido
+  originationFlat Decimal @default(0) @db.Decimal(20, 2)
+  brokerPct       Decimal @default(0) @db.Decimal(5, 2) // % do comprometido
+  titleEscrowPct  Decimal @default(0) @db.Decimal(5, 2) // % do comprometido
+  closingFeePct   Decimal @default(0) @db.Decimal(5, 2) // outros custos de closing, % genérico
+  processingFee   Decimal @default(0) @db.Decimal(20, 2)
+  budgetReviewFee Decimal @default(0) @db.Decimal(20, 2)
+  appraisalFee    Decimal @default(0) @db.Decimal(20, 2)
+  legalFee        Decimal @default(0) @db.Decimal(20, 2)
+  feesFinanced    Boolean @default(true) // capitalizam no loan (senão saem do caixa)
+
+  // 4 · Durante a obra
+  servicingMonthly     Decimal @default(0) @db.Decimal(20, 2)
+  inspectionFeePerDraw Decimal @default(0) @db.Decimal(20, 2)
+  drawProcessingFee    Decimal @default(0) @db.Decimal(20, 2)
+  achFeePerBatch       Decimal @default(0) @db.Decimal(20, 2) // por LOTE de draws (mesma data)
+
+  // Interest reserve: financiada no closing (capitaliza), o juro mensal consome a reserve
+  // (sem compor), e o NÃO USADO é creditado na reconciliação final (reduz o último payoff).
+  hasInterestReserve Boolean @default(false)
+  reserveMonths      Decimal @default(6) @db.Decimal(4, 1) // sizing: meses de juro sobre o comprometido
+
+  // 5 · Na venda / payoff
+  releaseMode     BankReleaseMode @default(SWEEP_FULL) // 100% do líquido | sweep% + quitação na última
+  sweepPct        Decimal         @default(100) @db.Decimal(5, 2)
+  reconveyanceFee Decimal         @default(0) @db.Decimal(20, 2) // por payoff (release da casa)
+
+  // 6 · Prazo (extension: >50% do original devido → % sobre TODO o financiado; senão só
+  // sobre o saldo. Aplicada apenas no cenário Conservador da simulação.)
+  termMonths      Int     @default(12)
+  extensionMonths Int     @default(6)
+  extensionFeePct Decimal @default(1) @db.Decimal(5, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  customFees  BankCustomFee[]
   simulations PoolSimulation[]
+}
+
+enum BankRateType {
+  FIXED
+  PRIME_SPREAD
+  SOFR_SPREAD
+}
+
+enum BankInterestBasis {
+  DRAWN // juro só sobre o sacado (non-Dutch)
+  COMMITTED // juro sobre o total comprometido desde o dia 1 (Dutch)
+}
+
+enum BankReleaseMode {
+  SWEEP_FULL // 100% do líquido de cada venda até quitar
+  SWEEP_PCT_LAST_FULL // sweep% nas vendas; última casa quita o saldo (Builders Capital)
+}
+
+enum BankFeeTiming {
+  CLOSING
+  PER_DRAW
+  PER_DRAW_BATCH // por data com draws (ex.: ACH)
+  MONTHLY
+  PER_PAYOFF
+  FINAL // na reconciliação final
+}
+
+enum BankFeeKind {
+  FLAT // valor fixo (pode ser NEGATIVO — ex.: LO credit)
+  PCT_COMMITTED // % do loan comprometido
+  PCT_PAYOFF // % do payoff (exit fee)
+}
+
+// Taxas específicas de cada banco que não se encaixam nos campos padrão — o motor soma
+// cada uma no momento certo (closing/draw/lote/mês/payoff/final).
+model BankCustomFee {
+  id            String        @id @default(cuid())
+  bankProfileId String
+  bankProfile   BankProfile   @relation(fields: [bankProfileId], references: [id], onDelete: Cascade)
+  name          String
+  timing        BankFeeTiming @default(CLOSING)
+  kind          BankFeeKind   @default(FLAT)
+  amount        Decimal       @db.Decimal(20, 2) // negativo = crédito
+  createdAt     DateTime      @default(now())
+
+  @@index([bankProfileId])
 }
 
 // Cenário de buffers (docx "Investment Thesis Simulator - Buffers"): OPT/REAL/CONS + customs.

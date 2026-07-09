@@ -129,9 +129,15 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
                 <Card label="Loan comprometido" value={formatMoney(r.kpis.bankCommitted, "USD")} />
                 <Card label="Fees upfront do banco" value={formatMoney(r.kpis.bankUpfrontFees, "USD")} />
                 <Card
-                  label="Juros + servicing"
+                  label="Juros + custos mensais"
                   value={formatMoney(r.kpis.bankInterestTotal, "USD")}
-                  hint={sim.bankProfile?.hasInterestReserve ? "capitalizados (reserve)" : "pagos via aporte"}
+                  hint={
+                    r.kpis.bankReserveFunded > 0
+                      ? `reserve ${formatMoney(r.kpis.bankReserveFunded, "USD")} · devolvida ${formatMoney(r.kpis.bankReserveUnused, "USD")}${r.kpis.bankExtensionFee > 0 ? ` · extensão ${formatMoney(r.kpis.bankExtensionFee, "USD")}` : ""}`
+                      : r.kpis.bankExtensionFee > 0
+                        ? `pagos via aporte · extensão ${formatMoney(r.kpis.bankExtensionFee, "USD")}`
+                        : "pagos via aporte"
+                  }
                 />
               </>
             )}

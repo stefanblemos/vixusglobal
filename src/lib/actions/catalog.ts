@@ -249,39 +249,137 @@ export async function saveHouseTypeFee(formData: FormData): Promise<void> {
   revalidatePath(CATALOG);
 }
 
-// ── Perfis de banco ──────────────────────────────────────────
+// ── Perfis de banco (modal + histórico + taxas customizadas) ─
 
-export async function saveBankProfile(formData: FormData): Promise<void> {
-  const id = String(formData.get("id") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) return;
-  const data = {
-    name,
+function bankDataFrom(formData: FormData) {
+  return {
+    name: String(formData.get("name") ?? "").trim(),
     ltcBuildPct: num(formData.get("ltcBuildPct"), 80),
     ltcLandPct: num(formData.get("ltcLandPct"), 50),
     financeLand: formData.get("financeLand") === "on",
     ltvPct: num(formData.get("ltvPct"), 70),
     haircutPct: num(formData.get("haircutPct"), 5),
     perUnitCap: optNum(formData.get("perUnitCap")),
+    rateType: (["FIXED", "PRIME_SPREAD", "SOFR_SPREAD"].includes(String(formData.get("rateType")))
+      ? String(formData.get("rateType"))
+      : "FIXED") as "FIXED" | "PRIME_SPREAD" | "SOFR_SPREAD",
     aprPct: num(formData.get("aprPct"), 12),
-    originationPct: num(formData.get("originationPct"), 1),
+    indexPct: num(formData.get("indexPct")),
+    spreadPct: num(formData.get("spreadPct")),
+    interestBasis: (String(formData.get("interestBasis")) === "COMMITTED"
+      ? "COMMITTED"
+      : "DRAWN") as "DRAWN" | "COMMITTED",
+    originationPct: num(formData.get("originationPct")),
     originationFlat: num(formData.get("originationFlat")),
-    closingFeePct: num(formData.get("closingFeePct"), 3),
-    appraisalFee: num(formData.get("appraisalFee"), 1500),
-    legalFee: num(formData.get("legalFee"), 1800),
-    inspectionFeePerDraw: num(formData.get("inspectionFeePerDraw"), 205),
-    servicingMonthly: num(formData.get("servicingMonthly"), 95),
-    hasInterestReserve: formData.get("hasInterestReserve") === "on",
+    brokerPct: num(formData.get("brokerPct")),
+    titleEscrowPct: num(formData.get("titleEscrowPct")),
+    closingFeePct: num(formData.get("closingFeePct")),
+    processingFee: num(formData.get("processingFee")),
+    budgetReviewFee: num(formData.get("budgetReviewFee")),
+    appraisalFee: num(formData.get("appraisalFee")),
+    legalFee: num(formData.get("legalFee")),
     feesFinanced: formData.get("feesFinanced") === "on",
+    servicingMonthly: num(formData.get("servicingMonthly")),
+    inspectionFeePerDraw: num(formData.get("inspectionFeePerDraw")),
+    drawProcessingFee: num(formData.get("drawProcessingFee")),
+    achFeePerBatch: num(formData.get("achFeePerBatch")),
+    hasInterestReserve: formData.get("hasInterestReserve") === "on",
+    reserveMonths: num(formData.get("reserveMonths"), 6),
+    releaseMode: (String(formData.get("releaseMode")) === "SWEEP_PCT_LAST_FULL"
+      ? "SWEEP_PCT_LAST_FULL"
+      : "SWEEP_FULL") as "SWEEP_FULL" | "SWEEP_PCT_LAST_FULL",
+    sweepPct: num(formData.get("sweepPct"), 100),
+    reconveyanceFee: num(formData.get("reconveyanceFee")),
+    termMonths: Math.round(num(formData.get("termMonths"), 12)),
+    extensionMonths: Math.round(num(formData.get("extensionMonths"), 6)),
+    extensionFeePct: num(formData.get("extensionFeePct"), 1),
+    notes: String(formData.get("notes") ?? "").trim() || null,
   };
-  if (id) await prisma.bankProfile.update({ where: { id }, data });
-  else await prisma.bankProfile.create({ data });
+}
+
+export async function saveBankProfile(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
+  const id = String(formData.get("id") ?? "").trim();
+  const data = bankDataFrom(formData);
+  if (!data.name) return { error: "Bank name is required." };
+
+  const dup = await prisma.bankProfile.findUnique({ where: { name: data.name } });
+  if (dup && dup.id !== id) return { error: `Bank "${data.name}" already exists.` };
+
+  if (id) {
+    const before = await prisma.bankProfile.findUnique({ where: { id } });
+    if (!before) return { error: "Bank not found." };
+    const changes = diff(
+      Object.fromEntries(Object.keys(data).map((k) => [k, (before as Record<string, unknown>)[k]])),
+      data,
+    );
+    if (changes.length === 0) return { ok: true };
+    await prisma.bankProfile.update({ where: { id }, data });
+    await logChange("BANK", id, data.name, "UPDATE", changes);
+  } else {
+    const row = await prisma.bankProfile.create({ data });
+    await logChange("BANK", row.id, data.name, "CREATE", diff(null, data));
+  }
   revalidatePath(CATALOG);
+  return { ok: true };
 }
 
 export async function deleteBankProfile(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "");
-  if (id) await prisma.bankProfile.delete({ where: { id } });
+  if (!id) return;
+  const inUse = await prisma.poolSimulation.count({ where: { bankProfileId: id } });
+  if (inUse > 0) return; // simulações salvas referenciam o banco
+  const before = await prisma.bankProfile.findUnique({ where: { id } });
+  if (!before) return;
+  await prisma.bankProfile.delete({ where: { id } });
+  await logChange("BANK", id, before.name, "DELETE", []);
+  revalidatePath(CATALOG);
+}
+
+// Taxa customizada do banco — log entra no histórico do BANCO.
+export async function saveBankCustomFee(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
+  const bankProfileId = String(formData.get("bankProfileId") ?? "");
+  const name = String(formData.get("feeName") ?? "").trim();
+  if (!bankProfileId || !name) return { error: "Fee name is required." };
+  const timing = String(formData.get("timing") ?? "CLOSING");
+  const kind = String(formData.get("kind") ?? "FLAT");
+  const amountRaw = String(formData.get("amount") ?? "").replace(/,/g, "").trim();
+  const amount = Number(amountRaw);
+  if (!Number.isFinite(amount) || amount === 0) return { error: "Amount must be a non-zero number." };
+
+  const bank = await prisma.bankProfile.findUnique({ where: { id: bankProfileId } });
+  if (!bank) return { error: "Bank not found." };
+
+  await prisma.bankCustomFee.create({
+    data: {
+      bankProfileId,
+      name,
+      timing: timing as "CLOSING" | "PER_DRAW" | "PER_DRAW_BATCH" | "MONTHLY" | "PER_PAYOFF" | "FINAL",
+      kind: kind as "FLAT" | "PCT_COMMITTED" | "PCT_PAYOFF",
+      amount,
+    },
+  });
+  await logChange("BANK", bankProfileId, bank.name, "UPDATE", [
+    { field: `custom fee: ${name} (${timing}, ${kind})`, from: null, to: String(amount) },
+  ]);
+  revalidatePath(CATALOG);
+  return { ok: true };
+}
+
+export async function deleteBankCustomFee(formData: FormData): Promise<void> {
+  const id = String(formData.get("feeId") ?? "");
+  if (!id) return;
+  const fee = await prisma.bankCustomFee.findUnique({ where: { id }, include: { bankProfile: true } });
+  if (!fee) return;
+  await prisma.bankCustomFee.delete({ where: { id } });
+  await logChange("BANK", fee.bankProfileId, fee.bankProfile.name, "UPDATE", [
+    { field: `custom fee: ${fee.name}`, from: show(fee.amount), to: null },
+  ]);
   revalidatePath(CATALOG);
 }
 

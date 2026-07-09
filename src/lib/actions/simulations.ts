@@ -25,7 +25,10 @@ async function buildSimInput(sim: {
   const scenario = await prisma.bufferScenario.findUnique({ where: { code: sim.scenarioCode } });
   if (!scenario) return { error: "Scenario not found." };
   const bank = sim.bankProfileId
-    ? await prisma.bankProfile.findUnique({ where: { id: sim.bankProfileId } })
+    ? await prisma.bankProfile.findUnique({
+        where: { id: sim.bankProfileId },
+        include: { customFees: true },
+      })
     : null;
   if (sim.fundingMode === "BANK" && !bank) return { error: "Pick a bank profile for bank funding." };
 
@@ -92,16 +95,40 @@ async function buildSimInput(sim: {
           ltvPct: Number(bank.ltvPct),
           haircutPct: Number(bank.haircutPct),
           perUnitCap: bank.perUnitCap == null ? null : Number(bank.perUnitCap),
-          aprPct: Number(bank.aprPct),
+          effectiveAprPct:
+            bank.rateType === "FIXED"
+              ? Number(bank.aprPct)
+              : Number(bank.indexPct) + Number(bank.spreadPct),
+          interestBasis: bank.interestBasis,
           originationPct: Number(bank.originationPct),
           originationFlat: Number(bank.originationFlat),
+          brokerPct: Number(bank.brokerPct),
+          titleEscrowPct: Number(bank.titleEscrowPct),
           closingFeePct: Number(bank.closingFeePct),
+          processingFee: Number(bank.processingFee),
+          budgetReviewFee: Number(bank.budgetReviewFee),
           appraisalFee: Number(bank.appraisalFee),
           legalFee: Number(bank.legalFee),
-          inspectionFeePerDraw: Number(bank.inspectionFeePerDraw),
-          servicingMonthly: Number(bank.servicingMonthly),
-          hasInterestReserve: bank.hasInterestReserve,
           feesFinanced: bank.feesFinanced,
+          servicingMonthly: Number(bank.servicingMonthly),
+          inspectionFeePerDraw: Number(bank.inspectionFeePerDraw),
+          drawProcessingFee: Number(bank.drawProcessingFee),
+          achFeePerBatch: Number(bank.achFeePerBatch),
+          hasInterestReserve: bank.hasInterestReserve,
+          reserveMonths: Number(bank.reserveMonths),
+          releaseMode: bank.releaseMode,
+          sweepPct: Number(bank.sweepPct),
+          reconveyanceFee: Number(bank.reconveyanceFee),
+          termMonths: bank.termMonths,
+          extensionFeePct: Number(bank.extensionFeePct),
+          // extensão só entra no cenário Conservador (regra do Stefan — na prática, não)
+          applyExtensionFee: sim.scenarioCode === "CONS",
+          customFees: bank.customFees.map((f) => ({
+            name: f.name,
+            timing: f.timing,
+            kind: f.kind,
+            amount: Number(f.amount),
+          })),
         }
       : null,
     units,

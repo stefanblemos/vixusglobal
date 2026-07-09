@@ -28,23 +28,52 @@ export type SimScenario = {
   emdPct: number;
 };
 
+export type SimBankCustomFee = {
+  name: string;
+  timing: "CLOSING" | "PER_DRAW" | "PER_DRAW_BATCH" | "MONTHLY" | "PER_PAYOFF" | "FINAL";
+  kind: "FLAT" | "PCT_COMMITTED" | "PCT_PAYOFF";
+  amount: number; // negativo = crédito (ex.: LO credit)
+};
+
 export type SimBank = {
+  // sizing
   ltcBuildPct: number;
   ltcLandPct: number;
   financeLand: boolean;
   ltvPct: number;
   haircutPct: number;
   perUnitCap: number | null;
-  aprPct: number;
+  // juros
+  effectiveAprPct: number; // fixa, ou índice+spread (resolvido no caller)
+  interestBasis: "DRAWN" | "COMMITTED"; // non-Dutch | Dutch
+  // closing
   originationPct: number;
   originationFlat: number;
-  closingFeePct: number; // % do comprometido
+  brokerPct: number;
+  titleEscrowPct: number;
+  closingFeePct: number; // outros, % do comprometido
+  processingFee: number;
+  budgetReviewFee: number;
   appraisalFee: number;
   legalFee: number;
-  inspectionFeePerDraw: number;
-  servicingMonthly: number;
-  hasInterestReserve: boolean;
   feesFinanced: boolean;
+  // durante a obra
+  servicingMonthly: number;
+  inspectionFeePerDraw: number;
+  drawProcessingFee: number;
+  achFeePerBatch: number;
+  // reserve
+  hasInterestReserve: boolean;
+  reserveMonths: number;
+  // payoff
+  releaseMode: "SWEEP_FULL" | "SWEEP_PCT_LAST_FULL";
+  sweepPct: number;
+  reconveyanceFee: number;
+  // prazo
+  termMonths: number;
+  extensionFeePct: number;
+  applyExtensionFee: boolean; // só no cenário Conservador
+  customFees: SimBankCustomFee[];
 };
 
 export type SimUnitInput = {
@@ -124,6 +153,9 @@ export type SimResult = {
     bankCommitted: number;
     bankUpfrontFees: number;
     bankInterestTotal: number;
+    bankReserveFunded: number;
+    bankReserveUnused: number;
+    bankExtensionFee: number;
     equityGateAmount: number;
   };
   events: SimEvent[];
@@ -253,13 +285,23 @@ export function simulate(input: SimInput): SimResult {
       committed += u.bankEligible;
     }
   }
+  // Fees de closing itemizados (% do comprometido + fixos + customizados; crédito = negativo).
   const upfrontFees = bank
     ? round2(
-        committed * (bank.closingFeePct / 100) +
-          committed * (bank.originationPct / 100) +
+        (committed *
+          (bank.closingFeePct + bank.originationPct + bank.brokerPct + bank.titleEscrowPct)) /
+          100 +
           bank.originationFlat +
+          bank.processingFee +
+          bank.budgetReviewFee +
           bank.appraisalFee +
-          bank.legalFee,
+          bank.legalFee +
+          bank.customFees
+            .filter((f) => f.timing === "CLOSING")
+            .reduce(
+              (s, f) => s + (f.kind === "PCT_COMMITTED" ? (committed * f.amount) / 100 : f.amount),
+              0,
+            ),
       )
     : 0;
   // Closing do loan: no último permit aprovado (padrão do mock).
@@ -369,60 +411,132 @@ export function simulate(input: SimInput): SimResult {
     }
   }
 
-  // ── 4. Banco: juros mensais, fees e payoff transformados em fluxos do owner ──
-  let bankInterestTotal = 0;
+  // ── 4. Banco: reserve, juros, fees e payoffs (mecânica validada no loan 77959/BC) ──
+  let bankInterestTotal = 0; // juro + custos mensais efetivamente cobrados
+  let reserveFunded = 0;
+  let reserveUnused = 0;
+  let extensionFee = 0;
   if (bank) {
+    const apr = bank.effectiveAprPct;
+    const perDrawCustom = bank.customFees
+      .filter((f) => f.timing === "PER_DRAW" && f.kind === "FLAT")
+      .reduce((s, f) => s + f.amount, 0);
+    const perBatchCustom = bank.customFees
+      .filter((f) => f.timing === "PER_DRAW_BATCH" && f.kind === "FLAT")
+      .reduce((s, f) => s + f.amount, 0);
+    const monthlyCustom = bank.customFees
+      .filter((f) => f.timing === "MONTHLY" && f.kind === "FLAT")
+      .reduce((s, f) => s + f.amount, 0);
+    const perPayoffFlat = bank.customFees
+      .filter((f) => f.timing === "PER_PAYOFF" && f.kind === "FLAT")
+      .reduce((s, f) => s + f.amount, 0);
+    const perPayoffPct = bank.customFees
+      .filter((f) => f.timing === "PER_PAYOFF" && f.kind === "PCT_PAYOFF")
+      .reduce((s, f) => s + f.amount, 0);
+    const finalCustom = bank.customFees
+      .filter((f) => f.timing === "FINAL")
+      .reduce((s, f) => s + (f.kind === "PCT_COMMITTED" ? (committed * f.amount) / 100 : f.amount), 0);
+
+    // Reserve dimensionada como o banco faz: meses de juro sobre o COMPROMETIDO,
+    // financiada (capitaliza no saldo) no closing. No 77959: 1.981.564 × 9% ÷ 12 × 6 ≈ 89.150 ✓
+    reserveFunded = bank.hasInterestReserve
+      ? round2(((committed * apr) / 100 / 12) * bank.reserveMonths)
+      : 0;
+
     // fees upfront: financiados capitalizam; senão saem do caixa no closing
-    if (!bank.feesFinanced)
+    if (!bank.feesFinanced && Math.abs(upfrontFees) > 0.01)
       flows.push({ day: loanClosingDay, amount: -upfrontFees, label: "Fees de closing do loan (não financiados)", kind: "BANK_FEE" });
 
-    // Monta a linha do tempo do saldo do banco para calcular juros/servicing por mês e o
-    // payoff em cada venda (sweep 100% do líquido até quitar).
     type BankEvt = { day: number; amount: number; label: string; isDraw?: boolean };
     const bevts: BankEvt[] = [
       ...(bank.feesFinanced ? [{ day: loanClosingDay, amount: upfrontFees, label: "Fees de closing (capitalizados)" }] : []),
+      ...(reserveFunded > 0 ? [{ day: loanClosingDay, amount: reserveFunded, label: "Interest reserve (financiada)" }] : []),
       ...bankDraws.map((d) => ({ ...d, isDraw: true })),
     ].sort((a, b) => a.day - b.day);
     const sales = units
       .map((u) => ({ day: u.tCashIn, net: u.adjSaleNet, label: u.label }))
       .sort((a, b) => a.day - b.day);
+    const termDay = loanClosingDay + bank.termMonths * 30;
 
     let bal = 0;
+    let reserveLeft = reserveFunded;
     let cursor = loanClosingDay;
     let bi = 0;
     let si = 0;
     const horizon = lastSaleDay + 30;
     for (let day = loanClosingDay; day <= horizon; day++) {
+      // draws do dia: fees por draw + fee por LOTE de draws (ex.: ACH) capitalizam no saldo
+      let drawsToday = 0;
       while (bi < bevts.length && bevts[bi].day <= day) {
         const e = bevts[bi++];
         bal += e.amount;
-        if (e.isDraw && bank.inspectionFeePerDraw > 0) {
-          if (bank.hasInterestReserve) bal += bank.inspectionFeePerDraw;
-          else flows.push({ day: e.day, amount: -bank.inspectionFeePerDraw, label: `Inspection fee • draw`, kind: "BANK_FEE" });
+        if (e.isDraw) {
+          drawsToday += 1;
+          bal += bank.inspectionFeePerDraw + bank.drawProcessingFee + perDrawCustom;
         }
       }
-      // juros + servicing a cada 30 dias desde o closing
+      if (drawsToday > 0) bal += bank.achFeePerBatch + perBatchCustom;
+
+      // juros + custos mensais a cada 30 dias. Base: sacado (non-Dutch) ou comprometido
+      // (Dutch). A reserve consome o custo do mês SEM compor no saldo; esgotada, o custo
+      // vira aporte do pool.
       if (day > loanClosingDay && (day - loanClosingDay) % 30 === 0 && bal > 0) {
-        const interest = round2((bal * bank.aprPct) / 100 / 12);
-        const monthCost = interest + bank.servicingMonthly;
+        const base = bank.interestBasis === "COMMITTED" ? committed : bal;
+        const monthCost = round2((base * apr) / 100 / 12 + bank.servicingMonthly + monthlyCustom);
         bankInterestTotal += monthCost;
-        if (bank.hasInterestReserve) bal += monthCost; // capitaliza (reserve)
-        else flows.push({ day, amount: -monthCost, label: `Juros do loan (mês ${Math.round((day - loanClosingDay) / 30)})`, kind: "BANK_INTEREST" });
+        if (reserveLeft >= monthCost) {
+          reserveLeft = round2(reserveLeft - monthCost);
+        } else {
+          const short = round2(monthCost - reserveLeft);
+          reserveLeft = 0;
+          flows.push({ day, amount: -short, label: `Juros do loan (mês ${Math.round((day - loanClosingDay) / 30)})`, kind: "BANK_INTEREST" });
+        }
       }
-      // payoff nas vendas: banco recebe primeiro (sweep 100% do líquido)
+
+      // extension fee no fim do term (só cenário Conservador): deve >50% do comprometido →
+      // % sobre TODO o financiado; senão, % só sobre o saldo. Capitaliza.
+      if (bank.applyExtensionFee && extensionFee === 0 && day === termDay && bal > 0.01) {
+        extensionFee = round2(
+          bal > committed * 0.5 ? (committed * bank.extensionFeePct) / 100 : (bal * bank.extensionFeePct) / 100,
+        );
+        bal += extensionFee;
+      }
+
+      // payoffs nas vendas
       while (si < sales.length && sales[si].day <= day) {
+        const isLast = si === sales.length - 1;
         const s = sales[si++];
-        const pay = round2(Math.min(bal, s.net));
+        // reconveyance + fees por payoff capitalizam antes da quitação
+        bal += bank.reconveyanceFee + perPayoffFlat;
+        if (isLast) {
+          // reconciliação final: devolve a reserve não usada (crédito no saldo) + fees finais
+          reserveUnused = reserveLeft;
+          bal = round2(bal - reserveLeft + finalCustom);
+          reserveLeft = 0;
+        }
+        const cap =
+          !isLast && bank.releaseMode === "SWEEP_PCT_LAST_FULL"
+            ? (s.net * bank.sweepPct) / 100
+            : s.net;
+        let pay = round2(Math.max(0, Math.min(bal, cap)));
+        if (perPayoffPct > 0 && pay > 0) {
+          const exit = round2((pay * perPayoffPct) / 100);
+          bal += exit;
+          pay = round2(Math.max(0, Math.min(bal, cap)));
+        }
         if (pay > 0) {
-          bal -= pay;
-          flows.push({ day: s.day, amount: -pay, label: `Payoff do banco • ${s.label}`, kind: "BANK_PAYOFF" });
+          bal = round2(bal - pay);
+          flows.push({ day: s.day, amount: -pay, label: `Payoff do banco${isLast ? " (quitação + reconciliação da reserve)" : ""} • ${s.label}`, kind: "BANK_PAYOFF" });
         }
       }
       cursor = day;
     }
     if (bal > 0.01) {
-      // saldo residual (juros capitalizados além das vendas) quitado no fim
+      // saldo residual além do que as vendas cobriram — quitado com caixa do pool
       flows.push({ day: cursor, amount: -round2(bal), label: "Quitação final do loan (residual)", kind: "BANK_PAYOFF" });
+    } else if (bal < -0.01) {
+      // crédito do banco (ex.: reserve devolvida maior que o saldo restante)
+      flows.push({ day: cursor, amount: -round2(bal), label: "Reconciliação final — devolução do banco", kind: "BANK_PAYOFF" });
     }
   }
 
@@ -520,6 +634,9 @@ export function simulate(input: SimInput): SimResult {
       bankCommitted: round2(committed),
       bankUpfrontFees: upfrontFees,
       bankInterestTotal: round2(bankInterestTotal),
+      bankReserveFunded: round2(reserveFunded),
+      bankReserveUnused: round2(reserveUnused),
+      bankExtensionFee: round2(extensionFee),
       equityGateAmount: round2((input.equityGatePct ?? 0) * totalCost),
     },
     events,

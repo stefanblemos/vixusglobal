@@ -43,14 +43,63 @@ async function main() {
   for (const type of HOUSE_TYPES) {
     await prisma.houseTypeFee.upsert({ where: { type }, create: { type, fee: 0 }, update: {} });
   }
-  await prisma.bankProfile.upsert({
-    where: { name: "Generic construction lender" },
+  // Builders Capital — termos extraídos do transaction history real (loan 77959, Vixus 8 SFR):
+  // 9% a.a. sobre o sacado, orig 1,75% + broker 1% + title 1,33%, reserve 6 meses financiada,
+  // $20 processing + $185 inspection por draw, $20 ACH por lote, $350 reconveyance por payoff,
+  // sweep 85% com quitação na última casa.
+  const bc = await prisma.bankProfile.upsert({
+    where: { name: "Builders Capital" },
     create: {
-      name: "Generic construction lender",
-      notes: "Defaults do mockup; ajustar por banco real (LTC 65-85%, LTV 55-70%, prime+1%+).",
+      name: "Builders Capital",
+      rateType: "FIXED",
+      aprPct: 9,
+      interestBasis: "DRAWN",
+      originationPct: 1.75,
+      brokerPct: 1.0,
+      titleEscrowPct: 1.33,
+      closingFeePct: 0,
+      processingFee: 2000,
+      budgetReviewFee: 4000,
+      appraisalFee: 0,
+      legalFee: 2500,
+      feesFinanced: true,
+      servicingMonthly: 0,
+      inspectionFeePerDraw: 185,
+      drawProcessingFee: 20,
+      achFeePerBatch: 20,
+      hasInterestReserve: true,
+      reserveMonths: 6,
+      releaseMode: "SWEEP_PCT_LAST_FULL",
+      sweepPct: 85,
+      reconveyanceFee: 350,
+      termMonths: 12,
+      extensionMonths: 6,
+      extensionFeePct: 1,
+      notes: "Termos do loan 77959 (Vixus 8 SFR). Extension: >50% devido = 1% sobre todo o financiado.",
     },
     update: {},
   });
+  const bcFees = [
+    { name: "Credit report", timing: "CLOSING", kind: "FLAT", amount: 71 },
+    { name: "Engineering review", timing: "CLOSING", kind: "FLAT", amount: 2000 },
+    { name: "Flood determination", timing: "CLOSING", kind: "FLAT", amount: 160 },
+    { name: "UCC filing", timing: "CLOSING", kind: "FLAT", amount: 200 },
+    { name: "LO credit", timing: "CLOSING", kind: "FLAT", amount: -7000 },
+  ];
+  const existingFees = await prisma.bankCustomFee.count({ where: { bankProfileId: bc.id } });
+  if (existingFees === 0) {
+    for (const f of bcFees) {
+      await prisma.bankCustomFee.create({ data: { bankProfileId: bc.id, ...f } });
+    }
+  }
+  // RDI e 2BTrust — esqueletos para preencher quando os primeiros projetos fecharem.
+  for (const name of ["RDI", "2BTrust"]) {
+    await prisma.bankProfile.upsert({
+      where: { name },
+      create: { name, notes: "Preencher com os termos reais no primeiro projeto fechado." },
+      update: {},
+    });
+  }
   // Locais/modelos são CREATE-ONLY: o seed cria o que faltar e nunca sobrescreve valores
   // ajustados pela tela (que têm trilha de auditoria em CatalogChangeLog).
   const locByName = {};

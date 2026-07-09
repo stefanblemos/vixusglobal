@@ -1,11 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
-import {
-  deleteBankProfile,
-  saveBankProfile,
-  saveHouseTypeFee,
-} from "@/lib/actions/catalog";
+import { saveHouseTypeFee } from "@/lib/actions/catalog";
 import { CatalogScenarios } from "@/components/catalog-scenarios";
+import { CatalogBanks } from "@/components/catalog-banks";
 import { CatalogLocations, type HistoryEntry } from "@/components/catalog-locations";
 import { CatalogModels } from "@/components/catalog-models";
 import { HOUSE_TYPES, HOUSE_TYPE_LABEL } from "@/lib/pools/house-types";
@@ -66,10 +63,13 @@ export default async function PoolCatalogPage({
       },
     }),
     prisma.houseTypeFee.findMany(),
-    prisma.bankProfile.findMany({ orderBy: { name: "asc" } }),
+    prisma.bankProfile.findMany({
+      orderBy: { name: "asc" },
+      include: { customFees: { orderBy: { createdAt: "asc" } } },
+    }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.catalogChangeLog.findMany({
-      where: { entity: { in: ["LOCATION", "MODEL", "SCENARIO"] } },
+      where: { entity: { in: ["LOCATION", "MODEL", "SCENARIO", "BANK"] } },
       orderBy: { createdAt: "desc" },
       take: 400,
     }),
@@ -179,60 +179,54 @@ export default async function PoolCatalogPage({
       )}
 
       {tab === "banks" && (
-        <Section
-          title="Bank profiles"
-          hint="Construction loan assumptions per lender — LTC/LTV sizing, rates, fees, interest reserve. Percentages are annual/percent values."
-        >
-          <div className="space-y-3">
-            {[...banks, null].map((b) => (
-              <form
-                key={b?.id ?? "new"}
-                action={saveBankProfile}
-                className="flex flex-wrap items-end gap-x-3 gap-y-2 rounded-lg border border-slate-100 p-3"
-              >
-                {b && <input type="hidden" name="id" value={b.id} />}
-                {(
-                  [
-                    ["name", "Bank", b?.name ?? "", "w-44"],
-                    ["ltcBuildPct", "LTC build %", b?.ltcBuildPct?.toString() ?? "80", "w-20"],
-                    ["ltcLandPct", "LTC land %", b?.ltcLandPct?.toString() ?? "50", "w-20"],
-                    ["ltvPct", "LTV %", b?.ltvPct?.toString() ?? "70", "w-20"],
-                    ["haircutPct", "Haircut %", b?.haircutPct?.toString() ?? "5", "w-20"],
-                    ["aprPct", "APR %", b?.aprPct?.toString() ?? "12", "w-20"],
-                    ["originationPct", "Orig. %", b?.originationPct?.toString() ?? "1", "w-20"],
-                    ["originationFlat", "Orig. flat", b?.originationFlat?.toString() ?? "0", "w-24"],
-                    ["closingFeePct", "Closing %", b?.closingFeePct?.toString() ?? "3", "w-20"],
-                    ["appraisalFee", "Appraisal", b?.appraisalFee?.toString() ?? "1500", "w-24"],
-                    ["legalFee", "Legal", b?.legalFee?.toString() ?? "1800", "w-24"],
-                    ["inspectionFeePerDraw", "Inspection/draw", b?.inspectionFeePerDraw?.toString() ?? "205", "w-24"],
-                    ["servicingMonthly", "Servicing/mo", b?.servicingMonthly?.toString() ?? "95", "w-24"],
-                    ["perUnitCap", "Cap/unit", b?.perUnitCap?.toString() ?? "", "w-28"],
-                  ] as Array<[string, string, string, string]>
-                ).map(([name, label, value, w]) => (
-                  <label key={name} className="block text-xs text-slate-400">
-                    {label}
-                    <input name={name} defaultValue={value} className={`${input} ${w} mt-0.5`} required={name === "name"} />
-                  </label>
-                ))}
-                <label className="flex items-center gap-1 text-xs text-slate-500">
-                  <input type="checkbox" name="financeLand" defaultChecked={b?.financeLand ?? false} /> finance land
-                </label>
-                <label className="flex items-center gap-1 text-xs text-slate-500">
-                  <input type="checkbox" name="hasInterestReserve" defaultChecked={b?.hasInterestReserve ?? false} /> interest reserve
-                </label>
-                <label className="flex items-center gap-1 text-xs text-slate-500">
-                  <input type="checkbox" name="feesFinanced" defaultChecked={b?.feesFinanced ?? true} /> fees financed
-                </label>
-                <button type="submit" className={saveBtn}>{b ? "Save" : "Add bank"}</button>
-                {b && (
-                  <button type="submit" formAction={deleteBankProfile} className={delBtn}>
-                    ✕ delete
-                  </button>
-                )}
-              </form>
-            ))}
-          </div>
-        </Section>
+        <CatalogBanks
+          banks={banks.map((b) => ({
+            id: b.id,
+            name: b.name,
+            ltcBuildPct: b.ltcBuildPct.toString(),
+            ltcLandPct: b.ltcLandPct.toString(),
+            financeLand: b.financeLand,
+            ltvPct: b.ltvPct.toString(),
+            haircutPct: b.haircutPct.toString(),
+            perUnitCap: b.perUnitCap?.toString() ?? null,
+            rateType: b.rateType,
+            aprPct: b.aprPct.toString(),
+            indexPct: b.indexPct.toString(),
+            spreadPct: b.spreadPct.toString(),
+            interestBasis: b.interestBasis,
+            originationPct: b.originationPct.toString(),
+            originationFlat: b.originationFlat.toString(),
+            brokerPct: b.brokerPct.toString(),
+            titleEscrowPct: b.titleEscrowPct.toString(),
+            closingFeePct: b.closingFeePct.toString(),
+            processingFee: b.processingFee.toString(),
+            budgetReviewFee: b.budgetReviewFee.toString(),
+            appraisalFee: b.appraisalFee.toString(),
+            legalFee: b.legalFee.toString(),
+            feesFinanced: b.feesFinanced,
+            servicingMonthly: b.servicingMonthly.toString(),
+            inspectionFeePerDraw: b.inspectionFeePerDraw.toString(),
+            drawProcessingFee: b.drawProcessingFee.toString(),
+            achFeePerBatch: b.achFeePerBatch.toString(),
+            hasInterestReserve: b.hasInterestReserve,
+            reserveMonths: b.reserveMonths.toString(),
+            releaseMode: b.releaseMode,
+            sweepPct: b.sweepPct.toString(),
+            reconveyanceFee: b.reconveyanceFee.toString(),
+            termMonths: b.termMonths.toString(),
+            extensionMonths: b.extensionMonths.toString(),
+            extensionFeePct: b.extensionFeePct.toString(),
+            notes: b.notes,
+            customFees: b.customFees.map((f) => ({
+              id: f.id,
+              name: f.name,
+              timing: f.timing,
+              kind: f.kind,
+              amount: f.amount.toString(),
+            })),
+          }))}
+          history={history("BANK")}
+        />
       )}
 
       {tab === "scenarios" && (
