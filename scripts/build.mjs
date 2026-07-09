@@ -25,6 +25,8 @@ if (process.env.VERCEL_ENV === "production") {
   // create-only (nunca sobrescreve o que já foi lançado/ajustado pela tela).
   console.log("▲ Seeding VHP-I / PH3 pool (idempotent)");
   run("node scripts/seed-ph3.mjs");
+  // Data-fix condicionado (no-op depois de aplicado / se o usuário editou)
+  run("node scripts/fix-ph3-sales-panel.mjs");
 }
 
 run("next build");

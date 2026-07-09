@@ -52,13 +52,13 @@ const CONTRIBUTIONS = [
 // ── Casas (Job List da PH3; custos totais nas notas — split lote/obra a preencher) ──
 const HOUSES = [
   { address: "21021 Peachland Blvd", status: "FOR_SALE", plannedSalePrice: 345000, ownCapital: 52279.4, notes: "Original cost 315,676.43 (planilha PH3); venda estimada 345k (jul/2026)" },
-  { address: "6440 N Canfield Way", status: "SOLD", soldPrice: 279900, payoffAmount: 245125, closingCost: 25256.79, netReceived: 9518.21, ownCapital: 41514.3, saleDate: "2026-03-24", notes: "Original cost 208,014.30" },
+  { address: "6440 N Canfield Way", status: "SOLD", soldPrice: 280400, payoffAmount: 245125, closingCost: 25716.79, netReceived: 9558.21, ownCapital: 41514.3, saleDate: "2026-03-24", notes: "Original cost 208,014.30" },
   { address: "6079 SW 150th Ln", status: "SOLD", soldPrice: 318000, payoffAmount: 282350, closingCost: 30906.72, netReceived: 4743.28, ownCapital: 67413.65, saleDate: "2026-04-28", notes: "Original cost 238,913.65" },
   { address: "13222 Irwin Dr", status: "SOLD", soldPrice: 374900, payoffAmount: 319198, closingCost: 37414.74, netReceived: 18287.26, ownCapital: 47663.32, saleDate: "2026-06-05", notes: "Original cost 314,630.87" },
-  { address: "12659 SW 64th Ln", status: "SOLD", soldPrice: 519900, payoffAmount: 221455.04, closingCost: 49088.89, netReceived: 249356.07, ownCapital: 68248.76, saleDate: "2026-07-02", notes: "Original cost 345,948.76; payoff final no extrato: 221,979.30" },
-  { address: "16965 SW 50th Cir", status: "SOLD", soldPrice: 348900, payoffAmount: 285898, closingCost: 32911.54, netReceived: 30090.46, ownCapital: 48664.23, saleDate: "2026-06-15", notes: "Original cost 227,091.68" },
-  { address: "411 Marion Oaks Golf Rd", status: "SOLD", soldPrice: 350000, payoffAmount: 294103.35, saleDate: "2026-04-20", ownCapital: 48561.89, notes: "Payoff 20/04 atribuído — CONFIRMAR se é desta casa ou da 13663" },
-  { address: "13663 SW 42nd Ave", status: "SOLD", soldPrice: 349000, payoffAmount: 287563, saleDate: "2026-06-03", ownCapital: 49216.16, notes: "Payoff 03/06 atribuído — CONFIRMAR se é desta casa ou da 411 Marion Oaks" },
+  { address: "12659 SW 64th Ln", status: "SOLD", soldPrice: 519900, payoffAmount: 221455.04, closingCost: 49088.89, netReceived: 249356.07, ownCapital: 91948.76, saleDate: "2026-07-02", notes: "Original cost 345,948.76; payoff final no extrato: 221,979.30" },
+  { address: "16965 SW 50th Cir", status: "SOLD", soldPrice: 348900, payoffAmount: 285898, closingCost: 32911.54, netReceived: 30090.46, ownCapital: 63091.68, saleDate: "2026-06-15", notes: "Original cost 227,091.68" },
+  { address: "411 Marion Oaks Golf Rd", status: "SOLD", soldPrice: 350000, payoffAmount: 294103.35, saleDate: "2026-04-20", ownCapital: 69561.89, notes: "Payoff confirmado pelo Sales Panel (jul/2026)" },
+  { address: "13663 SW 42nd Ave", status: "SOLD", soldPrice: 349000, payoffAmount: 287563, saleDate: "2026-06-03", ownCapital: 70216.16, notes: "Payoff confirmado pelo Sales Panel (jul/2026)" },
 ];
 
 async function findOrCreateCompany(inv) {
