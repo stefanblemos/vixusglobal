@@ -111,6 +111,73 @@ export async function toggleLoanEntryReconciled(formData: FormData): Promise<voi
   if (!entry) return;
   await prisma.poolLoanEntry.update({ where: { id }, data: { reconciled: !entry.reconciled } });
   if (poolId) revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath("/pools/draws");
+}
+
+// Lança um DRAW (tela global de Draws): valor solicitado + data da solicitação, valor
+// LIBERADO + data do crédito (o que entra no saldo). Junto, os fees PREVISTOS do contrato
+// do banco (processing + inspection por draw; ACH uma vez por data com draws) — entram
+// não-conciliados para validação posterior contra o extrato.
+export async function addDraw(_prev: FormState, formData: FormData): Promise<FormState> {
+  const poolId = String(formData.get("poolId") ?? "");
+  const houseId = String(formData.get("houseId") ?? "").trim() || null;
+  const creditDateRaw = String(formData.get("creditDate") ?? "").trim();
+  const requestDateRaw = String(formData.get("requestDate") ?? "").trim();
+  const released = num(formData.get("releasedAmount"));
+  const requested = optNum(formData.get("requestedAmount"));
+  if (!poolId) return { error: "Pick the pool." };
+  if (!creditDateRaw) return { error: "Credit date is required." };
+  if (!Number.isFinite(released) || released <= 0)
+    return { error: "Released amount must be greater than 0." };
+
+  const loan = await prisma.poolLoan.findUnique({
+    where: { poolId },
+    include: { bankProfile: { include: { customFees: true } } },
+  });
+  if (!loan) return { error: "This pool has no loan yet — set it up in the Loan statement tab." };
+
+  const creditDate = new Date(creditDateRaw);
+  const bank = loan.bankProfile;
+
+  // ACH (fee por LOTE de draws): só se for o primeiro draw desta data
+  const drawsSameDay = await prisma.poolLoanEntry.count({
+    where: { loanId: loan.id, type: "DRAW", date: creditDate },
+  });
+
+  const fees: Array<{ amount: number; memo: string }> = [];
+  if (bank) {
+    if (Number(bank.drawProcessingFee) > 0)
+      fees.push({ amount: Number(bank.drawProcessingFee), memo: "Draw processing fee (previsto — contrato)" });
+    if (Number(bank.inspectionFeePerDraw) > 0)
+      fees.push({ amount: Number(bank.inspectionFeePerDraw), memo: "Inspection fee (previsto — contrato)" });
+    if (drawsSameDay === 0 && Number(bank.achFeePerBatch) > 0)
+      fees.push({ amount: Number(bank.achFeePerBatch), memo: "ACH fee (previsto — contrato, por lote)" });
+    for (const f of bank.customFees.filter((cf) => cf.timing === "PER_DRAW" && cf.kind === "FLAT"))
+      fees.push({ amount: Number(f.amount), memo: `${f.name} (previsto — contrato)` });
+  }
+
+  await prisma.$transaction([
+    prisma.poolLoanEntry.create({
+      data: {
+        loanId: loan.id,
+        houseId,
+        type: "DRAW",
+        date: creditDate,
+        amount: Math.abs(released),
+        requestedAmount: requested,
+        requestDate: requestDateRaw ? new Date(requestDateRaw) : null,
+        memo: String(formData.get("memo") ?? "").trim() || null,
+      },
+    }),
+    ...fees.map((f) =>
+      prisma.poolLoanEntry.create({
+        data: { loanId: loan.id, houseId, type: "DRAW_FEE", date: creditDate, amount: f.amount, memo: f.memo },
+      }),
+    ),
+  ]);
+  revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath("/pools/draws");
+  return undefined;
 }
 
 // Lança o juro REAL do mês (aba Juros & reserve): cria INTEREST e, se "pago da reserve",

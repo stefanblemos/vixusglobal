@@ -18,6 +18,7 @@ import {
 } from "@/components/pool-investor-forms";
 import { AddPoolExpenseForm, CreateCapitalCallForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
+import { PoolTabsNav } from "@/components/pool-tabs";
 import { AddMonthlyInterestForm } from "@/components/pool-interest-form";
 import { buildStatement } from "@/lib/pools/loan-statement";
 
@@ -214,20 +215,12 @@ export default async function PoolDetailPage({
             {pool.noteLoan ? ` · note to ${pool.noteLoan.borrower.legalName}` : ""}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Link
-            href={`/pools/${pool.id}/loan`}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-          >
-            Loan statement
-          </Link>
-          <Link
-            href={`/pools/${pool.id}/edit`}
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-          >
-            Edit pool
-          </Link>
-        </div>
+        <Link
+          href={`/pools/${pool.id}/edit`}
+          className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+        >
+          Edit pool
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -271,21 +264,7 @@ export default async function PoolDetailPage({
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-slate-200">
-        {TABS.map(([key, label]) => (
-          <Link
-            key={key}
-            href={`/pools/${pool.id}?tab=${key}`}
-            className={`rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
-              tab === key
-                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
-                : "border-transparent text-slate-500 hover:text-slate-700"
-            }`}
-          >
-            {label}
-          </Link>
-        ))}
-      </div>
+      <PoolTabsNav poolId={pool.id} active={tab} />
 
       {/* Overview — premissas + esperado da simulação */}
       {tab === "overview" && (

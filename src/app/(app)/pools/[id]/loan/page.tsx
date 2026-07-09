@@ -9,6 +9,8 @@ import {
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
 import { AddLoanEntryForm, PoolLoanTermsForm } from "@/components/pool-loan-forms";
+import { PoolTabsNav } from "@/components/pool-tabs";
+import { LoanMonthFilter } from "@/components/loan-month-filter";
 
 export const dynamic = "force-dynamic";
 
@@ -29,8 +31,15 @@ function Card({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
-export default async function PoolLoanPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PoolLoanPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ month?: string }>;
+}) {
   const { id } = await params;
+  const { month: rawMonth } = await searchParams;
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
@@ -75,6 +84,25 @@ export default async function PoolLoanPage({ params }: { params: Promise<{ id: s
       )
     : null;
 
+  // meses do filtro: do primeiro lançamento até o mês corrente (auto-incremental)
+  const monthKey = (d: Date) => d.toISOString().slice(0, 7);
+  const months: string[] = [];
+  if (stmt && stmt.rows.length > 0) {
+    const cursor = new Date(stmt.rows[0].date);
+    cursor.setUTCDate(1);
+    const end = new Date();
+    while (monthKey(cursor) <= monthKey(end)) {
+      months.push(monthKey(cursor));
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+  }
+  const month = rawMonth && (rawMonth === "all" || months.includes(rawMonth)) ? rawMonth : "all";
+  const visibleRows = stmt
+    ? month === "all"
+      ? stmt.rows
+      : stmt.rows.filter((r) => monthKey(r.date) === month)
+    : [];
+
   // casas vendidas com payoff que ainda não foi lançado no statement
   const payoffLaunched = new Set(
     loan?.entries.filter((e) => e.type === "PAYOFF" && e.houseId).map((e) => e.houseId) ?? [],
@@ -96,9 +124,15 @@ export default async function PoolLoanPage({ params }: { params: Promise<{ id: s
         <p className="text-sm text-slate-500">
           O extrato interno do construction loan — draws, juros reais, fees e payoffs lançados
           aqui; o saldo devido é calculado e cada linha pode ser conciliada (✓) com o extrato do
-          banco.
+          banco. Draws novos entram pela tela{" "}
+          <Link href="/pools/draws" className="text-[#1f3a5f] hover:underline">
+            Draws
+          </Link>
+          .
         </p>
       </div>
+
+      <PoolTabsNav poolId={pool.id} active="loan" />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 text-base font-medium text-slate-800">Termos do loan</h2>
@@ -177,12 +211,15 @@ export default async function PoolLoanPage({ params }: { params: Promise<{ id: s
           )}
 
           <section className="rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="text-base font-medium text-slate-800">Statement</h2>
-              <p className="text-xs text-slate-400">
-                Nas linhas de juro, "esperado" é o accrual diário (APR/360) sobre o saldo — o
-                delta confere a cobrança do banco.
-              </p>
+            <div className="flex items-end justify-between border-b border-slate-100 px-5 py-4">
+              <div>
+                <h2 className="text-base font-medium text-slate-800">Statement</h2>
+                <p className="text-xs text-slate-400">
+                  Nas linhas de juro, "esperado" é o accrual diário (APR/360) sobre o saldo — o
+                  delta confere a cobrança do banco. O saldo é sempre acumulado desde o início.
+                </p>
+              </div>
+              <LoanMonthFilter months={months} value={month} />
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -199,14 +236,16 @@ export default async function PoolLoanPage({ params }: { params: Promise<{ id: s
                   </tr>
                 </thead>
                 <tbody>
-                  {stmt.rows.length === 0 && (
+                  {visibleRows.length === 0 && (
                     <tr>
                       <td colSpan={8} className="px-5 py-6 text-center text-sm text-slate-400">
-                        Nenhum lançamento ainda — comece pelos fees do closing e a reserve.
+                        {month === "all"
+                          ? "Nenhum lançamento ainda — comece pelos fees do closing e a reserve."
+                          : "Nenhum lançamento neste mês."}
                       </td>
                     </tr>
                   )}
-                  {stmt.rows.map((e) => (
+                  {visibleRows.map((e) => (
                     <tr key={e.id} className={`border-b border-slate-50 ${e.reconciled ? "" : "bg-amber-50/30"}`}>
                       <td className={td}>{fmtDate(e.date)}</td>
                       <td className={td}>

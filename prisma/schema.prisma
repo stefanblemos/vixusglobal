@@ -1340,8 +1340,11 @@ model PoolLoanEntry {
   house   PoolHouse? @relation(fields: [houseId], references: [id], onDelete: SetNull)
 
   type       PoolLoanEntryType
-  date       DateTime          @db.Date
-  amount     Decimal           @db.Decimal(20, 2) // + aumenta a dívida, − reduz
+  date       DateTime          @db.Date // DRAW: data do CRÉDITO
+  amount     Decimal           @db.Decimal(20, 2) // + aumenta a dívida, − reduz; DRAW: liberado
+  // Só para DRAW: o que foi SOLICITADO ao banco e quando (liberado pode diferir)
+  requestedAmount Decimal?  @db.Decimal(20, 2)
+  requestDate     DateTime? @db.Date
   memo       String?
   reconciled Boolean           @default(false) // conferido contra o extrato do banco
   createdAt  DateTime          @default(now())
