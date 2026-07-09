@@ -1,0 +1,615 @@
+[
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 19815.64,
+"memo": "Broker Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 4000.0,
+"memo": "Budget Review Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 71.0,
+"memo": "Credit Report Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 2000.0,
+"memo": "Engineering Review Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 160.0,
+"memo": "Flood Determination Fee"
+},
+{
+"type": "RESERVE",
+"date": "2025-10-30",
+"amount": 89150.36,
+"memo": "Interest Reserve"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 2500.0,
+"memo": "Legal Expense"
+},
+{
+"type": "CREDIT",
+"date": "2025-10-30",
+"amount": -7000.0,
+"memo": "LO Credit"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 34677.37,
+"memo": "Origination Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 2000.0,
+"memo": "Processing Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 26309.48,
+"memo": "Title and Escrow Fee"
+},
+{
+"type": "CLOSING_FEE",
+"date": "2025-10-30",
+"amount": 200.0,
+"memo": "UCC Filing Fee"
+},
+{
+"type": "INTEREST",
+"date": "2025-10-31",
+"amount": 90.61,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2025-10-31",
+"amount": -90.61,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "INTEREST",
+"date": "2025-11-30",
+"amount": 1340.35,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2025-11-30",
+"amount": -1340.35,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "INTEREST",
+"date": "2025-12-31",
+"amount": 1361.08,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2025-12-31",
+"amount": -1361.08,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 162000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 91000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 188000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 188000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 189349.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 164577.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-01-16",
+"amount": 156715.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-01-16",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "INTEREST",
+"date": "2026-01-31",
+"amount": 5872.57,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-01-31",
+"amount": -5872.57,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "INTEREST",
+"date": "2026-02-28",
+"amount": 9123.04,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-02-28",
+"amount": -9123.04,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-03-05",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-03-05",
+"amount": 35123.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-03-05",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-03-05",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-03-24",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-03-24",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-03-24",
+"amount": 22000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-03-24",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-03-24",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "PAYOFF",
+"date": "2026-03-24",
+"amount": -245125.0,
+"memo": "Principal",
+"houseAddress": "6440 N Canfield Way"
+},
+{
+"type": "INTEREST",
+"date": "2026-03-31",
+"amount": 9895.84,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-03-31",
+"amount": -9895.84,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-04-03",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-04-03",
+"amount": 33000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-04-03",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-04-03",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-04-08",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-04-08",
+"amount": 22000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-04-08",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-04-08",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-04-20",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "PAYOFF",
+"date": "2026-04-20",
+"amount": -294103.35,
+"memo": "Principal",
+"houseAddress": "Casa 1 (endereco a preencher)"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-04-28",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "PAYOFF",
+"date": "2026-04-28",
+"amount": -282350.0,
+"memo": "Principal",
+"houseAddress": "6079 SW 150th Ln"
+},
+{
+"type": "INTEREST",
+"date": "2026-04-30",
+"amount": 7721.39,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-04-30",
+"amount": -7721.39,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-11",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-05-11",
+"amount": 112975.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-05-11",
+"amount": 60705.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-11",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-11",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-11",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-11",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 20.0,
+"memo": "ACH Fee"
+},
+{
+"type": "DRAW",
+"date": "2026-05-19",
+"amount": 60651.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-05-19",
+"amount": 195000.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW",
+"date": "2026-05-19",
+"amount": 118295.0,
+"memo": "Budget Draw"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 20.0,
+"memo": "Draw Processing Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "DRAW_FEE",
+"date": "2026-05-19",
+"amount": 185.0,
+"memo": "Inspection Fee"
+},
+{
+"type": "INTEREST",
+"date": "2026-05-31",
+"amount": 6763.4,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-05-31",
+"amount": -6763.4,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-06-03",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "PAYOFF",
+"date": "2026-06-03",
+"amount": -287563.0,
+"memo": "Principal",
+"houseAddress": "Casa 2 (endereco a preencher)"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-06-05",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "PAYOFF",
+"date": "2026-06-05",
+"amount": -319198.0,
+"memo": "Principal",
+"houseAddress": "13222 Irwin Dr"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-06-15",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "PAYOFF",
+"date": "2026-06-15",
+"amount": -285898.0,
+"memo": "Principal",
+"houseAddress": "16965 SW 50th Cir"
+},
+{
+"type": "INTEREST",
+"date": "2026-06-30",
+"amount": 3400.1,
+"memo": "Interest"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-06-30",
+"amount": -3400.1,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "INTEREST",
+"date": "2026-07-02",
+"amount": 130.96,
+"memo": "Interest"
+},
+{
+"type": "RECONVEYANCE",
+"date": "2026-07-02",
+"amount": 350.0,
+"memo": "Reconveyance Fee"
+},
+{
+"type": "INTEREST_PAYMENT",
+"date": "2026-07-02",
+"amount": -43581.98,
+"memo": "Interest Payment - Interest Reserve"
+},
+{
+"type": "PAYOFF",
+"date": "2026-07-02",
+"amount": -221979.3,
+"memo": "Principal",
+"houseAddress": "12659 SW 64th Ln"
+}
+]

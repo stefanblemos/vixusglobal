@@ -21,6 +21,10 @@ if (process.env.VERCEL_ENV === "production") {
   // upserts idempotentes; precisa do client gerado e das migrations aplicadas.
   console.log("▲ Seeding pool simulator catalog (idempotent)");
   run("node scripts/seed-catalog.mjs");
+  // Pool real VHP-I (PH3): investidores, aportes, casas e statement do loan 77959 —
+  // create-only (nunca sobrescreve o que já foi lançado/ajustado pela tela).
+  console.log("▲ Seeding VHP-I / PH3 pool (idempotent)");
+  run("node scripts/seed-ph3.mjs");
 }
 
 run("next build");
