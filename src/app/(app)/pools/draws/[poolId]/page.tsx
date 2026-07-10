@@ -22,10 +22,10 @@ export default async function DrawLoanPage({
   searchParams,
 }: {
   params: Promise<{ poolId: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; loan?: string }>;
 }) {
   const { poolId } = await params;
-  const { tab: rawTab } = await searchParams;
+  const { tab: rawTab, loan: rawLoan } = await searchParams;
   const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "houses";
 
   const pool = await prisma.investmentPool.findUnique({
@@ -35,7 +35,8 @@ export default async function DrawLoanPage({
         orderBy: { createdAt: "asc" },
         include: { catalogModel: true, catalogLocation: true },
       },
-      loan: {
+      loans: {
+        orderBy: { createdAt: "asc" },
         include: {
           bankProfile: true,
           entries: {
@@ -46,13 +47,18 @@ export default async function DrawLoanPage({
       },
     },
   });
-  if (!pool || !pool.loan) notFound();
-  const loan = { ...pool.loan, entries: pool.loan.entries.filter((e) => e.type === "DRAW") };
+  if (!pool || pool.loans.length === 0) notFound();
+  const fullLoan = pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0];
+  const loan = { ...fullLoan, entries: fullLoan.entries.filter((e) => e.type === "DRAW") };
   const b = loan.bankProfile;
+  // casas financiadas por ESTE loan (loanId null só conta se o pool tem um loan único)
+  const loanHouses = pool.houses.filter(
+    (h) => h.loanId === loan.id || (h.loanId == null && pool.loans.length === 1),
+  );
 
   // Quitação: saldo do statement ≤ 0 com payoffs → loan encerrado; data = último lançamento.
   // Crédito residual (saldo negativo) volta ao caixa do pool para distribuição.
-  const realEntries = pool.loan.entries.filter((e) => !e.pending);
+  const realEntries = fullLoan.entries.filter((e) => !e.pending);
   const loanBalance = realEntries.reduce((s, e) => s + Number(e.amount), 0);
   const hasPayoffs = realEntries.some((e) => e.type === "PAYOFF");
   const paidOff = hasPayoffs && loanBalance <= 0.01;
@@ -79,7 +85,7 @@ export default async function DrawLoanPage({
     else cur.credited += Number(e.amount);
     agg.set(k, cur);
   }
-  const houses: HouseAvailability[] = [...pool.houses].sort(byAddressNumber).map((h) => {
+  const houses: HouseAvailability[] = [...loanHouses].sort(byAddressNumber).map((h) => {
     const a = agg.get(h.id) ?? { credited: 0, pending: 0 };
     const budget = h.bankLoanAmount == null ? null : Number(h.bankLoanAmount);
     const modelLabel =
@@ -157,7 +163,7 @@ export default async function DrawLoanPage({
         {TABS.map(([key, label]) => (
           <Link
             key={key}
-            href={`/pools/draws/${pool.id}?tab=${key}`}
+            href={`/pools/draws/${pool.id}?loan=${loan.id}&tab=${key}`}
             className={`rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
               tab === key
                 ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
@@ -170,7 +176,13 @@ export default async function DrawLoanPage({
       </div>
 
       {tab === "houses" && (
-        <DrawHousesPanel poolId={pool.id} poolLabel={poolLabel} feesHint={feesHint} houses={houses} />
+        <DrawHousesPanel
+          poolId={pool.id}
+          loanId={loan.id}
+          poolLabel={poolLabel}
+          feesHint={feesHint}
+          houses={houses}
+        />
       )}
 
       {tab === "ledger" && (

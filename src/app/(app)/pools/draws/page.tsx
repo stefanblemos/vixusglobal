@@ -4,19 +4,15 @@ import { formatMoney } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
-// Dash de construction loans: um card por loan; clique abre as abas Casas (disponibilidade
-// + solicitar draw) e Ledger de draws.
+// Dash de construction loans: um card por loan (um pool pode ter vários bancos); clique
+// abre as abas Casas (disponibilidade + solicitar draw) e Ledger de draws.
 export default async function DrawsDashboardPage() {
-  const pools = await prisma.investmentPool.findMany({
-    where: { loan: { isNot: null } },
-    orderBy: { code: "asc" },
+  const loans = await prisma.poolLoan.findMany({
+    orderBy: [{ pool: { code: "asc" } }, { createdAt: "asc" }],
     include: {
-      loan: {
-        include: {
-          bankProfile: true,
-          entries: { select: { amount: true, requestedAmount: true, pending: true, type: true, date: true } },
-        },
-      },
+      pool: { select: { id: true, code: true, alias: true } },
+      bankProfile: true,
+      entries: { select: { amount: true, requestedAmount: true, pending: true, type: true, date: true } },
       houses: { select: { bankLoanAmount: true } },
     },
   });
@@ -31,15 +27,15 @@ export default async function DrawsDashboardPage() {
         </p>
       </div>
 
-      {pools.length === 0 ? (
+      {loans.length === 0 ? (
         <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
           Nenhum pool com construction loan ainda — configure os termos na aba Loan statement do
           pool.
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {pools.map((p) => {
-            const loan = p.loan!;
+          {loans.map((loan) => {
+            const p = loan.pool;
             const draws = loan.entries.filter((e) => e.type === "DRAW");
             const credited = draws
               .filter((e) => !e.pending)
@@ -47,7 +43,8 @@ export default async function DrawsDashboardPage() {
             const awaiting = draws
               .filter((e) => e.pending)
               .reduce((s, e) => s + Number(e.requestedAmount ?? 0), 0);
-            const budget = p.houses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
+            // aprovado = bank budget das casas DESTE loan
+            const budget = loan.houses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
             const available = budget - credited - awaiting;
             const pendingCount = draws.filter((e) => e.pending).length;
             // quitado: saldo total do loan ≤ 0 com payoffs; data = último lançamento
@@ -59,8 +56,8 @@ export default async function DrawsDashboardPage() {
               : null;
             return (
               <Link
-                key={p.id}
-                href={`/pools/draws/${p.id}`}
+                key={loan.id}
+                href={`/pools/draws/${p.id}?loan=${loan.id}`}
                 className="rounded-xl border border-slate-200 bg-white p-5 transition hover:border-[#1f3a5f]/40 hover:shadow-sm"
               >
                 <div className="flex items-center justify-between">

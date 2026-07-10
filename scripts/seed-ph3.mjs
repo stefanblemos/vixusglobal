@@ -163,20 +163,29 @@ async function main() {
     }
   }
 
-  // 5. Loan 77959 + statement completo do extrato (create-only)
+  // 5. Loan 77959 + statement completo do extrato (create-only; pool pode ter N loans —
+  // este seed cuida só do 77959, identificado pelo loanNumber)
   const bc = await prisma.bankProfile.findUnique({ where: { name: "Builders Capital" } });
-  const loan = await prisma.poolLoan.upsert({
-    where: { poolId: pool.id },
-    create: {
-      poolId: pool.id,
-      bankProfileId: bc?.id ?? null,
-      loanNumber: "77959",
-      committed: 1981564,
-      aprPct: 9,
-      closingDate: new Date("2025-10-30"),
-      notes: "Vixus 8 SFR — statement importado do transaction history do banco.",
-    },
-    update: {},
+  let loan = await prisma.poolLoan.findFirst({
+    where: { poolId: pool.id, loanNumber: "77959" },
+  });
+  if (!loan) {
+    loan = await prisma.poolLoan.create({
+      data: {
+        poolId: pool.id,
+        bankProfileId: bc?.id ?? null,
+        loanNumber: "77959",
+        committed: 1981564,
+        aprPct: 9,
+        closingDate: new Date("2025-10-30"),
+        notes: "Vixus 8 SFR — statement importado do transaction history do banco.",
+      },
+    });
+  }
+  // casas do PH3 sem loan definido pertencem ao 77959 (único loan real do pool)
+  await prisma.poolHouse.updateMany({
+    where: { poolId: pool.id, loanId: null },
+    data: { loanId: loan.id },
   });
   const existingEntries = await prisma.poolLoanEntry.count({ where: { loanId: loan.id } });
   if (existingEntries === 0) {

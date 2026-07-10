@@ -27,12 +27,14 @@ const money = (v: number | null) =>
 
 function DrawModal({
   poolId,
+  loanId,
   poolLabel,
   feesHint,
   house,
   onClose,
 }: {
   poolId: string;
+  loanId: string;
   poolLabel: string;
   feesHint: string;
   house: HouseAvailability;
@@ -83,6 +85,7 @@ function DrawModal({
 
         <form action={formAction} className="space-y-4 px-6 py-4">
           <input type="hidden" name="poolId" value={poolId} />
+          <input type="hidden" name="loanId" value={loanId} />
           {house.id && <input type="hidden" name="houseId" value={house.id} />}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -135,11 +138,13 @@ function DrawModal({
 
 export function DrawHousesPanel({
   poolId,
+  loanId,
   poolLabel,
   feesHint,
   houses,
 }: {
   poolId: string;
+  loanId: string;
   poolLabel: string;
   feesHint: string;
   houses: HouseAvailability[];
@@ -223,6 +228,7 @@ export function DrawHousesPanel({
       {selected && (
         <DrawModal
           poolId={poolId}
+          loanId={loanId}
           poolLabel={poolLabel}
           feesHint={feesHint}
           house={selected}

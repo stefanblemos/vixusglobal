@@ -308,7 +308,7 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
   await prisma.poolSimulation.update({ where: { id }, data: { poolId: pool.id } });
 
   if (sim.fundingMode === "BANK" && sim.bankProfileId) {
-    await prisma.poolLoan.create({
+    const loan = await prisma.poolLoan.create({
       data: {
         poolId: pool.id,
         bankProfileId: sim.bankProfileId,
@@ -316,6 +316,9 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
         notes: `Estimado pela simulação "${sim.name}" — substituir pelo loan real no closing.`,
       },
     });
+    // loan principal: todas as casas nascem nele; loans de outros bancos são adicionados
+    // manualmente na aba Loan e as casas realocadas na ficha
+    await prisma.poolHouse.updateMany({ where: { poolId: pool.id }, data: { loanId: loan.id } });
   }
 
   revalidatePath("/pools");

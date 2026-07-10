@@ -11,9 +11,11 @@ const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 // banco tem reserve — cria o pagamento espelhado e o saldo não compõe).
 export function AddMonthlyInterestForm({
   poolId,
+  loanId,
   hasReserve,
 }: {
   poolId: string;
+  loanId: string;
   hasReserve: boolean;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
@@ -22,6 +24,7 @@ export function AddMonthlyInterestForm({
   );
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="loanId" value={loanId} />
       <div className="w-40">
         <label className={labelClass}>Data (fim do mês)</label>
         <input name="date" type="date" required className={inputClass} />

@@ -85,7 +85,10 @@ export default async function PoolDetailPage({
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
       capitalCalls: { orderBy: { date: "asc" }, include: { lines: true } },
       expenses: { orderBy: { date: "asc" } },
-      loan: { include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } } },
+      loans: {
+        orderBy: { createdAt: "asc" },
+        include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } },
+      },
       simulations: {
         orderBy: { updatedAt: "desc" },
         take: 1,
@@ -98,40 +101,40 @@ export default async function PoolDetailPage({
   const sim = pool.simulations[0] ?? null;
   const simKpis = (sim?.result as { kpis?: Record<string, number | null> } | null)?.kpis ?? null;
 
-  // Juros & reserve (do loan statement)
-  const loanApr =
-    pool.loan?.aprPct != null
-      ? Number(pool.loan.aprPct)
-      : pool.loan?.bankProfile
-        ? pool.loan.bankProfile.rateType === "FIXED"
-          ? Number(pool.loan.bankProfile.aprPct)
-          : Number(pool.loan.bankProfile.indexPct) + Number(pool.loan.bankProfile.spreadPct)
-        : null;
-  const stmt = pool.loan
-    ? buildStatement(
-        pool.loan.entries.filter((e) => !e.pending).map((e) => ({
-          id: e.id,
-          type: e.type,
-          date: e.date,
-          amount: Number(e.amount),
-          houseLabel: null,
-          memo: e.memo,
-          reconciled: e.reconciled,
-          createdAt: e.createdAt,
-        })),
-        loanApr,
-      )
-    : null;
-  const reserveFunded = pool.loan
-    ? pool.loan.entries.filter((e) => e.type === "RESERVE").reduce((s, e) => s + Number(e.amount), 0)
-    : 0;
-  const reservePaidOut = pool.loan
-    ? -pool.loan.entries
-        .filter((e) => e.type === "INTEREST_PAYMENT")
-        .reduce((s, e) => s + Number(e.amount), 0)
-    : 0;
-  const reserveRemaining = Math.round((reserveFunded - reservePaidOut) * 100) / 100 + 0 || 0;
-  const reserveRefund = Math.max(0, Math.round((reservePaidOut - (stmt?.totalInterest ?? 0)) * 100) / 100);
+  // Juros & reserve — um bloco por loan (pool pode ter vários bancos)
+  const loanStats = pool.loans.map((loan) => {
+    const apr =
+      loan.aprPct != null
+        ? Number(loan.aprPct)
+        : loan.bankProfile
+          ? loan.bankProfile.rateType === "FIXED"
+            ? Number(loan.bankProfile.aprPct)
+            : Number(loan.bankProfile.indexPct) + Number(loan.bankProfile.spreadPct)
+          : null;
+    const stmt = buildStatement(
+      loan.entries.filter((e) => !e.pending).map((e) => ({
+        id: e.id,
+        type: e.type,
+        date: e.date,
+        amount: Number(e.amount),
+        houseLabel: null,
+        memo: e.memo,
+        reconciled: e.reconciled,
+        createdAt: e.createdAt,
+      })),
+      apr,
+    );
+    const reserveFunded = loan.entries
+      .filter((e) => e.type === "RESERVE")
+      .reduce((s, e) => s + Number(e.amount), 0);
+    const reservePaidOut = -loan.entries
+      .filter((e) => e.type === "INTEREST_PAYMENT")
+      .reduce((s, e) => s + Number(e.amount), 0);
+    const reserveRemaining = Math.round((reserveFunded - reservePaidOut) * 100) / 100 + 0 || 0;
+    const reserveRefund = Math.max(0, Math.round((reservePaidOut - stmt.totalInterest) * 100) / 100);
+    const label = `${loan.bankProfile?.name ?? "Banco a definir"}${loan.loanNumber ? ` · ${loan.loanNumber}` : ""}`;
+    return { loan, label, apr, stmt, reserveFunded, reserveRemaining, reserveRefund };
+  });
 
   const table = capTable(pool.members);
   const memberById = new Map(pool.members.map((m) => [m.id, memberName(m)]));
@@ -282,8 +285,10 @@ export default async function PoolDetailPage({
                   ["Término real", fmtDate(pool.effectiveEndDate)],
                   [
                     "Forma de pagamento",
-                    pool.loan
-                      ? `Construction loan — ${pool.loan.bankProfile?.name ?? "banco a definir"}`
+                    pool.loans.length > 0
+                      ? `Construction loan — ${pool.loans
+                          .map((l) => l.bankProfile?.name ?? "banco a definir")
+                          .join(" · ")}`
                       : sim?.fundingMode === "BANK"
                         ? `Construction loan — ${sim.bankProfile?.name ?? ""} (previsto)`
                         : "Equity (100% investidores)",
@@ -300,8 +305,25 @@ export default async function PoolDetailPage({
                   ],
                   ["Unit price", formatMoney(pool.unitPrice, pool.currency)],
                   ["Janela de captação até", fmtDate(pool.fundingDeadline)],
-                  ["Closing do loan (previsto)", fmtDate(pool.loan?.expectedClosingDate)],
-                  ["Closing do loan (real)", fmtDate(pool.loan?.closingDate)],
+                  [
+                    "Closing do loan (previsto)",
+                    pool.loans.length <= 1
+                      ? fmtDate(pool.loans[0]?.expectedClosingDate ?? null)
+                      : pool.loans
+                          .map(
+                            (l) =>
+                              `${l.bankProfile?.name ?? "?"}: ${fmtDate(l.expectedClosingDate)}`,
+                          )
+                          .join(" · "),
+                  ],
+                  [
+                    "Closing do loan (real)",
+                    pool.loans.length <= 1
+                      ? fmtDate(pool.loans[0]?.closingDate ?? null)
+                      : pool.loans
+                          .map((l) => `${l.bankProfile?.name ?? "?"}: ${fmtDate(l.closingDate)}`)
+                          .join(" · "),
+                  ],
                 ] as Array<[string, string]>
               ).map(([label, value]) => (
                 <div key={label}>
@@ -767,10 +789,10 @@ export default async function PoolDetailPage({
       </section>
       )}
 
-      {/* Juros & reserve (do loan statement) */}
+      {/* Juros & reserve (do loan statement) — um bloco por loan */}
       {tab === "interest" && (
-        <div className="space-y-4">
-          {!pool.loan || !stmt ? (
+        <div className="space-y-8">
+          {loanStats.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
               O pool ainda não tem construction loan —{" "}
               <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">
@@ -779,7 +801,11 @@ export default async function PoolDetailPage({
               para acompanhar juros e reserve.
             </div>
           ) : (
-            <>
+            loanStats.map(({ loan, label, apr, stmt, reserveFunded, reserveRemaining, reserveRefund }) => (
+            <div key={loan.id} className="space-y-4">
+              {loanStats.length > 1 && (
+                <h2 className="text-base font-semibold text-slate-800">{label}</h2>
+              )}
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="text-xs text-slate-400">Reserve financiada</div>
@@ -795,7 +821,7 @@ export default async function PoolDetailPage({
                   </div>
                   <div className="text-xs text-slate-400">
                     esperado {formatMoney(stmt.totalExpectedInterest, pool.currency)}
-                    {loanApr != null ? ` (APR ${loanApr}%)` : ""}
+                    {apr != null ? ` (APR ${apr}%)` : ""}
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
@@ -812,8 +838,8 @@ export default async function PoolDetailPage({
                 <div className="rounded-xl border border-slate-200 bg-white p-4">
                   <div className="text-xs text-slate-400">Próximo mês (previsto)</div>
                   <div className="text-xl font-semibold tabular-nums text-slate-900">
-                    {stmt.balance > 0 && loanApr != null
-                      ? formatMoney((stmt.balance * loanApr) / 1200, pool.currency)
+                    {stmt.balance > 0 && apr != null
+                      ? formatMoney((stmt.balance * apr) / 1200, pool.currency)
                       : "—"}
                   </div>
                   <div className="text-xs text-slate-400">
@@ -881,19 +907,22 @@ export default async function PoolDetailPage({
                 <div className="border-t border-slate-100 px-5 py-4">
                   <AddMonthlyInterestForm
                     poolId={pool.id}
+                    loanId={loan.id}
                     hasReserve={reserveRemaining > 0}
                   />
                 </div>
               </section>
-
-              <p className="text-xs text-slate-400">
-                O extrato completo do loan (draws, fees, payoffs) fica no{" "}
-                <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">
-                  Loan statement
-                </Link>
-                .
-              </p>
-            </>
+            </div>
+            ))
+          )}
+          {loanStats.length > 0 && (
+            <p className="text-xs text-slate-400">
+              O extrato completo de cada loan (draws, fees, payoffs) fica no{" "}
+              <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">
+                Loan statement
+              </Link>
+              .
+            </p>
           )}
         </div>
       )}

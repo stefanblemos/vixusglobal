@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/money";
 import { buildStatement, ENTRY_TYPE_LABEL } from "@/lib/pools/loan-statement";
 import {
   deleteLoanEntry,
+  deletePoolLoan,
   generatePayoffFromHouse,
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
@@ -36,15 +37,16 @@ export default async function PoolLoanPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; loan?: string }>;
 }) {
   const { id } = await params;
-  const { month: rawMonth } = await searchParams;
+  const { month: rawMonth, loan: rawLoan } = await searchParams;
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
       houses: { orderBy: { createdAt: "asc" } },
-      loan: {
+      loans: {
+        orderBy: { createdAt: "asc" },
         include: {
           bankProfile: true,
           entries: { include: { house: true }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
@@ -53,11 +55,15 @@ export default async function PoolLoanPage({
     },
   });
   if (!pool) notFound();
-  const loan = pool.loan;
+  // seletor: ?loan=<id> | "new" (formulário vazio p/ criar) | default = primeiro loan
+  const creatingNew = rawLoan === "new" || pool.loans.length === 0;
+  const loan = creatingNew ? null : (pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0]);
   const banks = await prisma.bankProfile.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
   });
+  const loanLabel = (l: (typeof pool.loans)[number]) =>
+    `${l.bankProfile?.name ?? "Banco a definir"}${l.loanNumber ? ` · ${l.loanNumber}` : ""}`;
 
   const apr =
     loan?.aprPct != null
@@ -104,13 +110,17 @@ export default async function PoolLoanPage({
       : stmt.rows.filter((r) => monthKey(r.date) === month)
     : [];
 
-  // casas vendidas com payoff que ainda não foi lançado no statement
+  // casas vendidas com payoff que ainda não foi lançado no statement — só as DESTE loan
   const payoffLaunched = new Set(
     loan?.entries.filter((e) => e.type === "PAYOFF" && e.houseId).map((e) => e.houseId) ?? [],
   );
   const pendingPayoffs = loan
     ? pool.houses.filter(
-        (h) => h.payoffAmount != null && h.saleDate != null && !payoffLaunched.has(h.id),
+        (h) =>
+          (h.loanId === loan.id || (h.loanId == null && pool.loans.length === 1)) &&
+          h.payoffAmount != null &&
+          h.saleDate != null &&
+          !payoffLaunched.has(h.id),
       )
     : [];
 
@@ -135,10 +145,58 @@ export default async function PoolLoanPage({
 
       <PoolTabsNav poolId={pool.id} active="loan" />
 
+      {/* Um pool pode ter N loans (bancos diferentes por grupo de casas) — seletor */}
+      {pool.loans.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {pool.loans.map((l) => (
+            <Link
+              key={l.id}
+              href={`/pools/${pool.id}/loan?loan=${l.id}`}
+              className={`rounded-full border px-3 py-1.5 text-sm transition ${
+                loan?.id === l.id
+                  ? "border-[#1f3a5f] bg-[#1f3a5f] font-medium text-white"
+                  : "border-slate-300 text-slate-600 hover:border-slate-400"
+              }`}
+            >
+              {loanLabel(l)}
+            </Link>
+          ))}
+          <Link
+            href={`/pools/${pool.id}/loan?loan=new`}
+            className={`rounded-full border border-dashed px-3 py-1.5 text-sm transition ${
+              creatingNew
+                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
+                : "border-slate-300 text-slate-500 hover:border-slate-400"
+            }`}
+          >
+            + Novo loan
+          </Link>
+        </div>
+      )}
+
       <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <h2 className="mb-3 text-base font-medium text-slate-800">Termos do loan</h2>
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-base font-medium text-slate-800">
+            {creatingNew && pool.loans.length > 0 ? "Novo loan" : "Termos do loan"}
+          </h2>
+          {loan && loan.entries.length === 0 && (
+            <form action={deletePoolLoan}>
+              <input type="hidden" name="loanId" value={loan.id} />
+              <input type="hidden" name="poolId" value={pool.id} />
+              <button
+                type="submit"
+                className="text-xs text-slate-400 hover:text-red-500"
+                title="Remove o loan (só é possível sem lançamentos; as casas voltam a 'sem loan')"
+              >
+                ✕ Remover loan
+              </button>
+            </form>
+          )}
+        </div>
         <PoolLoanTermsForm
+          key={loan?.id ?? "new"}
           poolId={pool.id}
+          loanId={loan?.id ?? null}
           banks={banks}
           loan={
             loan
@@ -321,7 +379,10 @@ export default async function PoolLoanPage({
             <div className="border-t border-slate-100 px-5 py-4">
               <AddLoanEntryForm
                 poolId={pool.id}
-                houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
+                loanId={loan.id}
+                houses={pool.houses
+                  .filter((h) => h.loanId === loan.id || h.loanId == null)
+                  .map((h) => ({ id: h.id, address: h.address }))}
               />
             </div>
           </section>

@@ -836,7 +836,7 @@ model InvestmentPool {
   distributions PoolDistribution[]
   documents     PoolDocument[]
   simulations   PoolSimulation[]
-  loan          PoolLoan?
+  loans         PoolLoan[] // um pool pode ter N construction loans (bancos diferentes por grupo de casas)
   capitalCalls  PoolCapitalCall[]
   expenses      PoolExpense[]
 }
@@ -857,6 +857,11 @@ model PoolHouse {
   catalogModel      CatalogModel?    @relation(fields: [catalogModelId], references: [id])
   catalogLocationId String?
   catalogLocation   CatalogLocation? @relation(fields: [catalogLocationId], references: [id])
+
+  // Loan que financia ESTA casa (um pool pode ter vários bancos; null = 100% equity).
+  // Decide para onde vai o draw, qual contrato de fees se aplica e onde entra o payoff.
+  loanId String?
+  loan   PoolLoan? @relation(fields: [loanId], references: [id], onDelete: SetNull)
 
   // Pro forma (esperado)
   plannedLotCost     Decimal? @db.Decimal(20, 2)
@@ -893,6 +898,7 @@ model PoolHouse {
   changeOrders  HouseChangeOrder[]
 
   @@index([poolId])
+  @@index([loanId])
 }
 
 // Change order (CO) da casa: despesa/crédito que altera o valor do contrato. Entra no
@@ -1343,7 +1349,7 @@ enum PoolLoanEntryType {
 
 model PoolLoan {
   id     String         @id @default(cuid())
-  poolId String         @unique // um construction loan por pool (v1)
+  poolId String
   pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
 
   bankProfileId String?
@@ -1358,6 +1364,9 @@ model PoolLoan {
   updatedAt     DateTime  @updatedAt
 
   entries PoolLoanEntry[]
+  houses  PoolHouse[]
+
+  @@index([poolId])
 }
 
 model PoolLoanEntry {

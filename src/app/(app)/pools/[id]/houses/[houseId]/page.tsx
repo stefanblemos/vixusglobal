@@ -21,7 +21,7 @@ export default async function PoolHousePage({
   const house = await prisma.poolHouse.findUnique({
     where: { id: houseId },
     include: {
-      pool: true,
+      pool: { include: { loans: { orderBy: { createdAt: "asc" }, include: { bankProfile: true } } } },
       changeOrders: { orderBy: { date: "asc" } },
       loanEntries: { where: { type: "DRAW" } },
     },
@@ -102,6 +102,10 @@ export default async function PoolHousePage({
         </div>
       </section>
       <PoolHouseForm
+        loans={house.pool.loans.map((l) => ({
+          id: l.id,
+          label: `${l.bankProfile?.name ?? "Banco a definir"}${l.loanNumber ? ` · ${l.loanNumber}` : ""}`,
+        }))}
         catalog={{
           locations,
           modelLocations: modelLocations.map((ml) => ({
@@ -117,6 +121,7 @@ export default async function PoolHousePage({
           status: house.status,
           catalogModelId: house.catalogModelId ?? "",
           catalogLocationId: house.catalogLocationId ?? "",
+          loanId: house.loanId ?? "",
           plannedLotCost: s(house.plannedLotCost),
           plannedBuildCost: s(house.plannedBuildCost),
           plannedSalePrice: s(house.plannedSalePrice),

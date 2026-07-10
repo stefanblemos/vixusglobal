@@ -37,12 +37,24 @@ const ENTRY_TYPES = [
   "OTHER",
 ] as const;
 
-// Cria/edita o construction loan do pool (termos).
+// Resolve um loan do pool: id explícito > único loan existente. Null se ambíguo.
+async function resolveLoan(poolId: string, loanId: string | null) {
+  if (loanId) {
+    const loan = await prisma.poolLoan.findUnique({ where: { id: loanId } });
+    return loan?.poolId === poolId ? loan : null;
+  }
+  const loans = await prisma.poolLoan.findMany({ where: { poolId }, take: 2 });
+  return loans.length === 1 ? loans[0] : null;
+}
+
+// Cria/edita um construction loan do pool (termos). Sem loanId no form = cria um novo
+// (um pool pode ter vários bancos, cada um financiando um grupo de casas).
 export async function savePoolLoan(
   poolId: string,
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim() || null;
   const data = {
     bankProfileId: String(formData.get("bankProfileId") ?? "").trim() || null,
     loanNumber: String(formData.get("loanNumber") ?? "").trim() || null,
@@ -52,13 +64,26 @@ export async function savePoolLoan(
     closingDate: optDate(formData.get("closingDate")),
     notes: String(formData.get("notes") ?? "").trim() || null,
   };
-  await prisma.poolLoan.upsert({
-    where: { poolId },
-    create: { poolId, ...data },
-    update: data,
-  });
+  if (loanId) {
+    const loan = await prisma.poolLoan.findUnique({ where: { id: loanId } });
+    if (!loan || loan.poolId !== poolId) return { error: "Loan not found." };
+    await prisma.poolLoan.update({ where: { id: loanId }, data });
+  } else {
+    await prisma.poolLoan.create({ data: { poolId, ...data } });
+  }
   revalidatePath(`/pools/${poolId}/loan`);
   return { ok: true };
+}
+
+// Remove um loan criado por engano — só sem lançamentos; as casas voltam a "sem loan".
+export async function deletePoolLoan(formData: FormData): Promise<void> {
+  const loanId = String(formData.get("loanId") ?? "");
+  const poolId = String(formData.get("poolId") ?? "");
+  if (!loanId) return;
+  const entries = await prisma.poolLoanEntry.count({ where: { loanId } });
+  if (entries > 0) return;
+  await prisma.poolLoan.delete({ where: { id: loanId } });
+  if (poolId) revalidatePath(`/pools/${poolId}/loan`);
 }
 
 export async function addLoanEntry(
@@ -66,7 +91,7 @@ export async function addLoanEntry(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const loan = await prisma.poolLoan.findUnique({ where: { poolId } });
+  const loan = await resolveLoan(poolId, String(formData.get("loanId") ?? "").trim() || null);
   if (!loan) return { error: "Set up the loan terms first." };
 
   const type = String(formData.get("type") ?? "");
@@ -168,11 +193,21 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
   if (released != null && !creditDateRaw)
     return { error: "Informe a data do crédito para o valor liberado." };
 
+  // Loan alvo: explícito (tela é por loan) > loan da casa > único loan do pool
+  const explicitLoanId = String(formData.get("loanId") ?? "").trim() || null;
+  let targetLoanId = explicitLoanId;
+  if (!targetLoanId && houseId) {
+    const house = await prisma.poolHouse.findUnique({ where: { id: houseId }, select: { loanId: true } });
+    targetLoanId = house?.loanId ?? null;
+  }
+  const resolved = await resolveLoan(poolId, targetLoanId);
+  if (!resolved)
+    return { error: "This pool has no loan yet — set it up in the Loan statement tab." };
   const loan = await prisma.poolLoan.findUnique({
-    where: { poolId },
+    where: { id: resolved.id },
     include: { bankProfile: { include: { customFees: true } } },
   });
-  if (!loan) return { error: "This pool has no loan yet — set it up in the Loan statement tab." };
+  if (!loan) return { error: "Loan not found." };
   const memo = String(formData.get("memo") ?? "").trim() || null;
 
   if (released == null) {
@@ -284,7 +319,7 @@ export async function addMonthlyInterest(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const loan = await prisma.poolLoan.findUnique({ where: { poolId } });
+  const loan = await resolveLoan(poolId, String(formData.get("loanId") ?? "").trim() || null);
   if (!loan) return { error: "Set up the loan terms first." };
   const dateRaw = String(formData.get("date") ?? "").trim();
   if (!dateRaw) return { error: "Date is required." };
@@ -322,11 +357,16 @@ export async function generatePayoffFromHouse(formData: FormData): Promise<void>
   const poolId = String(formData.get("poolId") ?? "");
   const houseId = String(formData.get("houseId") ?? "");
   if (!poolId || !houseId) return;
-  const [loan, house] = await Promise.all([
-    prisma.poolLoan.findUnique({ where: { poolId }, include: { bankProfile: true } }),
-    prisma.poolHouse.findUnique({ where: { id: houseId } }),
-  ]);
-  if (!loan || !house || house.payoffAmount == null || house.saleDate == null) return;
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house || house.payoffAmount == null || house.saleDate == null) return;
+  // payoff vai para o loan DA CASA (pool pode ter vários bancos)
+  const target = await resolveLoan(poolId, house.loanId);
+  if (!target) return;
+  const loan = await prisma.poolLoan.findUnique({
+    where: { id: target.id },
+    include: { bankProfile: true },
+  });
+  if (!loan) return;
 
   const exists = await prisma.poolLoanEntry.findFirst({
     where: { loanId: loan.id, houseId, type: "PAYOFF" },

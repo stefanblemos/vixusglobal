@@ -69,6 +69,7 @@ export type HouseFormValues = {
   status: string;
   catalogModelId: string;
   catalogLocationId: string;
+  loanId: string;
   plannedLotCost: string;
   plannedBuildCost: string;
   plannedSalePrice: string;
@@ -119,13 +120,15 @@ function Field({
   );
 }
 
-// Edição completa: modelo/localização do catálogo + pro forma + banco + realizado.
+// Edição completa: modelo/localização do catálogo + loan + pro forma + banco + realizado.
 export function PoolHouseForm({
   values,
   catalog,
+  loans,
 }: {
   values: HouseFormValues;
   catalog: HouseCatalog;
+  loans: Array<{ id: string; label: string }>;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateHouse.bind(null, values.id),
@@ -230,6 +233,24 @@ export function PoolHouseForm({
       <div>
         <h3 className="mb-3 text-sm font-semibold text-slate-700">Bank terms (construction loan)</h3>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div>
+            <label htmlFor="house-loanId" className={labelClass}>
+              Loan (banco da casa)
+            </label>
+            <select
+              id="house-loanId"
+              name="loanId"
+              defaultValue={values.loanId}
+              className={inputClass}
+            >
+              <option value="">— (100% equity)</option>
+              {loans.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.label}
+                </option>
+              ))}
+            </select>
+          </div>
           <Field name="bankName" label="Bank" values={values} />
           <Field name="bankLoanAmount" label="Original loan" values={values} />
           <Field name="bankOriginationFee" label="Origination fee" values={values} />

@@ -12,10 +12,12 @@ const buttonClass =
 
 export function PoolLoanTermsForm({
   poolId,
+  loanId,
   banks,
   loan,
 }: {
   poolId: string;
+  loanId: string | null; // null = criar um loan novo
   banks: Array<{ id: string; name: string }>;
   loan: {
     bankProfileId: string | null;
@@ -33,6 +35,7 @@ export function PoolLoanTermsForm({
   );
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
+      {loanId && <input type="hidden" name="loanId" value={loanId} />}
       <div className="w-56">
         <label className={labelClass}>Banco</label>
         <select name="bankProfileId" defaultValue={loan?.bankProfileId ?? ""} className={inputClass}>
@@ -84,9 +87,11 @@ export function PoolLoanTermsForm({
 
 export function AddLoanEntryForm({
   poolId,
+  loanId,
   houses,
 }: {
   poolId: string;
+  loanId: string;
   houses: Array<{ id: string; address: string }>;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
@@ -95,6 +100,7 @@ export function AddLoanEntryForm({
   );
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="loanId" value={loanId} />
       <div className="w-52">
         <label className={labelClass}>Tipo</label>
         <select name="type" defaultValue="DRAW" className={inputClass}>
