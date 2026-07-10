@@ -163,6 +163,7 @@ export default async function PoolCatalogPage({
               salePrice: ml.salePrice.toString(),
               costPerformance: ml.costPerformance?.toString() ?? null,
               costContractor: ml.costContractor?.toString() ?? null,
+              costOpenBook: ml.costOpenBook?.toString() ?? null,
               locationLotEstimate: ml.location.lotCostEstimate?.toString() ?? null,
             })),
           }))}

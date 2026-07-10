@@ -87,6 +87,7 @@ export type SimUnitInput = {
   buildMonths: number;
   costPerformance: number; // custo de obra na modalidade performance (por local)
   costContractor: number; // custo-base contractor SEM o fee (por local)
+  costOpenBook: number; // custo real open book (por local) — modalidade custo + taxa flat
   contractorFee: number; // fee fixo do tipo (ou override do modelo)
   lotCost: number; // sempre o lotCostEstimate do location
   salePrice: number;
@@ -99,7 +100,10 @@ export type PromoteTier = {
 
 export type SimInput = {
   fundingMode: "EQUITY" | "BANK";
-  compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE";
+  compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
+  // OPEN_BOOK: taxa flat de lucro por casa p/ a 4U — entra no custo da casa (obra + fee),
+  // paga pelos gatilhos do plano de desembolso; promote opcional por cima (tiers preenchidos)
+  flatFeePerHouse: number;
   perfPct: number; // fração (0.35) — modo PERFORMANCE
   perfTiming: "PER_SALE" | "PROJECT_COMPLETION";
   promoteTiers: PromoteTier[] | null; // modo PROMOTE (pago na conclusão)
@@ -257,17 +261,20 @@ export function simulate(input: SimInput): SimResult {
   const emd = sc.emdPct / 100;
   const closingFee = sc.closingFeePct / 100;
   const perfOn = input.compMode === "PERFORMANCE";
-  // PERFORMANCE e PROMOTE constroem ao custo direto (4U remunerada pelo resultado);
-  // CONTRACTOR_FEE constrói ao custo-base + fee fixo do tipo.
-  const directCostBasis = input.compMode !== "CONTRACTOR_FEE";
   const phasePcts = PAYMENT_PLANS[input.paymentPlan] ?? PAYMENT_PLANS.STANDARD;
 
   // ── 1. Unidades: valores ajustados pelo cenário + cronograma ──
   const units: SimUnitResult[] = input.units.map((u, i) => {
     const s = schedule(u, i, input);
     const adjLot = u.lotCost * (1 + sc.lotCostBufferPct / 100);
-    // Performance/promote: custo próprio do local; contractor: custo-base + fee do tipo.
-    const baseBuild = directCostBasis ? u.costPerformance : u.costContractor + u.contractorFee;
+    // Performance/promote: custo próprio do local; contractor: custo-base + fee do tipo;
+    // open book: custo real + taxa flat (a 4U é paga DENTRO do custo, pelos gatilhos).
+    const baseBuild =
+      input.compMode === "CONTRACTOR_FEE"
+        ? u.costContractor + u.contractorFee
+        : input.compMode === "OPEN_BOOK"
+          ? u.costOpenBook + input.flatFeePerHouse
+          : u.costPerformance;
     const adjBuild = baseBuild * (1 + sc.constructionCostBufferPct / 100);
     const adjSaleGross = u.salePrice * (1 + sc.salePriceBufferPct / 100);
     const adjSaleNet = adjSaleGross * (1 - closingFee);
@@ -409,6 +416,8 @@ export function simulate(input: SimInput): SimResult {
     }
 
     if (input.compMode === "CONTRACTOR_FEE") contractorFeeTotal += u.contractorFee;
+    // OPEN_BOOK: a taxa flat já saiu pelo custo (fases) — aqui só totaliza p/ o KPI da 4U
+    if (input.compMode === "OPEN_BOOK") contractorFeeTotal += input.flatFeePerHouse;
 
     // Venda + performance fee (35% do lucro da casa, antes do split — sai como custo).
     const profitBase = u.adjSaleNet - u.adjLot - u.adjBuild;
@@ -630,7 +639,11 @@ export function simulate(input: SimInput): SimResult {
   // Tiers sobre o retorno ANUALIZADO do investidor: TWC = Σ(capital em risco × anos);
   // lucro equivalente a r% a.a. = r% × TWC; cada faixa entrega promotePct à 4U. Abaixo do
   // primeiro hurdle (pref), a 4U não recebe nada.
-  if (input.compMode === "PROMOTE" && input.promoteTiers?.length) {
+  // PROMOTE sempre; OPEN_BOOK só se os tiers foram preenchidos (promote opcional por cima)
+  if (
+    (input.compMode === "PROMOTE" || input.compMode === "OPEN_BOOK") &&
+    input.promoteTiers?.length
+  ) {
     let twc = 0; // dólar-anos
     let inv = 0;
     let prevDay = investorFlows[0]?.day ?? 0;

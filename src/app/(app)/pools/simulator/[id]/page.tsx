@@ -86,7 +86,9 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
               ? `performance ${Number(sim.perfPct)}% (${sim.perfTiming === "PER_SALE" ? "por venda" : "na conclusão"})`
               : sim.compMode === "PROMOTE"
                 ? "promote (waterfall)"
-                : "contractor fee"}
+                : sim.compMode === "OPEN_BOOK"
+                  ? `open book + flat ${formatMoney(Number(sim.flatFeePerHouse), "USD")}/casa${(sim.promoteTiers as unknown[] | null)?.length ? " + promote" : ""}`
+                  : "contractor fee"}
             {" · "}
             {sim.paymentPlan === "LIGHT_START" ? "desembolso 10/15/25/25/20/5" : "desembolso 10/30/20/20/15/5"}
             {sim.pool ? ` · pool ${sim.pool.code}` : ""}
@@ -166,6 +168,16 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
               <Card label="Performance 4U" value={formatMoney(r.kpis.perfFeeTotal, "USD")} hint="antes do split" />
             ) : sim.compMode === "PROMOTE" ? (
               <Card label="Promote 4U" value={formatMoney(r.kpis.perfFeeTotal, "USD")} hint="waterfall por tiers" />
+            ) : sim.compMode === "OPEN_BOOK" ? (
+              <Card
+                label="4U — taxa flat (no custo)"
+                value={formatMoney(r.kpis.contractorFeeTotal, "USD")}
+                hint={
+                  r.kpis.perfFeeTotal > 0
+                    ? `+ promote ${formatMoney(r.kpis.perfFeeTotal, "USD")} (waterfall)`
+                    : `${formatMoney(Number(sim.flatFeePerHouse), "USD")} × ${r.units.length} casas, paga pelos gatilhos`
+                }
+              />
             ) : (
               <Card label="Contractor fee 4U" value={formatMoney(r.kpis.contractorFeeTotal, "USD")} />
             )}

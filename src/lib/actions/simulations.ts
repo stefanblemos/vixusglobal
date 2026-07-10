@@ -35,6 +35,7 @@ async function buildSimInput(sim: {
   perfPct: unknown;
   perfTiming: string;
   promoteTiers: PromoteTierInput[] | null;
+  flatFeePerHouse: unknown;
   paymentPlan: string;
   equityGatePct: unknown;
   parallelPermit: boolean;
@@ -66,11 +67,15 @@ async function buildSimInput(sim: {
     const lotCost = ml.location.lotCostEstimate;
     if (lotCost == null)
       return { error: `Set the estimated lot cost for ${ml.location.name} in the catalog.` };
-    const perfMode = sim.compMode !== "CONTRACTOR_FEE"; // performance e promote = custo direto
-    if (perfMode && ml.costPerformance == null)
-      return { error: `Set the performance cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
-    if (!perfMode && ml.costContractor == null)
+    if (sim.compMode === "CONTRACTOR_FEE" && ml.costContractor == null)
       return { error: `Set the contractor cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
+    if (sim.compMode === "OPEN_BOOK" && ml.costOpenBook == null)
+      return { error: `Set the open book cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
+    if (
+      (sim.compMode === "PERFORMANCE" || sim.compMode === "PROMOTE") &&
+      ml.costPerformance == null
+    )
+      return { error: `Set the performance cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
     units.push({
       label: `${ml.model.name} — ${ml.location.name}`,
       locationName: ml.location.name,
@@ -81,6 +86,7 @@ async function buildSimInput(sim: {
       buildMonths: Number(ml.model.buildMonths),
       costPerformance: Number(ml.costPerformance ?? 0),
       costContractor: Number(ml.costContractor ?? 0),
+      costOpenBook: Number(ml.costOpenBook ?? 0),
       contractorFee: Number(ml.model.contractorFee ?? fees.get(ml.model.houseType) ?? 0),
       lotCost: Number(lotCost),
       salePrice: Number(ml.salePrice),
@@ -90,10 +96,11 @@ async function buildSimInput(sim: {
 
   return {
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
-    compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE",
+    compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK",
     perfPct: Number(sim.perfPct) / 100,
     perfTiming: sim.perfTiming === "PER_SALE" ? "PER_SALE" : "PROJECT_COMPLETION",
     promoteTiers: sim.promoteTiers,
+    flatFeePerHouse: Number(sim.flatFeePerHouse ?? 0),
     paymentPlan: sim.paymentPlan === "LIGHT_START" ? "LIGHT_START" : "STANDARD",
     equityGatePct: Number(sim.equityGatePct) / 100,
     parallelPermit: sim.parallelPermit,
@@ -183,6 +190,8 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
     perfPct: Number(formData.get("perfPct") ?? 35),
     perfTiming: String(formData.get("perfTiming") ?? "PROJECT_COMPLETION"),
     promoteTiers: parsePromoteTiers(String(formData.get("promoteTiers") ?? "")),
+    flatFeePerHouse:
+      Number(String(formData.get("flatFeePerHouse") ?? "0").replace(/,/g, "")) || 0,
     paymentPlan: String(formData.get("paymentPlan") ?? "STANDARD"),
     equityGatePct: Number(formData.get("equityGatePct") ?? 10),
     parallelPermit: formData.get("parallelPermit") === "on",
@@ -207,6 +216,7 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
       perfPct: sim.perfPct,
       perfTiming: sim.perfTiming,
       promoteTiers: sim.promoteTiers ?? undefined,
+      flatFeePerHouse: sim.flatFeePerHouse,
       paymentPlan: sim.paymentPlan as "STANDARD" | "LIGHT_START",
       equityGatePct: sim.equityGatePct,
       parallelPermit: sim.parallelPermit,
@@ -233,6 +243,7 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
     perfPct: sim.perfPct,
     perfTiming: sim.perfTiming,
     promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    flatFeePerHouse: sim.flatFeePerHouse,
     paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
     parallelPermit: sim.parallelPermit,
@@ -341,6 +352,7 @@ function simFields(sim: {
   perfPct: unknown;
   perfTiming: string;
   promoteTiers: unknown;
+  flatFeePerHouse: unknown;
   paymentPlan: string;
   equityGatePct: unknown;
   parallelPermit: boolean;
@@ -353,6 +365,7 @@ function simFields(sim: {
     perfPct: sim.perfPct,
     perfTiming: sim.perfTiming,
     promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    flatFeePerHouse: sim.flatFeePerHouse,
     paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
     parallelPermit: sim.parallelPermit,

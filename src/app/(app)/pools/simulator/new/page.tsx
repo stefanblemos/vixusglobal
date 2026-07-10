@@ -39,6 +39,7 @@ export default async function NewSimulationPage() {
             salePrice: Number(ml.salePrice),
             costPerformance: ml.costPerformance == null ? null : Number(ml.costPerformance),
             costContractor: ml.costContractor == null ? null : Number(ml.costContractor),
+            costOpenBook: ml.costOpenBook == null ? null : Number(ml.costOpenBook),
           })),
           scenarios,
           banks,

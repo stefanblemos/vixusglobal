@@ -19,6 +19,7 @@ export type SimCatalog = {
     salePrice: number;
     costPerformance: number | null;
     costContractor: number | null;
+    costOpenBook: number | null;
   }>;
   scenarios: Array<{ code: string; name: string }>;
   banks: Array<{ id: string; name: string }>;
@@ -92,7 +93,7 @@ function AddHouseModal({
             </select>
           </div>
           {sel && (
-            <div className="grid grid-cols-3 gap-3 rounded-lg bg-slate-50 p-3 text-center">
+            <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 p-3 text-center md:grid-cols-4">
               <div>
                 <div className="text-xs text-slate-400">Construção (perf)</div>
                 <div className="text-sm font-medium tabular-nums">
@@ -103,6 +104,12 @@ function AddHouseModal({
                 <div className="text-xs text-slate-400">Construção (contractor)</div>
                 <div className="text-sm font-medium tabular-nums">
                   {sel.costContractor != null ? `$${sel.costContractor.toLocaleString("en-US")}+fee` : "—"}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-400">Open book</div>
+                <div className="text-sm font-medium tabular-nums">
+                  {sel.costOpenBook != null ? `$${sel.costOpenBook.toLocaleString("en-US")}+flat` : "—"}
                 </div>
               </div>
               <div>
@@ -267,8 +274,22 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
             <option value="PERFORMANCE">Performance (% of profit)</option>
             <option value="PROMOTE">Promote (waterfall)</option>
             <option value="CONTRACTOR_FEE">Contractor fee (fixed)</option>
+            <option value="OPEN_BOOK">Open book + taxa flat por casa</option>
           </select>
         </div>
+        {compMode === "OPEN_BOOK" && (
+          <div>
+            <label htmlFor="sim-flat" className={labelClass}>
+              Taxa flat 4U por casa $
+            </label>
+            <input
+              id="sim-flat"
+              name="flatFeePerHouse"
+              defaultValue="20000"
+              className={inputClass}
+            />
+          </div>
+        )}
         {compMode === "PERFORMANCE" && (
           <>
             <div>
@@ -309,12 +330,16 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
         </div>
       </div>
 
-      {compMode === "PROMOTE" && (
+      {(compMode === "PROMOTE" || compMode === "OPEN_BOOK") && (
         <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
-          <h3 className="text-sm font-semibold text-slate-700">Tiers do promote</h3>
+          <h3 className="text-sm font-semibold text-slate-700">
+            Tiers do promote{compMode === "OPEN_BOOK" ? " (opcional)" : ""}
+          </h3>
           <p className="mb-3 text-xs text-slate-400">
             Hurdle = retorno a.a. do investidor sobre o capital médio em risco. Cada faixa
             entrega o promote % à 4U; hurdle vazio = acima do último. Pago na conclusão.
+            {compMode === "OPEN_BOOK" &&
+              " No open book o waterfall é por cima da taxa flat — remova todos os tiers para simular só a taxa."}
           </p>
           <div className="space-y-2">
             {tiers.map((t, i) => (
@@ -377,7 +402,8 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Local</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Modelo</th>
                 <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
-                  Construção{compMode === "CONTRACTOR_FEE" ? " (+fee)" : ""}
+                  Construção
+                  {compMode === "CONTRACTOR_FEE" ? " (+fee)" : compMode === "OPEN_BOOK" ? " (+flat)" : ""}
                 </th>
                 <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400">Venda</th>
                 <th></th>
@@ -395,7 +421,12 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                 const sel = (modelsFor.get(u.locationId) ?? []).find((m) => m.modelId === u.modelId);
                 if (!sel) return null;
                 const locName = catalog.locations.find((l) => l.id === u.locationId)?.name ?? "";
-                const cost = compMode === "CONTRACTOR_FEE" ? sel.costContractor : sel.costPerformance;
+                const cost =
+                  compMode === "CONTRACTOR_FEE"
+                    ? sel.costContractor
+                    : compMode === "OPEN_BOOK"
+                      ? sel.costOpenBook
+                      : sel.costPerformance;
                 return (
                   <tr key={i} className="border-b border-slate-50">
                     <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
@@ -430,7 +461,11 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                       .reduce((s, u) => {
                         const sel = (modelsFor.get(u.locationId) ?? []).find((m) => m.modelId === u.modelId);
                         const cost =
-                          compMode === "CONTRACTOR_FEE" ? sel?.costContractor : sel?.costPerformance;
+                          compMode === "CONTRACTOR_FEE"
+                            ? sel?.costContractor
+                            : compMode === "OPEN_BOOK"
+                              ? sel?.costOpenBook
+                              : sel?.costPerformance;
                         return s + (cost ?? 0);
                       }, 0)
                       .toLocaleString("en-US")}

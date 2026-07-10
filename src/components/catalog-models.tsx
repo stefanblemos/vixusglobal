@@ -32,6 +32,7 @@ export type ModelRow = {
     salePrice: string;
     costPerformance: string | null;
     costContractor: string | null;
+    costOpenBook: string | null;
     locationLotEstimate: string | null;
   }>;
 };
@@ -73,6 +74,10 @@ function ModelLocationEditor({
       <div className="w-36">
         <label className={labelClass}>Cost (contractor base)</label>
         <input name="costContractor" defaultValue={loc.costContractor ?? ""} placeholder="sem o fee" className={inputClass} />
+      </div>
+      <div className="w-32">
+        <label className={labelClass}>Cost (open book)</label>
+        <input name="costOpenBook" defaultValue={loc.costOpenBook ?? ""} placeholder="custo real" className={inputClass} />
       </div>
       <button
         type="submit"
@@ -140,6 +145,10 @@ function AddModelLocation({
       <div className="w-36">
         <label className={labelClass}>Cost (contractor base)</label>
         <input name="costContractor" placeholder="sem o fee" className={inputClass} />
+      </div>
+      <div className="w-32">
+        <label className={labelClass}>Cost (open book)</label>
+        <input name="costOpenBook" placeholder="custo real" className={inputClass} />
       </div>
       <button
         type="submit"
@@ -280,7 +289,8 @@ function ModelModal({
                     <span className="text-xs text-slate-500">
                       venda {money(loc.salePrice)} · perf {money(loc.costPerformance)} · contractor{" "}
                       {money(loc.costContractor)}
-                      {loc.costContractor != null && " + fee"} · lote {money(loc.locationLotEstimate)}
+                      {loc.costContractor != null && " + fee"} · open book {money(loc.costOpenBook)} ·
+                      lote {money(loc.locationLotEstimate)}
                     </span>
                   </button>
                   {openLoc === loc.id && (

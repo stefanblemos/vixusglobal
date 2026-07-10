@@ -185,6 +185,7 @@ export async function saveModelLocation(
   if (salePrice <= 0) return { error: "Sale price must be greater than 0." };
   const costPerformance = optNum(formData.get("costPerformance"));
   const costContractor = optNum(formData.get("costContractor"));
+  const costOpenBook = optNum(formData.get("costOpenBook"));
 
   const [model, location, before] = await Promise.all([
     prisma.catalogModel.findUnique({ where: { id: modelId } }),
@@ -201,20 +202,22 @@ export async function saveModelLocation(
           [`${location.name} — sale price`]: before.salePrice,
           [`${location.name} — cost (performance)`]: before.costPerformance,
           [`${location.name} — cost (contractor base)`]: before.costContractor,
+          [`${location.name} — cost (open book)`]: before.costOpenBook,
         }
       : null,
     {
       [`${location.name} — sale price`]: salePrice,
       [`${location.name} — cost (performance)`]: costPerformance,
       [`${location.name} — cost (contractor base)`]: costContractor,
+      [`${location.name} — cost (open book)`]: costOpenBook,
     },
   );
   if (before && changes.length === 0) return { ok: true };
 
   await prisma.catalogModelLocation.upsert({
     where: { modelId_locationId: { modelId, locationId } },
-    create: { modelId, locationId, salePrice, costPerformance, costContractor },
-    update: { salePrice, costPerformance, costContractor },
+    create: { modelId, locationId, salePrice, costPerformance, costContractor, costOpenBook },
+    update: { salePrice, costPerformance, costContractor, costOpenBook },
   });
   await logChange("MODEL", modelId, model.name, before ? "UPDATE" : "CREATE", changes);
   revalidatePath(CATALOG);

@@ -1062,6 +1062,7 @@ enum BuilderCompMode {
   CONTRACTOR_FEE
   PERFORMANCE
   PROMOTE
+  OPEN_BOOK // custo real (open book) + taxa flat de lucro por casa p/ a 4U; promote opcional
 }
 
 // Plano de desembolso da obra (6 fases). LIGHT_START reduz a exposição inicial: até o
@@ -1113,6 +1114,7 @@ model CatalogModelLocation {
   salePrice       Decimal         @db.Decimal(20, 2)
   costPerformance Decimal?        @db.Decimal(20, 2) // custo de obra na modalidade performance
   costContractor  Decimal?        @db.Decimal(20, 2) // custo-base contractor (sem o fee do tipo)
+  costOpenBook    Decimal?        @db.Decimal(20, 2) // custo real (open book) — modalidade custo + taxa flat
 
   @@unique([modelId, locationId])
 }
@@ -1314,6 +1316,9 @@ model PoolSimulation {
   // Promote (waterfall): tiers programáveis [{hurdle: % a.a. sobre o capital médio em risco
   // (null = acima do último), promote: % da faixa para a 4U}]. Pago na conclusão.
   promoteTiers  Json?
+  // OPEN_BOOK: taxa flat de lucro por casa p/ a 4U — entra no CUSTO da casa (obra + fee),
+  // paga pelos gatilhos do plano de desembolso
+  flatFeePerHouse Decimal       @default(0) @db.Decimal(20, 2)
   paymentPlan   SimPaymentPlan  @default(STANDARD)
   equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
   parallelPermit Boolean        @default(false)
