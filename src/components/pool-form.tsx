@@ -32,7 +32,13 @@ export function PoolForm({ values }: { values: PoolFormValues }) {
   const editing = Boolean(values.id);
 
   return (
-    <form action={formAction} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6">
+    // key = valores atuais (edição fica montada após o save): dados novos remontam o form —
+    // sem isso o form reset do React 19 deixava valores antigos na tela
+    <form
+      key={editing ? JSON.stringify(values) : undefined}
+      action={formAction}
+      className="space-y-4 rounded-xl border border-slate-200 bg-white p-6"
+    >
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div>
           <label htmlFor="code" className={labelClass}>

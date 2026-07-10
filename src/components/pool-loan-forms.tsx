@@ -34,7 +34,9 @@ export function PoolLoanTermsForm({
     undefined,
   );
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-3">
+    // key = valores atuais: o form fica montado após o save ("Saved.") e o React 19 reseta
+    // os inputs para o defaultValue de montagem — a remontagem realinha com o banco
+    <form key={JSON.stringify(loan)} action={formAction} className="flex flex-wrap items-end gap-3">
       {loanId && <input type="hidden" name="loanId" value={loanId} />}
       <div className="w-56">
         <label className={labelClass}>Banco</label>

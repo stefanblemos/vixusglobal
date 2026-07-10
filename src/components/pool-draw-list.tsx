@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { editDraw, toggleLoanEntryReconciled, type FormState } from "@/lib/actions/pool-loan";
@@ -41,8 +41,13 @@ function EditDrawForm({
   onDone: () => void;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(editDraw, undefined);
+  // fecha a edição no sucesso (a linha atualizada reaparece com os dados novos do server);
+  // sem isso o React 19 resetava os inputs para os valores antigos e a tela mentia
+  useEffect(() => {
+    if (state && !state.error) onDone();
+  }, [state, onDone]);
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-3">
+    <form key={JSON.stringify(draw)} action={formAction} className="flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-3">
       <input type="hidden" name="entryId" value={draw.id} />
       <div className="min-w-44">
         <label className={labelClass}>Casa</label>

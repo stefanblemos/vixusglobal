@@ -103,7 +103,10 @@ function ScenarioModal({
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
         </div>
 
-        <form action={formAction} className="space-y-5 px-6 py-4">
+        {/* key = valores atuais: quando o save devolve dados novos, o form REMONTA e os
+            inputs releem o defaultValue — sem isso o form reset do React 19 deixava a
+            tela com os valores antigos (parecia que o save não persistia) */}
+        <form key={JSON.stringify(scenario)} action={formAction} className="space-y-5 px-6 py-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Code *</label>

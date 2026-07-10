@@ -59,7 +59,7 @@ function ModelLocationEditor({
   }, [state, onDone]);
 
   return (
-    <form action={formAction} className="mt-2 flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-3">
+    <form key={JSON.stringify(loc)} action={formAction} className="mt-2 flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-3">
       <input type="hidden" name="modelId" value={modelId} />
       <input type="hidden" name="locationId" value={loc.locationId} />
       <input type="hidden" name="id" value={loc.id} />
@@ -198,7 +198,9 @@ function ModelModal({
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
         </div>
 
-        <form action={formAction} className="space-y-4 px-6 py-4">
+        {/* key = valores atuais: dados novos do server remontam o form (React 19 reseta
+            inputs uncontrolled após a action e deixava valores antigos na tela) */}
+        <form key={JSON.stringify(model)} action={formAction} className="space-y-4 px-6 py-4">
           {model && <input type="hidden" name="id" value={model.id} />}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <div>

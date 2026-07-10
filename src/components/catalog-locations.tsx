@@ -74,7 +74,9 @@ function LocationModal({
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
         </div>
 
-        <form action={formAction} className="space-y-4 px-6 py-4">
+        {/* key = valores atuais: dados novos do server remontam o form (React 19 reseta
+            inputs uncontrolled após a action e deixava valores antigos na tela) */}
+        <form key={JSON.stringify(location)} action={formAction} className="space-y-4 px-6 py-4">
           {location && <input type="hidden" name="id" value={location.id} />}
           <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
             <div className="col-span-2 md:col-span-1">
