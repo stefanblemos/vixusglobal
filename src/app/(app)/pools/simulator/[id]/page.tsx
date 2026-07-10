@@ -138,10 +138,110 @@ function CashflowChart({
   );
 }
 
+// Quadro mensal dos custos do banco (juros, closing, taxas de draw e payoff, extensão),
+// com somatória no rodapé CONFERIDA contra os KPIs do motor — sem faltar um centavo.
+function BankCostsMonthly({
+  events,
+  kpis,
+  isBank,
+}: {
+  events: SimResult["events"];
+  kpis: SimResult["kpis"];
+  isBank: boolean;
+}) {
+  if (!isBank) return null;
+  const CATS = ["INTEREST", "CLOSING", "DRAW_FEES", "PAYOFF_FEES", "EXTENSION"] as const;
+  const byMonth = new Map<number, Record<string, number>>();
+  for (const e of events) {
+    if (!e.bankCat || e.bankCat === "RESERVE") continue;
+    const m = Math.floor(e.day / 30) + 1;
+    const row = byMonth.get(m) ?? {};
+    const v = e.infoAmount ?? Math.abs(e.bankAmount ?? e.amount);
+    row[e.bankCat] = (row[e.bankCat] ?? 0) + v;
+    byMonth.set(m, row);
+  }
+  const months = [...byMonth.keys()].sort((a, b) => a - b);
+  const r2 = (v: number) => Math.round(v * 100) / 100;
+  const tot = (cat: string) => r2(months.reduce((s, m) => s + (byMonth.get(m)![cat] ?? 0), 0));
+  const totals = Object.fromEntries(CATS.map((c) => [c, tot(c)]));
+  const grand = r2(CATS.reduce((s, c) => s + totals[c], 0));
+  const expected = r2(
+    kpis.bankInterestTotal + kpis.bankUpfrontFees + (kpis.bankOtherFees ?? 0) + kpis.bankExtensionFee,
+  );
+  const bate =
+    Math.abs(totals.INTEREST - kpis.bankInterestTotal) <= 0.01 &&
+    Math.abs(totals.CLOSING - kpis.bankUpfrontFees) <= 0.01 &&
+    Math.abs(totals.DRAW_FEES + totals.PAYOFF_FEES - (kpis.bankOtherFees ?? 0)) <= 0.01 &&
+    Math.abs(totals.EXTENSION - kpis.bankExtensionFee) <= 0.01;
+  const money = (v: number) =>
+    v ? `$${v.toLocaleString("en-US", { minimumFractionDigits: 2 })}` : "—";
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div>
+          <h2 className="text-base font-medium text-slate-800">Custos do banco por mês</h2>
+          <p className="text-xs text-slate-400">
+            Juros, closing, taxas de draw/payoff e extensão — somatória conferida contra o motor.
+          </p>
+        </div>
+        <span
+          className={`rounded-full px-3 py-1 text-xs font-medium ${
+            bate ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+          }`}
+        >
+          {bate ? "✓ bate com o calculado" : `✗ difere do calculado (${money(r2(grand - expected))})`}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className={th}>Mês</th>
+              <th className={thRight}>Juros + mensais</th>
+              <th className={thRight}>Closing</th>
+              <th className={thRight}>Taxas de draw</th>
+              <th className={thRight}>Taxas de payoff</th>
+              <th className={thRight}>Extensão</th>
+              <th className={thRight}>Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {months.map((m) => {
+              const row = byMonth.get(m)!;
+              const rowTotal = r2(CATS.reduce((s, c) => s + (row[c] ?? 0), 0));
+              return (
+                <tr key={m} className="border-b border-slate-50">
+                  <td className={td}>M{m}</td>
+                  <td className={tdRight}>{money(r2(row.INTEREST ?? 0))}</td>
+                  <td className={tdRight}>{money(r2(row.CLOSING ?? 0))}</td>
+                  <td className={tdRight}>{money(r2(row.DRAW_FEES ?? 0))}</td>
+                  <td className={tdRight}>{money(r2(row.PAYOFF_FEES ?? 0))}</td>
+                  <td className={tdRight}>{money(r2(row.EXTENSION ?? 0))}</td>
+                  <td className={`${tdRight} font-medium`}>{money(rowTotal)}</td>
+                </tr>
+              );
+            })}
+            <tr className="bg-slate-50/60">
+              <td className={`${td} font-semibold text-slate-800`}>Total</td>
+              <td className={`${tdRight} font-semibold`}>{money(totals.INTEREST)}</td>
+              <td className={`${tdRight} font-semibold`}>{money(totals.CLOSING)}</td>
+              <td className={`${tdRight} font-semibold`}>{money(totals.DRAW_FEES)}</td>
+              <td className={`${tdRight} font-semibold`}>{money(totals.PAYOFF_FEES)}</td>
+              <td className={`${tdRight} font-semibold`}>{money(totals.EXTENSION)}</td>
+              <td className={`${tdRight} font-semibold`}>{money(grand)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 const TABS = [
   ["dash", "Dashboard"],
   ["setup", "Setup"],
   ["casas", "Casas"],
+  ["financeiro", "Financeiro"],
   ["ledger", "Ledger"],
 ] as const;
 
@@ -189,6 +289,7 @@ export default async function SimulationPage({
   // Mini-comparativo: a MESMA simulação nos 3 cenários (sempre fresco do catálogo)
   const simFieldsBase = {
     fundingMode: sim.fundingMode,
+    upfrontFunding: sim.upfrontFunding,
     compMode: sim.compMode,
     perfPct: sim.perfPct,
     perfTiming: sim.perfTiming,
@@ -308,6 +409,7 @@ export default async function SimulationPage({
           sim.perfTiming,
           Number(sim.flatFeePerHouse),
           sim.paymentPlan,
+          String(sim.upfrontFunding),
           JSON.stringify(sim.promoteTiers ?? null),
         ].join("|")}
         sim={{
@@ -320,6 +422,7 @@ export default async function SimulationPage({
           perfTiming: sim.perfTiming,
           flatFeePerHouse: Number(sim.flatFeePerHouse).toString(),
           paymentPlan: sim.paymentPlan,
+          upfrontFunding: sim.upfrontFunding,
           promoteTiers:
             (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ??
             null,
@@ -390,6 +493,15 @@ export default async function SimulationPage({
             <Card label="Duração" value={fmtDuration(r.kpis.durationDays)} hint={`${r.units.length} casas`} />
           </div>
 
+          <BankCostsMonthly events={r.events} kpis={r.kpis} isBank={isBank} />
+          {/* Gráfico de barras na linha do tempo — comprimido, sempre dentro da tela */}
+          <CashflowChart monthly={r.monthly} />
+          </>
+          )}
+
+          {/* Financeiro: cards do banco/4U + fechamento ao centavo */}
+          {tab === "financeiro" && (
+          <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             {sim.compMode === "PERFORMANCE" ? (
               <Card label="Performance 4U" value={formatMoney(r.kpis.perfFeeTotal, "USD")} hint="antes do split" />
@@ -561,8 +673,6 @@ export default async function SimulationPage({
             );
           })()}
 
-          {/* Gráfico de barras na linha do tempo — comprimido, sempre dentro da tela */}
-          <CashflowChart monthly={r.monthly} />
           </>
           )}
 

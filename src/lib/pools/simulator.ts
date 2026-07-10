@@ -100,6 +100,9 @@ export type PromoteTier = {
 
 export type SimInput = {
   fundingMode: "EQUITY" | "BANK";
+  // aporte único de 100% em D+0 (mínimo p/ nunca faltar caixa) em vez do JIT — mostra o
+  // impacto do capital parado na TIR; retornos seguem a regra normal (excedente ao futuro)
+  upfrontFunding: boolean;
   compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
   // OPEN_BOOK: taxa flat de lucro por casa p/ a 4U — entra no custo da casa (obra + fee),
   // paga pelos gatilhos do plano de desembolso; promote opcional por cima (tiers preenchidos)
@@ -134,6 +137,10 @@ export type SimEvent = {
     | "BANK_INTEREST"
     | "BANK_PAYOFF";
   bankAmount?: number; // delta no saldo devedor do loan causado pelo evento
+  // categoria do custo bancário (p/ o quadro mensal) e valor informativo (juro pago da
+  // reserve não mexe em caixa nem saldo — o custo do mês vai aqui)
+  bankCat?: "CLOSING" | "RESERVE" | "INTEREST" | "DRAW_FEES" | "PAYOFF_FEES" | "EXTENSION";
+  infoAmount?: number;
   cash: number; // saldo do projeto após o evento
   invested: number; // capital do investidor em risco após o evento
   bankBalance: number; // saldo devedor do banco após o evento
@@ -221,6 +228,8 @@ type Flow = {
   label: string;
   kind: SimEvent["kind"];
   bankAmount?: number; // delta no saldo devedor do loan (capitalizações têm amount 0)
+  bankCat?: SimEvent["bankCat"];
+  infoAmount?: number;
 };
 
 // Cronograma de uma unidade (forward, unidades espaçadas por unitGapDays).
@@ -508,7 +517,7 @@ export function simulate(input: SimInput): SimResult {
 
     // fees upfront: financiados capitalizam; senão saem do caixa no closing
     if (!bank.feesFinanced && Math.abs(upfrontFees) > 0.01)
-      flows.push({ day: loanClosingDay, amount: -upfrontFees, label: "Fees de closing do loan (não financiados)", kind: "BANK_FEE" });
+      flows.push({ day: loanClosingDay, amount: -upfrontFees, label: "Fees de closing do loan (não financiados)", kind: "BANK_FEE", bankCat: "CLOSING" });
 
     type BankEvt = { day: number; amount: number; label: string; isDraw?: boolean };
     const bevts: BankEvt[] = [
@@ -525,14 +534,20 @@ export function simulate(input: SimInput): SimResult {
     let bi = 0;
     let si = 0;
     // capitalização no saldo do loan SEM passar pelo caixa (amount 0 → só ledger/saldo)
-    const cap = (day: number, delta: number, label: string, kind: SimEvent["kind"]) => {
+    const cap = (
+      day: number,
+      delta: number,
+      label: string,
+      kind: SimEvent["kind"],
+      bankCat?: SimEvent["bankCat"],
+    ) => {
       bal = round2(bal + delta);
-      flows.push({ day, amount: 0, bankAmount: round2(delta), label, kind });
+      flows.push({ day, amount: 0, bankAmount: round2(delta), label, kind, bankCat });
     };
     if (bank.feesFinanced && Math.abs(upfrontFees) > 0.01)
-      cap(loanClosingDay, upfrontFees, "Fees de closing capitalizados no loan", "BANK_FEE");
+      cap(loanClosingDay, upfrontFees, "Fees de closing capitalizados no loan", "BANK_FEE", "CLOSING");
     if (reserveFunded > 0)
-      cap(loanClosingDay, reserveFunded, `Interest reserve financiada (${bank.reserveMonths}m sobre o comprometido)`, "BANK_RESERVE");
+      cap(loanClosingDay, reserveFunded, `Interest reserve financiada (${bank.reserveMonths}m sobre o comprometido)`, "BANK_RESERVE", "RESERVE");
 
     const horizon = lastSaleDay + 30;
     for (let day = loanClosingDay; day <= horizon; day++) {
@@ -554,21 +569,21 @@ export function simulate(input: SimInput): SimResult {
         // fees do draw como LINHAS próprias, capitalizando no saldo (como no extrato do banco)
         if (bank.inspectionFeePerDraw > 0) {
           bankOtherFees += bank.inspectionFeePerDraw;
-          cap(day, bank.inspectionFeePerDraw, `Inspection fee do draw • ${baseLabel}`, "BANK_FEE");
+          cap(day, bank.inspectionFeePerDraw, `Inspection fee do draw • ${baseLabel}`, "BANK_FEE", "DRAW_FEES");
         }
         if (bank.drawProcessingFee > 0) {
           bankOtherFees += bank.drawProcessingFee;
-          cap(day, bank.drawProcessingFee, `Draw processing fee • ${baseLabel}`, "BANK_FEE");
+          cap(day, bank.drawProcessingFee, `Draw processing fee • ${baseLabel}`, "BANK_FEE", "DRAW_FEES");
         }
         for (const cf of bank.customFees.filter((f) => f.timing === "PER_DRAW" && f.kind === "FLAT")) {
           bankOtherFees += cf.amount;
-          cap(day, cf.amount, `${cf.name} (por draw) • ${baseLabel}`, "BANK_FEE");
+          cap(day, cf.amount, `${cf.name} (por draw) • ${baseLabel}`, "BANK_FEE", "DRAW_FEES");
         }
         drawsToday += 1;
       }
       if (drawsToday > 0 && bank.achFeePerBatch + perBatchCustom > 0) {
         bankOtherFees += bank.achFeePerBatch + perBatchCustom;
-        cap(day, bank.achFeePerBatch + perBatchCustom, "Fee por lote de draws (ACH)", "BANK_FEE");
+        cap(day, bank.achFeePerBatch + perBatchCustom, "Fee por lote de draws (ACH)", "BANK_FEE", "DRAW_FEES");
       }
 
       // juros + custos mensais a cada 30 dias. Base: sacado (non-Dutch) ou comprometido
@@ -586,6 +601,8 @@ export function simulate(input: SimInput): SimResult {
             amount: 0,
             label: `Juro do mês ${month} — $${monthCost.toLocaleString("en-US")} pago da reserve (restam $${reserveLeft.toLocaleString("en-US")})`,
             kind: "BANK_INTEREST",
+            bankCat: "INTEREST",
+            infoAmount: monthCost,
           });
         } else {
           const short = round2(monthCost - reserveLeft);
@@ -596,6 +613,8 @@ export function simulate(input: SimInput): SimResult {
             amount: -short,
             label: `Juros do loan (mês ${month})${fromReserve > 0 ? ` — reserve cobriu $${fromReserve.toLocaleString("en-US")}` : ""}`,
             kind: "BANK_INTEREST",
+            bankCat: "INTEREST",
+            infoAmount: monthCost,
           });
         }
       }
@@ -606,7 +625,7 @@ export function simulate(input: SimInput): SimResult {
         extensionFee = round2(
           bal > committed * 0.5 ? (committed * bank.extensionFeePct) / 100 : (bal * bank.extensionFeePct) / 100,
         );
-        cap(day, extensionFee, `Extension fee ${bank.extensionFeePct}% (fim do term de ${bank.termMonths}m)`, "BANK_FEE");
+        cap(day, extensionFee, `Extension fee ${bank.extensionFeePct}% (fim do term de ${bank.termMonths}m)`, "BANK_FEE", "EXTENSION");
       }
 
       // payoffs nas vendas
@@ -616,7 +635,7 @@ export function simulate(input: SimInput): SimResult {
         // reconveyance + fees por payoff capitalizam antes da quitação
         if (bank.reconveyanceFee + perPayoffFlat > 0) {
           bankOtherFees += bank.reconveyanceFee + perPayoffFlat;
-          cap(s.day, bank.reconveyanceFee + perPayoffFlat, `Reconveyance/fees do payoff • ${s.label}`, "BANK_FEE");
+          cap(s.day, bank.reconveyanceFee + perPayoffFlat, `Reconveyance/fees do payoff • ${s.label}`, "BANK_FEE", "PAYOFF_FEES");
         }
         if (isLast) {
           // reconciliação final: devolve a reserve não usada (crédito no saldo) + fees finais
@@ -628,6 +647,7 @@ export function simulate(input: SimInput): SimResult {
               round2(finalCustom - reserveLeft),
               `Reconciliação final — reserve não usada devolvida ($${reserveLeft.toLocaleString("en-US")})${finalCustom !== 0 ? " + fees finais" : ""}`,
               "BANK_RESERVE",
+              "RESERVE",
             );
           reserveLeft = 0;
         }
@@ -639,7 +659,7 @@ export function simulate(input: SimInput): SimResult {
         if (perPayoffPct > 0 && pay > 0) {
           const exit = round2((pay * perPayoffPct) / 100);
           bankOtherFees += exit;
-          cap(s.day, exit, `Exit fee ${perPayoffPct}% • ${s.label}`, "BANK_FEE");
+          cap(s.day, exit, `Exit fee ${perPayoffPct}% • ${s.label}`, "BANK_FEE", "PAYOFF_FEES");
           pay = round2(Math.max(0, Math.min(bal, capPay)));
         }
         if (pay > 0) {
@@ -696,6 +716,8 @@ export function simulate(input: SimInput): SimResult {
     label: string,
     kind: SimEvent["kind"],
     bankAmount?: number,
+    bankCat?: SimEvent["bankCat"],
+    infoAmount?: number,
   ) => {
     cash = round2(cash + amount);
     if (bankAmount) bankBalance = round2(bankBalance + bankAmount);
@@ -705,11 +727,27 @@ export function simulate(input: SimInput): SimResult {
       label,
       kind,
       ...(bankAmount ? { bankAmount: round2(bankAmount) } : {}),
+      ...(bankCat ? { bankCat } : {}),
+      ...(infoAmount ? { infoAmount: round2(infoAmount) } : {}),
       cash,
       invested,
       bankBalance,
     });
   };
+
+  // Aporte único em D+0: injeta o mínimo que garante nunca faltar caixa (pior déficit
+  // futuro). O JIT abaixo não dispara; retornos seguem a regra normal — a TIR mostra o
+  // custo do capital parado desde o dia zero.
+  if (input.upfrontFunding && n > 0) {
+    const inj = Math.ceil((futureMinNeed[0] ?? 0) * 100) / 100;
+    if (inj > 0) {
+      invested = inj;
+      totalInjected = inj;
+      peak = inj;
+      investorFlows.push({ day: 0, amount: -inj });
+      push(0, inj, "Aporte único do investidor (100% em D+0)", "INJECTION");
+    }
+  }
 
   flows.forEach((f, i) => {
     if (cash + f.amount < -1e-9) {
@@ -720,7 +758,7 @@ export function simulate(input: SimInput): SimResult {
       investorFlows.push({ day: f.day, amount: -inj });
       push(f.day, inj, "Aporte do investidor (JIT)", "INJECTION");
     }
-    push(f.day, f.amount, f.label, f.kind, f.bankAmount);
+    push(f.day, f.amount, f.label, f.kind, f.bankAmount, f.bankCat, f.infoAmount);
     const required = futureMinNeed[i + 1] ?? 0;
     const surplus = cash - required;
     if (surplus > 0.01) {

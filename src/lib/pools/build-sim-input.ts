@@ -9,6 +9,7 @@ export type PromoteTierInput = { hurdlePct: number | null; promotePct: number };
 // Módulo neutro: usado pelas server actions E pelos server components (cards de cenário).
 export async function buildSimInput(sim: {
   fundingMode: string;
+  upfrontFunding?: boolean;
   compMode: string;
   perfPct: unknown;
   perfTiming: string;
@@ -74,6 +75,7 @@ export async function buildSimInput(sim: {
 
   return {
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
+    upfrontFunding: sim.upfrontFunding ?? false,
     compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK",
     perfPct: Number(sim.perfPct) / 100,
     perfTiming: sim.perfTiming === "PER_SALE" ? "PER_SALE" : "PROJECT_COMPLETION",

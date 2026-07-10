@@ -122,6 +122,7 @@ export async function updateSimulationSettings(
   const flatFeePerHouse = Number.isFinite(flatRaw) && flatRaw >= 0 ? flatRaw : Number(sim.flatFeePerHouse);
   const paymentPlan =
     String(formData.get("paymentPlan") ?? "") === "LIGHT_START" ? "LIGHT_START" : "STANDARD";
+  const upfrontFunding = String(formData.get("upfrontFunding") ?? "") === "on";
   // Waterfall é OPT-IN: os controles mandam os tiers só quando ativos (PROMOTE sempre;
   // open book só com o checkbox marcado). Vazio = sem waterfall.
   const tiersField = formData.get("promoteTiers");
@@ -134,6 +135,7 @@ export async function updateSimulationSettings(
 
   const fields = {
     fundingMode,
+    upfrontFunding,
     compMode,
     perfPct,
     perfTiming,
@@ -161,6 +163,7 @@ export async function updateSimulationSettings(
       perfTiming,
       flatFeePerHouse,
       paymentPlan: paymentPlan as "STANDARD" | "LIGHT_START",
+      upfrontFunding,
       promoteTiers: promoteTiers ?? Prisma.DbNull,
       result: JSON.parse(JSON.stringify(result)),
     },
@@ -177,6 +180,7 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
   if (!sim) return;
   const input = await buildSimInput({
     fundingMode: sim.fundingMode,
+    upfrontFunding: sim.upfrontFunding,
     compMode: sim.compMode,
     perfPct: sim.perfPct,
     perfTiming: sim.perfTiming,
@@ -286,6 +290,7 @@ type CompareRow = {
 
 function simFields(sim: {
   fundingMode: string;
+  upfrontFunding: boolean;
   compMode: string;
   perfPct: unknown;
   perfTiming: string;
@@ -299,6 +304,7 @@ function simFields(sim: {
   units: unknown;
 }) {
   return {
+    upfrontFunding: sim.upfrontFunding,
     compMode: sim.compMode,
     perfPct: sim.perfPct,
     perfTiming: sim.perfTiming,

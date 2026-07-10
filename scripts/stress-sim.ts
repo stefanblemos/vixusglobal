@@ -44,6 +44,7 @@ const PLANS: Array<"STANDARD" | "LIGHT_START"> = ["STANDARD", "LIGHT_START"];
 function baseInput(sc: SimScenario, bank: SimBank | null): SimInput {
   return {
     fundingMode: bank ? "BANK" : "EQUITY",
+    upfrontFunding: false,
     compMode: "PERFORMANCE",
     flatFeePerHouse: 0,
     perfPct: 0.35,
@@ -139,6 +140,29 @@ for (const [scName, sc] of SCENARIOS) {
         }
       }
     }
+  }
+}
+
+// 10. aporte 100% em D+0: um único aporte no dia 0, caixa nunca negativo, TIR ≤ JIT
+for (const [bankName, bank] of BANKS) {
+  for (const [scName, sc] of SCENARIOS) {
+    const jit = simulate({ ...baseInput(sc, bank) });
+    const up = simulate({ ...baseInput(sc, bank), upfrontFunding: true });
+    const tag = `UPFRONT/${scName}/${bankName}`;
+    const injections = up.events.filter((e) => e.kind === "INJECTION");
+    if (injections.length !== 1 || injections[0].day !== 0)
+      fail(tag, `esperado 1 aporte em D+0, veio ${injections.length} (dias ${injections.map((e) => e.day).join(",")})`);
+    for (const e of up.events) if (e.cash < -0.01) fail(tag, `caixa negativo ${e.cash} no dia ${e.day}`);
+    const sum = up.events.reduce((s2, e) => s2 + e.amount, 0);
+    if (Math.abs(sum) > 0.05) fail(tag, `conservação: Σ = ${sum.toFixed(2)}`);
+    // capital parado só REDUZ a TIR quando há lucro; no prejuízo, base maior dilui a taxa
+    if (
+      jit.kpis.irrAnnual != null && up.kpis.irrAnnual != null &&
+      jit.kpis.irrAnnual > 0 && up.kpis.irrAnnual > jit.kpis.irrAnnual + 1e-9
+    )
+      fail(tag, `TIR upfront ${up.kpis.irrAnnual} > JIT ${jit.kpis.irrAnnual}`);
+    if (up.kpis.peakCapital < jit.kpis.peakCapital - 0.02)
+      fail(tag, `pico upfront ${up.kpis.peakCapital} < JIT ${jit.kpis.peakCapital}`);
   }
 }
 

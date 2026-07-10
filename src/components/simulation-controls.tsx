@@ -64,6 +64,7 @@ export function SimulationControls({
     perfTiming: string;
     flatFeePerHouse: string;
     paymentPlan: string;
+    upfrontFunding: boolean;
     promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
   };
   scenarios: Array<{ code: string; name: string }>;
@@ -82,6 +83,7 @@ export function SimulationControls({
   const [perfTiming, setPerfTiming] = useState(sim.perfTiming);
   const [flatFee, setFlatFee] = useState(sim.flatFeePerHouse);
   const [paymentPlan, setPaymentPlan] = useState(sim.paymentPlan);
+  const [upfront, setUpfront] = useState(sim.upfrontFunding);
   // waterfall: obrigatório no PROMOTE; OPCIONAL (checkbox) no open book — nunca por padrão
   const savedTiers: Tier[] = (sim.promoteTiers ?? []).map((t) => ({
     hurdlePct: t.hurdlePct == null ? "" : String(t.hurdlePct),
@@ -113,6 +115,7 @@ export function SimulationControls({
       setPerfTiming(sim.perfTiming);
       setFlatFee(sim.flatFeePerHouse);
       setPaymentPlan(sim.paymentPlan);
+      setUpfront(sim.upfrontFunding);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -181,6 +184,25 @@ export function SimulationControls({
               </select>
             )}
           </div>
+        </div>
+
+        <div>
+          <span className={labelClass}>Aporte</span>
+          <label
+            className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-600"
+            title="Todo o capital entra no dia zero (mínimo p/ nunca faltar caixa) em vez do just-in-time — mostra o impacto do capital parado na TIR"
+          >
+            <input
+              type="checkbox"
+              name="upfrontFunding"
+              checked={upfront}
+              onChange={(e) => {
+                setUpfront(e.target.checked);
+                submit();
+              }}
+            />
+            100% em D+0
+          </label>
         </div>
 
         <div>

@@ -1321,6 +1321,8 @@ model PoolSimulation {
   // paga pelos gatilhos do plano de desembolso
   flatFeePerHouse Decimal       @default(0) @db.Decimal(20, 2)
   paymentPlan   SimPaymentPlan  @default(STANDARD)
+  // Aporte único de 100% em D+0 (vs JIT) — mostra o impacto do capital parado na TIR
+  upfrontFunding Boolean        @default(false)
   equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
   parallelPermit Boolean        @default(false)
   unitGapDays   Int             @default(3)
