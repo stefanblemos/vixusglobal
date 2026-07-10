@@ -186,8 +186,19 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
-      {/* Alavancas da simulação viva: cenário, funding e remuneração recalculam na hora */}
+      {/* Alavancas da simulação viva: cenário, funding e remuneração recalculam na hora.
+          key = valores salvos → remonta após cada recálculo (o form reset do React 19
+          dessincroniza selects controlados; a remontagem realinha a tela com o banco) */}
       <SimulationControls
+        key={[
+          sim.scenarioCode,
+          sim.fundingMode,
+          sim.bankProfileId ?? "",
+          sim.compMode,
+          Number(sim.perfPct),
+          sim.perfTiming,
+          Number(sim.flatFeePerHouse),
+        ].join("|")}
         sim={{
           id: sim.id,
           scenarioCode: sim.scenarioCode,

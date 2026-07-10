@@ -97,11 +97,16 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
 // Alavancas da tela de resultado: cenário, funding e remuneração são ajustáveis na hora —
 // a simulação é "viva" (sobrescreve o snapshot; sem histórico, decisão do Stefan). A
 // comparação de bancos é descartada porque foi calculada sob as premissas antigas.
-export async function updateSimulationSettings(formData: FormData): Promise<void> {
+// Erros de catálogo (ex.: custo open book não preenchido no modelo) VOLTAM para a tela —
+// antes a action desistia em silêncio e parecia que a escolha "não persistia".
+export async function updateSimulationSettings(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
   const id = String(formData.get("simulationId") ?? "");
-  if (!id) return;
+  if (!id) return { error: "Simulation not found." };
   const sim = await prisma.poolSimulation.findUnique({ where: { id } });
-  if (!sim) return;
+  if (!sim) return { error: "Simulation not found." };
 
   const scenarioCode = String(formData.get("scenarioCode") ?? sim.scenarioCode);
   const fundingMode = String(formData.get("fundingMode") ?? sim.fundingMode);
@@ -132,7 +137,7 @@ export async function updateSimulationSettings(formData: FormData): Promise<void
     units: (sim.units as UnitRef[]) ?? [],
   };
   const input = await buildSimInput(fields);
-  if ("error" in input) return;
+  if ("error" in input) return { error: input.error };
   const result = simulate(input);
   await prisma.poolSimulation.update({
     where: { id },
@@ -148,6 +153,7 @@ export async function updateSimulationSettings(formData: FormData): Promise<void
     },
   });
   revalidatePath(`/pools/simulator/${id}`);
+  return undefined;
 }
 
 // Reexecuta com os catálogos/cenário atuais e re-grava o snapshot.
