@@ -92,8 +92,10 @@ async function main() {
       await prisma.bankCustomFee.create({ data: { bankProfileId: bc.id, ...f } });
     }
   }
-  // RDI e 2BTrust — esqueletos para preencher quando os primeiros projetos fecharem.
-  for (const name of ["RDI", "2BTrust"]) {
+  // RBI (ex-"RDI") e 2BTrust — esqueletos para preencher quando os primeiros projetos
+  // fecharem. NÃO recriar "RDI": foi renomeado p/ RBI Private Lending pelo fix-rbi-loi;
+  // recriar ressuscitava o esqueleto e o rename seguinte quebrava com P2002.
+  for (const name of ["RBI Private Lending", "2BTrust"]) {
     await prisma.bankProfile.upsert({
       where: { name },
       create: { name, notes: "Preencher com os termos reais no primeiro projeto fechado." },
