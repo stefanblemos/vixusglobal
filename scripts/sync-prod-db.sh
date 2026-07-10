@@ -9,16 +9,19 @@ cd "$(dirname "$0")/.."
 PG="/c/Program Files/PostgreSQL/17/bin"
 PROD_URL=$(grep -h '^PROD_DB_URL' .env.prod | cut -d'=' -f2- | tr -d '"')
 LOCAL_URL=$(grep -h '^DATABASE_URL' .env.local | cut -d'"' -f2)
+# psql/pg_restore não aceitam params do Prisma (?schema=...) — remove a query string
+LOCAL_PG_URL="${LOCAL_URL%%\?*}"
 
 echo "1/4 dump da produção…"
 DUMP=$(mktemp --suffix=.dump)
-"$PG/pg_dump.exe" "$PROD_URL" --format=custom --no-owner --no-privileges --file="$DUMP"
+"$PG/pg_dump.exe" "$PROD_URL" --schema=public --format=custom --no-owner --no-privileges --file="$DUMP"
 
 echo "2/4 limpando o schema local (vixus_prodcopy)…"
-"$PG/psql.exe" "$LOCAL_URL" -q -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+# só DROP — o restore recria o schema public (o dump inclui o CREATE SCHEMA)
+"$PG/psql.exe" "$LOCAL_PG_URL" -q -c "DROP SCHEMA IF EXISTS public CASCADE;"
 
 echo "3/4 restaurando…"
-"$PG/pg_restore.exe" --dbname="$LOCAL_URL" --no-owner --no-privileges --exit-on-error "$DUMP"
+"$PG/pg_restore.exe" --dbname="$LOCAL_PG_URL" --no-owner --no-privileges --exit-on-error "$DUMP"
 rm -f "$DUMP"
 
 echo "4/4 recriando o usuário de preview local…"
