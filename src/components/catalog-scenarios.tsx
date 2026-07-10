@@ -58,7 +58,7 @@ const GROUPS: Array<{
     hint: "Tudo que afeta o preço e o tempo de venda.",
     fields: [
       { name: "salePriceBufferPct", label: "Preço de venda %", hint: "Ajuste sobre a venda do catálogo (−7 = vende 7% mais barato)" },
-      { name: "salesAbsorptionMonths", label: "Absorção (meses)", hint: "Meses até vender após o CO; vazio = usa os dias do location" },
+      { name: "salesAbsorptionMonths", label: "Absorção (+ meses)", hint: "Meses SOMADOS aos dias de venda do location (cada região tem seu prazo); vazio = 0" },
       { name: "closingFeePct", label: "Closing fee %", hint: "Comissões e custos de venda, % do preço de venda" },
     ],
   },

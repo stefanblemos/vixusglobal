@@ -232,8 +232,9 @@ function schedule(u: SimUnitInput, idx: number, input: SimInput) {
   const tBuildStart = Math.max(tLotClose, tPermitOk);
   const buildDays = Math.max(30, Math.round((u.buildMonths + sc.constructionDurationBufferM) * 30));
   const tCO = tBuildStart + buildDays;
-  const saleDays =
-    sc.salesAbsorptionMonths != null ? Math.round(sc.salesAbsorptionMonths * 30) : u.saleDays;
+  // Absorção do cenário SOMA aos dias de venda do location (cada região tem seu prazo;
+  // substituir melhorava umas e piorava outras — regra do Stefan 10/07). Vazio = +0.
+  const saleDays = u.saleDays + Math.round((sc.salesAbsorptionMonths ?? 0) * 30);
   const tCashIn = tCO + saleDays;
   const tPermitApp = input.parallelPermit ? tReq : tLotClose;
   return { tReq, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
