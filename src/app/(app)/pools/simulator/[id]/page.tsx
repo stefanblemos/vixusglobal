@@ -9,7 +9,9 @@ import {
   rerunSimulation,
   useComparedBank,
 } from "@/lib/actions/simulations";
-import type { SimResult } from "@/lib/pools/simulator";
+import { simulate, type SimResult } from "@/lib/pools/simulator";
+import { buildSimInput, type PromoteTierInput, type UnitRef } from "@/lib/pools/build-sim-input";
+import { SimulationControls } from "@/components/simulation-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +28,9 @@ const KIND_LABEL: Record<string, string> = {
   CONTINGENCY: "Contingência",
   SALE: "Venda",
   PERF_FEE: "Performance 4U",
+  BANK_DRAW: "Draw banco",
   BANK_FEE: "Fee banco",
+  BANK_RESERVE: "Reserve",
   BANK_INTEREST: "Juros banco",
   BANK_PAYOFF: "Payoff banco",
 };
@@ -67,10 +71,43 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
   if (!sim) notFound();
   const r = sim.result as unknown as (SimResult & { comparison?: CompareRow[] }) | null;
   const comparison = r?.comparison ?? null;
-  const allBanks = await prisma.bankProfile.findMany({
-    orderBy: { name: "asc" },
-    select: { id: true, name: true },
-  });
+  const isBank = sim.fundingMode === "BANK";
+  // dias que precisaram de aporte — usado p/ marcar contas pagas do caixa (verde)
+  const injectionDays = new Set(
+    (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
+  );
+  const [allBanks, allScenarios] = await Promise.all([
+    prisma.bankProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
+  ]);
+
+  // Mini-comparativo: a MESMA simulação nos 3 cenários (sempre fresco do catálogo)
+  const simFieldsBase = {
+    fundingMode: sim.fundingMode,
+    compMode: sim.compMode,
+    perfPct: sim.perfPct,
+    perfTiming: sim.perfTiming,
+    promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    flatFeePerHouse: sim.flatFeePerHouse,
+    paymentPlan: sim.paymentPlan,
+    equityGatePct: sim.equityGatePct,
+    parallelPermit: sim.parallelPermit,
+    unitGapDays: sim.unitGapDays,
+    bankProfileId: sim.bankProfileId,
+    units: (sim.units as UnitRef[]) ?? [],
+  };
+  const scenarioCards = await Promise.all(
+    allScenarios.map(async (s) => {
+      const input = await buildSimInput({ ...simFieldsBase, scenarioCode: s.code });
+      if ("error" in input) return { code: s.code, name: s.name, kpis: null };
+      const res = simulate(input);
+      return {
+        code: s.code,
+        name: s.name,
+        kpis: { irr: res.kpis.irrAnnual, profit: res.kpis.profit, peak: res.kpis.peakCapital },
+      };
+    }),
+  );
 
   return (
     <div className="space-y-6">
@@ -134,6 +171,50 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
+      {/* Alavancas da simulação viva: cenário, funding e remuneração recalculam na hora */}
+      <SimulationControls
+        sim={{
+          id: sim.id,
+          scenarioCode: sim.scenarioCode,
+          fundingMode: sim.fundingMode,
+          bankProfileId: sim.bankProfileId,
+          compMode: sim.compMode,
+          perfPct: Number(sim.perfPct).toString(),
+          perfTiming: sim.perfTiming,
+          flatFeePerHouse: Number(sim.flatFeePerHouse).toString(),
+        }}
+        scenarios={allScenarios}
+        banks={allBanks}
+      />
+
+      {/* A mesma simulação nos 3 cenários — o em exibição destacado */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+        {scenarioCards.map((s) => (
+          <div
+            key={s.code}
+            className={`rounded-xl border bg-white p-4 ${
+              s.code === sim.scenarioCode ? "border-2 border-[#1f3a5f]" : "border-slate-200"
+            }`}
+          >
+            <div className={`text-xs ${s.code === sim.scenarioCode ? "font-medium text-[#1f3a5f]" : "text-slate-400"}`}>
+              {s.name}
+              {s.code === sim.scenarioCode ? " — em exibição" : ""}
+            </div>
+            {s.kpis ? (
+              <>
+                <div className="text-lg font-semibold tabular-nums text-slate-900">
+                  {s.kpis.irr != null ? `TIR ${(s.kpis.irr * 100).toFixed(1)}%` : "TIR —"} ·{" "}
+                  {formatMoney(s.kpis.profit, "USD")}
+                </div>
+                <div className="text-xs text-slate-400">pico {formatMoney(s.kpis.peak, "USD")}</div>
+              </>
+            ) : (
+              <div className="text-sm text-slate-400">catálogo incompleto p/ este cenário</div>
+            )}
+          </div>
+        ))}
+      </div>
+
       {!r ? (
         <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
           No result stored — re-run the simulation.
@@ -184,7 +265,15 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
             {sim.fundingMode === "BANK" && (
               <>
                 <Card label="Loan comprometido" value={formatMoney(r.kpis.bankCommitted, "USD")} />
-                <Card label="Fees upfront do banco" value={formatMoney(r.kpis.bankUpfrontFees, "USD")} />
+                <Card
+                  label="Fees upfront do banco"
+                  value={formatMoney(r.kpis.bankUpfrontFees, "USD")}
+                  hint={
+                    (r.kpis.bankOtherFees ?? 0) > 0
+                      ? `+ ${formatMoney(r.kpis.bankOtherFees, "USD")} em fees de draw/payoff`
+                      : undefined
+                  }
+                />
                 <Card
                   label="Juros + custos mensais"
                   value={formatMoney(r.kpis.bankInterestTotal, "USD")}
@@ -359,9 +448,13 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
 
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="text-base font-medium text-slate-800">Ledger de simulação</h2>
+              <h2 className="text-base font-medium text-slate-800">
+                Ledger de simulação{isBank ? " — capital próprio × banco" : ""}
+              </h2>
               <p className="text-xs text-slate-400">
-                Todos os eventos datados — o extrato prospectivo enviado ao investidor.
+                {isBank
+                  ? "O dinheiro do banco entra no caixa e sai pagando a obra (duas linhas); fees e reserve capitalizam no saldo do loan. Contas pagas do caixa (verde) não geram aporte."
+                  : "Todos os eventos datados — o extrato prospectivo enviado ao investidor. Contas pagas do caixa (verde) não geram aporte."}
               </p>
             </div>
             <div className="max-h-160 overflow-auto">
@@ -372,30 +465,63 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
                     <th className={th}>Tipo</th>
                     <th className={th}>Evento</th>
                     <th className={thRight}>Valor</th>
+                    {isBank && <th className={thRight}>Δ loan</th>}
                     <th className={thRight}>Caixa</th>
+                    {isBank && <th className={thRight}>Saldo loan</th>}
                     <th className={thRight}>Capital investidor</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {r.events.map((e, i) => (
+                  {r.events.map((e, i) => {
+                    // regra do caixa-primeiro visível: gasto sem aporte no mesmo dia = verde
+                    const paidFromCash =
+                      e.amount < 0 &&
+                      e.kind !== "RETURN" &&
+                      e.kind !== "BANK_PAYOFF" &&
+                      !injectionDays.has(e.day);
+                    return (
                     <tr
                       key={i}
                       className={`border-b border-slate-50 ${
-                        e.kind === "INJECTION" ? "bg-red-50/40" : e.kind === "RETURN" ? "bg-emerald-50/40" : ""
+                        e.kind === "INJECTION"
+                          ? "bg-red-50/40"
+                          : e.kind === "RETURN"
+                            ? "bg-emerald-50/40"
+                            : paidFromCash
+                              ? "bg-emerald-50/20"
+                              : e.kind === "BANK_DRAW"
+                                ? "bg-blue-50/30"
+                                : ""
                       }`}
                     >
                       <td className={td}>D+{e.day}</td>
                       <td className={td}>
                         <span className="text-xs text-slate-500">{KIND_LABEL[e.kind] ?? e.kind}</span>
                       </td>
-                      <td className={`${td} text-slate-500`}>{e.label}</td>
-                      <td className={`${tdRight} ${e.amount < 0 ? "text-slate-700" : "text-emerald-700"}`}>
-                        {formatMoney(e.amount, "USD")}
+                      <td className={`${td} text-slate-500`}>
+                        {e.label}
+                        {paidFromCash && (
+                          <span className="ml-1 text-xs text-emerald-600" title="Havia caixa — nenhum aporte foi necessário">
+                            · pago do caixa
+                          </span>
+                        )}
                       </td>
+                      <td className={`${tdRight} ${e.amount < 0 ? "text-slate-700" : e.amount > 0 ? "text-emerald-700" : "text-slate-300"}`}>
+                        {e.amount !== 0 ? formatMoney(e.amount, "USD") : "—"}
+                      </td>
+                      {isBank && (
+                        <td className={`${tdRight} ${(e.bankAmount ?? 0) < 0 ? "text-emerald-700" : "text-slate-500"}`}>
+                          {e.bankAmount ? formatMoney(e.bankAmount, "USD") : ""}
+                        </td>
+                      )}
                       <td className={tdRight}>{formatMoney(e.cash, "USD")}</td>
+                      {isBank && (
+                        <td className={`${tdRight} font-medium`}>{formatMoney(e.bankBalance, "USD")}</td>
+                      )}
                       <td className={tdRight}>{formatMoney(e.invested, "USD")}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
