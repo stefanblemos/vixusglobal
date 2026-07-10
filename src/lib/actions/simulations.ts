@@ -9,7 +9,7 @@ import {
   type PromoteTierInput,
   type UnitRef,
 } from "@/lib/pools/build-sim-input";
-import type { BuilderCompMode, SimFundingMode } from "@prisma/client";
+import { Prisma, type BuilderCompMode, type SimFundingMode } from "@prisma/client";
 
 export type FormState = { error?: string } | undefined;
 
@@ -120,15 +120,26 @@ export async function updateSimulationSettings(
   const perfTiming = String(formData.get("perfTiming") ?? sim.perfTiming);
   const flatRaw = Number(String(formData.get("flatFeePerHouse") ?? "").replace(/,/g, ""));
   const flatFeePerHouse = Number.isFinite(flatRaw) && flatRaw >= 0 ? flatRaw : Number(sim.flatFeePerHouse);
+  const paymentPlan =
+    String(formData.get("paymentPlan") ?? "") === "LIGHT_START" ? "LIGHT_START" : "STANDARD";
+  // Waterfall é OPT-IN: os controles mandam os tiers só quando ativos (PROMOTE sempre;
+  // open book só com o checkbox marcado). Vazio = sem waterfall.
+  const tiersField = formData.get("promoteTiers");
+  const promoteTiers =
+    typeof tiersField === "string"
+      ? parsePromoteTiers(tiersField)
+      : ((sim.promoteTiers as PromoteTierInput[] | null) ?? null);
+  if (compMode === "PROMOTE" && !promoteTiers)
+    return { error: "Defina pelo menos um tier do promote." };
 
   const fields = {
     fundingMode,
     compMode,
     perfPct,
     perfTiming,
-    promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    promoteTiers,
     flatFeePerHouse,
-    paymentPlan: sim.paymentPlan,
+    paymentPlan,
     equityGatePct: sim.equityGatePct,
     parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
@@ -149,6 +160,8 @@ export async function updateSimulationSettings(
       perfPct,
       perfTiming,
       flatFeePerHouse,
+      paymentPlan: paymentPlan as "STANDARD" | "LIGHT_START",
+      promoteTiers: promoteTiers ?? Prisma.DbNull,
       result: JSON.parse(JSON.stringify(result)),
     },
   });

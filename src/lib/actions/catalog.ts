@@ -524,6 +524,7 @@ export async function saveScenario(
     salesAbsorptionMonths: optNum(formData.get("salesAbsorptionMonths")),
     emdPct: num(formData.get("emdPct"), 10),
     stressSlippagePct: num(formData.get("stressSlippagePct")),
+    unitGapDays: Math.round(num(formData.get("unitGapDays"), 20)),
     sortOrder: Math.round(num(formData.get("sortOrder"), 9)),
   };
 
@@ -542,6 +543,7 @@ export async function saveScenario(
         salesAbsorptionMonths: before.salesAbsorptionMonths,
         emdPct: before.emdPct,
         stressSlippagePct: before.stressSlippagePct,
+        unitGapDays: before.unitGapDays,
         sortOrder: before.sortOrder,
       },
       data,

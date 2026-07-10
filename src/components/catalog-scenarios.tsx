@@ -23,6 +23,7 @@ export type ScenarioRow = {
   salesAbsorptionMonths: string | null;
   emdPct: string;
   stressSlippagePct: string;
+  unitGapDays: string;
   sortOrder: string;
 };
 
@@ -65,6 +66,7 @@ const GROUPS: Array<{
     title: "Outros",
     hint: "Stress e organização.",
     fields: [
+      { name: "unitGapDays", label: "Gap entre casas (dias)", hint: "Dias entre o início de uma casa e a próxima (Ótimo 10 · Real 20 · Cons 30)" },
       { name: "stressSlippagePct", label: "Slippage %", hint: "Derrapagem extra sobre o custo total (modo stress)" },
       { name: "sortOrder", label: "Ordem", hint: "Posição na lista de cenários" },
     ],

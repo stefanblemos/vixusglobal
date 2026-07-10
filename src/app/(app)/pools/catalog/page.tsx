@@ -290,6 +290,7 @@ export default async function PoolCatalogPage({
             salesAbsorptionMonths: s.salesAbsorptionMonths?.toString() ?? null,
             emdPct: s.emdPct.toString(),
             stressSlippagePct: s.stressSlippagePct.toString(),
+            unitGapDays: s.unitGapDays.toString(),
             sortOrder: s.sortOrder.toString(),
           }))}
           history={history("SCENARIO")}

@@ -7,9 +7,9 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const SCENARIOS = [
-  { code: "OPT", name: "Ótimo", salePriceBufferPct: 5, constructionCostBufferPct: -2, lotCostBufferPct: -1, closingFeePct: 7.5, contingencyReservePct: 3, landAcquisitionDays: 10, constructionDurationBufferM: -1, salesAbsorptionMonths: 1, emdPct: 5, stressSlippagePct: 0, sortOrder: 1 },
-  { code: "REAL", name: "Real", salePriceBufferPct: 0, constructionCostBufferPct: 0, lotCostBufferPct: 0, closingFeePct: 8, contingencyReservePct: 5, landAcquisitionDays: 20, constructionDurationBufferM: 0, salesAbsorptionMonths: 2, emdPct: 10, stressSlippagePct: 1, sortOrder: 2 },
-  { code: "CONS", name: "Conservador", salePriceBufferPct: -7, constructionCostBufferPct: 10, lotCostBufferPct: 5, closingFeePct: 9, contingencyReservePct: 8, landAcquisitionDays: 30, constructionDurationBufferM: 2, salesAbsorptionMonths: 4, emdPct: 10, stressSlippagePct: 3, sortOrder: 3 },
+  { code: "OPT", name: "Ótimo", salePriceBufferPct: 5, constructionCostBufferPct: -2, lotCostBufferPct: -1, closingFeePct: 7.5, contingencyReservePct: 3, landAcquisitionDays: 10, constructionDurationBufferM: -1, salesAbsorptionMonths: 1, emdPct: 5, stressSlippagePct: 0, unitGapDays: 10, sortOrder: 1 },
+  { code: "REAL", name: "Real", salePriceBufferPct: 0, constructionCostBufferPct: 0, lotCostBufferPct: 0, closingFeePct: 8, contingencyReservePct: 5, landAcquisitionDays: 20, constructionDurationBufferM: 0, salesAbsorptionMonths: 2, emdPct: 10, stressSlippagePct: 1, unitGapDays: 20, sortOrder: 2 },
+  { code: "CONS", name: "Conservador", salePriceBufferPct: -7, constructionCostBufferPct: 10, lotCostBufferPct: 5, closingFeePct: 9, contingencyReservePct: 8, landAcquisitionDays: 30, constructionDurationBufferM: 2, salesAbsorptionMonths: 4, emdPct: 10, stressSlippagePct: 3, unitGapDays: 30, sortOrder: 3 },
 ];
 
 const HOUSE_TYPES = ["AFFORDABLE", "MID_RANGE", "UPPER_MIDDLE", "HIGH_END", "LUXURY", "DUPLEX", "TRIPLEX", "MULTIFAMILY"];

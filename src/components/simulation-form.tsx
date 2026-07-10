@@ -156,11 +156,14 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   const [compMode, setCompMode] = useState("PERFORMANCE");
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
+  // waterfall é OPT-IN: obrigatório no promote, checkbox no open book, nunca por padrão
+  const [waterfallOn, setWaterfallOn] = useState(false);
   const [tiers, setTiers] = useState<Array<{ hurdlePct: string; promotePct: string }>>([
     { hurdlePct: "8", promotePct: "0" },
     { hurdlePct: "15", promotePct: "20" },
     { hurdlePct: "", promotePct: "35" },
   ]);
+  const tiersActive = compMode === "PROMOTE" || (compMode === "OPEN_BOOK" && waterfallOn);
 
   const modelsFor = useMemo(() => {
     const map = new Map<string, SimCatalog["modelLocations"]>();
@@ -180,12 +183,16 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
       <input
         type="hidden"
         name="promoteTiers"
-        value={JSON.stringify(
-          tiers.map((t) => ({
-            hurdlePct: t.hurdlePct.trim() === "" ? null : Number(t.hurdlePct),
-            promotePct: Number(t.promotePct),
-          })),
-        )}
+        value={
+          tiersActive
+            ? JSON.stringify(
+                tiers.map((t) => ({
+                  hurdlePct: t.hurdlePct.trim() === "" ? null : Number(t.hurdlePct),
+                  promotePct: Number(t.promotePct),
+                })),
+              )
+            : ""
+        }
       />
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -278,17 +285,29 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
           </select>
         </div>
         {compMode === "OPEN_BOOK" && (
-          <div>
-            <label htmlFor="sim-flat" className={labelClass}>
-              Taxa flat 4U por casa $
-            </label>
-            <input
-              id="sim-flat"
-              name="flatFeePerHouse"
-              defaultValue="20000"
-              className={inputClass}
-            />
-          </div>
+          <>
+            <div>
+              <label htmlFor="sim-flat" className={labelClass}>
+                Taxa flat 4U por casa $
+              </label>
+              <input
+                id="sim-flat"
+                name="flatFeePerHouse"
+                defaultValue="20000"
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 pt-6 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={waterfallOn}
+                  onChange={(e) => setWaterfallOn(e.target.checked)}
+                />{" "}
+                + promote (waterfall)
+              </label>
+            </div>
+          </>
         )}
         {compMode === "PERFORMANCE" && (
           <>
@@ -330,7 +349,7 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
         </div>
       </div>
 
-      {(compMode === "PROMOTE" || compMode === "OPEN_BOOK") && (
+      {tiersActive && (
         <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
           <h3 className="text-sm font-semibold text-slate-700">
             Tiers do promote{compMode === "OPEN_BOOK" ? " (opcional)" : ""}

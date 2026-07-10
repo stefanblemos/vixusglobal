@@ -82,7 +82,8 @@ export async function buildSimInput(sim: {
     paymentPlan: sim.paymentPlan === "LIGHT_START" ? "LIGHT_START" : "STANDARD",
     equityGatePct: Number(sim.equityGatePct) / 100,
     parallelPermit: sim.parallelPermit,
-    unitGapDays: sim.unitGapDays,
+    // gap entre início das casas vem do CENÁRIO (Ótimo 10 · Real 20 · Conservador 30)
+    unitGapDays: scenario.unitGapDays,
     scenario: {
       salePriceBufferPct: Number(scenario.salePriceBufferPct),
       constructionCostBufferPct: Number(scenario.constructionCostBufferPct),

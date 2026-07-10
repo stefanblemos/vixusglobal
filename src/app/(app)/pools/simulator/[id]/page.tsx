@@ -198,6 +198,8 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
           Number(sim.perfPct),
           sim.perfTiming,
           Number(sim.flatFeePerHouse),
+          sim.paymentPlan,
+          JSON.stringify(sim.promoteTiers ?? null),
         ].join("|")}
         sim={{
           id: sim.id,
@@ -208,6 +210,10 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
           perfPct: Number(sim.perfPct).toString(),
           perfTiming: sim.perfTiming,
           flatFeePerHouse: Number(sim.flatFeePerHouse).toString(),
+          paymentPlan: sim.paymentPlan,
+          promoteTiers:
+            (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ??
+            null,
         }}
         scenarios={allScenarios}
         banks={allBanks}
@@ -332,6 +338,114 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
               <Card label="Equity gate" value={formatMoney(r.kpis.equityGateAmount, "USD")} hint={`${Number(sim.equityGatePct)}% dos custos`} />
             )}
           </div>
+
+          {/* Fechamento do projeto: venda − custos − banco − 4U = resultado, ao centavo */}
+          {(() => {
+            const vendas = r.units.reduce((s, u) => s + u.adjSaleNet, 0);
+            const lotes = r.units.reduce((s, u) => s + u.adjLot, 0);
+            const obra = r.units.reduce((s, u) => s + u.adjBuild, 0);
+            const bankCost =
+              r.kpis.bankUpfrontFees +
+              r.kpis.bankInterestTotal +
+              (r.kpis.bankOtherFees ?? 0) +
+              r.kpis.bankExtensionFee;
+            const perf = r.kpis.perfFeeTotal;
+            const resultado = Math.round((vendas - lotes - obra - bankCost - perf) * 100) / 100;
+            const diff = Math.round((resultado - r.kpis.profit) * 100) / 100;
+            const fecha = Math.abs(diff) <= 0.01;
+            const row = "flex items-baseline justify-between px-5 py-1.5 text-sm";
+            const sub = "flex items-baseline justify-between px-5 py-1 pl-10 text-xs text-slate-400";
+            return (
+              <section className="rounded-xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+                  <div>
+                    <h2 className="text-base font-medium text-slate-800">Fechamento do projeto</h2>
+                    <p className="text-xs text-slate-400">
+                      Venda − lote − obra − banco − 4U = resultado do investidor, sem faltar um
+                      centavo.
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-medium ${
+                      fecha ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"
+                    }`}
+                  >
+                    {fecha ? "✓ fecha ao centavo" : `✗ diferença ${formatMoney(diff, "USD")}`}
+                  </span>
+                </div>
+                <div className="py-2">
+                  <div className={row}>
+                    <span className="text-slate-600">(+) Vendas líquidas ({r.units.length} casas)</span>
+                    <span className="font-medium tabular-nums text-emerald-700">{formatMoney(vendas, "USD")}</span>
+                  </div>
+                  <div className={row}>
+                    <span className="text-slate-600">(−) Lotes</span>
+                    <span className="tabular-nums">{formatMoney(-lotes, "USD")}</span>
+                  </div>
+                  <div className={row}>
+                    <span className="text-slate-600">
+                      (−) Obra
+                      {sim.compMode === "CONTRACTOR_FEE"
+                        ? " (inclui o contractor fee da 4U)"
+                        : sim.compMode === "OPEN_BOOK"
+                          ? ` (inclui a taxa flat da 4U — ${formatMoney(r.kpis.contractorFeeTotal, "USD")})`
+                          : ""}
+                    </span>
+                    <span className="tabular-nums">{formatMoney(-obra, "USD")}</span>
+                  </div>
+                  {sim.fundingMode === "BANK" && (
+                    <>
+                      <div className={row}>
+                        <span className="text-slate-600">(−) Custo do banco</span>
+                        <span className="tabular-nums">{formatMoney(-bankCost, "USD")}</span>
+                      </div>
+                      <div className={sub}>
+                        <span>fees de closing (orig/broker/título/fixos)</span>
+                        <span className="tabular-nums">{formatMoney(-r.kpis.bankUpfrontFees, "USD")}</span>
+                      </div>
+                      <div className={sub}>
+                        <span>
+                          juros + custos mensais
+                          {r.kpis.bankReserveFunded > 0
+                            ? ` (reserve financiada ${formatMoney(r.kpis.bankReserveFunded, "USD")}, não usada devolvida ${formatMoney(r.kpis.bankReserveUnused, "USD")})`
+                            : ""}
+                        </span>
+                        <span className="tabular-nums">{formatMoney(-r.kpis.bankInterestTotal, "USD")}</span>
+                      </div>
+                      <div className={sub}>
+                        <span>taxas de draw/lote/payoff (inspection, ACH, reconveyance…)</span>
+                        <span className="tabular-nums">{formatMoney(-(r.kpis.bankOtherFees ?? 0), "USD")}</span>
+                      </div>
+                      {r.kpis.bankExtensionFee > 0 && (
+                        <div className={sub}>
+                          <span>extension fee (fim do term)</span>
+                          <span className="tabular-nums">{formatMoney(-r.kpis.bankExtensionFee, "USD")}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  {perf > 0 && (
+                    <div className={row}>
+                      <span className="text-slate-600">
+                        (−) 4U — {sim.compMode === "PROMOTE" || ((sim.promoteTiers as unknown[] | null)?.length && sim.compMode === "OPEN_BOOK") ? "promote (waterfall)" : `performance ${Number(sim.perfPct)}%`}
+                      </span>
+                      <span className="tabular-nums">{formatMoney(-perf, "USD")}</span>
+                    </div>
+                  )}
+                  <div className={`${row} border-t border-slate-100 pt-2`}>
+                    <span className="font-semibold text-slate-800">(=) Resultado do investidor</span>
+                    <span className={`font-semibold tabular-nums ${resultado < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                      {formatMoney(resultado, "USD")}
+                    </span>
+                  </div>
+                  <div className={sub}>
+                    <span>aportado {formatMoney(r.kpis.totalInvested, "USD")} · retornado {formatMoney(r.kpis.totalReturned, "USD")} · TIR {r.kpis.irrAnnual != null ? `${(r.kpis.irrAnnual * 100).toFixed(2)}%` : "—"}</span>
+                    <span></span>
+                  </div>
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Comparador de bancos: mesma cesta de casas, N perfis, melhor opção marcada */}
           <section className="rounded-xl border border-slate-200 bg-white">

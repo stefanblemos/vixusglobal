@@ -1257,6 +1257,7 @@ model BufferScenario {
   salesAbsorptionMonths       Decimal? @db.Decimal(4, 1) // 1 / 2 / 4 (null = saleDays do local)
   emdPct                      Decimal  @default(10) @db.Decimal(6, 2) // 5 / 10 / 10
   stressSlippagePct           Decimal  @default(0) @db.Decimal(6, 2)
+  unitGapDays                 Int      @default(20) // gap entre início das casas: 10 / 20 / 30
   sortOrder                   Int      @default(0)
   updatedAt                   DateTime @updatedAt
 
