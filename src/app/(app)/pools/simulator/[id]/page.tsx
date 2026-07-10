@@ -13,6 +13,7 @@ import { buildSimInput, type PromoteTierInput, type UnitRef } from "@/lib/pools/
 import { SimulationControls } from "@/components/simulation-controls";
 import { BankMultiSelect } from "@/components/bank-multiselect";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
+import { SimLedger, type LedgerRow } from "@/components/sim-ledger";
 
 export const dynamic = "force-dynamic";
 
@@ -63,8 +64,97 @@ type CompareRow = {
   best?: boolean;
 };
 
-export default async function SimulationPage({ params }: { params: Promise<{ id: string }> }) {
+// Fluxo do investidor na linha do tempo: verde p/ cima = retorno, vermelho p/ baixo =
+// aporte. SVG com largura 100% — comprime para caber sempre na tela, sem rolagem.
+function CashflowChart({
+  monthly,
+}: {
+  monthly: Array<{ month: number; inflow: number; outflow: number }>;
+}) {
+  if (monthly.length === 0) return null;
+  const months = Array.from({ length: Math.max(...monthly.map((m) => m.month)) }, (_, i) => {
+    const m = monthly.find((x) => x.month === i + 1);
+    return { month: i + 1, aporte: m?.inflow ?? 0, retorno: m?.outflow ?? 0 };
+  });
+  const maxUp = Math.max(...months.map((m) => m.retorno), 1);
+  const maxDown = Math.max(...months.map((m) => m.aporte), 1);
+  const W = 720;
+  const H = 190;
+  const upH = 120;
+  const downH = 50;
+  const zeroY = 10 + upH;
+  const slot = W / months.length;
+  const barW = Math.min(34, Math.max(4, slot * 0.62));
+  const labelEvery = Math.ceil(months.length / 16);
+  const fmtK = (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(Math.round(v)));
+  return (
+    <section className="rounded-xl border border-slate-200 bg-white">
+      <div className="border-b border-slate-100 px-5 py-4">
+        <h2 className="text-base font-medium text-slate-800">Fluxo do investidor na linha do tempo</h2>
+        <p className="text-xs text-slate-400">
+          Verde para cima = retorno ao investidor · vermelho para baixo = aporte. Valores em $ mil.
+        </p>
+      </div>
+      <div className="px-5 py-4">
+        <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Fluxo mensal do investidor">
+          <line x1="0" y1={zeroY} x2={W} y2={zeroY} stroke="#cbd5e1" strokeWidth="1" />
+          {months.map((m, i) => {
+            const x = i * slot + (slot - barW) / 2;
+            const hUp = (m.retorno / maxUp) * upH;
+            const hDown = (m.aporte / maxDown) * downH;
+            return (
+              <g key={m.month}>
+                {m.retorno > 0 && (
+                  <>
+                    <rect x={x} y={zeroY - hUp} width={barW} height={hUp} fill="#10b981" rx="2" />
+                    {hUp > 14 && barW >= 16 && (
+                      <text x={x + barW / 2} y={zeroY - hUp - 3} textAnchor="middle" fontSize="9" fill="#047857">
+                        {fmtK(m.retorno)}
+                      </text>
+                    )}
+                  </>
+                )}
+                {m.aporte > 0 && (
+                  <>
+                    <rect x={x} y={zeroY} width={barW} height={hDown} fill="#ef4444" rx="2" />
+                    {hDown > 12 && barW >= 16 && (
+                      <text x={x + barW / 2} y={zeroY + hDown + 10} textAnchor="middle" fontSize="9" fill="#b91c1c">
+                        {fmtK(m.aporte)}
+                      </text>
+                    )}
+                  </>
+                )}
+                {(i + 1) % labelEvery === 0 && (
+                  <text x={x + barW / 2} y={H - 2} textAnchor="middle" fontSize="9" fill="#94a3b8">
+                    M{m.month}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </section>
+  );
+}
+
+const TABS = [
+  ["dash", "Dashboard"],
+  ["setup", "Setup"],
+  ["casas", "Casas"],
+  ["ledger", "Ledger"],
+] as const;
+
+export default async function SimulationPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const { id } = await params;
+  const { tab: rawTab } = await searchParams;
+  const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "dash";
   const sim = await prisma.poolSimulation.findUnique({
     where: { id },
     include: { scenario: true, bankProfile: true, pool: true },
@@ -186,9 +276,28 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
         </div>
       </div>
 
+      {/* Blocos viram ABAS para não rolar: Dashboard (números) · Setup (alavancas +
+          comparador) · Casas · Ledger */}
+      <div className="flex gap-1 border-b border-slate-200">
+        {TABS.map(([key, label]) => (
+          <Link
+            key={key}
+            href={`/pools/simulator/${sim.id}?tab=${key}`}
+            className={`rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
+              tab === key
+                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
       {/* Alavancas da simulação viva: cenário, funding e remuneração recalculam na hora.
           key = valores salvos → remonta após cada recálculo (o form reset do React 19
           dessincroniza selects controlados; a remontagem realinha a tela com o banco) */}
+      {tab === "setup" && (
       <SimulationControls
         key={[
           sim.scenarioCode,
@@ -218,8 +327,10 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
         scenarios={allScenarios}
         banks={allBanks}
       />
+      )}
 
       {/* A mesma simulação nos 3 cenários — o em exibição destacado */}
+      {tab === "dash" && (
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {scenarioCards.map((s) => (
           <div
@@ -246,6 +357,7 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
           </div>
         ))}
       </div>
+      )}
 
       {!r ? (
         <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
@@ -253,6 +365,8 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
         </div>
       ) : (
         <>
+          {tab === "dash" && (
+          <>
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Card
               label="Capital do investidor (pico)"
@@ -447,7 +561,13 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
             );
           })()}
 
+          {/* Gráfico de barras na linha do tempo — comprimido, sempre dentro da tela */}
+          <CashflowChart monthly={r.monthly} />
+          </>
+          )}
+
           {/* Comparador de bancos: mesma cesta de casas, N perfis, melhor opção marcada */}
+          {tab === "setup" && (
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="text-base font-medium text-slate-800">Comparar bancos</h2>
@@ -529,7 +649,9 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
               </div>
             </details>
           </section>
+          )}
 
+          {tab === "casas" && (
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="text-base font-medium text-slate-800">Casas</h2>
@@ -567,11 +689,35 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
                       <td className={tdRight}>D+{u.tCashIn}</td>
                     </tr>
                   ))}
+                  <tr className="bg-slate-50/60">
+                    <td className={`${td} font-semibold text-slate-800`} colSpan={2}>
+                      Total ({r.units.length} casas)
+                    </td>
+                    <td className={`${tdRight} font-semibold`}>
+                      {formatMoney(r.units.reduce((s, u) => s + u.adjLot, 0), "USD")}
+                    </td>
+                    <td className={`${tdRight} font-semibold`}>
+                      {formatMoney(r.units.reduce((s, u) => s + u.adjBuild, 0), "USD")}
+                    </td>
+                    <td className={`${tdRight} font-semibold`}>
+                      {formatMoney(r.units.reduce((s, u) => s + u.adjSaleNet, 0), "USD")}
+                    </td>
+                    <td className={`${tdRight} font-semibold`}>
+                      {formatMoney(r.units.reduce((s, u) => s + u.bankEligible, 0), "USD")}
+                    </td>
+                    <td className={`${tdRight} font-semibold`}>
+                      {formatMoney(r.units.reduce((s, u) => s + u.profit, 0), "USD")}
+                    </td>
+                    <td colSpan={3}></td>
+                  </tr>
                 </tbody>
               </table>
             </div>
           </section>
+          )}
 
+          {tab === "ledger" && (
+          <>
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="text-base font-medium text-slate-800">Resumo mensal (investidor)</h2>
@@ -600,86 +746,30 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
             </div>
           </section>
 
-          <section className="rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="text-base font-medium text-slate-800">
-                Ledger de simulação{isBank ? " — capital próprio × banco" : ""}
-              </h2>
-              <p className="text-xs text-slate-400">
-                {isBank
-                  ? "O dinheiro do banco entra no caixa e sai pagando a obra (duas linhas); fees e reserve capitalizam no saldo do loan. Contas pagas do caixa (verde) não geram aporte."
-                  : "Todos os eventos datados — o extrato prospectivo enviado ao investidor. Contas pagas do caixa (verde) não geram aporte."}
-              </p>
-            </div>
-            <div className="max-h-160 overflow-auto">
-              <table className="w-full">
-                <thead className="sticky top-0 bg-white">
-                  <tr className="border-b border-slate-100">
-                    <th className={th}>Dia</th>
-                    <th className={th}>Tipo</th>
-                    <th className={th}>Evento</th>
-                    <th className={thRight}>Valor</th>
-                    {isBank && <th className={thRight}>Δ loan</th>}
-                    <th className={thRight}>Caixa</th>
-                    {isBank && <th className={thRight}>Saldo loan</th>}
-                    <th className={thRight}>Capital investidor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {r.events.map((e, i) => {
-                    // regra do caixa-primeiro visível: gasto sem aporte no mesmo dia = verde
-                    const paidFromCash =
-                      e.amount < 0 &&
-                      e.kind !== "RETURN" &&
-                      e.kind !== "BANK_PAYOFF" &&
-                      !injectionDays.has(e.day);
-                    return (
-                    <tr
-                      key={i}
-                      className={`border-b border-slate-50 ${
-                        e.kind === "INJECTION"
-                          ? "bg-red-50/40"
-                          : e.kind === "RETURN"
-                            ? "bg-emerald-50/40"
-                            : paidFromCash
-                              ? "bg-emerald-50/20"
-                              : e.kind === "BANK_DRAW"
-                                ? "bg-blue-50/30"
-                                : ""
-                      }`}
-                    >
-                      <td className={td}>D+{e.day}</td>
-                      <td className={td}>
-                        <span className="text-xs text-slate-500">{KIND_LABEL[e.kind] ?? e.kind}</span>
-                      </td>
-                      <td className={`${td} text-slate-500`}>
-                        {e.label}
-                        {paidFromCash && (
-                          <span className="ml-1 text-xs text-emerald-600" title="Havia caixa — nenhum aporte foi necessário">
-                            · pago do caixa
-                          </span>
-                        )}
-                      </td>
-                      <td className={`${tdRight} ${e.amount < 0 ? "text-slate-700" : e.amount > 0 ? "text-emerald-700" : "text-slate-300"}`}>
-                        {e.amount !== 0 ? formatMoney(e.amount, "USD") : "—"}
-                      </td>
-                      {isBank && (
-                        <td className={`${tdRight} ${(e.bankAmount ?? 0) < 0 ? "text-emerald-700" : "text-slate-500"}`}>
-                          {e.bankAmount ? formatMoney(e.bankAmount, "USD") : ""}
-                        </td>
-                      )}
-                      <td className={tdRight}>{formatMoney(e.cash, "USD")}</td>
-                      {isBank && (
-                        <td className={`${tdRight} font-medium`}>{formatMoney(e.bankBalance, "USD")}</td>
-                      )}
-                      <td className={tdRight}>{formatMoney(e.invested, "USD")}</td>
-                    </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </section>
+          <SimLedger
+            isBank={isBank}
+            rows={r.events.map(
+              (e): LedgerRow => ({
+                day: e.day,
+                kind: e.kind,
+                kindLabel: KIND_LABEL[e.kind] ?? e.kind,
+                label: e.label,
+                amount: e.amount,
+                bankAmount: e.bankAmount ?? null,
+                cash: e.cash,
+                bankBalance: e.bankBalance,
+                invested: e.invested,
+                // regra do caixa-primeiro visível: gasto sem aporte no mesmo dia = verde
+                paidFromCash:
+                  e.amount < 0 &&
+                  e.kind !== "RETURN" &&
+                  e.kind !== "BANK_PAYOFF" &&
+                  !injectionDays.has(e.day),
+              }),
+            )}
+          />
+          </>
+          )}
         </>
       )}
     </div>

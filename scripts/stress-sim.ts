@@ -124,6 +124,19 @@ for (const [scName, sc] of SCENARIOS) {
           const consumed = r.kpis.bankReserveFunded - r.kpis.bankReserveUnused;
           if (consumed < -0.01) fail(tag, `reserve consumida negativa (${consumed})`);
         }
+
+        // 9. banco NUNCA paga permit (F1/F2) e nenhum draw antes de closing+15
+        for (const d of drawsIn) {
+          if (/Fase [12] •/.test(d.label)) fail(tag, `draw do banco pagando permit: ${d.label}`);
+        }
+        if (bank && drawsIn.length > 0) {
+          const closingDay = r.events.find(
+            (e) => e.kind === "BANK_FEE" || e.kind === "BANK_RESERVE",
+          )?.day;
+          const firstDraw = Math.min(...drawsIn.map((d) => d.day));
+          if (closingDay != null && firstDraw < closingDay + 15)
+            fail(tag, `draw ${firstDraw} antes de closing+15 (${closingDay + 15})`);
+        }
       }
     }
   }

@@ -256,6 +256,10 @@ export const PAYMENT_PLANS: Record<"STANDARD" | "LIGHT_START", number[]> = {
   LIGHT_START: [0.1, 0.15, 0.25, 0.25, 0.2, 0.05],
 };
 
+// Depois do closing, as PRIMEIRAS medições do banco levam ~15 dias — nenhum draw antes
+// disso (regra do Stefan, 10/07; empurra cronograma e juros para frente).
+const DRAW_START_LAG_DAYS = 15;
+
 function phaseDays(s: ReturnType<typeof schedule>): number[] {
   return [
     s.tPermitApp,
@@ -378,15 +382,20 @@ export function simulate(input: SimInput): SimResult {
       const ownerPart = Math.max(0, lotBalance - lotBankShare);
       if (ownerPart > 0)
         flows.push({ day: u.tLotClose, amount: -round2(ownerPart), label: `Lote • closing (equity) • ${u.label}`, kind: "LOT" });
-      bankDraws.push({ day: Math.max(u.tLotClose, loanClosingDay + 1), amount: round2(Math.min(lotBankShare, lotBalance)), label: `Lote • closing (draw) • ${u.label}` });
+      bankDraws.push({ day: Math.max(u.tLotClose, loanClosingDay + DRAW_START_LAG_DAYS), amount: round2(Math.min(lotBankShare, lotBalance)), label: `Lote • closing (draw) • ${u.label}` });
     } else {
       flows.push({ day: u.tLotClose, amount: -round2(lotBalance), label: `Lote • closing • ${u.label}`, kind: "LOT" });
     }
 
-    // Obra em 6 fases: equity da unidade primeiro, depois draws do banco.
+    // Obra em 6 fases. Regras do banco (Stefan, 10/07):
+    // - F1 (permit application) e F2 (permit issued) são SEMPRE do proprietário — banco
+    //   NÃO paga permit (o closing só existe porque 80% dos permits saíram; as casas que
+    //   faltam também pagam permit com equity);
+    // - draws só a partir da F3, e as primeiras medições levam ~15 dias após o closing.
     const buildBankCap = Math.max(0, u.bankEligible - lotBankShare);
-    let ownerEquityLeft = Math.max(0, u.adjBuild - buildBankCap);
-    let bankLeft = Math.min(u.adjBuild, buildBankCap);
+    const fundable = u.adjBuild * phasePcts.slice(2).reduce((s, p) => s + p, 0); // F3..F6
+    let bankLeft = Math.min(fundable, buildBankCap);
+    let ownerEquityLeft = Math.max(0, fundable - bankLeft); // equity-first dentro do financiável
     const days = phaseDays({
       tPermitApp: input.parallelPermit ? u.tReq : u.tLotClose,
       tPermitOk: u.tPermitOk,
@@ -400,8 +409,13 @@ export function simulate(input: SimInput): SimResult {
     phasePcts.forEach((pct, pi) => {
       let amt = u.adjBuild * pct;
       const label = `Fase ${pi + 1} • ${PHASE_NAMES[pi]} • ${Math.round(pct * 100)}% • ${u.label}`;
-      if (!bank) {
-        flows.push({ day: days[pi], amount: -round2(amt), label, kind: "PHASE" });
+      if (!bank || pi < 2) {
+        flows.push({
+          day: days[pi],
+          amount: -round2(amt),
+          label: bank && pi < 2 ? `${label} (equity — banco não paga permit)` : label,
+          kind: "PHASE",
+        });
         return;
       }
       const fromOwner = Math.min(amt, ownerEquityLeft);
@@ -412,7 +426,11 @@ export function simulate(input: SimInput): SimResult {
       }
       if (amt > 0 && bankLeft > 0) {
         const fromBank = Math.min(amt, bankLeft);
-        bankDraws.push({ day: Math.max(days[pi], loanClosingDay + 1), amount: round2(fromBank), label: `${label} (draw)` });
+        bankDraws.push({
+          day: Math.max(days[pi], loanClosingDay + DRAW_START_LAG_DAYS),
+          amount: round2(fromBank),
+          label: `${label} (draw)`,
+        });
         bankLeft -= fromBank;
         amt -= fromBank;
       }
