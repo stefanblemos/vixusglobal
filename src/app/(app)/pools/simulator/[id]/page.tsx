@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import {
-  compareSimulationBanks,
   convertSimulationToPool,
   deleteSimulation,
   rerunSimulation,
@@ -12,6 +11,8 @@ import {
 import { simulate, type SimResult } from "@/lib/pools/simulator";
 import { buildSimInput, type PromoteTierInput, type UnitRef } from "@/lib/pools/build-sim-input";
 import { SimulationControls } from "@/components/simulation-controls";
+import { BankMultiSelect } from "@/components/bank-multiselect";
+import { BankLoiUpload } from "@/components/bank-loi-upload";
 
 export const dynamic = "force-dynamic";
 
@@ -77,9 +78,23 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
     (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
   );
   const [allBanks, allScenarios] = await Promise.all([
-    prisma.bankProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.bankProfile.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        lois: { orderBy: { createdAt: "desc" }, take: 1, select: { loiNumber: true, loiDate: true } },
+      },
+    }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
   ]);
+  const bankOptions = allBanks.map((b) => ({
+    id: b.id,
+    name: b.name,
+    loi: b.lois[0]
+      ? `LOI${b.lois[0].loiNumber ? ` ${b.lois[0].loiNumber}` : ""}${b.lois[0].loiDate ? ` · ${b.lois[0].loiDate.toISOString().slice(0, 10)}` : ""}`
+      : null,
+  }));
 
   // Mini-comparativo: a MESMA simulação nos 3 cenários (sempre fresco do catálogo)
   const simFieldsBase = {
@@ -288,6 +303,21 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
               </>
             )}
             {sim.fundingMode === "BANK" && (
+              <Card
+                label="Interest reserve"
+                value={
+                  r.kpis.bankReserveFunded > 0
+                    ? formatMoney(r.kpis.bankReserveFunded, "USD")
+                    : "Não tem"
+                }
+                hint={
+                  r.kpis.bankReserveFunded > 0
+                    ? `financiada no loan · não usada devolvida (${formatMoney(r.kpis.bankReserveUnused, "USD")})`
+                    : "juros mensais saem do caixa — viram aporte do investidor"
+                }
+              />
+            )}
+            {sim.fundingMode === "BANK" && (
               <Card label="Equity gate" value={formatMoney(r.kpis.equityGateAmount, "USD")} hint={`${Number(sim.equityGatePct)}% dos custos`} />
             )}
           </div>
@@ -359,21 +389,20 @@ export default async function SimulationPage({ params }: { params: Promise<{ id:
                 </table>
               </div>
             )}
-            <form action={compareSimulationBanks} className="flex flex-wrap items-center gap-4 border-t border-slate-100 px-5 py-4">
-              <input type="hidden" name="simulationId" value={sim.id} />
-              {allBanks.map((b) => (
-                <label key={b.id} className="flex items-center gap-1.5 text-sm text-slate-600">
-                  <input type="checkbox" name="bankIds" value={b.id} defaultChecked={comparison?.some((c) => c.bankId === b.id) ?? false} />
-                  {b.name}
-                </label>
-              ))}
-              <button
-                type="submit"
-                className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"
-              >
-                ⚖ Comparar
-              </button>
-            </form>
+            <BankMultiSelect
+              simulationId={sim.id}
+              banks={bankOptions}
+              initialSelected={comparison?.map((c) => c.bankId) ?? (sim.bankProfileId ? [sim.bankProfileId] : [])}
+            />
+            {/* Bancos mandam condições novas toda hora — suba o LOI aqui e ele entra na lista */}
+            <details className="border-t border-slate-100 px-5 py-3">
+              <summary className="cursor-pointer text-sm text-[#1f3a5f] hover:underline">
+                ↑ Chegou LOI novo? Suba aqui — a AI extrai os termos e o banco entra na comparação
+              </summary>
+              <div className="pt-3">
+                <BankLoiUpload banks={allBanks.map((b) => ({ id: b.id, name: b.name }))} />
+              </div>
+            </details>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white">

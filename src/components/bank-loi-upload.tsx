@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { uploadBankLoi, type CatalogFormState } from "@/lib/actions/catalog";
 
 const inputClass =
@@ -8,12 +9,17 @@ const inputClass =
 const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 
 // Upload de Letter of Intent: a Claude extrai os termos e cria/atualiza o BankProfile
-// (revisável no modal); o LOI fica arquivado com o JSON da extração.
+// (revisável no modal); o LOI fica arquivado com o JSON da extração. Usado no catálogo e
+// dentro do simulador (comparador) — refresh após o ok p/ o banco novo entrar nas listas.
 export function BankLoiUpload({ banks }: { banks: Array<{ id: string; name: string }> }) {
   const [state, formAction, pending] = useActionState<CatalogFormState, FormData>(
     uploadBankLoi,
     undefined,
   );
+  const router = useRouter();
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state, router]);
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
       <div className="min-w-64 flex-1">

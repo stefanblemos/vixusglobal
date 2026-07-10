@@ -465,9 +465,6 @@ export function simulate(input: SimInput): SimResult {
   let extensionFee = 0;
   if (bank) {
     const apr = bank.effectiveAprPct;
-    const perDrawCustom = bank.customFees
-      .filter((f) => f.timing === "PER_DRAW" && f.kind === "FLAT")
-      .reduce((s, f) => s + f.amount, 0);
     const perBatchCustom = bank.customFees
       .filter((f) => f.timing === "PER_DRAW_BATCH" && f.kind === "FLAT")
       .reduce((s, f) => s + f.amount, 0);
@@ -526,17 +523,28 @@ export function simulate(input: SimInput): SimResult {
       while (bi < bevts.length && bevts[bi].day <= day) {
         const e = bevts[bi++];
         const baseLabel = e.label.replace(/ \(draw\)$/, "");
-        const drawFees = round2(bank.inspectionFeePerDraw + bank.drawProcessingFee + perDrawCustom);
-        bankOtherFees += drawFees;
-        bal = round2(bal + e.amount + drawFees);
+        bal = round2(bal + e.amount);
         flows.push({
           day,
           amount: e.amount,
-          bankAmount: round2(e.amount + drawFees),
-          label: `Draw do banco • ${baseLabel}${drawFees > 0 ? ` (+ $${drawFees} fees do draw)` : ""}`,
+          bankAmount: e.amount,
+          label: `Draw do banco • ${baseLabel}`,
           kind: "BANK_DRAW",
         });
         flows.push({ day, amount: -e.amount, label: `Pagamento da obra • ${baseLabel}`, kind: "PHASE" });
+        // fees do draw como LINHAS próprias, capitalizando no saldo (como no extrato do banco)
+        if (bank.inspectionFeePerDraw > 0) {
+          bankOtherFees += bank.inspectionFeePerDraw;
+          cap(day, bank.inspectionFeePerDraw, `Inspection fee do draw • ${baseLabel}`, "BANK_FEE");
+        }
+        if (bank.drawProcessingFee > 0) {
+          bankOtherFees += bank.drawProcessingFee;
+          cap(day, bank.drawProcessingFee, `Draw processing fee • ${baseLabel}`, "BANK_FEE");
+        }
+        for (const cf of bank.customFees.filter((f) => f.timing === "PER_DRAW" && f.kind === "FLAT")) {
+          bankOtherFees += cf.amount;
+          cap(day, cf.amount, `${cf.name} (por draw) • ${baseLabel}`, "BANK_FEE");
+        }
         drawsToday += 1;
       }
       if (drawsToday > 0 && bank.achFeePerBatch + perBatchCustom > 0) {
