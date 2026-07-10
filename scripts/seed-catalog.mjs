@@ -37,8 +37,10 @@ const MODELS = [
 ];
 
 async function main() {
+  // CREATE-ONLY como todo o resto: `update: s` sobrescrevia os ajustes do usuário a cada
+  // deploy SEM changelog — os cenários "não persistiam" (bug reportado em 10/07/2026)
   for (const s of SCENARIOS) {
-    await prisma.bufferScenario.upsert({ where: { code: s.code }, create: s, update: s });
+    await prisma.bufferScenario.upsert({ where: { code: s.code }, create: s, update: {} });
   }
   for (const type of HOUSE_TYPES) {
     await prisma.houseTypeFee.upsert({ where: { type }, create: { type, fee: 0 }, update: {} });

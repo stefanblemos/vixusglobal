@@ -28,6 +28,7 @@ if (process.env.VERCEL_ENV === "production") {
   // Data-fixes condicionados (no-op depois de aplicados / se o usuário editou)
   run("node scripts/fix-ph3-sales-panel.mjs");
   run("node scripts/fix-rbi-loi.mjs");
+  run("node scripts/fix-scenarios-restore.mjs");
 }
 
 run("next build");
