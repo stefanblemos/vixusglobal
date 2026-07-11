@@ -160,7 +160,10 @@ export type SimUnitResult = SimUnitInput & {
   adjBuild: number;
   adjSaleNet: number; // venda ajustada líquida de closing fee
   bankEligible: number;
-  profit: number; // lucro da casa após perf fee (modo performance)
+  bankLtcBasis: number; // orçamento do banco: contractor + fee + lote (ajustados)
+  bankLtcCap: number; // LTC% × base
+  bankLtvCap: number; // LTV% × ARV (com haircut)
+  profit: number;
 };
 
 export type SimResult = {
@@ -318,22 +321,30 @@ export function simulate(input: SimInput): SimResult {
       adjBuild: round2(adjBuild),
       adjSaleNet: round2(adjSaleNet),
       bankEligible: 0,
+      bankLtcBasis: 0,
+      bankLtcCap: 0,
+      bankLtvCap: 0,
       profit: 0,
     };
   });
 
   // ── 2. Banco: sizing por unidade e fees upfront ──
+  // Base do LTC (regra do Stefan, 10/07): o ORÇAMENTO que o banco enxerga = custo
+  // contractor + fee da obra + lote do location (valores ajustados pelo cenário) —
+  // independente da modalidade interna (performance/open book). O banco desembolsa TUDO
+  // que aprovar; o que passar do custo real volta ao cliente como reembolso (CTC).
   const bank = input.fundingMode === "BANK" ? input.bank : null;
   let committed = 0;
   if (bank) {
     for (const u of units) {
-      const ltcCap =
-        (bank.ltcBuildPct / 100) * u.adjBuild +
-        (bank.financeLand ? (bank.ltcLandPct / 100) * u.adjLot : 0);
+      const contractBuild =
+        (u.costContractor + u.contractorFee) * (1 + sc.constructionCostBufferPct / 100);
+      u.bankLtcBasis = round2(contractBuild + u.adjLot);
+      u.bankLtcCap = round2((bank.ltcBuildPct / 100) * u.bankLtcBasis);
       const arv = u.salePrice * (1 + sc.salePriceBufferPct / 100) * (1 - bank.haircutPct / 100);
-      const ltvCap = (bank.ltvPct / 100) * arv;
+      u.bankLtvCap = round2((bank.ltvPct / 100) * arv);
       u.bankEligible = round2(
-        Math.max(0, Math.min(ltcCap, ltvCap, bank.perUnitCap ?? Infinity)),
+        Math.max(0, Math.min(u.bankLtcCap, u.bankLtvCap, bank.perUnitCap ?? Infinity)),
       );
       committed += u.bankEligible;
     }
@@ -573,7 +584,8 @@ export function simulate(input: SimInput): SimResult {
         day: ctcDay,
         amount: cashToClosing,
         bankAmount: cashToClosing,
-        label: `Cheque do banco — cash to closing (excedente do loan de ${bank.overfundingMode === "REFUND_AT_CLOSING" ? "LTC/LTV" : ""} devolvido)`,
+        label:
+          "Excedente do loan — reembolso ao cliente pelos custos antecipados (cash to closing)",
         kind: "BANK_CTC",
       });
     } else if (cashToClosing < -0.01) {

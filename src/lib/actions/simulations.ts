@@ -216,7 +216,7 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
   if (!sim || sim.poolId) return; // inexistente ou já convertida
   const result = sim.result as {
     kpis?: { totalInvested?: number; bankCommitted?: number };
-    units?: Array<{ label: string; salePrice: number; adjLot: number; adjBuild: number; adjSaleNet: number }>;
+    units?: Array<{ label: string; salePrice: number; adjLot: number; adjBuild: number; adjSaleNet: number; bankEligible?: number }>;
   } | null;
   if (!result?.units?.length) return; // rode a simulação antes
 
@@ -251,6 +251,11 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
             plannedBuildCost: u.adjBuild,
             plannedSalePrice: gross,
             plannedClosingCost: round2(gross - u.adjSaleNet),
+            // quanto o banco vai financiar NESTA casa (base LTC contractor+fee+lote) —
+            // vira o budget de draw; ajustável na ficha se a aprovação final divergir
+            ...(sim.fundingMode === "BANK" && (u.bankEligible ?? 0) > 0
+              ? { bankLoanAmount: u.bankEligible!, bankName: sim.bankProfile?.name ?? null }
+              : {}),
             notes: `Pro forma do cenário ${sim.scenario.name}`,
           };
         }),

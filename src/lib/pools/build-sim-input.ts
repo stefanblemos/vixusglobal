@@ -48,6 +48,10 @@ export async function buildSimInput(sim: {
       return { error: `Set the estimated lot cost for ${ml.location.name} in the catalog.` };
     if (sim.compMode === "CONTRACTOR_FEE" && ml.costContractor == null)
       return { error: `Set the contractor cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
+    if (sim.fundingMode === "BANK" && ml.costContractor == null)
+      return {
+        error: `Set the contractor cost for ${ml.model.name} at ${ml.location.name} — é a base do orçamento do banco (LTC = contractor + fee + lote).`,
+      };
     if (sim.compMode === "OPEN_BOOK" && ml.costOpenBook == null)
       return { error: `Set the open book cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
     if (

@@ -244,6 +244,7 @@ const TABS = [
   ["setup", "Setup"],
   ["casas", "Casas"],
   ["financeiro", "Financeiro"],
+  ["loan", "Cálculos do loan"],
   ["ledger", "Ledger"],
 ] as const;
 
@@ -495,7 +496,6 @@ export default async function SimulationPage({
             <Card label="Duração" value={fmtDuration(r.kpis.durationDays)} hint={`${r.units.length} casas`} />
           </div>
 
-          <BankCostsMonthly events={r.events} kpis={r.kpis} isBank={isBank} />
           {/* Gráfico de barras na linha do tempo — comprimido, sempre dentro da tela */}
           <CashflowChart monthly={r.monthly} />
           </>
@@ -847,6 +847,116 @@ export default async function SimulationPage({
               </table>
             </div>
           </section>
+          )}
+
+          {/* Cálculos do loan: dimensionamento por casa (base contractor+fee+lote),
+              envelope → CTC, e o quadro mensal dos custos do banco */}
+          {tab === "loan" && (
+          <>
+          {!isBank ? (
+            <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
+              Simulação em equity — troque o funding para Banco no Setup para ver os cálculos
+              do loan.
+            </div>
+          ) : (
+          <>
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">Quanto o banco financia por casa</h2>
+              <p className="text-xs text-slate-400">
+                Base do LTC = custo contractor + fee da obra + lote do location (ajustados pelo
+                cenário). O banco desembolsa TUDO que aprovar — o excedente sobre o custo real
+                volta ao cliente como reembolso (cash to closing). Na conversão para pool, o
+                financiado vira o budget de draw da casa (ajustável na ficha).
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className={th}>Casa</th>
+                    <th className={thRight}>Obra (contractor)</th>
+                    <th className={thRight}>Fee da obra</th>
+                    <th className={thRight}>Lote</th>
+                    <th className={thRight}>Base LTC</th>
+                    <th className={thRight}>LTC → valor</th>
+                    <th className={thRight}>LTV → valor</th>
+                    <th className={thRight}>Financiado</th>
+                    <th className={th}>Limitou</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {r.units.map((u, i) => {
+                    const contractBuild = Math.round((u.bankLtcBasis - u.adjLot) * 100) / 100;
+                    const fee = u.contractorFee;
+                    const binding =
+                      u.bankEligible >= (u.bankLtcCap ?? 0) - 0.01 ? "LTC" : u.bankEligible >= (u.bankLtvCap ?? 0) - 0.01 ? "LTV" : "cap";
+                    return (
+                      <tr key={i} className="border-b border-slate-50">
+                        <td className={`${td} font-medium text-slate-800`}>{u.label}</td>
+                        <td className={tdRight}>{formatMoney(contractBuild - fee, "USD")}</td>
+                        <td className={tdRight}>{formatMoney(fee, "USD")}</td>
+                        <td className={tdRight}>{formatMoney(u.adjLot, "USD")}</td>
+                        <td className={`${tdRight} font-medium`}>{formatMoney(u.bankLtcBasis, "USD")}</td>
+                        <td className={tdRight}>{formatMoney(u.bankLtcCap, "USD")}</td>
+                        <td className={tdRight}>{formatMoney(u.bankLtvCap, "USD")}</td>
+                        <td className={`${tdRight} font-semibold text-slate-900`}>{formatMoney(u.bankEligible, "USD")}</td>
+                        <td className={td}>
+                          <span className={`rounded-full px-2 py-0.5 text-xs ${binding === "LTV" ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-700"}`}>
+                            {binding}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-slate-50/60">
+                    <td className={`${td} font-semibold text-slate-800`}>Total ({r.units.length} casas)</td>
+                    <td colSpan={6}></td>
+                    <td className={`${tdRight} font-semibold`}>{formatMoney(r.kpis.bankCommitted, "USD")}</td>
+                    <td></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div className="border-t border-slate-100 px-5 py-4 text-sm">
+              <div className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
+                Envelope do loan → cash to closing
+              </div>
+              <div className="flex flex-wrap gap-x-8 gap-y-1 tabular-nums text-slate-600">
+                <span>Comprometido {formatMoney(r.kpis.bankCommitted, "USD")}</span>
+                <span>(−) fees rolados {formatMoney(r.kpis.bankUpfrontFees, "USD")}</span>
+                <span>(−) interest reserve {formatMoney(r.kpis.bankReserveFunded, "USD")}</span>
+                <span>
+                  (−) draws da obra{" "}
+                  {formatMoney(
+                    Math.round(
+                      (r.kpis.bankCommitted -
+                        r.kpis.bankUpfrontFees -
+                        r.kpis.bankReserveFunded -
+                        (r.kpis.cashToClosing ?? 0)) *
+                        100,
+                    ) / 100,
+                    "USD",
+                  )}
+                </span>
+                <span className={`font-semibold ${(r.kpis.cashToClosing ?? 0) > 0 ? "text-emerald-700" : (r.kpis.cashToClosing ?? 0) < 0 ? "text-red-600" : ""}`}>
+                  (=) Cash to closing {formatMoney(r.kpis.cashToClosing ?? 0, "USD")}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                {(r.kpis.cashToClosing ?? 0) > 0.01
+                  ? "Excedente devolvido ao cliente ~15 dias após o closing (reembolso pelos custos antecipados) — pode financiar novos projetos, pagando juros até o payoff."
+                  : (r.kpis.cashToClosing ?? 0) < -0.01
+                    ? "O loan não cobre fees + reserve + obra — o investidor completa em cash no closing."
+                    : "Loan casa com o uso — nada a devolver ou completar."}
+              </p>
+            </div>
+          </section>
+
+          <BankCostsMonthly events={r.events} kpis={r.kpis} isBank={isBank} />
+          </>
+          )}
+          </>
           )}
 
           {tab === "ledger" && (
