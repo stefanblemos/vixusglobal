@@ -35,7 +35,11 @@ function parseUnits(raw: string): UnitRef[] {
     if (!Array.isArray(arr)) return [];
     return arr
       .filter((u) => u && typeof u.locationId === "string" && typeof u.modelId === "string")
-      .map((u) => ({ locationId: u.locationId, modelId: u.modelId }));
+      .map((u) => ({
+        locationId: u.locationId,
+        modelId: u.modelId,
+        cycle: Math.max(1, Math.round(Number(u.cycle ?? 1)) || 1),
+      }));
   } catch {
     return [];
   }
@@ -170,6 +174,37 @@ export async function updateSimulationSettings(
   });
   revalidatePath(`/pools/simulator/${id}`);
   return undefined;
+}
+
+// Duplica a simulação (a original é "viva" e sobrescreve — duplicar é como se guarda
+// uma versão). Copia premissas + cesta + snapshot; sem vínculo com pool.
+export async function duplicateSimulation(formData: FormData): Promise<void> {
+  const id = String(formData.get("simulationId") ?? "");
+  if (!id) return;
+  const sim = await prisma.poolSimulation.findUnique({ where: { id } });
+  if (!sim) return;
+  const copy = await prisma.poolSimulation.create({
+    data: {
+      name: `${sim.name} (cópia)`,
+      fundingMode: sim.fundingMode,
+      compMode: sim.compMode,
+      perfPct: sim.perfPct,
+      perfTiming: sim.perfTiming,
+      promoteTiers: sim.promoteTiers ?? undefined,
+      flatFeePerHouse: sim.flatFeePerHouse,
+      paymentPlan: sim.paymentPlan,
+      upfrontFunding: sim.upfrontFunding,
+      equityGatePct: sim.equityGatePct,
+      parallelPermit: sim.parallelPermit,
+      unitGapDays: sim.unitGapDays,
+      scenarioCode: sim.scenarioCode,
+      bankProfileId: sim.bankProfileId,
+      units: (sim.units as object[]) ?? [],
+      result: sim.result ?? undefined,
+    },
+  });
+  revalidatePath("/pools/simulator");
+  redirect(`/pools/simulator/${copy.id}`);
 }
 
 // Reexecuta com os catálogos/cenário atuais e re-grava o snapshot.

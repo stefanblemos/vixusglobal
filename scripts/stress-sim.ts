@@ -20,9 +20,9 @@ const CONS: SimScenario = { ...OPT, salePriceBufferPct: -8, constructionCostBuff
 const SCENARIOS: Array<[string, SimScenario]> = [["OPT", OPT], ["REAL", REAL], ["CONS", CONS]];
 
 const UNITS: SimUnitInput[] = [
-  { label: "Casa A", locationName: "L1", modelName: "A", permitDays: 45, lotLeadDays: 10, saleDays: 60, buildMonths: 5, costPerformance: 200000, costContractor: 185000, costOpenBook: 190000, contractorFee: 25000, lotCost: 48000, salePrice: 310000 },
-  { label: "Casa B", locationName: "L1", modelName: "B", permitDays: 45, lotLeadDays: 10, saleDays: 60, buildMonths: 6, costPerformance: 260000, costContractor: 240000, costOpenBook: 248000, contractorFee: 30000, lotCost: 60000, salePrice: 405000 },
-  { label: "Casa C", locationName: "L2", modelName: "A", permitDays: 30, lotLeadDays: 10, saleDays: 45, buildMonths: 5, costPerformance: 200000, costContractor: 185000, costOpenBook: 190000, contractorFee: 25000, lotCost: 42000, salePrice: 298000 },
+  { label: "Casa A", locationName: "L1", modelName: "A", permitDays: 45, lotLeadDays: 10, saleDays: 60, buildMonths: 5, costPerformance: 200000, costContractor: 185000, costOpenBook: 190000, contractorFee: 25000, lotCost: 48000, salePrice: 310000, cycle: 1 },
+  { label: "Casa B", locationName: "L1", modelName: "B", permitDays: 45, lotLeadDays: 10, saleDays: 60, buildMonths: 6, costPerformance: 260000, costContractor: 240000, costOpenBook: 248000, contractorFee: 30000, lotCost: 60000, salePrice: 405000, cycle: 1 },
+  { label: "Casa C", locationName: "L2", modelName: "A", permitDays: 30, lotLeadDays: 10, saleDays: 45, buildMonths: 5, costPerformance: 200000, costContractor: 185000, costOpenBook: 190000, contractorFee: 25000, lotCost: 42000, salePrice: 298000, cycle: 1 },
 ];
 
 const noCustom: SimBank["customFees"] = [];
@@ -172,6 +172,47 @@ for (const [bankName, bank] of BANKS.filter(([, b]) => b)) {
       if (Math.abs(envelope - r.kpis.bankCommitted) > 0.05)
         fail(tag, `envelope ${envelope.toFixed(2)} ≠ comprometido ${r.kpis.bankCommitted}`);
     }
+  }
+}
+
+// 13. Esteira de ciclos (equity): casa engatilhada começa a obra no dia seguinte à
+//     venda-gatilho do ciclo anterior (1:1 na ordem; extras na última venda), ou espera
+//     o permit quando a conta de chegada não fecha; F2 nunca antes do início da obra
+{
+  const CYCLED: SimUnitInput[] = [
+    ...UNITS.map((u) => ({ ...u })),
+    ...UNITS.map((u) => ({ ...u, cycle: 2, label: `C2 ${u.label}` })),
+    { ...UNITS[0], cycle: 3, label: "C3 Casa A" },
+    { ...UNITS[1], cycle: 3, label: "C3 Casa B" },
+    { ...UNITS[0], cycle: 3, label: "C3 Casa A2" },
+    { ...UNITS[2], cycle: 3, label: "C3 Casa C" },
+  ];
+  for (const [scName, sc] of SCENARIOS) {
+    const r = simulate({ ...baseInput(sc, null), units: CYCLED });
+    const tag = `CYCLES/${scName}`;
+    for (const e of r.events) if (e.cash < -0.01) fail(tag, `caixa negativo ${e.cash} no dia ${e.day}`);
+    const sum = r.events.reduce((s2, e) => s2 + e.amount, 0);
+    if (Math.abs(sum) > 0.05) fail(tag, `conservação: Σ = ${sum.toFixed(2)}`);
+    for (const k of [2, 3]) {
+      const prevSales = r.units.filter((u) => u.cycle === k - 1).map((u) => u.tCashIn).sort((a, b) => a - b);
+      r.units.filter((u) => u.cycle === k).forEach((u, j) => {
+        const trig = prevSales[Math.min(j, prevSales.length - 1)];
+        const expected = Math.max(trig + 1, u.tPermitOk);
+        if (u.tBuildStart !== expected)
+          fail(tag, `C${k} obra em D+${u.tBuildStart}, esperado D+${expected} (gatilho ${trig})`);
+        const f2 = r.events.find((e) => e.kind === "PHASE" && e.label.includes("Fase 2") && e.label.includes(u.label));
+        if (f2 && f2.day < u.tBuildStart)
+          fail(tag, `C${k} F2 em D+${f2.day} antes da obra D+${u.tBuildStart} (deveria ser paga da venda)`);
+      });
+    }
+    // programa: TIR com esteira ≥ TIR da mesma cesta toda em ciclo 1 (capital girando)
+    const flat = simulate({ ...baseInput(sc, null), units: CYCLED.map((u) => ({ ...u, cycle: 1 })) });
+    if (
+      r.kpis.irrAnnual != null && flat.kpis.irrAnnual != null &&
+      flat.kpis.irrAnnual > 0 && r.kpis.irrAnnual < flat.kpis.irrAnnual - 1e-9 &&
+      r.kpis.peakCapital > flat.kpis.peakCapital
+    )
+      fail(tag, `esteira piorou TIR (${r.kpis.irrAnnual}) vs tudo-junto (${flat.kpis.irrAnnual}) sem reduzir pico`);
   }
 }
 

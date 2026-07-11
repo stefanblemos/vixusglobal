@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/money";
 import {
   convertSimulationToPool,
   deleteSimulation,
+  duplicateSimulation,
   rerunSimulation,
   useComparedBank,
 } from "@/lib/actions/simulations";
@@ -266,6 +267,7 @@ export default async function SimulationPage({
   const r = sim.result as unknown as (SimResult & { comparison?: CompareRow[] }) | null;
   const comparison = r?.comparison ?? null;
   const isBank = sim.fundingMode === "BANK";
+  const isCycled = (r?.units ?? []).some((u) => (u.cycle ?? 1) > 1);
   // dias que precisaram de aporte — usado p/ marcar contas pagas do caixa (verde)
   const injectionDays = new Set(
     (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
@@ -359,6 +361,16 @@ export default async function SimulationPage({
               </button>
             </form>
           )}
+          <form action={duplicateSimulation}>
+            <input type="hidden" name="simulationId" value={sim.id} />
+            <button
+              type="submit"
+              title="A simulação é viva (sobrescreve) — duplicar é como se guarda uma versão"
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              ⧉ Duplicar
+            </button>
+          </form>
           <form action={rerunSimulation}>
             <input type="hidden" name="simulationId" value={sim.id} />
             <button
@@ -495,6 +507,53 @@ export default async function SimulationPage({
             />
             <Card label="Duração" value={fmtDuration(r.kpis.durationDays)} hint={`${r.units.length} casas`} />
           </div>
+
+          {/* Esteira de ciclos: quebra por ciclo com clareza (pedido do Stefan) */}
+          {isCycled && (
+            <section className="rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-100 px-5 py-4">
+                <h2 className="text-base font-medium text-slate-800">Ciclos — a esteira</h2>
+                <p className="text-xs text-slate-400">
+                  Vendeu uma, começa uma: a obra do ciclo seguinte inicia no dia seguinte à
+                  venda-gatilho; lote + F1 (permit) das engatilhadas são antecipados, F2 é
+                  paga com o dinheiro da venda.
+                </p>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className={th}>Ciclo</th>
+                      <th className={thRight}>Casas</th>
+                      <th className={thRight}>1ª obra</th>
+                      <th className={thRight}>Última venda</th>
+                      <th className={thRight}>Vendas Σ</th>
+                      <th className={thRight}>Lucro Σ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...new Set(r.units.map((u) => u.cycle ?? 1))]
+                      .sort((a, b) => a - b)
+                      .map((c) => {
+                        const g = r.units.filter((u) => (u.cycle ?? 1) === c);
+                        return (
+                          <tr key={c} className="border-b border-slate-50">
+                            <td className={`${td} font-medium text-slate-800`}>C{c}</td>
+                            <td className={tdRight}>{g.length}</td>
+                            <td className={tdRight}>D+{Math.min(...g.map((u) => u.tBuildStart))}</td>
+                            <td className={tdRight}>D+{Math.max(...g.map((u) => u.tCashIn))}</td>
+                            <td className={tdRight}>{formatMoney(g.reduce((s2, u) => s2 + u.adjSaleNet, 0), "USD")}</td>
+                            <td className={`${tdRight} ${g.reduce((s2, u) => s2 + u.profit, 0) < 0 ? "text-red-600" : "text-emerald-700"}`}>
+                              {formatMoney(g.reduce((s2, u) => s2 + u.profit, 0), "USD")}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
 
           {/* Gráfico de barras na linha do tempo — comprimido, sempre dentro da tela */}
           <CashflowChart monthly={r.monthly} />
@@ -794,6 +853,7 @@ export default async function SimulationPage({
                 <thead>
                   <tr className="border-b border-slate-100">
                     <th className={th}>#</th>
+                    {isCycled && <th className={th}>Ciclo</th>}
                     <th className={th}>Casa</th>
                     <th className={thRight}>Lote (aj.)</th>
                     <th className={thRight}>Obra (aj.)</th>
@@ -809,6 +869,7 @@ export default async function SimulationPage({
                   {r.units.map((u, i) => (
                     <tr key={i} className="border-b border-slate-50">
                       <td className={td}>{i + 1}</td>
+                      {isCycled && <td className={td}>C{u.cycle ?? 1}</td>}
                       <td className={`${td} font-medium text-slate-800`}>{u.label}</td>
                       <td className={tdRight}>{formatMoney(u.adjLot, "USD")}</td>
                       <td className={tdRight}>{formatMoney(u.adjBuild, "USD")}</td>
@@ -823,7 +884,7 @@ export default async function SimulationPage({
                     </tr>
                   ))}
                   <tr className="bg-slate-50/60">
-                    <td className={`${td} font-semibold text-slate-800`} colSpan={2}>
+                    <td className={`${td} font-semibold text-slate-800`} colSpan={isCycled ? 3 : 2}>
                       Total ({r.units.length} casas)
                     </td>
                     <td className={`${tdRight} font-semibold`}>

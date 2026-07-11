@@ -26,24 +26,27 @@ export type SimCatalog = {
   pools: Array<{ id: string; code: string; name: string }>;
 };
 
-type UnitRow = { locationId: string; modelId: string };
+type UnitRow = { locationId: string; modelId: string; cycle: number };
 
 // Modal de adição de casa: localização primeiro → modelos daquela localização, com os
 // valores de construção/venda; quantidade cria N linhas iguais de uma vez.
 function AddHouseModal({
   catalog,
   modelsFor,
+  allowCycles,
   onAdd,
   onClose,
 }: {
   catalog: SimCatalog;
   modelsFor: Map<string, SimCatalog["modelLocations"]>;
-  onAdd: (locationId: string, modelId: string, qty: number) => void;
+  allowCycles: boolean; // esteira de ciclos é só para equity
+  onAdd: (locationId: string, modelId: string, qty: number, cycle: number) => void;
   onClose: () => void;
 }) {
   const [locationId, setLocationId] = useState("");
   const [modelId, setModelId] = useState("");
   const [qty, setQty] = useState("1");
+  const [cycle, setCycle] = useState("1");
   const models = modelsFor.get(locationId) ?? [];
   const sel = models.find((m) => m.modelId === modelId);
 
@@ -58,6 +61,15 @@ function AddHouseModal({
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
         </div>
         <div className="space-y-4 px-6 py-4">
+          {allowCycles && (
+            <div className="w-28">
+              <label className={labelClass}>Ciclo</label>
+              <input value={cycle} onChange={(e) => setCycle(e.target.value)} className={inputClass} />
+              <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                Ciclo 1 = cesta inicial; 2+ = engatilhada (obra começa na venda do ciclo anterior)
+              </p>
+            </div>
+          )}
           <div>
             <label className={labelClass}>Localização *</label>
             <select
@@ -135,7 +147,7 @@ function AddHouseModal({
             <button
               type="button"
               disabled={!locationId || !modelId}
-              onClick={() => onAdd(locationId, modelId, Math.max(1, Math.round(Number(qty) || 1)))}
+              onClick={() => onAdd(locationId, modelId, Math.max(1, Math.round(Number(qty) || 1)), Math.max(1, Math.round(Number(cycle) || 1)))}
               className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
             >
               Adicionar
@@ -418,6 +430,9 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
             <thead>
               <tr className="border-b border-slate-100">
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">#</th>
+                {fundingMode === "EQUITY" && (
+                  <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Ciclo</th>
+                )}
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Local</th>
                 <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400">Modelo</th>
                 <th className="px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400">
@@ -449,6 +464,9 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                 return (
                   <tr key={i} className="border-b border-slate-50">
                     <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
+                    {fundingMode === "EQUITY" && (
+                      <td className="px-3 py-2 text-sm text-slate-600">C{u.cycle || 1}</td>
+                    )}
                     <td className="px-3 py-2 text-sm text-slate-600">{locName}</td>
                     <td className="px-3 py-2 text-sm font-medium text-slate-800">{sel.modelName}</td>
                     <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
@@ -471,8 +489,8 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
               })}
               {validUnits.length > 0 && (
                 <tr className="bg-slate-50/60">
-                  <td colSpan={3} className="px-3 py-2 text-sm font-semibold text-slate-800">
-                    Total ({validUnits.length} casas)
+                  <td colSpan={fundingMode === "EQUITY" ? 4 : 3} className="px-3 py-2 text-sm font-semibold text-slate-800">
+                    Total ({validUnits.length} casas{fundingMode === "EQUITY" ? ` · ${[...new Set(validUnits.map((u) => u.cycle || 1))].length} ciclo(s)` : ""})
                   </td>
                   <td className="px-3 py-2 text-right text-sm font-semibold tabular-nums">
                     $
@@ -513,10 +531,15 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
         <AddHouseModal
           catalog={catalog}
           modelsFor={modelsFor}
-          onAdd={(locationId, modelId, qty) => {
+          allowCycles={fundingMode === "EQUITY"}
+          onAdd={(locationId, modelId, qty, cycle) => {
             setUnits((rows) => [
               ...rows.filter((r) => r.locationId && r.modelId),
-              ...Array.from({ length: qty }, () => ({ locationId, modelId })),
+              ...Array.from({ length: qty }, () => ({
+                locationId,
+                modelId,
+                cycle: fundingMode === "EQUITY" ? cycle : 1,
+              })),
             ]);
             setModalOpen(false);
           }}

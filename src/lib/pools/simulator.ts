@@ -93,6 +93,9 @@ export type SimUnitInput = {
   contractorFee: number; // fee fixo do tipo (ou override do modelo)
   lotCost: number; // sempre o lotCostEstimate do location
   salePrice: number;
+  // Esteira de ciclos (equity): 1 = cesta inicial; k≥2 = casa ENGATILHADA — lote+F1
+  // antecipados, obra começa no dia seguinte à venda-gatilho do ciclo anterior
+  cycle: number;
 };
 
 export type PromoteTier = {
@@ -276,10 +279,31 @@ export const PAYMENT_PLANS: Record<"STANDARD" | "LIGHT_START", number[]> = {
 // disso (regra do Stefan, 10/07; empurra cronograma e juros para frente).
 const DRAW_START_LAG_DAYS = 15;
 
-function phaseDays(s: ReturnType<typeof schedule>): number[] {
+// Casa ENGATILHADA (ciclo k≥2): conta de chegada de trás p/ frente — lote comprado e
+// permit aplicado cedo o bastante para o permit estar EMITIDO na venda-gatilho; a obra
+// começa no dia seguinte à venda. Se não der tempo (gatilho cedo demais), compra em D+0
+// e a obra espera o permit.
+function scheduleQueued(u: SimUnitInput, triggerDay: number, input: SimInput) {
+  const sc = input.scenario;
+  const idealReq = triggerDay + 1 - u.permitDays - sc.landAcquisitionDays - u.lotLeadDays;
+  const tReq = Math.max(0, idealReq);
+  const tLotClose = tReq + u.lotLeadDays + sc.landAcquisitionDays;
+  const tPermitOk = tLotClose + u.permitDays;
+  const tBuildStart = Math.max(triggerDay + 1, tPermitOk);
+  const buildDays = Math.max(30, Math.round((u.buildMonths + sc.constructionDurationBufferM) * 30));
+  const tCO = tBuildStart + buildDays;
+  const saleDays = u.saleDays + Math.round((sc.salesAbsorptionMonths ?? 0) * 30);
+  const tCashIn = tCO + saleDays;
+  const tPermitApp = tLotClose; // F1 ANTECIPADA pelo cliente (junto com o lote)
+  return { tReq, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
+}
+
+function phaseDays(s: ReturnType<typeof schedule> & { f2Day?: number }): number[] {
   return [
     s.tPermitApp,
-    s.tPermitOk + 1,
+    // F2 (permit issued): na casa engatilhada é paga COM o dinheiro da venda-gatilho,
+    // no início da obra — nunca antecipada (regra do Stefan)
+    s.f2Day ?? s.tPermitOk + 1,
     s.tBuildStart + Math.round(0.4 * s.buildDays),
     s.tBuildStart + Math.round(0.6 * s.buildDays),
     s.tBuildStart + Math.round(0.8 * s.buildDays),
@@ -294,9 +318,12 @@ export function simulate(input: SimInput): SimResult {
   const perfOn = input.compMode === "PERFORMANCE";
   const phasePcts = PAYMENT_PLANS[input.paymentPlan] ?? PAYMENT_PLANS.STANDARD;
 
-  // ── 1. Unidades: valores ajustados pelo cenário + cronograma ──
-  const units: SimUnitResult[] = input.units.map((u, i) => {
-    const s = schedule(u, i, input);
+  // ── 1. Unidades: valores ajustados pelo cenário + cronograma (esteira de ciclos) ──
+  // Ciclo 1 agenda como sempre (gap do cenário entre casas). Casa do ciclo k≥2 é
+  // engatilhada 1:1 pelas vendas do ciclo k−1, na ordem; casas EXTRAS (cesta crescendo
+  // 3→4→5…) usam a última venda — são financiadas pelo lucro acumulado. Vendeu uma,
+  // começa uma (obra no dia seguinte à venda-gatilho).
+  const units: SimUnitResult[] = input.units.map((u) => {
     const adjLot = u.lotCost * (1 + sc.lotCostBufferPct / 100);
     // Performance/promote: custo próprio do local; contractor: custo-base + fee do tipo;
     // open book: custo real + taxa flat (a 4U é paga DENTRO do custo, pelos gatilhos).
@@ -311,12 +338,13 @@ export function simulate(input: SimInput): SimResult {
     const adjSaleNet = adjSaleGross * (1 - closingFee);
     return {
       ...u,
-      tReq: s.tReq,
-      tLotClose: s.tLotClose,
-      tPermitOk: s.tPermitOk,
-      tBuildStart: s.tBuildStart,
-      tCO: s.tCO,
-      tCashIn: s.tCashIn,
+      cycle: u.cycle || 1,
+      tReq: 0,
+      tLotClose: 0,
+      tPermitOk: 0,
+      tBuildStart: 0,
+      tCO: 0,
+      tCashIn: 0,
       adjLot: round2(adjLot),
       adjBuild: round2(adjBuild),
       adjSaleNet: round2(adjSaleNet),
@@ -327,6 +355,27 @@ export function simulate(input: SimInput): SimResult {
       profit: 0,
     };
   });
+  {
+    const cyclesSorted = [...new Set(units.map((u) => u.cycle))].sort((a, b) => a - b);
+    let prevSales: number[] = [];
+    for (const [ci, c] of cyclesSorted.entries()) {
+      const group = units.filter((u) => u.cycle === c);
+      group.forEach((u, j) => {
+        const sch =
+          ci === 0
+            ? schedule(u, j, input)
+            : scheduleQueued(u, prevSales[Math.min(j, prevSales.length - 1)], input);
+        u.tReq = sch.tReq;
+        u.tLotClose = sch.tLotClose;
+        u.tPermitOk = sch.tPermitOk;
+        u.tBuildStart = sch.tBuildStart;
+        u.tCO = sch.tCO;
+        u.tCashIn = sch.tCashIn;
+      });
+      prevSales = group.map((u) => u.tCashIn).sort((a, b) => a - b);
+    }
+  }
+  const firstCycle = Math.min(...units.map((u) => u.cycle));
 
   // ── 2. Banco: sizing por unidade e fees upfront ──
   // Base do LTC (regra do Stefan, 10/07): o ORÇAMENTO que o banco enxerga = custo
@@ -451,8 +500,9 @@ export function simulate(input: SimInput): SimResult {
     const fundable = u.adjBuild * phasePcts.slice(2).reduce((s, p) => s + p, 0); // F3..F6
     let bankLeft = Math.min(fundable, buildBankCap);
     let ownerEquityLeft = Math.max(0, fundable - bankLeft); // equity-first dentro do financiável
+    const isQueued = u.cycle > firstCycle;
     const days = phaseDays({
-      tPermitApp: input.parallelPermit ? u.tReq : u.tLotClose,
+      tPermitApp: !isQueued && input.parallelPermit ? u.tReq : u.tLotClose,
       tPermitOk: u.tPermitOk,
       tBuildStart: u.tBuildStart,
       tCO: u.tCO,
@@ -460,6 +510,8 @@ export function simulate(input: SimInput): SimResult {
       tReq: u.tReq,
       tLotClose: u.tLotClose,
       tCashIn: u.tCashIn,
+      // casa engatilhada: F2 paga com o dinheiro da venda-gatilho, no início da obra
+      ...(isQueued ? { f2Day: u.tBuildStart } : {}),
     });
     const sumBankPcts = phasePcts.slice(2).reduce((s2, p2) => s2 + p2, 0);
     let budgetAcc = 0;

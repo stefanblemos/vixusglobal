@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import type { SimInput, SimUnitInput } from "@/lib/pools/simulator";
 
-export type UnitRef = { locationId: string; modelId: string };
+export type UnitRef = { locationId: string; modelId: string; cycle?: number };
 
 export type PromoteTierInput = { hurdlePct: number | null; promotePct: number };
 
@@ -36,6 +36,10 @@ export async function buildSimInput(sim: {
   const fees = new Map(
     (await prisma.houseTypeFee.findMany()).map((f) => [f.type as string, Number(f.fee)]),
   );
+  // Esteira de ciclos é só para EQUITY — no banco, um ciclo por LLC/loan (regra do Stefan)
+  const hasCycles = sim.units.some((u) => (u.cycle ?? 1) > 1);
+  if (sim.fundingMode === "BANK" && hasCycles)
+    return { error: "Ciclos são só para equity — com banco, use um ciclo (uma LLC/loan por ciclo)." };
   const units: SimUnitInput[] = [];
   for (const ref of sim.units) {
     const ml = await prisma.catalogModelLocation.findUnique({
@@ -59,8 +63,11 @@ export async function buildSimInput(sim: {
       ml.costPerformance == null
     )
       return { error: `Set the performance cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
+    const cycle = Math.max(1, Math.round(Number(ref.cycle ?? 1)) || 1);
     units.push({
-      label: `${ml.model.name} — ${ml.location.name}`,
+      cycle,
+      // prefixo do ciclo no label → aparece em TODAS as linhas do ledger e nas tabelas
+      label: `${hasCycles ? `C${cycle} • ` : ""}${ml.model.name} — ${ml.location.name}`,
       locationName: ml.location.name,
       modelName: ml.model.name,
       permitDays: ml.location.permitDays,
