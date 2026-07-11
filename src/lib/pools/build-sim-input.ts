@@ -128,6 +128,8 @@ export async function buildSimInput(sim: {
           achFeePerBatch: Number(bank.achFeePerBatch),
           hasInterestReserve: bank.hasInterestReserve,
           reserveMonths: Number(bank.reserveMonths),
+          reserveInEnvelope: bank.reserveInEnvelope,
+          overfundingMode: bank.overfundingMode,
           releaseMode: bank.releaseMode,
           sweepPct: Number(bank.sweepPct),
           reconveyanceFee: Number(bank.reconveyanceFee),

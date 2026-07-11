@@ -288,6 +288,10 @@ function bankDataFrom(formData: FormData) {
     drawProcessingFee: num(formData.get("drawProcessingFee")),
     achFeePerBatch: num(formData.get("achFeePerBatch")),
     hasInterestReserve: formData.get("hasInterestReserve") === "on",
+    reserveInEnvelope: formData.get("reserveInEnvelope") === "on",
+    overfundingMode: (String(formData.get("overfundingMode")) === "REFUND_AT_CLOSING"
+      ? "REFUND_AT_CLOSING"
+      : "NONE") as "NONE" | "REFUND_AT_CLOSING",
     reserveMonths: num(formData.get("reserveMonths"), 6),
     releaseMode: (String(formData.get("releaseMode")) === "SWEEP_PCT_LAST_FULL"
       ? "SWEEP_PCT_LAST_FULL"
@@ -394,6 +398,11 @@ export async function uploadBankLoi(
       ? { budgetReviewFee: pickFee(fees, "feasibility") ?? pickFee(fees, "budget review") }
       : {}),
     hasInterestReserve: ex.interestReserve === "FINANCED",
+    // reserve financiada normalmente consome o envelope do loan (estilo BC)
+    reserveInEnvelope: ex.interestReserve === "FINANCED",
+    ...(ex.excessRefund !== "UNKNOWN"
+      ? { overfundingMode: ex.excessRefund === "REFUNDED" ? "REFUND_AT_CLOSING" : "NONE" }
+      : {}),
     ...(has(ex.interestReserveMonths) ? { reserveMonths: ex.interestReserveMonths } : {}),
     feesFinanced: ex.feesFinanced,
     notes: [

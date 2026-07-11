@@ -223,6 +223,8 @@ export default async function PoolCatalogPage({
             drawProcessingFee: b.drawProcessingFee.toString(),
             achFeePerBatch: b.achFeePerBatch.toString(),
             hasInterestReserve: b.hasInterestReserve,
+            reserveInEnvelope: b.reserveInEnvelope,
+            overfundingMode: b.overfundingMode,
             reserveMonths: b.reserveMonths.toString(),
             releaseMode: b.releaseMode,
             sweepPct: b.sweepPct.toString(),

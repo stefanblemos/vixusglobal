@@ -56,6 +56,8 @@ export type BankRow = {
   drawProcessingFee: string;
   achFeePerBatch: string;
   hasInterestReserve: boolean;
+  reserveInEnvelope: boolean;
+  overfundingMode: string;
   reserveMonths: string;
   releaseMode: string;
   sweepPct: string;
@@ -319,10 +321,31 @@ function BankModal({
               interest reserve (financiada no closing; paga o juro do mês; não usada volta na reconciliação)
             </label>
             {hasReserve && (
-              <div className="mt-2 w-48">
-                <Field name="reserveMonths" label="Reserve (meses de juro)" value={bank?.reserveMonths ?? "6"} hint="Sobre o comprometido — BC usa 6" />
+              <div className="mt-2 flex flex-wrap items-end gap-4">
+                <div className="w-48">
+                  <Field name="reserveMonths" label="Reserve (meses de juro)" value={bank?.reserveMonths ?? "6"} hint="Sobre o comprometido — BC usa 6" />
+                </div>
+                <label className="flex items-center gap-2 pb-1 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    name="reserveInEnvelope"
+                    defaultChecked={bank?.reserveInEnvelope ?? false}
+                  />{" "}
+                  reserve consome o comprometido (envelope — estilo BC)
+                </label>
               </div>
             )}
+            <div className="mt-3 w-full max-w-md">
+              <label className={labelClass}>Excedente do loan (cash to closing)</label>
+              <select name="overfundingMode" defaultValue={bank?.overfundingMode ?? "NONE"} className={inputClass}>
+                <option value="NONE">Não desembolsa além do custo (sem cheque)</option>
+                <option value="REFUND_AT_CLOSING">Devolve o excedente em cheque no closing (+15d)</option>
+              </select>
+              <p className="mt-1 text-[11px] leading-snug text-slate-400">
+                Quando LTC/LTV dimensionam o loan ACIMA de fees + reserve + obra, o excedente
+                pode voltar ao projeto — vira o Cash to Closing na simulação.
+              </p>
+            </div>
           </div>
 
           <div>

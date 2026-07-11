@@ -31,6 +31,7 @@ const KIND_LABEL: Record<string, string> = {
   SALE: "Venda",
   PERF_FEE: "Performance 4U",
   BANK_DRAW: "Draw banco",
+  BANK_CTC: "Cash to closing",
   BANK_FEE: "Fee banco",
   BANK_RESERVE: "Reserve",
   BANK_INTEREST: "Juros banco",
@@ -61,6 +62,7 @@ type CompareRow = {
   profit: number;
   peak: number;
   bankCost: number;
+  ctc?: number;
   best?: boolean;
 };
 
@@ -561,6 +563,23 @@ export default async function SimulationPage({
               />
             )}
             {sim.fundingMode === "BANK" && (
+              <Card
+                label="Cash to closing"
+                value={
+                  Math.abs(r.kpis.cashToClosing ?? 0) > 0.01
+                    ? formatMoney(r.kpis.cashToClosing, "USD")
+                    : "—"
+                }
+                hint={
+                  (r.kpis.cashToClosing ?? 0) > 0.01
+                    ? "excedente do loan — cheque do banco ~15d após o closing"
+                    : (r.kpis.cashToClosing ?? 0) < -0.01
+                      ? "o loan não cobre fees+reserve+obra — investidor completa no closing"
+                      : "loan casa com o uso — nada a devolver/completar"
+                }
+              />
+            )}
+            {sim.fundingMode === "BANK" && (
               <Card label="Equity gate" value={formatMoney(r.kpis.equityGateAmount, "USD")} hint={`${Number(sim.equityGatePct)}% dos custos`} />
             )}
           </div>
@@ -696,6 +715,7 @@ export default async function SimulationPage({
                       <th className={thRight}>Lucro</th>
                       <th className={thRight}>Aporte (pico)</th>
                       <th className={thRight}>Custo do banco</th>
+                      <th className={thRight}>Cash to closing</th>
                       <th className={thRight}></th>
                     </tr>
                   </thead>
@@ -724,6 +744,9 @@ export default async function SimulationPage({
                         </td>
                         <td className={tdRight}>{formatMoney(c.peak, "USD")}</td>
                         <td className={tdRight}>{formatMoney(c.bankCost, "USD")}</td>
+                        <td className={`${tdRight} ${(c.ctc ?? 0) > 0 ? "text-emerald-700" : (c.ctc ?? 0) < 0 ? "text-red-600" : "text-slate-400"}`}>
+                          {Math.abs(c.ctc ?? 0) > 0.01 ? formatMoney(c.ctc!, "USD") : "—"}
+                        </td>
                         <td className={tdRight}>
                           {sim.bankProfileId !== c.bankId && (
                             <form action={useComparedBank} className="inline">

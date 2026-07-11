@@ -87,7 +87,7 @@ export function SimLedger({ rows, isBank }: { rows: LedgerRow[]; isBank: boolean
                       ? "bg-emerald-50/40"
                       : e.paidFromCash
                         ? "bg-emerald-50/20"
-                        : e.kind === "BANK_DRAW"
+                        : e.kind === "BANK_DRAW" || (e.kind === "BANK_CTC" && e.amount > 0)
                           ? "bg-blue-50/30"
                           : ""
                 }`}

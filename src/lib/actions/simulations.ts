@@ -285,6 +285,7 @@ type CompareRow = {
   profit: number;
   peak: number;
   bankCost: number;
+  ctc?: number;
   best?: boolean;
 };
 
@@ -339,6 +340,7 @@ export async function compareSimulationBanks(formData: FormData): Promise<void> 
       irr: r.kpis.irrAnnual,
       profit: r.kpis.profit,
       peak: r.kpis.totalInvested,
+      ctc: r.kpis.cashToClosing ?? 0,
       bankCost:
         Math.round(
           (r.kpis.bankUpfrontFees +

@@ -66,6 +66,8 @@ export type SimBank = {
   // reserve
   hasInterestReserve: boolean;
   reserveMonths: number;
+  reserveInEnvelope: boolean; // reserve financiada consome o comprometido (estilo BC)
+  overfundingMode: "NONE" | "REFUND_AT_CLOSING"; // excedente do loan → cheque no closing+15
   // payoff
   releaseMode: "SWEEP_FULL" | "SWEEP_PCT_LAST_FULL";
   sweepPct: number;
@@ -132,6 +134,7 @@ export type SimEvent = {
     | "SALE"
     | "PERF_FEE"
     | "BANK_DRAW" // dinheiro do banco ENTRANDO no caixa (pareado com o pagamento da obra)
+    | "BANK_CTC" // cash to closing: + cheque do excedente do loan · − investidor completa no closing
     | "BANK_FEE"
     | "BANK_RESERVE"
     | "BANK_INTEREST"
@@ -179,6 +182,7 @@ export type SimResult = {
     bankReserveFunded: number;
     bankReserveUnused: number;
     bankExtensionFee: number;
+    cashToClosing: number; // + excedente devolvido em cheque · − investidor paga no closing
     equityGateAmount: number;
   };
   events: SimEvent[];
@@ -488,6 +492,7 @@ export function simulate(input: SimInput): SimResult {
   // ── 4. Banco: reserve, juros, fees e payoffs (mecânica validada no loan 77959/BC) ──
   let bankInterestTotal = 0; // juro + custos mensais efetivamente cobrados
   let bankOtherFees = 0; // fees por draw/lote/payoff/exit/finais (capitalizam no saldo)
+  let cashToClosing = 0; // + cheque do excedente · − completação do investidor no closing
   let reserveFunded = 0;
   let reserveUnused = 0;
   let extensionFee = 0;
@@ -549,8 +554,47 @@ export function simulate(input: SimInput): SimResult {
     if (reserveFunded > 0)
       cap(loanClosingDay, reserveFunded, `Interest reserve financiada (${bank.reserveMonths}m sobre o comprometido)`, "BANK_RESERVE", "RESERVE");
 
+    // Cash to Closing (planilha Rolling Hills): o loan é um ENVELOPE —
+    //   comprometido = fees rolados + reserve (se consome o envelope) + draws da obra + CTC.
+    // CTC > 0 e banco devolve → CHEQUE único em closing+15 (capitaliza e paga juros);
+    // CTC < 0 → o loan não cobre tudo: investidor completa em CASH no closing (abate o saldo).
+    const plannedDrawsTotal = round2(bankDraws.reduce((s2, d) => s2 + d.amount, 0));
+    const envelopeUse = round2(
+      (bank.feesFinanced ? upfrontFees : 0) +
+        (bank.reserveInEnvelope ? reserveFunded : 0) +
+        plannedDrawsTotal,
+    );
+    cashToClosing = round2(committed - envelopeUse);
+    if (cashToClosing > 0.01 && bank.overfundingMode !== "REFUND_AT_CLOSING") cashToClosing = 0;
+    const ctcDay = cashToClosing > 0 ? loanClosingDay + DRAW_START_LAG_DAYS : loanClosingDay;
+    if (cashToClosing > 0.01) {
+      // cheque entra no caixa E no saldo devedor — juros correm sobre ele até o payoff
+      flows.push({
+        day: ctcDay,
+        amount: cashToClosing,
+        bankAmount: cashToClosing,
+        label: `Cheque do banco — cash to closing (excedente do loan de ${bank.overfundingMode === "REFUND_AT_CLOSING" ? "LTC/LTV" : ""} devolvido)`,
+        kind: "BANK_CTC",
+      });
+    } else if (cashToClosing < -0.01) {
+      // investidor completa a diferença no closing; o cash abate o saldo capitalizado
+      flows.push({
+        day: ctcDay,
+        amount: cashToClosing,
+        bankAmount: cashToClosing,
+        label: "Cash to close — loan não cobre fees + reserve + obra (investidor completa)",
+        kind: "BANK_CTC",
+      });
+    }
+
     const horizon = lastSaleDay + 30;
+    let ctcPending = Math.abs(cashToClosing) > 0.01 ? cashToClosing : 0;
     for (let day = loanClosingDay; day <= horizon; day++) {
+      // CTC: cheque (closing+15) soma no saldo; completação do investidor (closing) abate
+      if (ctcPending !== 0 && day >= ctcDay) {
+        bal = round2(bal + ctcPending);
+        ctcPending = 0;
+      }
       // draws do dia: o dinheiro do banco ENTRA no caixa e SAI pagando a obra (par visível
       // no ledger); fees por draw + fee por LOTE (ex.: ACH) capitalizam no saldo
       let drawsToday = 0;
@@ -883,6 +927,7 @@ export function simulate(input: SimInput): SimResult {
       bankReserveFunded: round2(reserveFunded),
       bankReserveUnused: round2(reserveUnused),
       bankExtensionFee: round2(extensionFee),
+      cashToClosing: round2(cashToClosing),
       equityGateAmount: round2((input.equityGatePct ?? 0) * totalCost),
     },
     events,

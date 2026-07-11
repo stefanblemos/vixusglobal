@@ -26,8 +26,8 @@ const UNITS: SimUnitInput[] = [
 ];
 
 const noCustom: SimBank["customFees"] = [];
-const BC: SimBank = { ltcBuildPct: 80, ltcLandPct: 0, financeLand: false, ltvPct: 70, haircutPct: 5, perUnitCap: null, closingPermitPct: 80, effectiveAprPct: 9, interestBasis: "DRAWN", originationPct: 1.75, originationFlat: 0, brokerPct: 1, titleEscrowPct: 1.33, closingFeePct: 0, processingFee: 2000, budgetReviewFee: 4000, appraisalFee: 0, legalFee: 2500, feesFinanced: true, servicingMonthly: 0, inspectionFeePerDraw: 185, drawProcessingFee: 20, achFeePerBatch: 20, hasInterestReserve: true, reserveMonths: 6, releaseMode: "SWEEP_PCT_LAST_FULL", sweepPct: 85, reconveyanceFee: 350, termMonths: 12, extensionFeePct: 1, applyExtensionFee: false, customFees: [{ name: "LO credit", timing: "CLOSING", kind: "FLAT", amount: -3000 }] };
-const RBI: SimBank = { ...BC, ltcBuildPct: 90, effectiveAprPct: 9, originationPct: 1.75, brokerPct: 1, titleEscrowPct: 0, processingFee: 495, budgetReviewFee: 475, appraisalFee: 600, legalFee: 500, feesFinanced: false, inspectionFeePerDraw: 295, drawProcessingFee: 0, achFeePerBatch: 0, hasInterestReserve: false, reserveMonths: 6, releaseMode: "SWEEP_FULL", sweepPct: 100, reconveyanceFee: 0, customFees: [{ name: "Underwriting", timing: "CLOSING", kind: "FLAT", amount: 1500 }] };
+const BC: SimBank = { ltcBuildPct: 80, ltcLandPct: 0, financeLand: false, ltvPct: 70, haircutPct: 5, perUnitCap: null, closingPermitPct: 80, effectiveAprPct: 9, interestBasis: "DRAWN", originationPct: 1.75, originationFlat: 0, brokerPct: 1, titleEscrowPct: 1.33, closingFeePct: 0, processingFee: 2000, budgetReviewFee: 4000, appraisalFee: 0, legalFee: 2500, feesFinanced: true, servicingMonthly: 0, inspectionFeePerDraw: 185, drawProcessingFee: 20, achFeePerBatch: 20, hasInterestReserve: true, reserveMonths: 6, reserveInEnvelope: true, overfundingMode: "NONE", releaseMode: "SWEEP_PCT_LAST_FULL", sweepPct: 85, reconveyanceFee: 350, termMonths: 12, extensionFeePct: 1, applyExtensionFee: false, customFees: [{ name: "LO credit", timing: "CLOSING", kind: "FLAT", amount: -3000 }] };
+const RBI: SimBank = { ...BC, ltcBuildPct: 90, effectiveAprPct: 9, originationPct: 1.75, brokerPct: 1, titleEscrowPct: 0, processingFee: 495, budgetReviewFee: 475, appraisalFee: 600, legalFee: 500, feesFinanced: false, inspectionFeePerDraw: 295, drawProcessingFee: 0, achFeePerBatch: 0, hasInterestReserve: false, reserveMonths: 6, reserveInEnvelope: false, overfundingMode: "REFUND_AT_CLOSING", releaseMode: "SWEEP_FULL", sweepPct: 100, reconveyanceFee: 0, customFees: [{ name: "Underwriting", timing: "CLOSING", kind: "FLAT", amount: 1500 }] };
 const DUTCH: SimBank = { ...BC, interestBasis: "COMMITTED", feesFinanced: false, hasInterestReserve: false, customFees: noCustom };
 const BANKS: Array<[string, SimBank | null]> = [["EQUITY", null], ["BC", BC], ["RBI", RBI], ["DUTCH", DUTCH]];
 
@@ -139,6 +139,34 @@ for (const [scName, sc] of SCENARIOS) {
             fail(tag, `draw ${firstDraw} antes de closing+15 (${closingDay + 15})`);
         }
       }
+    }
+  }
+}
+
+// 11. cash to closing: cheque só ≥ closing+15; identidade do envelope fecha
+//     (comprometido = fees rolados + reserve-no-envelope + draws + CTC)
+for (const [bankName, bank] of BANKS.filter(([, b]) => b)) {
+  for (const [scName, sc] of SCENARIOS) {
+    const r = simulate(baseInput(sc, bank));
+    const tag = `CTC/${scName}/${bankName}`;
+    const ctcEvents = r.events.filter((e) => e.kind === "BANK_CTC");
+    if (ctcEvents.length > 1) fail(tag, `${ctcEvents.length} eventos de CTC (esperado ≤1)`);
+    const closingDay = r.events.find((e) => e.kind === "BANK_FEE" || e.kind === "BANK_RESERVE")?.day;
+    for (const e of ctcEvents) {
+      if (e.amount > 0 && closingDay != null && e.day < closingDay + 15)
+        fail(tag, `cheque do CTC no dia ${e.day}, antes de closing+15 (${closingDay + 15})`);
+      if (Math.abs(e.amount - r.kpis.cashToClosing) > 0.01)
+        fail(tag, `evento CTC ${e.amount} ≠ kpi ${r.kpis.cashToClosing}`);
+    }
+    if (Math.abs(r.kpis.cashToClosing) > 0.01) {
+      const draws = r.events.filter((e) => e.kind === "BANK_DRAW").reduce((s2, e) => s2 + e.amount, 0);
+      const envelope =
+        (bank!.feesFinanced ? r.kpis.bankUpfrontFees : 0) +
+        (bank!.reserveInEnvelope ? r.kpis.bankReserveFunded : 0) +
+        draws +
+        r.kpis.cashToClosing;
+      if (Math.abs(envelope - r.kpis.bankCommitted) > 0.05)
+        fail(tag, `envelope ${envelope.toFixed(2)} ≠ comprometido ${r.kpis.bankCommitted}`);
     }
   }
 }

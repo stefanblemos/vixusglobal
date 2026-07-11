@@ -34,6 +34,9 @@ export const loiExtractionSchema = z.object({
     .enum(["FINANCED", "LIQUIDITY_REQUIRED", "NONE", "UNKNOWN"])
     .describe("FINANCED = embutida no loan; LIQUIDITY_REQUIRED = exigida como liquidez do borrower"),
   interestReserveMonths: z.number().describe("Meses de juros na reserve/liquidez; 0 se ausente"),
+  excessRefund: z
+    .enum(["REFUNDED", "NOT_ALLOWED", "UNKNOWN"])
+    .describe("Se o loan exceder custos+fees (cash-out): REFUNDED = excedente devolvido ao borrower no closing; NOT_ALLOWED = banco não desembolsa além do custo"),
   prepaymentPenalty: z.string().describe("Penalidade de pré-pagamento; \"\" se ausente"),
   exitFeeNote: z.string().describe("Exit fee se houver; \"\" se ausente"),
   feesFinanced: z

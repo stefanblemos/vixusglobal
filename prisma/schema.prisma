@@ -1058,6 +1058,13 @@ enum SimFundingMode {
 // Remuneração da 4U (construtora): fee fixo por tipo de casa (sem participação), OU
 // performance = % do lucro líquido ANTES do split com investidores (default 35%), OU
 // promote = waterfall com tiers programáveis (capital de volta → pref → promote por faixa).
+// O que o banco faz quando o loan dimensionado (LTC/LTV) excede fees+reserve+obra:
+// devolve o excedente em cheque no closing (+15d) ou simplesmente não desembolsa.
+enum OverfundingMode {
+  NONE
+  REFUND_AT_CLOSING
+}
+
 enum BuilderCompMode {
   CONTRACTOR_FEE
   PERFORMANCE
@@ -1174,6 +1181,10 @@ model BankProfile {
   // Interest reserve: financiada no closing (capitaliza), o juro mensal consome a reserve
   // (sem compor), e o NÃO USADO é creditado na reconciliação final (reduz o último payoff).
   hasInterestReserve Boolean @default(false)
+  // reserve financiada CONSOME o comprometido (envelope, estilo BC) ou capitaliza por fora
+  reserveInEnvelope  Boolean @default(false)
+  // excedente do loan (comprometido > fees+reserve+obra): cheque no closing+15 ou nada
+  overfundingMode    OverfundingMode @default(NONE)
   reserveMonths      Decimal @default(6) @db.Decimal(4, 1) // sizing: meses de juro sobre o comprometido
 
   // 5 · Na venda / payoff
