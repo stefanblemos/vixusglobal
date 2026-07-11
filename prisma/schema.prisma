@@ -1063,6 +1063,7 @@ enum SimFundingMode {
 enum OverfundingMode {
   NONE
   REFUND_AT_CLOSING
+  REFUND_IN_DRAWS // excedente diluído nas medições (estilo BC — draws distribuem o budget cheio)
 }
 
 enum BuilderCompMode {

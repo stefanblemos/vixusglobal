@@ -67,7 +67,7 @@ export type SimBank = {
   hasInterestReserve: boolean;
   reserveMonths: number;
   reserveInEnvelope: boolean; // reserve financiada consome o comprometido (estilo BC)
-  overfundingMode: "NONE" | "REFUND_AT_CLOSING"; // excedente do loan → cheque no closing+15
+  overfundingMode: "NONE" | "REFUND_AT_CLOSING" | "REFUND_IN_DRAWS"; // excedente: nada · cheque no closing+15 · diluído nas medições
   // payoff
   releaseMode: "SWEEP_FULL" | "SWEEP_PCT_LAST_FULL";
   sweepPct: number;
@@ -386,7 +386,36 @@ export function simulate(input: SimInput): SimResult {
   // unidade); draws antes do closing são pagos pelo owner e reembolsados? Não — como no
   // mock, draws antes do closing são empurrados para depois dele.
   const flows: Flow[] = [];
-  const bankDraws: Array<{ day: number; amount: number; label: string }> = [];
+  // obraCost = parte do draw que paga a obra; amount > obraCost = excedente ao cliente
+  const bankDraws: Array<{ day: number; amount: number; obraCost: number; label: string }> = [];
+
+  // REFUND_IN_DRAWS (estilo BC, validado no 77959): o banco desembolsa o BUDGET CHEIO da
+  // casa diluído nas medições — budget = aprovado − rateio de fees rolados + reserve (o
+  // que consome o envelope). O excedente sobre a obra pinga no caixa a cada draw.
+  const inDraws = bank?.overfundingMode === "REFUND_IN_DRAWS";
+  const drawBudget = new Map<SimUnitResult, number>();
+  if (bank && inDraws && committed > 0) {
+    const reserveEst = bank.hasInterestReserve
+      ? round2(((committed * bank.effectiveAprPct) / 100 / 12) * bank.reserveMonths)
+      : 0;
+    const pool = Math.max(
+      0,
+      round2(
+        committed -
+          (bank.feesFinanced ? upfrontFees : 0) -
+          (bank.reserveInEnvelope ? reserveEst : 0),
+      ),
+    );
+    let acc = 0;
+    units.forEach((u, i) => {
+      if (i === units.length - 1) drawBudget.set(u, round2(pool - acc));
+      else {
+        const b = round2((u.bankEligible / committed) * pool);
+        drawBudget.set(u, b);
+        acc = round2(acc + b);
+      }
+    });
+  }
 
   let perfFeeTotal = 0;
   let contractorFeeTotal = 0;
@@ -407,7 +436,8 @@ export function simulate(input: SimInput): SimResult {
       const ownerPart = Math.max(0, lotBalance - lotBankShare);
       if (ownerPart > 0)
         flows.push({ day: u.tLotClose, amount: -round2(ownerPart), label: `Lote • closing (equity) • ${u.label}`, kind: "LOT" });
-      bankDraws.push({ day: Math.max(u.tLotClose, loanClosingDay + DRAW_START_LAG_DAYS), amount: round2(Math.min(lotBankShare, lotBalance)), label: `Lote • closing (draw) • ${u.label}` });
+      const lotDraw = round2(Math.min(lotBankShare, lotBalance));
+      bankDraws.push({ day: Math.max(u.tLotClose, loanClosingDay + DRAW_START_LAG_DAYS), amount: lotDraw, obraCost: lotDraw, label: `Lote • closing (draw) • ${u.label}` });
     } else {
       flows.push({ day: u.tLotClose, amount: -round2(lotBalance), label: `Lote • closing • ${u.label}`, kind: "LOT" });
     }
@@ -431,6 +461,8 @@ export function simulate(input: SimInput): SimResult {
       tLotClose: u.tLotClose,
       tCashIn: u.tCashIn,
     });
+    const sumBankPcts = phasePcts.slice(2).reduce((s2, p2) => s2 + p2, 0);
+    let budgetAcc = 0;
     phasePcts.forEach((pct, pi) => {
       let amt = u.adjBuild * pct;
       const label = `Fase ${pi + 1} • ${PHASE_NAMES[pi]} • ${Math.round(pct * 100)}% • ${u.label}`;
@@ -441,6 +473,27 @@ export function simulate(input: SimInput): SimResult {
           label: bank && pi < 2 ? `${label} (equity — banco não paga permit)` : label,
           kind: "PHASE",
         });
+        return;
+      }
+      if (inDraws) {
+        // medição = fatia do BUDGET da casa (última fase fecha o resto ao centavo);
+        // a obra real é paga no par do draw; a diferença é excedente ao cliente
+        const budget = drawBudget.get(u) ?? 0;
+        const isLast = pi === phasePcts.length - 1;
+        const drawAmt = isLast
+          ? round2(budget - budgetAcc)
+          : round2(budget * (pct / sumBankPcts));
+        budgetAcc = round2(budgetAcc + drawAmt);
+        if (drawAmt > 0.005) {
+          bankDraws.push({
+            day: Math.max(days[pi], loanClosingDay + DRAW_START_LAG_DAYS),
+            amount: drawAmt,
+            obraCost: round2(amt),
+            label: `${label} (draw)`,
+          });
+        } else {
+          flows.push({ day: days[pi], amount: -round2(amt), label, kind: "PHASE" });
+        }
         return;
       }
       const fromOwner = Math.min(amt, ownerEquityLeft);
@@ -454,6 +507,7 @@ export function simulate(input: SimInput): SimResult {
         bankDraws.push({
           day: Math.max(days[pi], loanClosingDay + DRAW_START_LAG_DAYS),
           amount: round2(fromBank),
+          obraCost: round2(fromBank),
           label: `${label} (draw)`,
         });
         bankLeft -= fromBank;
@@ -536,7 +590,7 @@ export function simulate(input: SimInput): SimResult {
     if (!bank.feesFinanced && Math.abs(upfrontFees) > 0.01)
       flows.push({ day: loanClosingDay, amount: -upfrontFees, label: "Fees de closing do loan (não financiados)", kind: "BANK_FEE", bankCat: "CLOSING" });
 
-    type BankEvt = { day: number; amount: number; label: string; isDraw?: boolean };
+    type BankEvt = { day: number; amount: number; obraCost: number; label: string; isDraw?: boolean };
     const bevts: BankEvt[] = [
       ...bankDraws.map((d) => ({ ...d, isDraw: true })),
     ].sort((a, b) => a.day - b.day);
@@ -615,14 +669,24 @@ export function simulate(input: SimInput): SimResult {
         const e = bevts[bi++];
         const baseLabel = e.label.replace(/ \(draw\)$/, "");
         bal = round2(bal + e.amount);
+        const obraPart = round2(Math.min(e.amount, e.obraCost));
+        const excess = round2(e.amount - obraPart);
         flows.push({
           day,
-          amount: e.amount,
-          bankAmount: e.amount,
+          amount: obraPart,
+          bankAmount: obraPart,
           label: `Draw do banco • ${baseLabel}`,
           kind: "BANK_DRAW",
         });
-        flows.push({ day, amount: -e.amount, label: `Pagamento da obra • ${baseLabel}`, kind: "PHASE" });
+        if (excess > 0.005)
+          flows.push({
+            day,
+            amount: excess,
+            bankAmount: excess,
+            label: `Excedente da medição — reembolso ao cliente • ${baseLabel}`,
+            kind: "BANK_DRAW",
+          });
+        flows.push({ day, amount: -e.obraCost, label: `Pagamento da obra • ${baseLabel}`, kind: "PHASE" });
         // fees do draw como LINHAS próprias, capitalizando no saldo (como no extrato do banco)
         if (bank.inspectionFeePerDraw > 0) {
           bankOtherFees += bank.inspectionFeePerDraw;

@@ -289,9 +289,11 @@ function bankDataFrom(formData: FormData) {
     achFeePerBatch: num(formData.get("achFeePerBatch")),
     hasInterestReserve: formData.get("hasInterestReserve") === "on",
     reserveInEnvelope: formData.get("reserveInEnvelope") === "on",
-    overfundingMode: (String(formData.get("overfundingMode")) === "REFUND_AT_CLOSING"
-      ? "REFUND_AT_CLOSING"
-      : "NONE") as "NONE" | "REFUND_AT_CLOSING",
+    overfundingMode: (["REFUND_AT_CLOSING", "REFUND_IN_DRAWS"].includes(
+      String(formData.get("overfundingMode")),
+    )
+      ? String(formData.get("overfundingMode"))
+      : "NONE") as "NONE" | "REFUND_AT_CLOSING" | "REFUND_IN_DRAWS",
     reserveMonths: num(formData.get("reserveMonths"), 6),
     releaseMode: (String(formData.get("releaseMode")) === "SWEEP_PCT_LAST_FULL"
       ? "SWEEP_PCT_LAST_FULL"

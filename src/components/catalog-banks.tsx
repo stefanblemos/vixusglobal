@@ -338,8 +338,9 @@ function BankModal({
             <div className="mt-3 w-full max-w-md">
               <label className={labelClass}>Excedente do loan (cash to closing)</label>
               <select name="overfundingMode" defaultValue={bank?.overfundingMode ?? "NONE"} className={inputClass}>
-                <option value="NONE">Não desembolsa além do custo (sem cheque)</option>
+                <option value="NONE">Não desembolsa além do custo (sem excedente)</option>
                 <option value="REFUND_AT_CLOSING">Devolve o excedente em cheque no closing (+15d)</option>
+                <option value="REFUND_IN_DRAWS">Distribui o excedente nas medições (draws pelo budget cheio — estilo BC)</option>
               </select>
               <p className="mt-1 text-[11px] leading-snug text-slate-400">
                 Quando LTC/LTV dimensionam o loan ACIMA de fees + reserve + obra, o excedente

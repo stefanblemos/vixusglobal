@@ -26,7 +26,7 @@ const UNITS: SimUnitInput[] = [
 ];
 
 const noCustom: SimBank["customFees"] = [];
-const BC: SimBank = { ltcBuildPct: 80, ltcLandPct: 0, financeLand: false, ltvPct: 70, haircutPct: 5, perUnitCap: null, closingPermitPct: 80, effectiveAprPct: 9, interestBasis: "DRAWN", originationPct: 1.75, originationFlat: 0, brokerPct: 1, titleEscrowPct: 1.33, closingFeePct: 0, processingFee: 2000, budgetReviewFee: 4000, appraisalFee: 0, legalFee: 2500, feesFinanced: true, servicingMonthly: 0, inspectionFeePerDraw: 185, drawProcessingFee: 20, achFeePerBatch: 20, hasInterestReserve: true, reserveMonths: 6, reserveInEnvelope: true, overfundingMode: "NONE", releaseMode: "SWEEP_PCT_LAST_FULL", sweepPct: 85, reconveyanceFee: 350, termMonths: 12, extensionFeePct: 1, applyExtensionFee: false, customFees: [{ name: "LO credit", timing: "CLOSING", kind: "FLAT", amount: -3000 }] };
+const BC: SimBank = { ltcBuildPct: 80, ltcLandPct: 0, financeLand: false, ltvPct: 70, haircutPct: 5, perUnitCap: null, closingPermitPct: 80, effectiveAprPct: 9, interestBasis: "DRAWN", originationPct: 1.75, originationFlat: 0, brokerPct: 1, titleEscrowPct: 1.33, closingFeePct: 0, processingFee: 2000, budgetReviewFee: 4000, appraisalFee: 0, legalFee: 2500, feesFinanced: true, servicingMonthly: 0, inspectionFeePerDraw: 185, drawProcessingFee: 20, achFeePerBatch: 20, hasInterestReserve: true, reserveMonths: 6, reserveInEnvelope: true, overfundingMode: "REFUND_IN_DRAWS", releaseMode: "SWEEP_PCT_LAST_FULL", sweepPct: 85, reconveyanceFee: 350, termMonths: 12, extensionFeePct: 1, applyExtensionFee: false, customFees: [{ name: "LO credit", timing: "CLOSING", kind: "FLAT", amount: -3000 }] };
 const RBI: SimBank = { ...BC, ltcBuildPct: 90, effectiveAprPct: 9, originationPct: 1.75, brokerPct: 1, titleEscrowPct: 0, processingFee: 495, budgetReviewFee: 475, appraisalFee: 600, legalFee: 500, feesFinanced: false, inspectionFeePerDraw: 295, drawProcessingFee: 0, achFeePerBatch: 0, hasInterestReserve: false, reserveMonths: 6, reserveInEnvelope: false, overfundingMode: "REFUND_AT_CLOSING", releaseMode: "SWEEP_FULL", sweepPct: 100, reconveyanceFee: 0, customFees: [{ name: "Underwriting", timing: "CLOSING", kind: "FLAT", amount: 1500 }] };
 const DUTCH: SimBank = { ...BC, interestBasis: "COMMITTED", feesFinanced: false, hasInterestReserve: false, customFees: noCustom };
 const BANKS: Array<[string, SimBank | null]> = [["EQUITY", null], ["BC", BC], ["RBI", RBI], ["DUTCH", DUTCH]];
@@ -111,11 +111,15 @@ for (const [scName, sc] of SCENARIOS) {
             fail(tag, `fees upfront ${r.kpis.bankUpfrontFees} ≠ esperado ${exp}`);
         }
 
-        // 7. par draw: BANK_DRAW casa com pagamento de obra no mesmo dia/valor
-        const drawsIn = r.events.filter((e) => e.kind === "BANK_DRAW");
+        // 7. par draw: todo "Draw do banco" tem pagamento de obra no mesmo dia com
+        //    valor ≥ draw (no modo in-draws o budget pode ficar abaixo do custo);
+        //    linhas de "Excedente da medição" e CTC são desembolso puro (sem par)
+        const drawsIn = r.events.filter(
+          (e) => e.kind === "BANK_DRAW" && !e.label.startsWith("Excedente da medição"),
+        );
         for (const d of drawsIn) {
           const match = r.events.find(
-            (e) => e.day === d.day && e.kind === "PHASE" && Math.abs(e.amount + d.amount) < 0.01,
+            (e) => e.day === d.day && e.kind === "PHASE" && -e.amount >= d.amount - 0.01,
           );
           if (!match) fail(tag, `draw sem par de obra no dia ${d.day} ($${d.amount})`);
         }
@@ -169,6 +173,24 @@ for (const [bankName, bank] of BANKS.filter(([, b]) => b)) {
         fail(tag, `envelope ${envelope.toFixed(2)} ≠ comprometido ${r.kpis.bankCommitted}`);
     }
   }
+}
+
+// 12. REFUND_IN_DRAWS: banco desembolsa o budget cheio nos draws — Σ draws (incl.
+//     excedentes) = comprometido − fees rolados − reserve-no-envelope; CTC = 0
+for (const [scName, sc] of SCENARIOS) {
+  const r = simulate(baseInput(sc, BC));
+  const tag = `INDRAWS/${scName}/BC`;
+  const totalDraws = r.events
+    .filter((e) => e.kind === "BANK_DRAW")
+    .reduce((s2, e) => s2 + e.amount, 0);
+  const expected =
+    r.kpis.bankCommitted -
+    (BC.feesFinanced ? r.kpis.bankUpfrontFees : 0) -
+    (BC.reserveInEnvelope ? r.kpis.bankReserveFunded : 0);
+  if (Math.abs(totalDraws - expected) > 0.05)
+    fail(tag, `Σ draws ${totalDraws.toFixed(2)} ≠ comprometido−fees−reserve ${expected.toFixed(2)}`);
+  if (Math.abs(r.kpis.cashToClosing) > 0.01)
+    fail(tag, `CTC deveria ser 0 no modo in-draws (veio ${r.kpis.cashToClosing})`);
 }
 
 // 10. aporte 100% em D+0: um único aporte no dia 0, caixa nunca negativo, TIR ≤ JIT
