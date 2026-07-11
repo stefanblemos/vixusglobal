@@ -890,8 +890,16 @@ export default async function SimulationPage({
                   {r.units.map((u, i) => {
                     const contractBuild = Math.round((u.bankLtcBasis - u.lotCost) * 100) / 100;
                     const fee = u.contractorFee;
+                    // quem limitou: o MENOR entre LTC e LTV (o financiado sai arredondado
+                    // p/ baixo em $5k, então compara os tetos crus; "cap" = teto por unidade
+                    // do perfil do banco, quando for menor que ambos)
+                    const minCap = Math.min(u.bankLtcCap ?? Infinity, u.bankLtvCap ?? Infinity);
                     const binding =
-                      u.bankEligible >= (u.bankLtcCap ?? 0) - 0.01 ? "LTC" : u.bankEligible >= (u.bankLtvCap ?? 0) - 0.01 ? "LTV" : "cap";
+                      u.bankEligible < minCap - 5000
+                        ? "cap/unidade"
+                        : (u.bankLtcCap ?? Infinity) <= (u.bankLtvCap ?? Infinity)
+                          ? "LTC"
+                          : "LTV";
                     return (
                       <tr key={i} className="border-b border-slate-50">
                         <td className={`${td} font-medium text-slate-800`}>{u.label}</td>
