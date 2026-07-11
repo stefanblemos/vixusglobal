@@ -337,11 +337,11 @@ export function simulate(input: SimInput): SimResult {
   let committed = 0;
   if (bank) {
     for (const u of units) {
-      const contractBuild =
-        (u.costContractor + u.contractorFee) * (1 + sc.constructionCostBufferPct / 100);
-      u.bankLtcBasis = round2(contractBuild + u.adjLot);
+      // valores PUROS do catálogo: o banco dimensiona no orçamento/appraisal REAL —
+      // os buffers de cenário são coisa interna e NÃO entram no sizing (regra do Stefan)
+      u.bankLtcBasis = round2(u.costContractor + u.contractorFee + u.lotCost);
       u.bankLtcCap = round2((bank.ltcBuildPct / 100) * u.bankLtcBasis);
-      const arv = u.salePrice * (1 + sc.salePriceBufferPct / 100) * (1 - bank.haircutPct / 100);
+      const arv = u.salePrice * (1 - bank.haircutPct / 100);
       u.bankLtvCap = round2((bank.ltvPct / 100) * arv);
       u.bankEligible = round2(
         Math.max(0, Math.min(u.bankLtcCap, u.bankLtvCap, bank.perUnitCap ?? Infinity)),

@@ -864,10 +864,11 @@ export default async function SimulationPage({
             <div className="border-b border-slate-100 px-5 py-4">
               <h2 className="text-base font-medium text-slate-800">Quanto o banco financia por casa</h2>
               <p className="text-xs text-slate-400">
-                Base do LTC = custo contractor + fee da obra + lote do location (ajustados pelo
-                cenário). O banco desembolsa TUDO que aprovar — o excedente sobre o custo real
-                volta ao cliente como reembolso (cash to closing). Na conversão para pool, o
-                financiado vira o budget de draw da casa (ajustável na ficha).
+                Base do LTC = custo contractor + fee da obra + lote do location — valores
+                PUROS do catálogo (o banco usa o orçamento real; buffers de cenário são
+                internos). O banco desembolsa TUDO que aprovar — o excedente sobre o custo
+                real volta ao cliente como reembolso (cash to closing). Na conversão para
+                pool, o financiado vira o budget de draw da casa (ajustável na ficha).
               </p>
             </div>
             <div className="overflow-x-auto">
@@ -887,7 +888,7 @@ export default async function SimulationPage({
                 </thead>
                 <tbody>
                   {r.units.map((u, i) => {
-                    const contractBuild = Math.round((u.bankLtcBasis - u.adjLot) * 100) / 100;
+                    const contractBuild = Math.round((u.bankLtcBasis - u.lotCost) * 100) / 100;
                     const fee = u.contractorFee;
                     const binding =
                       u.bankEligible >= (u.bankLtcCap ?? 0) - 0.01 ? "LTC" : u.bankEligible >= (u.bankLtvCap ?? 0) - 0.01 ? "LTV" : "cap";
@@ -896,7 +897,7 @@ export default async function SimulationPage({
                         <td className={`${td} font-medium text-slate-800`}>{u.label}</td>
                         <td className={tdRight}>{formatMoney(contractBuild - fee, "USD")}</td>
                         <td className={tdRight}>{formatMoney(fee, "USD")}</td>
-                        <td className={tdRight}>{formatMoney(u.adjLot, "USD")}</td>
+                        <td className={tdRight}>{formatMoney(u.lotCost, "USD")}</td>
                         <td className={`${tdRight} font-medium`}>{formatMoney(u.bankLtcBasis, "USD")}</td>
                         <td className={tdRight}>{formatMoney(u.bankLtcCap, "USD")}</td>
                         <td className={tdRight}>{formatMoney(u.bankLtvCap, "USD")}</td>
