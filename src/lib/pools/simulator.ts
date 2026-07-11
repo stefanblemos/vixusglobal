@@ -343,9 +343,10 @@ export function simulate(input: SimInput): SimResult {
       u.bankLtcCap = round2((bank.ltcBuildPct / 100) * u.bankLtcBasis);
       const arv = u.salePrice * (1 - bank.haircutPct / 100);
       u.bankLtvCap = round2((bank.ltvPct / 100) * arv);
-      u.bankEligible = round2(
-        Math.max(0, Math.min(u.bankLtcCap, u.bankLtvCap, bank.perUnitCap ?? Infinity)),
-      );
+      // arredonda p/ BAIXO ao múltiplo de $5k: o banco aprova valor redondo e conservador
+      // (ex.: cálculo 238k → aprova 235k — não quer se expor no quebrado)
+      const rawEligible = Math.max(0, Math.min(u.bankLtcCap, u.bankLtvCap, bank.perUnitCap ?? Infinity));
+      u.bankEligible = Math.floor(rawEligible / 5000) * 5000;
       committed += u.bankEligible;
     }
   }
