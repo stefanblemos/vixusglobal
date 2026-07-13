@@ -1341,6 +1341,9 @@ model PoolSimulation {
 
   units  Json // [{ locationId, modelId }]
   result Json? // snapshot: { kpis, events[], monthly[], units[] }
+  // Prosa do Investment Summary gerada pela Claude (market commentary + closing remarks),
+  // cacheada por hash de (extrato ATTOM + KPIs + cesta) — re-gera só quando os dados mudam
+  reportAi Json? // { hash, marketCommentary[], closingRemarks, generatedAt, model }
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

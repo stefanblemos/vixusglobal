@@ -8,6 +8,7 @@ import { Packer } from "docx";
 import { prisma } from "../src/lib/db";
 import { buildReportData } from "../src/lib/pools/report-data";
 import { buildReportDocx } from "../src/lib/pools/report-docx";
+import { getReportProse } from "../src/lib/pools/report-ai";
 
 async function main() {
   const namePart = process.argv[2] || "";
@@ -32,7 +33,15 @@ async function main() {
   console.log(`Ledger mensal: ${data.monthly.length} meses · Mercado: extrato ${data.market.extractDate}`);
   if (Math.abs(data.closing.diff) > 0.01) throw new Error("Fechamento NÃO bate ao centavo — report seria bloqueado.");
 
-  const buf = await Packer.toBuffer(buildReportDocx(data));
+  // prosa da Claude quando a chave existe (mesmo caminho da rota); sem chave → sem prosa
+  const prose = process.env.ANTHROPIC_API_KEY ? await getReportProse(sim.id, data) : null;
+  if (prose) {
+    console.log(`Prosa AI (${prose.model}, cache hash ok):`);
+    for (const p of prose.marketCommentary) console.log(`  [market] ${p.slice(0, 140)}…`);
+    console.log(`  [closing] ${prose.closingRemarks.slice(0, 140)}…`);
+  } else console.log("Prosa AI: — (sem chave ou falha — report sai sem a seção)");
+
+  const buf = await Packer.toBuffer(buildReportDocx(data, undefined, prose));
   fs.writeFileSync(outPath, buf);
   console.log(`DOCX: ${outPath} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
 }
