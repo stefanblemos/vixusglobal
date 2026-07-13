@@ -10,9 +10,21 @@ import {
   useComparedBank,
 } from "@/lib/actions/simulations";
 import { simulate, type SimResult } from "@/lib/pools/simulator";
-import { buildSimInput, type PromoteTierInput, type UnitRef } from "@/lib/pools/build-sim-input";
+import {
+  buildSimInput,
+  comboKey,
+  countOverrides,
+  type PromoteTierInput,
+  type SimOverrides,
+  type UnitRef,
+} from "@/lib/pools/build-sim-input";
 import { SimulationControls } from "@/components/simulation-controls";
 import { SimulationUnitsEditor } from "@/components/simulation-units-editor";
+import {
+  SimulationPremissas,
+  type PremissasCombo,
+  type PremissasLocation,
+} from "@/components/simulation-premissas";
 import { BankMultiSelect } from "@/components/bank-multiselect";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
 import { SimLedger, type LedgerRow } from "@/components/sim-ledger";
@@ -244,6 +256,7 @@ function BankCostsMonthly({
 const TABS = [
   ["dash", "Dashboard"],
   ["setup", "Setup"],
+  ["premissas", "Premissas"],
   ["casas", "Casas"],
   ["financeiro", "Financeiro"],
   ["loan", "Cálculos do loan"],
@@ -273,7 +286,7 @@ export default async function SimulationPage({
   const injectionDays = new Set(
     (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
   );
-  const [allBanks, allScenarios, catalogLocations, catalogModelLocations] = await Promise.all([
+  const [allBanks, allScenarios, catalogLocations, catalogModelLocations, houseTypeFees] = await Promise.all([
     prisma.bankProfile.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -283,12 +296,24 @@ export default async function SimulationPage({
       },
     }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
-    prisma.catalogLocation.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.catalogLocation.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        lotCostEstimate: true,
+        lotLeadDays: true,
+        permitDays: true,
+        saleDays: true,
+      },
+    }),
     prisma.catalogModelLocation.findMany({ include: { model: true } }),
+    prisma.houseTypeFee.findMany(),
   ]);
-  // catálogo p/ o editor de cesta (mesma forma do /simulator/new)
+  // catálogo p/ o editor de cesta (mesma forma do /simulator/new) — só plain objects
+  // atravessam a fronteira server→client (Decimal do Prisma não pode vazar)
   const unitsCatalog = {
-    locations: catalogLocations,
+    locations: catalogLocations.map((l) => ({ id: l.id, name: l.name })),
     modelLocations: catalogModelLocations.map((ml) => ({
       locationId: ml.locationId,
       modelId: ml.modelId,
@@ -299,6 +324,38 @@ export default async function SimulationPage({
       costOpenBook: ml.costOpenBook == null ? null : Number(ml.costOpenBook),
     })),
   };
+  // Aba Premissas: só locations/combinações presentes na CESTA, com valores do catálogo
+  const simOverrides = (sim.overrides as SimOverrides | null) ?? null;
+  const overridesCount = countOverrides(simOverrides);
+  const basketRefs = (sim.units as UnitRef[]) ?? [];
+  const feeByType = new Map(houseTypeFees.map((f) => [f.type as string, Number(f.fee)]));
+  const premissasLocations: PremissasLocation[] = catalogLocations
+    .filter((l) => basketRefs.some((u) => u.locationId === l.id))
+    .map((l) => ({
+      id: l.id,
+      name: l.name,
+      catalog: {
+        lotCost: l.lotCostEstimate == null ? null : Number(l.lotCostEstimate),
+        lotLeadDays: l.lotLeadDays,
+        permitDays: l.permitDays,
+        saleDays: l.saleDays,
+      },
+    }));
+  const premissasCombos: PremissasCombo[] = catalogModelLocations
+    .filter((ml) => basketRefs.some((u) => u.modelId === ml.modelId && u.locationId === ml.locationId))
+    .map((ml) => ({
+      key: comboKey(ml.modelId, ml.locationId),
+      label: `${ml.model.name} @ ${catalogLocations.find((l) => l.id === ml.locationId)?.name ?? "?"}`,
+      catalog: {
+        salePrice: Number(ml.salePrice),
+        costPerformance: ml.costPerformance == null ? null : Number(ml.costPerformance),
+        costContractor: ml.costContractor == null ? null : Number(ml.costContractor),
+        costOpenBook: ml.costOpenBook == null ? null : Number(ml.costOpenBook),
+        contractorFee: Number(ml.model.contractorFee ?? feeByType.get(ml.model.houseType) ?? 0),
+        buildMonths: Number(ml.model.buildMonths),
+      },
+    }));
+
   const bankOptions = allBanks.map((b) => ({
     id: b.id,
     name: b.name,
@@ -321,6 +378,7 @@ export default async function SimulationPage({
     unitGapDays: sim.unitGapDays,
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
+    overrides: (sim.overrides as SimOverrides | null) ?? null,
   };
   const scenarioCards = await Promise.all(
     allScenarios.map(async (s) => {
@@ -359,6 +417,11 @@ export default async function SimulationPage({
                 ? "desembolso sócios 10/10/25/25/25/5"
                 : "desembolso 10/30/20/20/15/5"}
             {sim.pool ? ` · pool ${sim.pool.code}` : ""}
+            {overridesCount > 0 && (
+              <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                premissas ajustadas ({overridesCount})
+              </span>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
@@ -449,6 +512,17 @@ export default async function SimulationPage({
       {/* Alavancas da simulação viva: cenário, funding e remuneração recalculam na hora.
           key = valores salvos → remonta após cada recálculo (o form reset do React 19
           dessincroniza selects controlados; a remontagem realinha a tela com o banco) */}
+      {tab === "premissas" && (
+        <SimulationPremissas
+          key={JSON.stringify(simOverrides)}
+          simulationId={sim.id}
+          scenarioName={sim.scenario.name}
+          locations={premissasLocations}
+          combos={premissasCombos}
+          overrides={simOverrides}
+        />
+      )}
+
       {tab === "setup" && (
       <SimulationControls
         key={[

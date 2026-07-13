@@ -1346,6 +1346,12 @@ model PoolSimulation {
   // Prosa do Investment Summary gerada pela Claude (market commentary + closing remarks),
   // cacheada por hash de (extrato ATTOM + KPIs + cesta) — re-gera só quando os dados mudam
   reportAi Json? // { hash, marketCommentary[], closingRemarks, generatedAt, model }
+  // Aba Premissas: ajuste fino POR SIMULAÇÃO sem tocar catálogo/cenários. Só guarda o que
+  // DIVERGE do catálogo (campo não tocado segue o catálogo); buffers do cenário aplicam
+  // por cima. { locations: {locId:{lotCost,lotLeadDays,permitDays,saleDays}},
+  //             combos: {"modelId|locId":{salePrice,costPerformance,costContractor,
+  //                                        costOpenBook,contractorFee,buildMonths}} }
+  overrides Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

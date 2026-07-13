@@ -594,6 +594,16 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     body(
       "Unit-level underwriting for each home in the program basket, at Conservative-case (buffered) values. Sale proceeds are shown net of closing costs; permit costs are embedded in the construction disbursement schedule; financing costs and performance-based builder compensation accrue at program level and appear in A.4.",
     ),
+    ...(d.customAssumptions > 0
+      ? [
+          body([
+            t(
+              `Certain unit-level assumptions (${d.customAssumptions} value${d.customAssumptions > 1 ? "s" : ""} — sale prices, costs and/or timelines) were adjusted by the Manager specifically for this program and differ from the Manager's standing catalog; catalog reference values are available to prospective investors upon request.`,
+              { size: 18, color: GRAY, italics: true },
+            ),
+          ]),
+        ]
+      : []),
     gridTable(
       ["Home", "Lot", "Construction", "Sale (net)", "Net profit"],
       [

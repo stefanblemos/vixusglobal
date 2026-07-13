@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/db";
 import { simulate, type SimInput, type SimResult } from "@/lib/pools/simulator";
-import { buildSimInput, type PromoteTierInput, type UnitRef } from "@/lib/pools/build-sim-input";
+import {
+  buildSimInput,
+  countOverrides,
+  type PromoteTierInput,
+  type SimOverrides,
+  type UnitRef,
+} from "@/lib/pools/build-sim-input";
 import marketStats from "@/data/market-stats.json";
 
 // Monta o pacote de dados do Investment Summary de UMA simulação: os 3 cenários rodados
@@ -64,6 +70,8 @@ export type ReportData = {
   };
   monthly: MonthlyRow[];
   market: typeof marketStats;
+  // nº de premissas ajustadas na aba Premissas (0 = tudo do catálogo) — nota no A.1
+  customAssumptions: number;
 };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -186,6 +194,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     unitGapDays: sim.unitGapDays,
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
+    overrides: (sim.overrides as SimOverrides | null) ?? null,
   };
 
   const allScenarios = await prisma.bufferScenario.findMany({
@@ -292,5 +301,6 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     closing: closingOf(consResult),
     monthly: monthlyOf(consResult),
     market: marketStats,
+    customAssumptions: countOverrides((sim.overrides as SimOverrides | null) ?? null),
   };
 }

@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db";
 import { simulate } from "@/lib/pools/simulator";
 import {
   buildSimInput,
+  countOverrides,
   type PromoteTierInput,
+  type SimOverrides,
   type UnitRef,
 } from "@/lib/pools/build-sim-input";
 import { Prisma, type BuilderCompMode, type SimFundingMode } from "@prisma/client";
@@ -150,6 +152,7 @@ export async function updateSimulationSettings(
     scenarioCode,
     bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
+    overrides: (sim.overrides as SimOverrides | null) ?? null,
   };
   const input = await buildSimInput(fields);
   if ("error" in input) return { error: input.error };
@@ -202,12 +205,110 @@ export async function updateSimulationUnits(
     scenarioCode: sim.scenarioCode,
     bankProfileId: sim.bankProfileId,
     units,
+    overrides: (sim.overrides as SimOverrides | null) ?? null,
   });
   if ("error" in input) return { error: input.error };
   const result = simulate(input);
   await prisma.poolSimulation.update({
     where: { id },
     data: { units: units as object[], result: JSON.parse(JSON.stringify(result)) },
+  });
+  revalidatePath(`/pools/simulator/${id}`);
+  return undefined;
+}
+
+// Aba Premissas: salva os overrides da simulação. O componente manda os valores DIGITADOS
+// (cópia pré-preenchida); aqui normalizamos — valor igual ao catálogo atual NÃO vira
+// override (campo não tocado continua seguindo o catálogo). Re-roda o motor na hora.
+export async function updateSimulationOverrides(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const id = String(formData.get("simulationId") ?? "");
+  if (!id) return { error: "Simulation not found." };
+  const sim = await prisma.poolSimulation.findUnique({ where: { id } });
+  if (!sim) return { error: "Simulation not found." };
+
+  let raw: SimOverrides;
+  try {
+    raw = JSON.parse(String(formData.get("overrides") ?? "{}"));
+  } catch {
+    return { error: "Premissas inválidas." };
+  }
+
+  // Normalização contra o catálogo ATUAL: só diverge = override; inválido/vazio = fora
+  const clean: SimOverrides = { locations: {}, combos: {} };
+  const num = (v: unknown) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  for (const [locId, o] of Object.entries(raw.locations ?? {})) {
+    const loc = await prisma.catalogLocation.findUnique({ where: { id: locId } });
+    if (!loc) continue;
+    const entry: Record<string, number> = {};
+    const lot = num(o.lotCost);
+    if (lot != null && lot !== Number(loc.lotCostEstimate ?? NaN)) entry.lotCost = lot;
+    for (const [k, cat] of [
+      ["lotLeadDays", loc.lotLeadDays],
+      ["permitDays", loc.permitDays],
+      ["saleDays", loc.saleDays],
+    ] as const) {
+      const v = num((o as Record<string, unknown>)[k]);
+      if (v != null && Math.round(v) !== cat) entry[k] = Math.round(v);
+    }
+    if (Object.keys(entry).length) clean.locations![locId] = entry;
+  }
+  for (const [key, o] of Object.entries(raw.combos ?? {})) {
+    const [modelId, locationId] = key.split("|");
+    const ml = await prisma.catalogModelLocation.findUnique({
+      where: { modelId_locationId: { modelId, locationId } },
+      include: { model: true },
+    });
+    if (!ml) continue;
+    const fees = new Map(
+      (await prisma.houseTypeFee.findMany()).map((f) => [f.type as string, Number(f.fee)]),
+    );
+    const catFee = Number(ml.model.contractorFee ?? fees.get(ml.model.houseType) ?? 0);
+    const entry: Record<string, number> = {};
+    for (const [k, cat] of [
+      ["salePrice", Number(ml.salePrice)],
+      ["costPerformance", ml.costPerformance == null ? null : Number(ml.costPerformance)],
+      ["costContractor", ml.costContractor == null ? null : Number(ml.costContractor)],
+      ["costOpenBook", ml.costOpenBook == null ? null : Number(ml.costOpenBook)],
+      ["contractorFee", catFee],
+      ["buildMonths", Number(ml.model.buildMonths)],
+    ] as const) {
+      const v = num((o as Record<string, unknown>)[k]);
+      if (v != null && v !== cat) entry[k] = v;
+    }
+    if (Object.keys(entry).length) clean.combos![key] = entry;
+  }
+  const overrides = countOverrides(clean) > 0 ? clean : null;
+
+  const input = await buildSimInput({
+    fundingMode: sim.fundingMode,
+    upfrontFunding: sim.upfrontFunding,
+    compMode: sim.compMode,
+    perfPct: sim.perfPct,
+    perfTiming: sim.perfTiming,
+    promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    flatFeePerHouse: sim.flatFeePerHouse,
+    paymentPlan: sim.paymentPlan,
+    equityGatePct: sim.equityGatePct,
+    unitGapDays: sim.unitGapDays,
+    scenarioCode: sim.scenarioCode,
+    bankProfileId: sim.bankProfileId,
+    units: (sim.units as UnitRef[]) ?? [],
+    overrides,
+  });
+  if ("error" in input) return { error: input.error };
+  const result = simulate(input);
+  await prisma.poolSimulation.update({
+    where: { id },
+    data: {
+      overrides: overrides === null ? Prisma.DbNull : (overrides as object),
+      result: JSON.parse(JSON.stringify(result)),
+    },
   });
   revalidatePath(`/pools/simulator/${id}`);
   return undefined;
@@ -236,6 +337,7 @@ export async function duplicateSimulation(formData: FormData): Promise<void> {
       scenarioCode: sim.scenarioCode,
       bankProfileId: sim.bankProfileId,
       units: (sim.units as object[]) ?? [],
+      overrides: sim.overrides ?? undefined,
       result: sim.result ?? undefined,
     },
   });
@@ -263,6 +365,7 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
     scenarioCode: sim.scenarioCode,
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
+    overrides: (sim.overrides as SimOverrides | null) ?? null,
   });
   if ("error" in input) return;
   const result = simulate(input);
@@ -377,6 +480,7 @@ function simFields(sim: {
   unitGapDays: number;
   scenarioCode: string;
   units: unknown;
+  overrides?: unknown;
 }) {
   return {
     upfrontFunding: sim.upfrontFunding,
@@ -390,6 +494,7 @@ function simFields(sim: {
     unitGapDays: sim.unitGapDays,
     scenarioCode: sim.scenarioCode,
     units: (sim.units as UnitRef[]) ?? [],
+    overrides: (sim.overrides as SimOverrides | null) ?? null,
   };
 }
 

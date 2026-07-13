@@ -5,6 +5,38 @@ export type UnitRef = { locationId: string; modelId: string; cycle?: number };
 
 export type PromoteTierInput = { hurdlePct: number | null; promotePct: number };
 
+// Aba Premissas: ajuste fino por simulação — só guarda o que DIVERGE do catálogo.
+// Override substitui o valor do catálogo em TODA a conta (inclusive o sizing do banco);
+// os buffers do cenário aplicam POR CIMA do valor ajustado.
+export type LocationOverride = {
+  lotCost?: number;
+  lotLeadDays?: number;
+  permitDays?: number;
+  saleDays?: number;
+};
+export type ComboOverride = {
+  salePrice?: number;
+  costPerformance?: number;
+  costContractor?: number;
+  costOpenBook?: number;
+  contractorFee?: number;
+  buildMonths?: number;
+};
+export type SimOverrides = {
+  locations?: Record<string, LocationOverride>;
+  combos?: Record<string, ComboOverride>; // chave "modelId|locationId"
+};
+
+export const comboKey = (modelId: string, locationId: string) => `${modelId}|${locationId}`;
+
+export function countOverrides(o: SimOverrides | null | undefined): number {
+  if (!o) return 0;
+  let n = 0;
+  for (const v of Object.values(o.locations ?? {})) n += Object.keys(v).length;
+  for (const v of Object.values(o.combos ?? {})) n += Object.keys(v).length;
+  return n;
+}
+
 // Monta o SimInput a partir dos catálogos atuais (valores sempre frescos do banco).
 // Módulo neutro: usado pelas server actions E pelos server components (cards de cenário).
 export async function buildSimInput(sim: {
@@ -21,6 +53,7 @@ export async function buildSimInput(sim: {
   scenarioCode: string;
   bankProfileId: string | null;
   units: UnitRef[];
+  overrides?: SimOverrides | null;
 }): Promise<SimInput | { error: string }> {
   const scenario = await prisma.bufferScenario.findUnique({ where: { code: sim.scenarioCode } });
   if (!scenario) return { error: "Scenario not found." };
@@ -46,20 +79,26 @@ export async function buildSimInput(sim: {
       include: { model: true, location: true },
     });
     if (!ml) return { error: "A selected model is not available in the selected location." };
-    const lotCost = ml.location.lotCostEstimate;
+    // Premissas da simulação (aba Premissas): override ?? catálogo, campo a campo
+    const lo = sim.overrides?.locations?.[ref.locationId] ?? {};
+    const co = sim.overrides?.combos?.[comboKey(ref.modelId, ref.locationId)] ?? {};
+    const lotCost = lo.lotCost ?? (ml.location.lotCostEstimate == null ? null : Number(ml.location.lotCostEstimate));
+    const costContractor = co.costContractor ?? (ml.costContractor == null ? null : Number(ml.costContractor));
+    const costOpenBook = co.costOpenBook ?? (ml.costOpenBook == null ? null : Number(ml.costOpenBook));
+    const costPerformance = co.costPerformance ?? (ml.costPerformance == null ? null : Number(ml.costPerformance));
     if (lotCost == null)
       return { error: `Set the estimated lot cost for ${ml.location.name} in the catalog.` };
-    if (sim.compMode === "CONTRACTOR_FEE" && ml.costContractor == null)
+    if (sim.compMode === "CONTRACTOR_FEE" && costContractor == null)
       return { error: `Set the contractor cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
-    if (sim.fundingMode === "BANK" && ml.costContractor == null)
+    if (sim.fundingMode === "BANK" && costContractor == null)
       return {
         error: `Set the contractor cost for ${ml.model.name} at ${ml.location.name} — é a base do orçamento do banco (LTC = contractor + fee + lote).`,
       };
-    if (sim.compMode === "OPEN_BOOK" && ml.costOpenBook == null)
+    if (sim.compMode === "OPEN_BOOK" && costOpenBook == null)
       return { error: `Set the open book cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
     if (
       (sim.compMode === "PERFORMANCE" || sim.compMode === "PROMOTE") &&
-      ml.costPerformance == null
+      costPerformance == null
     )
       return { error: `Set the performance cost for ${ml.model.name} at ${ml.location.name} in the catalog.` };
     const cycle = Math.max(1, Math.round(Number(ref.cycle ?? 1)) || 1);
@@ -69,16 +108,16 @@ export async function buildSimInput(sim: {
       label: `${hasCycles ? `C${cycle} • ` : ""}${ml.model.name} — ${ml.location.name}`,
       locationName: ml.location.name,
       modelName: ml.model.name,
-      permitDays: ml.location.permitDays,
-      lotLeadDays: ml.location.lotLeadDays,
-      saleDays: ml.location.saleDays,
-      buildMonths: Number(ml.model.buildMonths),
-      costPerformance: Number(ml.costPerformance ?? 0),
-      costContractor: Number(ml.costContractor ?? 0),
-      costOpenBook: Number(ml.costOpenBook ?? 0),
-      contractorFee: Number(ml.model.contractorFee ?? fees.get(ml.model.houseType) ?? 0),
-      lotCost: Number(lotCost),
-      salePrice: Number(ml.salePrice),
+      permitDays: lo.permitDays ?? ml.location.permitDays,
+      lotLeadDays: lo.lotLeadDays ?? ml.location.lotLeadDays,
+      saleDays: lo.saleDays ?? ml.location.saleDays,
+      buildMonths: co.buildMonths ?? Number(ml.model.buildMonths),
+      costPerformance: costPerformance ?? 0,
+      costContractor: costContractor ?? 0,
+      costOpenBook: costOpenBook ?? 0,
+      contractorFee: co.contractorFee ?? Number(ml.model.contractorFee ?? fees.get(ml.model.houseType) ?? 0),
+      lotCost,
+      salePrice: co.salePrice ?? Number(ml.salePrice),
     });
   }
   if (units.length === 0) return { error: "Add at least one house to simulate." };
