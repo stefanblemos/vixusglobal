@@ -19,6 +19,7 @@ export type ScenarioRow = {
   closingFeePct: string;
   contingencyReservePct: string;
   landAcquisitionDays: string;
+  saleClosingDays: string;
   constructionDurationBufferM: string;
   salesAbsorptionMonths: string | null;
   emdPct: string;
@@ -30,18 +31,19 @@ export type ScenarioRow = {
 const CORE = new Set(["OPT", "REAL", "CONS"]);
 
 // Campos agrupados pelo "dono" do processo, com explicação para o operador.
+// options = valores comuns do mercado → o campo vira <select> em vez de input livre.
 const GROUPS: Array<{
   title: string;
   hint: string;
-  fields: Array<{ name: keyof ScenarioRow; label: string; hint: string }>;
+  fields: Array<{ name: keyof ScenarioRow; label: string; hint: string; options?: number[] }>;
 }> = [
   {
     title: "Lote",
     hint: "Tudo que afeta a compra do terreno.",
     fields: [
       { name: "lotCostBufferPct", label: "Custo do lote %", hint: "Ajuste sobre o valor estimado do lote (+5 = lote 5% mais caro)" },
-      { name: "landAcquisitionDays", label: "Atraso de compra (dias)", hint: "Dias extras até fechar o lote, além do prazo do location" },
-      { name: "emdPct", label: "EMD %", hint: "Sinal (earnest money) pago na oferta do lote" },
+      { name: "landAcquisitionDays", label: "Closing do lote (dias)", hint: "Caução → closing (escrow do lote). Padrão de mercado: 15", options: [10, 15, 21, 30, 45] },
+      { name: "emdPct", label: "EMD %", hint: "Sinal (earnest money) pago quando o lote entra sob contrato" },
     ],
   },
   {
@@ -59,6 +61,7 @@ const GROUPS: Array<{
     fields: [
       { name: "salePriceBufferPct", label: "Preço de venda %", hint: "Ajuste sobre a venda do catálogo (−7 = vende 7% mais barato)" },
       { name: "salesAbsorptionMonths", label: "Absorção (+ meses)", hint: "Meses SOMADOS aos dias de venda do location (cada região tem seu prazo); vazio = 0" },
+      { name: "saleClosingDays", label: "Closing da venda (dias)", hint: "Contrato do comprador → dinheiro no caixa. Padrão de mercado: 45", options: [30, 45, 60] },
       { name: "closingFeePct", label: "Closing fee %", hint: "Comissões e custos de venda, % do preço de venda" },
     ],
   },
@@ -132,17 +135,34 @@ function ScenarioModal({
               <h4 className="text-sm font-semibold text-slate-700">{g.title}</h4>
               <p className="mb-2 text-xs text-slate-400">{g.hint}</p>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
-                {g.fields.map((f) => (
-                  <div key={f.name}>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
-                    <input
-                      name={f.name}
-                      defaultValue={(scenario?.[f.name] as string | null) ?? ""}
-                      className={inputClass}
-                    />
-                    <p className="mt-1 text-[11px] leading-snug text-slate-400">{f.hint}</p>
-                  </div>
-                ))}
+                {g.fields.map((f) => {
+                  const current = (scenario?.[f.name] as string | null) ?? "";
+                  return (
+                    <div key={f.name}>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">{f.label}</label>
+                      {f.options ? (
+                        <select
+                          name={f.name}
+                          defaultValue={current || String(f.options[Math.floor(f.options.length / 2)])}
+                          className={inputClass}
+                        >
+                          {/* valor atual fora da lista (legado/custom) continua selecionável */}
+                          {current && !f.options.includes(Number(current)) && (
+                            <option value={current}>{current} (atual)</option>
+                          )}
+                          {f.options.map((o) => (
+                            <option key={o} value={o}>
+                              {o}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input name={f.name} defaultValue={current} className={inputClass} />
+                      )}
+                      <p className="mt-1 text-[11px] leading-snug text-slate-400">{f.hint}</p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}

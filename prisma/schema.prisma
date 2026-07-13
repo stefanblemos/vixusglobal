@@ -1264,7 +1264,8 @@ model BufferScenario {
   lotCostBufferPct            Decimal  @default(0) @db.Decimal(6, 2) // −1 / 0 / +5
   closingFeePct               Decimal  @default(8) @db.Decimal(6, 2) // 7.5 / 8 / 9 (% da venda)
   contingencyReservePct       Decimal  @default(5) @db.Decimal(6, 2) // 3 / 5 / 8 (% de lote+obra)
-  landAcquisitionDays         Int      @default(20) // atraso na compra do lote: 10 / 20 / 30
+  landAcquisitionDays         Int      @default(15) // escrow do LOTE: caução → closing (padrão de mercado 15d)
+  saleClosingDays             Int      @default(45) // closing da VENDA: contrato do comprador → dinheiro no caixa
   constructionDurationBufferM Decimal  @default(0) @db.Decimal(4, 1) // −1 / 0 / +2 meses
   salesAbsorptionMonths       Decimal? @db.Decimal(4, 1) // 1 / 2 / 4 (null = saleDays do local)
   emdPct                      Decimal  @default(10) @db.Decimal(6, 2) // 5 / 10 / 10
@@ -1336,7 +1337,6 @@ model PoolSimulation {
   // Aporte único de 100% em D+0 (vs JIT) — mostra o impacto do capital parado na TIR
   upfrontFunding Boolean        @default(false)
   equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
-  parallelPermit Boolean        @default(false)
   unitGapDays   Int             @default(3)
 
   units  Json // [{ locationId, modelId }]

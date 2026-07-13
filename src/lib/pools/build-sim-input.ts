@@ -17,7 +17,6 @@ export async function buildSimInput(sim: {
   flatFeePerHouse: unknown;
   paymentPlan: string;
   equityGatePct: unknown;
-  parallelPermit: boolean;
   unitGapDays: number;
   scenarioCode: string;
   bankProfileId: string | null;
@@ -94,7 +93,6 @@ export async function buildSimInput(sim: {
     flatFeePerHouse: Number(sim.flatFeePerHouse ?? 0),
     paymentPlan: sim.paymentPlan === "LIGHT_START" ? "LIGHT_START" : "STANDARD",
     equityGatePct: Number(sim.equityGatePct) / 100,
-    parallelPermit: sim.parallelPermit,
     // gap entre início das casas vem do CENÁRIO (Ótimo 10 · Real 20 · Conservador 30)
     unitGapDays: scenario.unitGapDays,
     scenario: {
@@ -104,6 +102,7 @@ export async function buildSimInput(sim: {
       closingFeePct: Number(scenario.closingFeePct),
       contingencyReservePct: Number(scenario.contingencyReservePct),
       landAcquisitionDays: scenario.landAcquisitionDays,
+      saleClosingDays: scenario.saleClosingDays,
       constructionDurationBufferM: Number(scenario.constructionDurationBufferM),
       salesAbsorptionMonths:
         scenario.salesAbsorptionMonths == null ? null : Number(scenario.salesAbsorptionMonths),

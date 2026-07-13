@@ -183,7 +183,6 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     flatFeePerHouse: sim.flatFeePerHouse,
     paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
-    parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],

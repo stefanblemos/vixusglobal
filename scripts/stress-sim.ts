@@ -14,7 +14,7 @@
  */
 import { simulate, type SimInput, type SimBank, type SimScenario, type SimUnitInput } from "../src/lib/pools/simulator";
 
-const OPT: SimScenario = { salePriceBufferPct: 0, constructionCostBufferPct: 0, lotCostBufferPct: 0, closingFeePct: 6, contingencyReservePct: 0, landAcquisitionDays: 15, constructionDurationBufferM: 0, salesAbsorptionMonths: null, emdPct: 5, stressSlippagePct: 0 } as unknown as SimScenario;
+const OPT: SimScenario = { salePriceBufferPct: 0, constructionCostBufferPct: 0, lotCostBufferPct: 0, closingFeePct: 6, contingencyReservePct: 0, landAcquisitionDays: 15, saleClosingDays: 45, constructionDurationBufferM: 0, salesAbsorptionMonths: null, emdPct: 5, stressSlippagePct: 0 } as unknown as SimScenario;
 const REAL: SimScenario = { ...OPT, salePriceBufferPct: -3, constructionCostBufferPct: 5, lotCostBufferPct: 3, contingencyReservePct: 3, constructionDurationBufferM: 1 } as SimScenario;
 const CONS: SimScenario = { ...OPT, salePriceBufferPct: -8, constructionCostBufferPct: 10, lotCostBufferPct: 5, contingencyReservePct: 5, constructionDurationBufferM: 2, salesAbsorptionMonths: 2 } as SimScenario;
 const SCENARIOS: Array<[string, SimScenario]> = [["OPT", OPT], ["REAL", REAL], ["CONS", CONS]];
@@ -52,7 +52,6 @@ function baseInput(sc: SimScenario, bank: SimBank | null): SimInput {
     promoteTiers: null,
     paymentPlan: "STANDARD",
     equityGatePct: 0.1,
-    parallelPermit: false,
     unitGapDays: 3,
     scenario: sc,
     bank,

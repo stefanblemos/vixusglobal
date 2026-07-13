@@ -288,6 +288,7 @@ export default async function PoolCatalogPage({
             closingFeePct: s.closingFeePct.toString(),
             contingencyReservePct: s.contingencyReservePct.toString(),
             landAcquisitionDays: s.landAcquisitionDays.toString(),
+            saleClosingDays: s.saleClosingDays.toString(),
             constructionDurationBufferM: s.constructionDurationBufferM.toString(),
             salesAbsorptionMonths: s.salesAbsorptionMonths?.toString() ?? null,
             emdPct: s.emdPct.toString(),

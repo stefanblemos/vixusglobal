@@ -61,7 +61,6 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
       Number(String(formData.get("flatFeePerHouse") ?? "0").replace(/,/g, "")) || 0,
     paymentPlan: String(formData.get("paymentPlan") ?? "STANDARD"),
     equityGatePct: Number(formData.get("equityGatePct") ?? 10),
-    parallelPermit: formData.get("parallelPermit") === "on",
     unitGapDays: Number(formData.get("unitGapDays") ?? 3) || 3,
     scenarioCode: String(formData.get("scenarioCode") ?? "REAL"),
     bankProfileId: String(formData.get("bankProfileId") ?? "").trim() || null,
@@ -86,7 +85,6 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
       flatFeePerHouse: sim.flatFeePerHouse,
       paymentPlan: sim.paymentPlan as "STANDARD" | "LIGHT_START",
       equityGatePct: sim.equityGatePct,
-      parallelPermit: sim.parallelPermit,
       unitGapDays: sim.unitGapDays,
       scenarioCode: sim.scenarioCode,
       bankProfileId: sim.fundingMode === "BANK" ? sim.bankProfileId : null,
@@ -147,7 +145,6 @@ export async function updateSimulationSettings(
     flatFeePerHouse,
     paymentPlan,
     equityGatePct: sim.equityGatePct,
-    parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
     scenarioCode,
     bankProfileId,
@@ -195,7 +192,6 @@ export async function duplicateSimulation(formData: FormData): Promise<void> {
       paymentPlan: sim.paymentPlan,
       upfrontFunding: sim.upfrontFunding,
       equityGatePct: sim.equityGatePct,
-      parallelPermit: sim.parallelPermit,
       unitGapDays: sim.unitGapDays,
       scenarioCode: sim.scenarioCode,
       bankProfileId: sim.bankProfileId,
@@ -223,7 +219,6 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
     flatFeePerHouse: sim.flatFeePerHouse,
     paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
-    parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
     scenarioCode: sim.scenarioCode,
     bankProfileId: sim.bankProfileId,
@@ -339,7 +334,6 @@ function simFields(sim: {
   flatFeePerHouse: unknown;
   paymentPlan: string;
   equityGatePct: unknown;
-  parallelPermit: boolean;
   unitGapDays: number;
   scenarioCode: string;
   units: unknown;
@@ -353,7 +347,6 @@ function simFields(sim: {
     flatFeePerHouse: sim.flatFeePerHouse,
     paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
-    parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
     scenarioCode: sim.scenarioCode,
     units: (sim.units as UnitRef[]) ?? [],

@@ -30,7 +30,6 @@ async function main() {
       flatFeePerHouse: src.flatFeePerHouse,
       paymentPlan: src.paymentPlan,
       equityGatePct: src.equityGatePct,
-      parallelPermit: src.parallelPermit,
       unitGapDays: src.unitGapDays,
       scenarioCode: src.scenarioCode,
       bankProfileId: null,

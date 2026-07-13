@@ -302,7 +302,6 @@ export default async function SimulationPage({
     flatFeePerHouse: sim.flatFeePerHouse,
     paymentPlan: sim.paymentPlan,
     equityGatePct: sim.equityGatePct,
-    parallelPermit: sim.parallelPermit,
     unitGapDays: sim.unitGapDays,
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],

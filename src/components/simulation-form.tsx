@@ -354,11 +354,6 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
             <option value="LIGHT_START">Início leve — 10/15/25/25/20/5</option>
           </select>
         </div>
-        <div>
-          <label className="flex items-center gap-2 pt-6 text-sm text-slate-600">
-            <input type="checkbox" name="parallelPermit" /> Permit parallel to lot purchase
-          </label>
-        </div>
       </div>
 
       {tiersActive && (

@@ -22,7 +22,8 @@ export type SimScenario = {
   lotCostBufferPct: number;
   closingFeePct: number; // % da venda (7.5 / 8 / 9)
   contingencyReservePct: number; // % de (lote+obra)
-  landAcquisitionDays: number;
+  landAcquisitionDays: number; // escrow do LOTE: caução → closing (padrão de mercado 15d)
+  saleClosingDays: number; // closing da VENDA: contrato do comprador → dinheiro no caixa (~45d)
   constructionDurationBufferM: number; // meses
   salesAbsorptionMonths: number | null; // null = usa saleDays do local
   emdPct: number;
@@ -117,7 +118,6 @@ export type SimInput = {
   promoteTiers: PromoteTier[] | null; // modo PROMOTE (pago na conclusão)
   paymentPlan: "STANDARD" | "LIGHT_START"; // 10/30/20/20/15/5 ou 10/15/25/25/20/5
   equityGatePct: number; // fração
-  parallelPermit: boolean;
   unitGapDays: number;
   scenario: SimScenario;
   bank: SimBank | null;
@@ -153,7 +153,8 @@ export type SimEvent = {
 };
 
 export type SimUnitResult = SimUnitInput & {
-  tReq: number;
+  tReq: number; // início da busca do lote
+  tEmd: number; // caução (lote sob contrato)
   tLotClose: number;
   tPermitOk: number;
   tBuildStart: number;
@@ -243,20 +244,26 @@ type Flow = {
 };
 
 // Cronograma de uma unidade (forward, unidades espaçadas por unitGapDays).
+// Como o mercado funciona (regra do Stefan, 13/07): busca do lote (lotLeadDays do
+// location) → CAUÇÃO no contrato → escrow (landAcquisitionDays do cenário, ~15d) →
+// closing do lote → permit CONTA A PARTIR DO PAGAMENTO → obra → CO → marketing
+// (saleDays + absorção) → contrato do comprador → closing da venda (saleClosingDays,
+// ~45d) → dinheiro no caixa.
 function schedule(u: SimUnitInput, idx: number, input: SimInput) {
   const sc = input.scenario;
-  const tReq = idx * input.unitGapDays;
-  const tLotClose = tReq + u.lotLeadDays + sc.landAcquisitionDays;
-  const tPermitOk = (input.parallelPermit ? tReq : tLotClose) + u.permitDays;
-  const tBuildStart = Math.max(tLotClose, tPermitOk);
+  const tReq = idx * input.unitGapDays; // início da BUSCA do lote (nada sai do caixa aqui)
+  const tEmd = tReq + u.lotLeadDays; // lote achado, contrato assinado → caução
+  const tLotClose = tEmd + sc.landAcquisitionDays;
+  const tPermitOk = tLotClose + u.permitDays; // pagou o lote, inicia a contagem do permit
+  const tBuildStart = tPermitOk;
   const buildDays = Math.max(30, Math.round((u.buildMonths + sc.constructionDurationBufferM) * 30));
   const tCO = tBuildStart + buildDays;
   // Absorção do cenário SOMA aos dias de venda do location (cada região tem seu prazo;
   // substituir melhorava umas e piorava outras — regra do Stefan 10/07). Vazio = +0.
   const saleDays = u.saleDays + Math.round((sc.salesAbsorptionMonths ?? 0) * 30);
-  const tCashIn = tCO + saleDays;
-  const tPermitApp = input.parallelPermit ? tReq : tLotClose;
-  return { tReq, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
+  const tCashIn = tCO + saleDays + sc.saleClosingDays;
+  const tPermitApp = tLotClose;
+  return { tReq, tEmd, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
 }
 
 // Planos de desembolso da obra (6 fases). LIGHT_START alivia o início: até o permit caem
@@ -286,16 +293,17 @@ const DRAW_START_LAG_DAYS = 15;
 function scheduleQueued(u: SimUnitInput, triggerDay: number, input: SimInput) {
   const sc = input.scenario;
   const idealReq = triggerDay + 1 - u.permitDays - sc.landAcquisitionDays - u.lotLeadDays;
-  const tReq = Math.max(0, idealReq);
-  const tLotClose = tReq + u.lotLeadDays + sc.landAcquisitionDays;
+  const tReq = Math.max(0, idealReq); // início da busca (conta de chegada)
+  const tEmd = tReq + u.lotLeadDays; // caução no contrato do lote
+  const tLotClose = tEmd + sc.landAcquisitionDays;
   const tPermitOk = tLotClose + u.permitDays;
   const tBuildStart = Math.max(triggerDay + 1, tPermitOk);
   const buildDays = Math.max(30, Math.round((u.buildMonths + sc.constructionDurationBufferM) * 30));
   const tCO = tBuildStart + buildDays;
   const saleDays = u.saleDays + Math.round((sc.salesAbsorptionMonths ?? 0) * 30);
-  const tCashIn = tCO + saleDays;
+  const tCashIn = tCO + saleDays + sc.saleClosingDays;
   const tPermitApp = tLotClose; // F1 ANTECIPADA pelo cliente (junto com o lote)
-  return { tReq, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
+  return { tReq, tEmd, tLotClose, tPermitOk, tBuildStart, tCO, tCashIn, tPermitApp, buildDays };
 }
 
 function phaseDays(s: ReturnType<typeof schedule> & { f2Day?: number }): number[] {
@@ -340,6 +348,7 @@ export function simulate(input: SimInput): SimResult {
       ...u,
       cycle: u.cycle || 1,
       tReq: 0,
+      tEmd: 0,
       tLotClose: 0,
       tPermitOk: 0,
       tBuildStart: 0,
@@ -366,6 +375,7 @@ export function simulate(input: SimInput): SimResult {
             ? schedule(u, j, input)
             : scheduleQueued(u, prevSales[Math.min(j, prevSales.length - 1)], input);
         u.tReq = sch.tReq;
+        u.tEmd = sch.tEmd;
         u.tLotClose = sch.tLotClose;
         u.tPermitOk = sch.tPermitOk;
         u.tBuildStart = sch.tBuildStart;
@@ -475,7 +485,8 @@ export function simulate(input: SimInput): SimResult {
     // a fração no draw do closing do lote).
     const lotBankShare = bank?.financeLand ? Math.min((bank.ltcLandPct / 100) * u.adjLot, u.bankEligible) : 0;
     flows.push({
-      day: u.tReq,
+      // caução sai quando o lote está SOB CONTRATO (após a busca) — não em tReq
+      day: u.tEmd,
       amount: -round2(u.adjLot * emd),
       label: `Lote • EMD ${Math.round(emd * 100)}% • ${u.label}`,
       kind: "LOT",
@@ -502,12 +513,13 @@ export function simulate(input: SimInput): SimResult {
     let ownerEquityLeft = Math.max(0, fundable - bankLeft); // equity-first dentro do financiável
     const isQueued = u.cycle > firstCycle;
     const days = phaseDays({
-      tPermitApp: !isQueued && input.parallelPermit ? u.tReq : u.tLotClose,
+      tPermitApp: u.tLotClose, // permit só inicia após a compra do lote
       tPermitOk: u.tPermitOk,
       tBuildStart: u.tBuildStart,
       tCO: u.tCO,
       buildDays: u.tCO - u.tBuildStart,
       tReq: u.tReq,
+      tEmd: u.tEmd,
       tLotClose: u.tLotClose,
       tCashIn: u.tCashIn,
       // casa engatilhada: F2 paga com o dinheiro da venda-gatilho, no início da obra
