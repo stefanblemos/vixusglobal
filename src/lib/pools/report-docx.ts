@@ -159,6 +159,8 @@ const aiNote = (d: ReportData, prose: ReportProse) =>
   });
 
 export function buildReportDocx(d: ReportData, recipient?: string, prose?: ReportProse | null): Document {
+  const isClient = d.vehicleStructure === "CLIENT_ENTITY";
+  const entityName = d.clientEntityName || "the investor group's own entity";
   const cons = d.scenarios.find((s) => s.code === d.baseCode)!;
   const scenarioName = (s: { code: string; name: string }) => SCENARIO_EN[s.code] ?? s.name;
   const isBank = d.fundingMode === "BANK";
@@ -280,9 +282,17 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     body(
       "This Investment Summary (the “Summary”) is furnished on a confidential basis to a limited number of sophisticated prospective investors for the sole purpose of evaluating a potential investment in the project described herein (the “Project”). It is not an offer to sell, or a solicitation of an offer to buy, any security. Any such offer will be made only through definitive offering documents (including a private placement memorandum, operating agreement and subscription agreement), which will contain material information not included herein and will supersede this Summary in its entirety.",
     ),
-    body(
-      "Securities, if and when offered, are expected to be offered in reliance on the exemption provided by Rule 506(b) of Regulation D under the Securities Act of 1933, as amended, and applicable Florida law, to investors with whom the sponsor has a pre-existing substantive relationship. Securities have not been and will not be registered with the U.S. Securities and Exchange Commission or any state securities authority, are subject to restrictions on transferability and resale, and involve a high degree of risk, including the possible loss of the entire investment.",
-    ),
+    ...(isClient
+      ? [
+          body(
+            `This Summary is prepared for ${entityName}, an entity owned and controlled by the investor group, in connection with Vixus Investment's engagement as Development Manager and 4U Custom Homes' engagement as builder. Nothing herein constitutes an offer or sale of securities by Vixus Investment or 4U Custom Homes; the formation, governance and taxation of the investor entity — and any offering of interests within it — are matters for that entity and its own legal and tax advisors. An investment in the program involves a high degree of risk, including the possible loss of the entire investment.`,
+          ),
+        ]
+      : [
+          body(
+            "Securities, if and when offered, are expected to be offered in reliance on the exemption provided by Rule 506(b) of Regulation D under the Securities Act of 1933, as amended, and applicable Florida law, to investors with whom the sponsor has a pre-existing substantive relationship. Securities have not been and will not be registered with the U.S. Securities and Exchange Commission or any state securities authority, are subject to restrictions on transferability and resale, and involve a high degree of risk, including the possible loss of the entire investment.",
+          ),
+        ]),
     body(
       "This Summary contains forward-looking statements, projections and scenario analyses that are based on assumptions believed to be reasonable as of the date hereof. Projected returns are hypothetical, are not guarantees of future performance, and actual results will differ — possibly materially. Unless expressly stated otherwise, all projected returns are presented net of builder compensation and project-level fees described herein, and before any taxes payable by investors. Recipients should conduct their own due diligence and consult their own legal, tax and financial advisors.",
     ),
@@ -297,7 +307,12 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           : "Investor capital funds land acquisition and vertical construction of single-family homes in a single construction wave with staggered starts; capital is returned as each home sells and closes."),
     ),
     kvTable([
-      ["Vehicle", "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each"],
+      [
+        "Vehicle",
+        isClient
+          ? `${entityName} — owned and controlled by the investor group (structure selected by the group for its own legal and tax profile); Vixus Investment engaged as Development Manager`
+          : "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each",
+      ],
       [
         "Program",
         `${nHomes} home${nHomes > 1 ? "s" : ""} in ${d.cycles.length > 1 ? `${d.cycles.length} chained cycles` : "a single cycle"} across ${d.locations.join(", ")}`,
@@ -307,6 +322,14 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       ["Projected equity multiple", cons.equityMultiple == null ? "—" : `${cons.equityMultiple.toFixed(2)}x`],
       ["Projected duration", `${months(cons.durationDays)} months`],
       ["Builder compensation", d.compLabel],
+      ...(d.hasPromote
+        ? [
+            [
+              "Developer compensation",
+              "Vixus Investment (Development Manager) — waterfall/promote payable at completion, only above investor return hurdles (Section 7)",
+            ] as [string, string],
+          ]
+        : []),
       [
         "Construction financing",
         isBank
@@ -345,9 +368,11 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       "Vertically integrated through Truss Direct, the group’s truss manufacturer supplying 90+ projects per month — insulating the program from a key supply-chain bottleneck.",
     ),
     bullet("BBB accredited; every home delivered with a 2-10 structural warranty and covered by builder’s risk insurance during construction."),
-    h2("Vixus Investment — the Manager"),
+    h2(isClient ? "Vixus Investment — the Development Manager" : "Vixus Investment — the Manager"),
     body(
-      "Vixus Investment administers investor vehicles for the group: capitalization, capital calls, construction-loan reconciliation, tax (K-1) coordination and investor reporting. The Manager operates a purpose-built platform that tracks every dollar from subscription to distribution; investors receive statements generated from the same ledger the Manager uses to run the business.",
+      isClient
+        ? "Vixus Investment acts as Development Manager to investor-owned entities: it runs the program — land acquisition within the disclosed basket, construction disbursements against milestones, sales coordination and reporting — under a development management agreement, without custody of the investor entity. The same purpose-built platform tracks every dollar, and the entity's members receive statements generated from the same ledger Vixus uses to run the program."
+        : "Vixus Investment administers investor vehicles for the group: capitalization, capital calls, construction-loan reconciliation, tax (K-1) coordination and investor reporting. The Manager operates a purpose-built platform that tracks every dollar from subscription to distribution; investors receive statements generated from the same ledger the Manager uses to run the business.",
     ),
     h2("Leadership"),
     bullet([
@@ -655,12 +680,36 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     // ── 7. STRUCTURE ──
     h1("7. Structure, Terms & Governance"),
     kvTable([
-      ["Units", "Fixed at $1,000 per unit; ownership percentages are arithmetic. The subscription window closes at land acquisition — no later-stage dilution."],
-      ["Distributions", "Return of capital as home sales close; profit distributed at program completion, pro rata to units held."],
-      ["Builder compensation", d.compLabel],
-      ["Manager", "Vixus Investment. Investor units are non-voting; investors receive information rights and monthly reporting."],
-      ["Offering exemption", "Rule 506(b) of Regulation D; Florida §517.061(11) as applicable. Schedule K-1 issued annually. One dedicated vehicle per program — entities are never reused across programs."],
-      ["Reporting", "Investor portal: monthly capital statement, per-home budget vs. actual, bank-statement reconciliation and distribution history."],
+      ...(isClient
+        ? ([
+            ["Entity", `${entityName} — formed, owned and governed by the investor group; structure and taxation are the group's own election with its advisors.`],
+            ["Development Manager", "Vixus Investment — runs the program under a development management agreement: acquisitions within the disclosed basket, milestone disbursements, sales coordination, platform reporting."],
+            ["Builder", "4U Custom Homes, under the construction contract reflected in the per-home economics of Appendix A."],
+            ["Builder compensation", d.compLabel],
+          ] as Array<[string, string]>)
+        : ([
+            ["Units", "Fixed at $1,000 per unit; ownership percentages are arithmetic. The subscription window closes at land acquisition — no later-stage dilution."],
+            ["Distributions", "Return of capital as home sales close; profit distributed at program completion, pro rata to units held."],
+            ["Builder compensation", d.compLabel],
+            ["Manager", "Vixus Investment. Investor units are non-voting; investors receive information rights and monthly reporting."],
+          ] as Array<[string, string]>)),
+      ...(d.hasPromote
+        ? ([
+            [
+              "Developer compensation",
+              "Vixus Investment (Development Manager) earns a waterfall/promote: tiered share of profit only above investor return hurdles, payable at completion — investors are paid their preferred return first.",
+            ],
+          ] as Array<[string, string]>)
+        : []),
+      ...(isClient
+        ? ([
+            ["Offering / tax", "No securities are offered by Vixus or 4U; interests, governance and tax elections (including K-1s) are matters of the investor entity and its advisors."],
+            ["Reporting", "Platform access for the entity and its members: program statement, per-home budget vs. actual, bank reconciliation support and distribution history."],
+          ] as Array<[string, string]>)
+        : ([
+            ["Offering exemption", "Rule 506(b) of Regulation D; Florida §517.061(11) as applicable. Schedule K-1 issued annually. One dedicated vehicle per program — entities are never reused across programs."],
+            ["Reporting", "Investor portal: monthly capital statement, per-home budget vs. actual, bank-statement reconciliation and distribution history."],
+          ] as Array<[string, string]>)),
     ]),
     body(""),
     // Governança e proteções — feedback do advogado 14/07: o documento não dizia quem
@@ -669,13 +718,17 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     body([
       t("Control. ", { bold: true }),
       t(
-        "The company is manager-managed: Vixus Investment, as manager, conducts the ordinary course of the program — land acquisition within the disclosed basket, construction disbursements, sales and distributions. Investors hold non-voting units with full information rights. Matters outside the ordinary course, including amendments to the operating agreement and transactions with affiliates beyond the disclosed construction arrangement, are governed by the operating agreement.",
+        isClient
+          ? "The investor group controls its own entity: its members and their chosen manager govern the vehicle, its agreements and its distributions. Vixus Investment acts strictly under the development management agreement — it runs the program, not the entity — and matters outside that agreement's scope require the entity's own approval."
+          : "The company is manager-managed: Vixus Investment, as manager, conducts the ordinary course of the program — land acquisition within the disclosed basket, construction disbursements, sales and distributions. Investors hold non-voting units with full information rights. Matters outside the ordinary course, including amendments to the operating agreement and transactions with affiliates beyond the disclosed construction arrangement, are governed by the operating agreement.",
       ),
     ]),
     body([
       t("Bank account and cash controls. ", { bold: true }),
       t(
-        "The program’s bank account is held in the company’s own name and operated by the Manager. The Builder is never paid on demand: construction funds are released against the milestone disbursement schedule reflected in Appendix A, and every account movement is recorded in the platform ledger and reconciled monthly against the bank statement — investors see the same reconciliation on the portal, not a summary prepared separately for them.",
+        isClient
+          ? "The program's bank account belongs to the investor entity and remains under the group's own control. Vixus requests disbursements against the milestone schedule reflected in Appendix A; the Builder is never paid on demand. Every movement is recorded in the platform ledger and reconciled against the entity's bank statement, and the entity's members see the same reconciliation on the platform — the group holds the money, Vixus runs the program."
+          : "The program’s bank account is held in the company’s own name and operated by the Manager. The Builder is never paid on demand: construction funds are released against the milestone disbursement schedule reflected in Appendix A, and every account movement is recorded in the platform ledger and reconciled monthly against the bank statement — investors see the same reconciliation on the portal, not a summary prepared separately for them.",
       ),
     ]),
     body([
@@ -698,7 +751,9 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       spacing: { after: 200, line: 264 },
       children: [
         new TextRun({
-          text: "Definitive governance, consent and transfer provisions are those of the operating agreement and subscription documents, which prevail over this summary.",
+          text: isClient
+            ? "Definitive terms are those of the development management agreement, the construction contract and the investor entity's own governing documents, which prevail over this summary."
+            : "Definitive governance, consent and transfer provisions are those of the operating agreement and subscription documents, which prevail over this summary.",
           font: FONT,
           size: 16,
           color: GRAY,
@@ -845,7 +900,10 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         ["(−) Land acquisition", money2(-d.closing.lots)],
         ["(−) Vertical construction (incl. embedded builder fees)", money2(-d.closing.construction)],
         ["(−) Financing costs (interest + all lender fees)", money2(-d.closing.bankCost)],
-        ["(−) Builder compensation (performance / promote)", money2(-d.closing.builderComp)],
+        ["(−) Builder compensation (performance)", money2(-d.closing.builderComp)],
+        ...(d.closing.promote > 0
+          ? ([["(−) Developer promote (Vixus waterfall)", money2(-d.closing.promote)]] as Array<[string, string]>)
+          : []),
         [
           "(=) Investor profit",
           `${money2(d.closing.result)}   (equals Section 6 — difference ${money2(d.closing.diff)})`,

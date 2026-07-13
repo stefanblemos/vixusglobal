@@ -42,6 +42,9 @@ export type ReportData = {
   simName: string;
   generatedAt: string; // ISO date
   fundingMode: "EQUITY" | "BANK";
+  // estrutura do veículo: LLC da Vixus ou entidade própria do grupo (Vixus = Dev Manager)
+  vehicleStructure: "VIXUS_MANAGED" | "CLIENT_ENTITY";
+  clientEntityName: string | null;
   compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
   hasPromote: boolean; // promote/waterfall ativo (PROMOTE, ou OPEN_BOOK com tiers)
   flatFeePerHouse: number;
@@ -68,7 +71,8 @@ export type ReportData = {
     lots: number;
     construction: number;
     bankCost: number;
-    builderComp: number;
+    builderComp: number; // 4U (performance/legado)
+    promote: number; // Vixus (developer waterfall)
     contractorFeeTotal: number;
     result: number;
     diff: number; // vs kpis.profit — tem que ser 0.00
@@ -95,13 +99,15 @@ function closingOf(r: SimResult) {
     (r.kpis.bankOtherFees ?? 0) +
     r.kpis.bankExtensionFee;
   const builderComp = r.kpis.perfFeeTotal;
-  const result = round2(sales - lots - construction - bankCost - builderComp);
+  const promote = r.kpis.promoteTotal ?? 0; // snapshot antigo: promote embutido no perf
+  const result = round2(sales - lots - construction - bankCost - builderComp - promote);
   return {
     sales: round2(sales),
     lots: round2(lots),
     construction: round2(construction),
     bankCost: round2(bankCost),
     builderComp: round2(builderComp),
+    promote: round2(promote),
     contractorFeeTotal: round2(r.kpis.contractorFeeTotal),
     result,
     diff: round2(result - r.kpis.profit),
@@ -286,10 +292,12 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     simName: sim.name,
     generatedAt: new Date().toISOString().slice(0, 10),
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
+    vehicleStructure: sim.vehicleStructure as "VIXUS_MANAGED" | "CLIENT_ENTITY",
+    clientEntityName: sim.clientEntityName ?? null,
     compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK",
+    // waterfall da Vixus: opt-in em QUALQUER modalidade (14/07) — basta ter tiers
     hasPromote:
-      sim.compMode === "PROMOTE" ||
-      (sim.compMode === "OPEN_BOOK" && !!(sim.promoteTiers as unknown[] | null)?.length),
+      sim.compMode === "PROMOTE" || !!(sim.promoteTiers as unknown[] | null)?.length,
     flatFeePerHouse: Number(sim.flatFeePerHouse ?? 0),
     compLabel,
     bankName: sim.bankProfile?.name ?? null,

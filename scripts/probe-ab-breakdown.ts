@@ -31,7 +31,7 @@ async function main() {
     const bankCost =
       r.kpis.bankUpfrontFees + r.kpis.bankInterestTotal + (r.kpis.bankOtherFees ?? 0) + r.kpis.bankExtensionFee;
     console.log(
-      `${code}: vendas ${Math.round(vendas)} · lotes ${Math.round(lotes)} · obra ${Math.round(obra)} · banco ${Math.round(bankCost)} (juros ${Math.round(r.kpis.bankInterestTotal)}, ext ${Math.round(r.kpis.bankExtensionFee)}) · perfFee(4U) ${Math.round(r.kpis.perfFeeTotal)} · lucro ${Math.round(r.kpis.profit)} · TIR ${r.kpis.irrAnnual == null ? "—" : (r.kpis.irrAnnual * 100).toFixed(1) + "%"} · duração ${r.kpis.durationDays}d`,
+      `${code}: vendas ${Math.round(vendas)} · lotes ${Math.round(lotes)} · obra ${Math.round(obra)} · banco ${Math.round(bankCost)} (juros ${Math.round(r.kpis.bankInterestTotal)}, ext ${Math.round(r.kpis.bankExtensionFee)}) · 4U ${Math.round(r.kpis.perfFeeTotal)} · promoteVixus ${Math.round(r.kpis.promoteTotal ?? 0)} · lucro ${Math.round(r.kpis.profit)} · TIR ${r.kpis.irrAnnual == null ? "—" : (r.kpis.irrAnnual * 100).toFixed(1) + "%"} · duração ${r.kpis.durationDays}d`,
     );
   }
 }

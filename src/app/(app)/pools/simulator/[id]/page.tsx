@@ -428,10 +428,12 @@ export default async function SimulationPage({
             {sim.compMode === "PERFORMANCE"
               ? `performance ${Number(sim.perfPct)}% (${sim.perfTiming === "PER_SALE" ? "por venda" : "na conclusão"})`
               : sim.compMode === "PROMOTE"
-                ? "promote (waterfall)"
+                ? "promote (legado)"
                 : sim.compMode === "OPEN_BOOK"
-                  ? `open book + flat ${formatMoney(Number(sim.flatFeePerHouse), "USD")}/casa${(sim.promoteTiers as unknown[] | null)?.length ? " + promote" : ""}`
+                  ? `open book + flat ${formatMoney(Number(sim.flatFeePerHouse), "USD")}/casa`
                   : "contractor fee"}
+            {(sim.promoteTiers as unknown[] | null)?.length && sim.compMode !== "PROMOTE" ? " · waterfall Vixus" : ""}
+            {sim.vehicleStructure === "CLIENT_ENTITY" ? ` · entidade do cliente${sim.clientEntityName ? ` (${sim.clientEntityName})` : ""}` : ""}
             {" · "}
             {sim.paymentPlan === "LIGHT_START"
               ? "desembolso 10/15/25/25/20/5"
@@ -572,6 +574,8 @@ export default async function SimulationPage({
           flatFeePerHouse: Number(sim.flatFeePerHouse).toString(),
           paymentPlan: sim.paymentPlan,
           upfrontFunding: sim.upfrontFunding,
+          vehicleStructure: sim.vehicleStructure,
+          clientEntityName: sim.clientEntityName,
           promoteTiers:
             (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ??
             null,
@@ -973,7 +977,8 @@ export default async function SimulationPage({
               (r.kpis.bankOtherFees ?? 0) +
               r.kpis.bankExtensionFee;
             const perf = r.kpis.perfFeeTotal;
-            const resultado = Math.round((vendas - lotes - obra - bankCost - perf) * 100) / 100;
+            const promote = r.kpis.promoteTotal ?? 0; // snapshot antigo: promote dentro do perf
+            const resultado = Math.round((vendas - lotes - obra - bankCost - perf - promote) * 100) / 100;
             const diff = Math.round((resultado - r.kpis.profit) * 100) / 100;
             const fecha = Math.abs(diff) <= 0.01;
             const row = "flex items-baseline justify-between px-5 py-1.5 text-sm";
@@ -1050,9 +1055,15 @@ export default async function SimulationPage({
                   {perf > 0 && (
                     <div className={row}>
                       <span className="text-slate-600">
-                        (−) 4U — {sim.compMode === "PROMOTE" || ((sim.promoteTiers as unknown[] | null)?.length && sim.compMode === "OPEN_BOOK") ? "promote (waterfall)" : `performance ${Number(sim.perfPct)}%`}
+                        (−) 4U — {sim.compMode === "PROMOTE" ? "promote (legado)" : `performance ${Number(sim.perfPct)}%`}
                       </span>
                       <span className="tabular-nums">{formatMoney(-perf, "USD")}</span>
+                    </div>
+                  )}
+                  {promote > 0 && (
+                    <div className={row}>
+                      <span className="text-slate-600">(−) Vixus — waterfall (developer)</span>
+                      <span className="tabular-nums">{formatMoney(-promote, "USD")}</span>
                     </div>
                   )}
                   <div className={`${row} border-t border-slate-100 pt-2`}>

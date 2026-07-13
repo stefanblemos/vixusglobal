@@ -169,14 +169,15 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   const [compMode, setCompMode] = useState("PERFORMANCE");
   const [units, setUnits] = useState<UnitRow[]>([]);
   const [modalOpen, setModalOpen] = useState(false);
-  // waterfall é OPT-IN: obrigatório no promote, checkbox no open book, nunca por padrão
+  // waterfall = promote da VIXUS (Development Manager) — opt-in em qualquer modalidade
   const [waterfallOn, setWaterfallOn] = useState(false);
+  const [vehicle, setVehicle] = useState("VIXUS_MANAGED");
   const [tiers, setTiers] = useState<Array<{ hurdlePct: string; promotePct: string }>>([
     { hurdlePct: "8", promotePct: "0" },
     { hurdlePct: "15", promotePct: "20" },
     { hurdlePct: "", promotePct: "35" },
   ]);
-  const tiersActive = compMode === "PROMOTE" || (compMode === "OPEN_BOOK" && waterfallOn);
+  const tiersActive = waterfallOn;
 
   const modelsFor = useMemo(() => {
     const map = new Map<string, SimCatalog["modelLocations"]>();
@@ -292,7 +293,6 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
             className={inputClass}
           >
             <option value="PERFORMANCE">Performance (% of profit)</option>
-            <option value="PROMOTE">Promote (waterfall)</option>
             <option value="CONTRACTOR_FEE">Contractor fee (fixed)</option>
             <option value="OPEN_BOOK">Open book + taxa flat por casa</option>
           </select>
@@ -310,18 +310,21 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                 className={inputClass}
               />
             </div>
-            <div>
-              <label className="flex items-center gap-2 pt-6 text-sm text-slate-600">
-                <input
-                  type="checkbox"
-                  checked={waterfallOn}
-                  onChange={(e) => setWaterfallOn(e.target.checked)}
-                />{" "}
-                + promote (waterfall)
-              </label>
-            </div>
           </>
         )}
+        <div>
+          <label
+            className="flex items-center gap-2 pt-6 text-sm text-slate-600"
+            title="Waterfall/promote da Vixus como Development Manager — por cima da remuneração da 4U"
+          >
+            <input
+              type="checkbox"
+              checked={waterfallOn}
+              onChange={(e) => setWaterfallOn(e.target.checked)}
+            />{" "}
+            Vixus: waterfall (promote)
+          </label>
+        </div>
         {compMode === "PERFORMANCE" && (
           <>
             <div>
@@ -347,6 +350,34 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
           </>
         )}
         <div>
+          <label htmlFor="sim-vehicle" className={labelClass}>
+            Estrutura do veículo
+          </label>
+          <select
+            id="sim-vehicle"
+            name="vehicleStructure"
+            value={vehicle}
+            onChange={(e) => setVehicle(e.target.value)}
+            className={inputClass}
+          >
+            <option value="VIXUS_MANAGED">Veículo Vixus (LLC dedicada)</option>
+            <option value="CLIENT_ENTITY">Entidade do cliente (Vixus = Development Manager)</option>
+          </select>
+        </div>
+        {vehicle === "CLIENT_ENTITY" && (
+          <div>
+            <label htmlFor="sim-entity" className={labelClass}>
+              Nome da entidade do cliente
+            </label>
+            <input
+              id="sim-entity"
+              name="clientEntityName"
+              placeholder="ex.: Falcon Family Holdings LLC"
+              className={inputClass}
+            />
+          </div>
+        )}
+        <div>
           <label htmlFor="sim-plan" className={labelClass}>
             Plano de desembolso
           </label>
@@ -361,7 +392,7 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
       {tiersActive && (
         <div className="rounded-lg border border-slate-100 bg-slate-50/50 p-4">
           <h3 className="text-sm font-semibold text-slate-700">
-            Tiers do promote{compMode === "OPEN_BOOK" ? " (opcional)" : ""}
+            Tiers do waterfall da Vixus (developer)
           </h3>
           <p className="mb-3 text-xs text-slate-400">
             Hurdle = retorno a.a. do investidor sobre o capital médio em risco. Cada faixa

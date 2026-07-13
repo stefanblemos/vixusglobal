@@ -1073,6 +1073,12 @@ enum BuilderCompMode {
   OPEN_BOOK // custo real (open book) + taxa flat de lucro por casa p/ a 4U; promote opcional
 }
 
+// Estrutura do veículo de investimento (regra do Stefan, 14/07)
+enum SimVehicleStructure {
+  VIXUS_MANAGED // LLC dedicada formada/gerida pela Vixus Investment
+  CLIENT_ENTITY // entidade própria do grupo — Vixus atua como Development Manager
+}
+
 // Plano de desembolso da obra (6 fases). LIGHT_START reduz a exposição inicial: até o
 // permit caem 25% (vs 40% no padrão). PARTNER (sócios) alivia ainda mais: 20% até o
 // permit, resto distribuído na obra.
@@ -1341,6 +1347,10 @@ model PoolSimulation {
   upfrontFunding Boolean        @default(false)
   equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
   unitGapDays   Int             @default(3)
+  // Estrutura do veículo (14/07): VIXUS_MANAGED = LLC dedicada da Vixus (units \$1.000,
+  // 506(b)); CLIENT_ENTITY = entidade própria do grupo (Vixus = Development Manager)
+  vehicleStructure SimVehicleStructure @default(VIXUS_MANAGED)
+  clientEntityName String? // nome/tipo da entidade do cliente (caso CLIENT_ENTITY)
 
   units  Json // [{ locationId, modelId }]
   result Json? // snapshot: { kpis, events[], monthly[], units[] }

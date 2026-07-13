@@ -65,6 +65,8 @@ export function SimulationControls({
     flatFeePerHouse: string;
     paymentPlan: string;
     upfrontFunding: boolean;
+    vehicleStructure: string;
+    clientEntityName: string | null;
     promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
   };
   scenarios: Array<{ code: string; name: string }>;
@@ -83,18 +85,19 @@ export function SimulationControls({
   const [perfTiming, setPerfTiming] = useState(sim.perfTiming);
   const [flatFee, setFlatFee] = useState(sim.flatFeePerHouse);
   const [paymentPlan, setPaymentPlan] = useState(sim.paymentPlan);
+  const [vehicle, setVehicle] = useState(sim.vehicleStructure ?? "VIXUS_MANAGED");
+  const [entityName, setEntityName] = useState(sim.clientEntityName ?? "");
   const [upfront, setUpfront] = useState(sim.upfrontFunding);
-  // waterfall: obrigatório no PROMOTE; OPCIONAL (checkbox) no open book — nunca por padrão
+  // waterfall = promote da VIXUS (Development Manager) — opt-in em QUALQUER modalidade
+  // da 4U (regra do Stefan, 14/07); PROMOTE legado continua forçando os tiers
   const savedTiers: Tier[] = (sim.promoteTiers ?? []).map((t) => ({
     hurdlePct: t.hurdlePct == null ? "" : String(t.hurdlePct),
     promotePct: String(t.promotePct),
   }));
-  const [waterfallOn, setWaterfallOn] = useState(
-    sim.compMode === "OPEN_BOOK" && savedTiers.length > 0,
-  );
+  const [waterfallOn, setWaterfallOn] = useState(savedTiers.length > 0);
   const [tiers, setTiers] = useState<Tier[]>(savedTiers.length > 0 ? savedTiers : DEFAULT_TIERS);
 
-  const tiersActive = compMode === "PROMOTE" || (compMode === "OPEN_BOOK" && waterfallOn);
+  const tiersActive = compMode === "PROMOTE" || waterfallOn;
   const tiersJson = tiersActive
     ? JSON.stringify(
         tiers.map((t) => ({
@@ -139,6 +142,8 @@ export function SimulationControls({
         <input type="hidden" name="flatFeePerHouse" value={flatFee} />
         <input type="hidden" name="paymentPlan" value={paymentPlan} />
         <input type="hidden" name="promoteTiers" value={tiersJson} />
+        <input type="hidden" name="vehicleStructure" value={vehicle} />
+        <input type="hidden" name="clientEntityName" value={entityName} />
 
         <div>
           <span className={labelClass}>Cenário</span>
@@ -229,15 +234,14 @@ export function SimulationControls({
               onChange={(e) => {
                 const v = e.target.value;
                 setCompMode(v);
-                if (v !== "OPEN_BOOK") setWaterfallOn(false);
                 submit();
               }}
               className={inputClass}
             >
               <option value="PERFORMANCE">Performance (% do lucro)</option>
-              <option value="PROMOTE">Promote (waterfall)</option>
               <option value="CONTRACTOR_FEE">Contractor fee</option>
               <option value="OPEN_BOOK">Open book + taxa flat</option>
+              {compMode === "PROMOTE" && <option value="PROMOTE">Promote (legado)</option>}
             </select>
             {compMode === "PERFORMANCE" && (
               <>
@@ -272,20 +276,53 @@ export function SimulationControls({
                   className={`${inputClass} w-24 text-right`}
                 />
                 <span className="text-xs text-slate-400">/casa</span>
-                <label className="flex items-center gap-1.5 text-sm text-slate-600">
-                  <input
-                    type="checkbox"
-                    checked={waterfallOn}
-                    onChange={(e) => {
-                      setWaterfallOn(e.target.checked);
-                      submit();
-                    }}
-                  />
-                  + waterfall
-                </label>
               </>
             )}
           </div>
+        </div>
+
+        <div>
+          <span className={labelClass}>Estrutura</span>
+          <div className="flex items-center gap-2">
+            <select
+              value={vehicle}
+              onChange={(e) => {
+                setVehicle(e.target.value);
+                submit();
+              }}
+              className={inputClass}
+            >
+              <option value="VIXUS_MANAGED">Veículo Vixus</option>
+              <option value="CLIENT_ENTITY">Entidade do cliente</option>
+            </select>
+            {vehicle === "CLIENT_ENTITY" && (
+              <input
+                value={entityName}
+                onChange={(e) => setEntityName(e.target.value)}
+                onBlur={submit}
+                placeholder="nome da entidade"
+                className={`${inputClass} w-44`}
+              />
+            )}
+          </div>
+        </div>
+
+        <div>
+          <span className={labelClass}>Vixus (developer)</span>
+          <label
+            className="flex items-center gap-1.5 pt-2 text-sm text-slate-600"
+            title="Waterfall/promote da Vixus como Development Manager — por cima da remuneração da 4U, pago na conclusão acima dos hurdles"
+          >
+            <input
+              type="checkbox"
+              checked={waterfallOn}
+              onChange={(e) => {
+                setWaterfallOn(e.target.checked);
+                submit();
+              }}
+            />
+            waterfall (promote)
+          </label>
         </div>
 
         <div className="ml-auto pb-2">
@@ -301,7 +338,7 @@ export function SimulationControls({
         <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/50 p-3">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-medium text-slate-600">
-              Tiers do waterfall — hurdle % a.a. sobre o capital médio em risco → % da faixa p/ 4U
+              Tiers do waterfall — hurdle % a.a. sobre o capital médio em risco → % da faixa p/ a VIXUS (developer)
             </span>
             <button
               type="button"

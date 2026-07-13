@@ -69,6 +69,9 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
     poolId: String(formData.get("poolId") ?? "").trim() || null,
     units,
   };
+  const vehicleStructure =
+    String(formData.get("vehicleStructure") ?? "") === "CLIENT_ENTITY" ? "CLIENT_ENTITY" : "VIXUS_MANAGED";
+  const clientEntityName = String(formData.get("clientEntityName") ?? "").trim() || null;
   if (sim.compMode === "PROMOTE" && !sim.promoteTiers)
     return { error: "Defina pelo menos um tier do promote." };
   const input = await buildSimInput(sim);
@@ -90,6 +93,8 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
       unitGapDays: sim.unitGapDays,
       scenarioCode: sim.scenarioCode,
       bankProfileId: sim.fundingMode === "BANK" ? sim.bankProfileId : null,
+      vehicleStructure,
+      clientEntityName: vehicleStructure === "CLIENT_ENTITY" ? clientEntityName : null,
       units: units as object[],
       result: JSON.parse(JSON.stringify(result)),
     },
@@ -128,6 +133,13 @@ export async function updateSimulationSettings(
   const paymentPlan =
     planRaw === "LIGHT_START" || planRaw === "PARTNER" ? planRaw : "STANDARD";
   const upfrontFunding = String(formData.get("upfrontFunding") ?? "") === "on";
+  const vsRaw = String(formData.get("vehicleStructure") ?? "");
+  const vehicleStructure =
+    vsRaw === "CLIENT_ENTITY" || vsRaw === "VIXUS_MANAGED" ? vsRaw : sim.vehicleStructure;
+  const clientEntityName =
+    formData.get("clientEntityName") != null
+      ? String(formData.get("clientEntityName")).trim() || null
+      : sim.clientEntityName;
   // Waterfall é OPT-IN: os controles mandam os tiers só quando ativos (PROMOTE sempre;
   // open book só com o checkbox marcado). Vazio = sem waterfall.
   const tiersField = formData.get("promoteTiers");
@@ -169,6 +181,8 @@ export async function updateSimulationSettings(
       flatFeePerHouse,
       paymentPlan: paymentPlan as "STANDARD" | "LIGHT_START" | "PARTNER",
       upfrontFunding,
+      vehicleStructure,
+      clientEntityName: vehicleStructure === "CLIENT_ENTITY" ? clientEntityName : null,
       promoteTiers: promoteTiers ?? Prisma.DbNull,
       result: JSON.parse(JSON.stringify(result)),
     },
@@ -377,6 +391,8 @@ export async function duplicateSimulation(formData: FormData): Promise<void> {
       unitGapDays: sim.unitGapDays,
       scenarioCode: sim.scenarioCode,
       bankProfileId: sim.bankProfileId,
+      vehicleStructure: sim.vehicleStructure,
+      clientEntityName: sim.clientEntityName,
       units: (sim.units as object[]) ?? [],
       overrides: sim.overrides ?? undefined,
       result: sim.result ?? undefined,

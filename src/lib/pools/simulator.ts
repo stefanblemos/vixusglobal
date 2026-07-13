@@ -180,7 +180,8 @@ export type SimResult = {
     equityMultiple: number | null;
     peakCapital: number;
     durationDays: number;
-    perfFeeTotal: number;
+    perfFeeTotal: number; // remuneração da 4U (performance) — builder
+    promoteTotal: number; // waterfall/promote da VIXUS (Development Manager) — 14/07
     contractorFeeTotal: number;
     bankCommitted: number;
     bankUpfrontFees: number;
@@ -480,6 +481,7 @@ export function simulate(input: SimInput): SimResult {
   }
 
   let perfFeeTotal = 0;
+  let promoteTotal = 0; // promote é da Vixus (developer), separado da 4U
   let contractorFeeTotal = 0;
   let totalProfitBase = 0;
 
@@ -968,10 +970,10 @@ export function simulate(input: SimInput): SimResult {
   // lucro equivalente a r% a.a. = r% × TWC; cada faixa entrega promotePct à 4U. Abaixo do
   // primeiro hurdle (pref), a 4U não recebe nada.
   // PROMOTE sempre; OPEN_BOOK só se os tiers foram preenchidos (promote opcional por cima)
-  if (
-    (input.compMode === "PROMOTE" || input.compMode === "OPEN_BOOK") &&
-    input.promoteTiers?.length
-  ) {
+  // Waterfall (promote) = remuneração da VIXUS como Development Manager — opt-in em
+  // QUALQUER modalidade da 4U (performance/contractor/open book). Regra do Stefan, 14/07.
+  // (compMode PROMOTE legado continua funcionando: obra a custo performance + só promote.)
+  if (input.promoteTiers?.length) {
     let twc = 0; // dólar-anos
     let inv = 0;
     let prevDay = investorFlows[0]?.day ?? 0;
@@ -996,32 +998,35 @@ export function simulate(input: SimInput): SimResult {
       fee = round2(fee);
     }
     if (fee > 0) {
-      // deduz dos RETURNs do dia final (é de onde o promote sai na prática)
+      // Deduz dos ÚLTIMOS retornos, de trás p/ frente — em qualquer dia. (Antes só olhava
+      // o finalDay exato; com performance-na-conclusão o último flow é o fee da 4U e os
+      // retornos terminam dias antes — o promote calculava e nunca era cobrado.)
       let remainingFee = fee;
       for (let i = events.length - 1; i >= 0 && remainingFee > 0.005; i--) {
         const ev = events[i];
-        if (ev.kind !== "RETURN" || ev.day !== finalDay) continue;
+        if (ev.kind !== "RETURN") continue;
         const take = round2(Math.min(remainingFee, -ev.amount));
+        if (take <= 0) continue;
         ev.amount = round2(ev.amount + take);
+        // espelha nos investorFlows do MESMO dia (retornos positivos), de trás p/ frente
+        let mirror = take;
+        for (let j = investorFlows.length - 1; j >= 0 && mirror > 0.005; j--) {
+          const f = investorFlows[j];
+          if (f.day !== ev.day || f.amount <= 0) continue;
+          const t2 = round2(Math.min(mirror, f.amount));
+          f.amount = round2(f.amount - t2);
+          mirror = round2(mirror - t2);
+        }
         remainingFee = round2(remainingFee - take);
-      }
-      // ajusta investorFlows: consome dos retornos positivos do dia final, de trás p/ frente
-      let flowFee = round2(fee - remainingFee);
-      for (let i = investorFlows.length - 1; i >= 0 && flowFee > 0.005; i--) {
-        const f = investorFlows[i];
-        if (f.day !== finalDay || f.amount <= 0) continue;
-        const take = round2(Math.min(flowFee, f.amount));
-        f.amount = round2(f.amount - take);
-        flowFee = round2(flowFee - take);
       }
       const feeApplied = round2(fee - remainingFee);
       if (feeApplied > 0) {
-        perfFeeTotal = feeApplied;
+        promoteTotal = feeApplied;
         totalReturned = round2(totalReturned - feeApplied);
         events.push({
           day: finalDay,
           amount: -feeApplied,
-          label: "Promote 4U (waterfall)",
+          label: "Promote Vixus (developer)",
           kind: "PERF_FEE",
           cash: 0,
           invested: 0,
@@ -1063,6 +1068,7 @@ export function simulate(input: SimInput): SimResult {
       peakCapital: round2(peak),
       durationDays: Math.max(...events.map((e) => e.day), 0),
       perfFeeTotal: round2(perfFeeTotal),
+      promoteTotal: round2(promoteTotal),
       contractorFeeTotal: round2(contractorFeeTotal),
       bankCommitted: round2(committed),
       bankUpfrontFees: upfrontFees,
