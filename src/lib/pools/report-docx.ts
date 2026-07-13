@@ -455,10 +455,10 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     // fica aberto o projeto inteiro" com números — argumento de venda p/ investidor
     h2(d.projectPhases.loan ? "Program timeline & loan exposure" : "Program timeline"),
     body(
-      "Phase windows run from the first to the last home in the basket and overlap by design — capital recycling means lots are acquired and homes are sold while others are still under construction.",
+      "Phase windows run from the first to the last home in the basket and overlap by design — capital recycling means lots are acquired and homes are sold while others are still under construction. Where the active time is shorter than the span, the phase runs in per-cycle waves: lots and permits are procured in batches, just ahead of need.",
     ),
     gridTable(
-      ["Phase", "Window", "Duration"],
+      ["Phase", "Window", "Span", "Active"],
       [
         ...(() => {
           const EN: Record<string, string> = {
@@ -467,10 +467,12 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
             build: "Construction",
             sales: "Sales & closings",
           };
+          // Active < Span = fases em rajadas por ciclo (esteira) — honestidade do desenho
           return d.projectPhases.phases.map((p) => [
             EN[p.key] ?? p.label,
             `M${daysToMonths(p.from)} – M${daysToMonths(p.to)}`,
-            `${daysToMonths(p.to - p.from).toFixed(1)} months`,
+            `${daysToMonths(p.to - p.from).toFixed(1)} mo`,
+            `${daysToMonths(p.activeDays).toFixed(1)} mo`,
           ]);
         })(),
         ...(d.projectPhases.loan
@@ -478,12 +480,13 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
               [
                 "Construction facility outstanding",
                 `M${daysToMonths(d.projectPhases.loan.from)} – M${daysToMonths(d.projectPhases.loan.to)}`,
-                `${daysToMonths(d.projectPhases.loan.to - d.projectPhases.loan.from).toFixed(1)} of ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} months`,
+                `${daysToMonths(d.projectPhases.loan.to - d.projectPhases.loan.from).toFixed(1)} mo`,
+                `${daysToMonths(d.projectPhases.loan.activeDays).toFixed(1)} of ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} mo`,
               ],
             ]
           : []),
       ],
-      [4560, 2400, 2400],
+      [3960, 2200, 1600, 1600],
       { boldLastRow: !!d.projectPhases.loan },
     ),
     body(""),
@@ -491,7 +494,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       ? [
           body([
             t(
-              `The construction facility is outstanding for ${daysToMonths(d.projectPhases.loan.to - d.projectPhases.loan.from).toFixed(1)} of the program's ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} months — interest accrues on drawn balances only` +
+              `The construction facility is outstanding for ${daysToMonths(d.projectPhases.loan.activeDays).toFixed(1)} of the program's ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} months — interest accrues on drawn balances only` +
                 (d.projectPhases.loan.termDays != null
                   ? d.projectPhases.loan.overrunDays > 0
                     ? `; the base case exceeds the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term by ${daysToMonths(d.projectPhases.loan.overrunDays).toFixed(1)} months, and the corresponding extension fee is carried in every figure of Section 6.`

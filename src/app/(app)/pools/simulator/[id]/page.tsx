@@ -663,7 +663,18 @@ export default async function SimulationPage({
             };
             const bars = [
               ...ph.phases,
-              ...(ph.loan ? [{ key: "loan", label: "Loan", from: ph.loan.from, to: ph.loan.to }] : []),
+              ...(ph.loan
+                ? [
+                    {
+                      key: "loan",
+                      label: "Loan",
+                      from: ph.loan.from,
+                      to: ph.loan.to,
+                      segments: ph.loan.segments,
+                      activeDays: ph.loan.activeDays,
+                    },
+                  ]
+                : []),
             ];
             return (
               <section className="rounded-xl border border-slate-200 bg-white">
@@ -685,10 +696,14 @@ export default async function SimulationPage({
                         )}
                       </div>
                       <div className="relative h-5 rounded-md bg-slate-100">
-                        <div
-                          className="absolute bottom-0.5 top-0.5 rounded"
-                          style={{ left: pct(b.from), width: pct(b.to - b.from), background: COLORS[b.key] }}
-                        />
+                        {/* segmentado: blocos reais casa a casa — gap da esteira aparece como vazio */}
+                        {b.segments.map(([a, z], i) => (
+                          <div
+                            key={i}
+                            className="absolute bottom-0.5 top-0.5 rounded"
+                            style={{ left: pct(a), width: pct(z - a), background: COLORS[b.key] }}
+                          />
+                        ))}
                         {b.key === "loan" && ph.loan?.termDays != null && (
                           <div
                             title={`term do banco: ${Math.round(ph.loan.termDays / 30)}m a partir do closing do loan`}
@@ -702,6 +717,11 @@ export default async function SimulationPage({
                         <span className="font-semibold text-slate-700">
                           {daysToMonths(b.to - b.from)}m
                         </span>
+                        {b.to - b.from - b.activeDays > 3 && (
+                          <span className="block text-[10px] text-slate-400">
+                            {daysToMonths(b.activeDays)}m ativos · {b.segments.length} blocos
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -716,7 +736,7 @@ export default async function SimulationPage({
                         </span>
                       ) : (
                         <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
-                          ✓ loan aberto {daysToMonths(ph.loan.to - ph.loan.from)}m de{" "}
+                          ✓ loan aberto {daysToMonths(ph.loan.activeDays)}m de{" "}
                           {daysToMonths(ph.totalDays)}m do projeto
                           {ph.loan.termDays != null
                             ? ` — zera ${daysToMonths(ph.loan.closingDay + ph.loan.termDays - ph.loan.to)}m antes do term`
