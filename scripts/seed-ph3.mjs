@@ -64,8 +64,15 @@ const HOUSES = [
 async function findOrCreateCompany(inv) {
   const token = inv.name.split(" ")[0]; // "Vixus" não serve — usa token distintivo
   const distinct = { VIX: "Vixus International", LRH: "LR Homes", ALD: "ALD", RMN: "Romano", BON: "Bonomo", "R&D": "Rezini", "K&L": "K&L", SHM: "Sunset Homes" }[inv.key] ?? token;
+  // busca em legalName E em aliases — empresa renomeada (ex.: Vixus International →
+  // Vixus America) guarda o nome antigo em aliases; só legalName criava duplicada
   const existing = await prisma.company.findFirst({
-    where: { legalName: { contains: distinct, mode: "insensitive" } },
+    where: {
+      OR: [
+        { legalName: { contains: distinct, mode: "insensitive" } },
+        { aliases: { has: inv.name } },
+      ],
+    },
   });
   if (existing) return existing;
   return prisma.company.create({
