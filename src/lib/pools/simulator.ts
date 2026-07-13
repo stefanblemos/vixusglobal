@@ -191,6 +191,7 @@ export type SimResult = {
     bankExtensionFee: number;
     cashToClosing: number; // + excedente devolvido em cheque · − investidor paga no closing
     equityGateAmount: number;
+    loanClosingDay: number | null; // dia do closing do loan (null = equity) — p/ fases/term
   };
   events: SimEvent[];
   monthly: Array<{ month: number; inflow: number; outflow: number; balance: number }>;
@@ -1072,6 +1073,7 @@ export function simulate(input: SimInput): SimResult {
       bankExtensionFee: round2(extensionFee),
       cashToClosing: round2(cashToClosing),
       equityGateAmount: round2((input.equityGatePct ?? 0) * totalCost),
+      loanClosingDay: bank ? loanClosingDay : null,
     },
     events,
     monthly,

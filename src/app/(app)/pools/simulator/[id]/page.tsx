@@ -29,6 +29,7 @@ import {
 import { BankMultiSelect } from "@/components/bank-multiselect";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
 import { SimLedger, type LedgerRow } from "@/components/sim-ledger";
+import { daysToMonths, phasesOf } from "@/lib/pools/phases";
 
 export const dynamic = "force-dynamic";
 
@@ -638,6 +639,96 @@ export default async function SimulationPage({
             />
             <Card label="Duração" value={fmtDuration(r.kpis.durationDays)} hint={`${r.units.length} casas`} />
           </div>
+
+          {/* Fases do projeto: onde o tempo (e o loan) mora — barras sobrepostas + janela
+              real de exposição a juros vs term do banco (aprovado no mock, 13/07) */}
+          {(() => {
+            const ph = phasesOf(r, sim.bankProfile?.termMonths ?? null);
+            const scaleEnd = Math.max(
+              ph.totalDays,
+              ph.loan?.termDays != null ? ph.loan.closingDay + ph.loan.termDays : 0,
+            );
+            const pct = (d: number) => `${((d / scaleEnd) * 100).toFixed(1)}%`;
+            const COLORS: Record<string, string> = {
+              lots: "#a3b18a",
+              permits: "#94a3b8",
+              build: "#e9a23b",
+              sales: "#4c9f70",
+              loan: "#1f3a5f",
+            };
+            const SUBS: Record<string, string> = {
+              lots: "busca → closing",
+              sales: "CO → caixa",
+              loan: "closing → payoff",
+            };
+            const bars = [
+              ...ph.phases,
+              ...(ph.loan ? [{ key: "loan", label: "Loan", from: ph.loan.from, to: ph.loan.to }] : []),
+            ];
+            return (
+              <section className="rounded-xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h2 className="text-base font-medium text-slate-800">Fases do projeto</h2>
+                  <p className="text-xs text-slate-400">
+                    Períodos primeira→última casa — as fases se sobrepõem (é a eficiência do
+                    desenho; a soma passa da duração do projeto).
+                    {ph.loan ? " A faixa do loan é a janela real de exposição a juros." : ""}
+                  </p>
+                </div>
+                <div className="space-y-2.5 px-5 py-4">
+                  {bars.map((b) => (
+                    <div key={b.key} className="grid grid-cols-[90px_1fr_170px] items-center gap-3">
+                      <div className="text-right text-sm text-slate-600">
+                        <span className="font-medium">{b.label}</span>
+                        {SUBS[b.key] && (
+                          <span className="block text-[10px] text-slate-400">{SUBS[b.key]}</span>
+                        )}
+                      </div>
+                      <div className="relative h-5 rounded-md bg-slate-100">
+                        <div
+                          className="absolute bottom-0.5 top-0.5 rounded"
+                          style={{ left: pct(b.from), width: pct(b.to - b.from), background: COLORS[b.key] }}
+                        />
+                        {b.key === "loan" && ph.loan?.termDays != null && (
+                          <div
+                            title={`term do banco: ${Math.round(ph.loan.termDays / 30)}m a partir do closing do loan`}
+                            className="absolute -bottom-1 -top-1 border-l-2 border-dashed border-red-500"
+                            style={{ left: pct(ph.loan.closingDay + ph.loan.termDays) }}
+                          />
+                        )}
+                      </div>
+                      <div className="text-xs tabular-nums text-slate-500">
+                        D+{b.from} → D+{b.to} ·{" "}
+                        <span className="font-semibold text-slate-700">
+                          {daysToMonths(b.to - b.from)}m
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {ph.loan && (
+                    <p className="pt-1 text-xs">
+                      {ph.loan.overrunDays > 0 ? (
+                        <span className="rounded-full bg-red-50 px-2.5 py-1 font-medium text-red-700">
+                          ✗ estoura o term em {daysToMonths(ph.loan.overrunDays)}m
+                          {r.kpis.bankExtensionFee > 0
+                            ? ` — extension fee ${formatMoney(r.kpis.bankExtensionFee, "USD")}`
+                            : ""}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                          ✓ loan aberto {daysToMonths(ph.loan.to - ph.loan.from)}m de{" "}
+                          {daysToMonths(ph.totalDays)}m do projeto
+                          {ph.loan.termDays != null
+                            ? ` — zera ${daysToMonths(ph.loan.closingDay + ph.loan.termDays - ph.loan.to)}m antes do term`
+                            : ""}
+                        </span>
+                      )}
+                    </p>
+                  )}
+                </div>
+              </section>
+            );
+          })()}
 
           {/* Esteira de ciclos: quebra por ciclo com clareza (pedido do Stefan) */}
           {isCycled && (

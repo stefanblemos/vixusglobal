@@ -21,6 +21,7 @@ import {
 import type { ReportData } from "@/lib/pools/report-data";
 import type { ReportProse } from "@/lib/pools/report-ai";
 import { LOGO_4U, LOGO_VIXUS } from "@/lib/pools/report-logos";
+import { daysToMonths } from "@/lib/pools/phases";
 
 // Investment Summary canônico por simulação — prosa aprovada pelo Stefan em 13/07/2026
 // (rascunho validado com o advogado). Texto fixo em inglês; números vêm do ReportData.
@@ -449,6 +450,57 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
             "This program is structured all-equity: no construction debt is used, eliminating lender fees, interest-rate exposure and maturity risk. Where the Manager runs leveraged variants of a program, facilities are modeled line-by-line from executed term sheets, and the model has been benchmarked against the full bank statement of a completed facility — fees reproduced exactly and interest accruals within a fraction of one percent.",
           ),
         ]),
+
+    // Fases do projeto + janela do loan (aprovado no mock 13/07): responde "o loan não
+    // fica aberto o projeto inteiro" com números — argumento de venda p/ investidor
+    h2(d.projectPhases.loan ? "Program timeline & loan exposure" : "Program timeline"),
+    body(
+      "Phase windows run from the first to the last home in the basket and overlap by design — capital recycling means lots are acquired and homes are sold while others are still under construction.",
+    ),
+    gridTable(
+      ["Phase", "Window", "Duration"],
+      [
+        ...(() => {
+          const EN: Record<string, string> = {
+            lots: "Lot acquisition",
+            permits: "Permitting",
+            build: "Construction",
+            sales: "Sales & closings",
+          };
+          return d.projectPhases.phases.map((p) => [
+            EN[p.key] ?? p.label,
+            `M${daysToMonths(p.from)} – M${daysToMonths(p.to)}`,
+            `${daysToMonths(p.to - p.from).toFixed(1)} months`,
+          ]);
+        })(),
+        ...(d.projectPhases.loan
+          ? [
+              [
+                "Construction facility outstanding",
+                `M${daysToMonths(d.projectPhases.loan.from)} – M${daysToMonths(d.projectPhases.loan.to)}`,
+                `${daysToMonths(d.projectPhases.loan.to - d.projectPhases.loan.from).toFixed(1)} of ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} months`,
+              ],
+            ]
+          : []),
+      ],
+      [4560, 2400, 2400],
+      { boldLastRow: !!d.projectPhases.loan },
+    ),
+    body(""),
+    ...(d.projectPhases.loan
+      ? [
+          body([
+            t(
+              `The construction facility is outstanding for ${daysToMonths(d.projectPhases.loan.to - d.projectPhases.loan.from).toFixed(1)} of the program's ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} months — interest accrues on drawn balances only` +
+                (d.projectPhases.loan.termDays != null
+                  ? d.projectPhases.loan.overrunDays > 0
+                    ? `; the base case exceeds the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term by ${daysToMonths(d.projectPhases.loan.overrunDays).toFixed(1)} months, and the corresponding extension fee is carried in every figure of Section 6.`
+                    : `, within the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term (no extension fees in the base case).`
+                  : "."),
+            ),
+          ]),
+        ]
+      : []),
 
     // ── 6. PROJECTIONS ──
     h1("6. Financial Projections"),

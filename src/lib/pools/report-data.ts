@@ -8,6 +8,7 @@ import {
   type UnitRef,
 } from "@/lib/pools/build-sim-input";
 import marketStats from "@/data/market-stats.json";
+import { phasesOf, type ProjectPhases } from "@/lib/pools/phases";
 
 // Monta o pacote de dados do Investment Summary de UMA simulação: os 3 cenários rodados
 // frescos do catálogo, sensibilidade/breakeven sobre o Conservador (base case do report),
@@ -72,6 +73,8 @@ export type ReportData = {
   market: typeof marketStats;
   // nº de premissas ajustadas na aba Premissas (0 = tudo do catálogo) — nota no A.1
   customAssumptions: number;
+  // fases do projeto (base case) + janela real do loan — tabela na seção 5
+  projectPhases: ProjectPhases;
 };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -302,5 +305,6 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     monthly: monthlyOf(consResult),
     market: marketStats,
     customAssumptions: countOverrides((sim.overrides as SimOverrides | null) ?? null),
+    projectPhases: phasesOf(consResult, sim.bankProfile?.termMonths ?? null),
   };
 }
