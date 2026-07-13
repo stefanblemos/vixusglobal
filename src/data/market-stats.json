@@ -1,0 +1,43 @@
+{
+  "source": "ATTOM Listing Analytics (weekly MLS feed)",
+  "extractDate": "2026-06-15",
+  "totalListings": 25214,
+  "counties": [
+    "Citrus",
+    "Marion",
+    "Polk"
+  ],
+  "windowDays": 90,
+  "submarkets": [
+    {
+      "key": "marion-oaks",
+      "name": "Marion Oaks (Ocala)",
+      "soldCount90d": 129,
+      "medianPricePerSf": 166.05166051660515,
+      "medianPricePerSfNewConstruction": 167.38581709735752,
+      "medianDaysOnMarket": 56,
+      "newConstructionSharePct": 68,
+      "activeListings": 350
+    },
+    {
+      "key": "citrus-springs",
+      "name": "Citrus Springs",
+      "soldCount90d": 87,
+      "medianPricePerSf": 164.17613636363637,
+      "medianPricePerSfNewConstruction": 164.23852950190337,
+      "medianDaysOnMarket": 43,
+      "newConstructionSharePct": 76,
+      "activeListings": 290
+    },
+    {
+      "key": "poinciana",
+      "name": "Poinciana",
+      "soldCount90d": 33,
+      "medianPricePerSf": 166.05166051660515,
+      "medianPricePerSfNewConstruction": 180.4917001173794,
+      "medianDaysOnMarket": 78,
+      "newConstructionSharePct": 24,
+      "activeListings": 168
+    }
+  ]
+}

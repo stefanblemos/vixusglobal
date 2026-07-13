@@ -1,0 +1,636 @@
+import {
+  AlignmentType,
+  BorderStyle,
+  Document,
+  Footer,
+  Header,
+  HeadingLevel,
+  LevelFormat,
+  PageBreak,
+  PageNumber,
+  Paragraph,
+  ShadingType,
+  Table,
+  TableCell,
+  TableRow,
+  TextRun,
+  WidthType,
+  convertInchesToTwip,
+} from "docx";
+import type { ReportData } from "@/lib/pools/report-data";
+
+// Investment Summary canônico por simulação — prosa aprovada pelo Stefan em 13/07/2026
+// (rascunho validado com o advogado). Texto fixo em inglês; números vêm do ReportData.
+
+const NAVY = "1F3A5F";
+const GRAY = "6B7280";
+const FONT = "Arial";
+const W = 9360; // 6.5" de conteúdo em DXA
+
+const money0 = (v: number) =>
+  (v < 0 ? "−$" : "$") + Math.round(Math.abs(v)).toLocaleString("en-US");
+const money2 = (v: number) =>
+  (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const pct = (v: number | null, digits = 1) => (v == null ? "—" : `${(v * 100).toFixed(digits)}%`);
+const months = (days: number) => Math.ceil(days / 30);
+
+const t = (text: string, opts: Record<string, unknown> = {}) =>
+  new TextRun({ text, font: FONT, size: 22, ...opts });
+
+const body = (children: string | TextRun[], opts: Record<string, unknown> = {}) =>
+  new Paragraph({
+    spacing: { after: 160, line: 288 },
+    children: Array.isArray(children) ? children : [t(children)],
+    ...opts,
+  });
+
+const h1 = (text: string) =>
+  new Paragraph({
+    heading: HeadingLevel.HEADING_1,
+    spacing: { before: 360, after: 200 },
+    children: [new TextRun({ text, font: FONT, size: 30, bold: true, color: NAVY })],
+  });
+
+const h2 = (text: string) =>
+  new Paragraph({
+    heading: HeadingLevel.HEADING_2,
+    spacing: { before: 240, after: 140 },
+    children: [new TextRun({ text, font: FONT, size: 24, bold: true, color: NAVY })],
+  });
+
+const bullet = (children: string | TextRun[]) =>
+  new Paragraph({
+    numbering: { reference: "bullets", level: 0 },
+    spacing: { after: 100, line: 276 },
+    children: Array.isArray(children) ? children : [t(children)],
+  });
+
+function kvTable(rows: Array<[string, string | TextRun[]]>, c1 = 3200) {
+  const c2 = W - c1;
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: [c1, c2],
+    rows: rows.map(
+      ([k, v]) =>
+        new TableRow({
+          children: [
+            new TableCell({
+              width: { size: c1, type: WidthType.DXA },
+              shading: { type: ShadingType.CLEAR, fill: "F1F5F9" },
+              margins: { top: 80, bottom: 80, left: 120, right: 120 },
+              children: [new Paragraph({ children: [t(k, { bold: true, size: 20 })] })],
+            }),
+            new TableCell({
+              width: { size: c2, type: WidthType.DXA },
+              margins: { top: 80, bottom: 80, left: 120, right: 120 },
+              children: [
+                new Paragraph({ children: Array.isArray(v) ? v : [t(v, { size: 20 })] }),
+              ],
+            }),
+          ],
+        }),
+    ),
+  });
+}
+
+function gridTable(header: string[], rows: (string | TextRun)[][], widths: number[], opts?: { boldLastRow?: boolean }) {
+  const mk = (cells: (string | TextRun)[], isHeader: boolean, isLast: boolean) =>
+    new TableRow({
+      tableHeader: isHeader,
+      children: cells.map(
+        (c, i) =>
+          new TableCell({
+            width: { size: widths[i], type: WidthType.DXA },
+            shading: isHeader ? { type: ShadingType.CLEAR, fill: NAVY } : undefined,
+            margins: { top: 70, bottom: 70, left: 110, right: 110 },
+            children: [
+              new Paragraph({
+                alignment: i === 0 ? AlignmentType.LEFT : AlignmentType.RIGHT,
+                children: [
+                  typeof c === "string"
+                    ? t(c, {
+                        size: 19,
+                        bold: isHeader || (isLast && opts?.boldLastRow),
+                        color: isHeader ? "FFFFFF" : undefined,
+                      })
+                    : c,
+                ],
+              }),
+            ],
+          }),
+      ),
+    });
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: widths,
+    rows: [
+      mk(header, true, false),
+      ...rows.map((r, i) => mk(r, false, i === rows.length - 1)),
+    ],
+  });
+}
+
+// Nomes dos cenários no DB são em português — o documento é em inglês
+const SCENARIO_EN: Record<string, string> = {
+  OPT: "Optimistic",
+  REAL: "Realistic",
+  CONS: "Conservative",
+};
+
+export function buildReportDocx(d: ReportData, recipient?: string): Document {
+  const cons = d.scenarios.find((s) => s.code === d.baseCode)!;
+  const scenarioName = (s: { code: string; name: string }) => SCENARIO_EN[s.code] ?? s.name;
+  const isBank = d.fundingMode === "BANK";
+  const nHomes = d.base.units.length;
+  const cyclesText =
+    d.cycles.length > 1
+      ? d.cycles.map((c) => `Cycle ${c.cycle} — ${c.homes} home${c.homes > 1 ? "s" : ""}`).join("; ")
+      : "single construction cycle";
+  const savingPct =
+    d.singleShotPeak && d.singleShotPeak > 0
+      ? Math.round((1 - cons.peakCapital / d.singleShotPeak) * 100)
+      : null;
+
+  const children: (Paragraph | Table)[] = [
+    // ── COVER ──
+    new Paragraph({ spacing: { before: 2200 }, children: [] }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: "4U CUSTOM HOMES  ×  VIXUS INVESTMENT", font: FONT, size: 26, color: GRAY, bold: true })],
+    }),
+    new Paragraph({
+      spacing: { before: 300 },
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: "INVESTMENT SUMMARY", font: FONT, size: 56, bold: true, color: NAVY })],
+    }),
+    new Paragraph({
+      spacing: { before: 200 },
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: d.simName, font: FONT, size: 28, bold: true, color: "334155" })],
+    }),
+    new Paragraph({
+      spacing: { before: 120 },
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: "Residential Build-to-Sell Program — Central & Southwest Florida", font: FONT, size: 24, color: GRAY })],
+    }),
+    new Paragraph({
+      spacing: { before: 2600 },
+      alignment: AlignmentType.CENTER,
+      children: [new TextRun({ text: "CONFIDENTIAL — FOR DISCUSSION PURPOSES ONLY", font: FONT, size: 20, bold: true, color: "991B1B" })],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [t(`${d.generatedAt}${recipient ? `  ·  Prepared for ${recipient}` : ""}`, { color: GRAY })],
+    }),
+    new Paragraph({ children: [new PageBreak()] }),
+
+    // ── IMPORTANT NOTICES ──
+    h1("Important Notices"),
+    body(
+      "This Investment Summary (the “Summary”) is furnished on a confidential basis to a limited number of sophisticated prospective investors for the sole purpose of evaluating a potential investment in the project described herein (the “Project”). It is not an offer to sell, or a solicitation of an offer to buy, any security. Any such offer will be made only through definitive offering documents (including a private placement memorandum, operating agreement and subscription agreement), which will contain material information not included herein and will supersede this Summary in its entirety.",
+    ),
+    body(
+      "Securities, if and when offered, are expected to be offered in reliance on the exemption provided by Rule 506(b) of Regulation D under the Securities Act of 1933, as amended, and applicable Florida law, to investors with whom the sponsor has a pre-existing substantive relationship. Securities have not been and will not be registered with the U.S. Securities and Exchange Commission or any state securities authority, are subject to restrictions on transferability and resale, and involve a high degree of risk, including the possible loss of the entire investment.",
+    ),
+    body(
+      "This Summary contains forward-looking statements, projections and scenario analyses that are based on assumptions believed to be reasonable as of the date hereof. Projected returns are hypothetical, are not guarantees of future performance, and actual results will differ — possibly materially. Unless expressly stated otherwise, all projected returns are presented net of builder compensation and project-level fees described herein, and before any taxes payable by investors. Recipients should conduct their own due diligence and consult their own legal, tax and financial advisors.",
+    ),
+    new Paragraph({ children: [new PageBreak()] }),
+
+    // ── 1. EXECUTIVE SUMMARY ──
+    h1("1. Executive Summary"),
+    body(
+      "The Project is a residential build-to-sell program executed by 4U Custom Homes (the “Builder”) and administered by Vixus Investment (the “Manager”) in high-absorption submarkets of Central and Southwest Florida. Investor capital funds land acquisition and vertical construction of single-family homes that are sold upon completion; capital is recycled through consecutive, pre-permitted construction cycles (the “Pipeline”), so that the same equity base produces multiple homes over the life of the program.",
+    ),
+    kvTable([
+      ["Vehicle", "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each"],
+      [
+        "Program",
+        `${nHomes} home${nHomes > 1 ? "s" : ""} in ${d.cycles.length > 1 ? `${d.cycles.length} chained cycles` : "a single cycle"} across ${d.locations.join(", ")}`,
+      ],
+      ["Target raise", `${money0(cons.peakCapital)} (Conservative-case peak capital)`],
+      ["Projected net IRR (base case)", `${pct(cons.irrAnnual)}  (Conservative case; Optimistic / Realistic shown in §6)`],
+      ["Projected equity multiple", cons.equityMultiple == null ? "—" : `${cons.equityMultiple.toFixed(2)}x`],
+      ["Projected duration", `${months(cons.durationDays)} months`],
+      ["Builder compensation", d.compLabel],
+      [
+        "Construction financing",
+        isBank
+          ? `${d.bankName ?? "Construction facility"} — interest on drawn balance only${d.bankTerms ? `; up to ${d.bankTerms.ltcBuildPct}% LTC / ${d.bankTerms.ltvPct}% LTV, ${d.bankTerms.aprEffectivePct.toFixed(2)}% APR, ${d.bankTerms.termMonths}-month term` : ""}`
+          : "All-equity program — no construction debt",
+      ],
+      ["Distributions", "Return of capital as sales close, under the cash-first rule; profit distributed at program completion"],
+      ["Reporting", "Investor portal with monthly statements, per-home budget vs. actual, and bank reconciliation"],
+    ]),
+    body(""),
+    body([
+      t("The financial model underlying this Summary is maintained on the Manager’s proprietary platform and has been "),
+      t("validated against the actual bank statement of a completed construction facility", { bold: true }),
+      t(
+        " — fees reproduced to the cent and interest accruals within a fraction of one percent — and every projection in this document closes to the cent: sources and uses reconcile exactly to projected investor profit (Appendix A.4).",
+      ),
+    ]),
+
+    // ── 2. SPONSOR ──
+    h1("2. Sponsor & Track Record"),
+    h2("4U Custom Homes — the Builder"),
+    bullet([
+      t("Founded in 2019; headquartered in Orlando, Florida. Over "),
+      t("450 homes delivered", { bold: true }),
+      t(" and more than "),
+      t("$100 million in accumulated sales volume", { bold: true }),
+      t("."),
+    ]),
+    bullet("Active in six strategic regions: Marion Oaks (Ocala), Citrus Springs, North Port, Port Charlotte, Poinciana and Rotonda West."),
+    bullet([
+      t("Standardized product line (Arpoador, Copacabana, Leblon, Maragogi, Ubatuba, among others) with an average "),
+      t("five-month construction cycle", { bold: true }),
+      t(" from permit to certificate of occupancy."),
+    ]),
+    bullet(
+      "Vertically integrated through Truss Direct, the group’s truss manufacturer supplying 90+ projects per month — insulating the program from a key supply-chain bottleneck.",
+    ),
+    bullet("BBB accredited; every home delivered with a 2-10 structural warranty and covered by builder’s risk insurance during construction."),
+    h2("Vixus Investment — the Manager"),
+    body(
+      "Vixus Investment administers investor vehicles for the group: capitalization, capital calls, construction-loan reconciliation, tax (K-1) coordination and investor reporting. The Manager operates a purpose-built platform that tracks every dollar from subscription to distribution; investors receive statements generated from the same ledger the Manager uses to run the business.",
+    ),
+    h2("Leadership"),
+    bullet([
+      t("Stefan Braga Lemos — Founder & COO.", { bold: true }),
+      t(
+        " Civil engineer (Federal University of Espírito Santo, Brazil). Before founding 4U in 2019, he co-owned an engineering and design firm in Brazil (Avantec Engenharia) and served in the group’s truss operation. He oversees construction operations and the group’s investment platform.",
+      ),
+    ]),
+    bullet([
+      t("Evair Gallardo — CEO.", { bold: true }),
+      t(
+        " Entrepreneur with founding and director experience in the Brazilian telecommunications sector (Kerax Telecom). He leads the group’s strategic development and is CEO of Truss Direct, the group’s truss manufacturing operation, founded during the pandemic to secure the supply chain.",
+      ),
+    ]),
+    bullet([
+      t("Patrick Geaquinto — Founder & VP of Sales.", { bold: true }),
+      t(
+        " UFES graduate with a commercial career in the Brazilian construction sector: Commercial Director at Avantec Engenharia — the engineering and design firm co-owned by the founding partners — and previously Commercial Manager at Orla Construções. Co-founded 4U in 2019; leads sales, pricing and broker relationships across the group’s six Florida regions.",
+      ),
+    ]),
+    body([
+      t("Alignment of interests: the Builder’s compensation is "),
+      t("subordinated to project performance", { bold: true }),
+      t(" — under the performance model, 4U earns only a share of realized net profit. There is no development fee payable regardless of outcome."),
+    ]),
+
+    // ── 3. MARKET ──
+    h1("3. Market Opportunity"),
+    body([
+      t(
+        `The program builds entry-level and mid-range single-family homes in Florida submarkets selected for permit velocity, lot availability and sustained absorption. The statistics below are derived from ATTOM MLS analytics — a weekly data feed covering the target counties (extract of ${d.market.extractDate}, ${d.market.totalListings.toLocaleString("en-US")} listings across ${d.market.counties.join(", ")} counties) — and are refreshed for every edition of this Summary. Sold statistics reflect the trailing ${d.market.windowDays} days.`,
+      ),
+    ]),
+    gridTable(
+      ["Submarket", "Median sale $/SF", "New-constr. $/SF", "Median DOM", `Sold (${d.market.windowDays}d)`, "New-constr. share"],
+      d.market.submarkets.map((s) => [
+        s.name,
+        s.medianPricePerSf == null ? "—" : `$${s.medianPricePerSf.toFixed(0)}`,
+        s.medianPricePerSfNewConstruction == null ? "—" : `$${s.medianPricePerSfNewConstruction.toFixed(0)}`,
+        s.medianDaysOnMarket == null ? "—" : String(s.medianDaysOnMarket),
+        String(s.soldCount90d),
+        s.newConstructionSharePct == null ? "—" : `${s.newConstructionSharePct}%`,
+      ]),
+      [2360, 1540, 1540, 1240, 1240, 1440],
+    ),
+    body(""),
+    body(
+      "Program pricing is underwritten against these observed comparables: projected sale prices per plan are set relative to the prevailing median for new construction in each submarket, and the Conservative case applies an additional discount on top of that benchmark.",
+    ),
+
+    // ── 4. STRATEGY ──
+    h1("4. Investment Strategy — the Pipeline"),
+    body(
+      "The program’s core mechanic is disciplined capital recycling. Homes are organized in chained cycles: while the first basket of homes is under construction, lots for the following cycle are acquired and permit applications are filed in advance, so that each closed sale immediately triggers the start of the next home (“sell one, start one”). The initial raise is sized to fund the first cycle in full plus the land and permit-application costs of the second; from the third cycle onward, expansion is funded primarily by recycled sale proceeds.",
+    ),
+    bullet(
+      "Permit discipline: permit costs are always funded by equity — construction lenders do not fund permits. Pre-permitting is what allows a new home to break ground the day after its triggering sale closes.",
+    ),
+    ...(savingPct != null && savingPct > 0
+      ? [
+          bullet([
+            t("Capital efficiency: the Pipeline delivers the program’s "),
+            t(`${nHomes} homes`, { bold: true }),
+            t(" with approximately "),
+            t(`${savingPct}% less peak capital`, { bold: true }),
+            t(
+              ` than building all homes simultaneously (${money0(cons.peakCapital)} vs. ${money0(d.singleShotPeak!)}) — the same aggregate profit on materially less equity at risk, which is what drives the projected IRR.`,
+            ),
+          ]),
+        ]
+      : []),
+    bullet(
+      "Just-in-time treasury: investor capital is called only when project cash cannot cover the next obligation, and surplus cash is returned as soon as the forward schedule no longer requires it.",
+    ),
+    bullet([t("Cycle structure for this Project: "), t(cyclesText, { bold: true }), t(".")]),
+
+    // ── 5. FINANCING ──
+    h1("5. Construction Financing Discipline"),
+    ...(isBank
+      ? [
+          body([
+            t(
+              `Construction facilities are sized per home at the lesser of ${d.bankTerms?.ltcBuildPct ?? "—"}% of cost basis (construction contract plus lot) and ${d.bankTerms?.ltvPct ?? "—"}% of appraised completed value, rounded down to the nearest $5,000. Interest accrues on the drawn balance only. Lender terms — origination, broker, title, inspection and reconveyance fees, interest-reserve mechanics and release provisions — are modeled line-by-line from executed term sheets rather than approximated.`,
+            ),
+          ]),
+          body([
+            t("The Manager’s model has been benchmarked against the full bank statement of a completed facility: all fees reproduced exactly and interest accruals within a fraction of one percent of the lender’s own figures. For this Project, the modeled facility is "),
+            t(`${d.bankName}`, { bold: true }),
+            t(
+              ` (${d.bankTerms?.aprEffectivePct.toFixed(2)}% effective APR, ${d.bankTerms?.termMonths}-month term); its full cost — ${money0(d.closing.bankCost)} across closing fees, interest and per-draw charges — is carried in every figure of Section 6.`,
+            ),
+          ]),
+        ]
+      : [
+          body(
+            "This program is structured all-equity: no construction debt is used, eliminating lender fees, interest-rate exposure and maturity risk. Where the Manager runs leveraged variants of a program, facilities are modeled line-by-line from executed term sheets, and the model has been benchmarked against the full bank statement of a completed facility — fees reproduced exactly and interest accruals within a fraction of one percent.",
+          ),
+        ]),
+
+    // ── 6. PROJECTIONS ──
+    h1("6. Financial Projections"),
+    body(
+      "Three scenarios are presented below. The Conservative case is the base case for underwriting: it assumes discounted sale prices, cost overruns, extended construction and marketing timelines, and a fully funded contingency reserve. All figures are net of builder compensation and project-level costs, and before investor-level taxes.",
+    ),
+    gridTable(
+      ["", ...d.scenarios.map((s) => (s.code === d.baseCode ? `${scenarioName(s)} (base)` : scenarioName(s)))],
+      [
+        ["Projected net IRR", ...d.scenarios.map((s) => pct(s.irrAnnual))],
+        ["Equity multiple", ...d.scenarios.map((s) => (s.equityMultiple == null ? "—" : `${s.equityMultiple.toFixed(2)}x`))],
+        ["Peak invested capital", ...d.scenarios.map((s) => money0(s.peakCapital))],
+        ["Total investor profit", ...d.scenarios.map((s) => money0(s.profit))],
+        ["Program duration (months)", ...d.scenarios.map((s) => String(months(s.durationDays)))],
+      ],
+      [2760, ...d.scenarios.map(() => Math.floor(6600 / d.scenarios.length))],
+    ),
+    body(""),
+    h2("Sources & Uses — Conservative case"),
+    gridTable(
+      ["Uses", "Amount", "Sources", "Amount"],
+      [
+        ["Land acquisition", money0(d.closing.lots), "Investor equity (peak)", money0(cons.peakCapital)],
+        [
+          "Vertical construction",
+          money0(d.closing.construction),
+          isBank ? "Construction facility (committed)" : "Recycled sale proceeds",
+          isBank ? money0(d.base.kpis.bankCommitted) : money0(d.closing.sales - cons.peakCapital),
+        ],
+        ["Financing costs (all-in)", money0(d.closing.bankCost), isBank ? "Recycled sale proceeds" : "", isBank ? money0(d.closing.sales) : ""],
+        [
+          "Builder compensation",
+          d.closing.builderComp > 0
+            ? money0(d.closing.builderComp)
+            : d.closing.contractorFeeTotal > 0
+              ? `incl. in construction (${money0(d.closing.contractorFeeTotal)})`
+              : "$0",
+          "",
+          "",
+        ],
+        ["Net sale proceeds (total)", money0(d.closing.sales), "", ""],
+      ],
+      [2810, 1870, 2810, 1870],
+    ),
+    body(""),
+    body([
+      t("Each edition of this Summary is generated from a live simulation whose sources and uses "),
+      t("reconcile to the cent", { bold: true }),
+      t(
+        " against projected investor profit. The full calculation detail — per-home economics, the month-by-month prospective ledger, the return methodology and the reconciliation statement — is presented in Appendix A.",
+      ),
+    ]),
+    h2("Sensitivity — base case"),
+    body(
+      "Each variable below is shocked independently on the Conservative case; all other assumptions held constant.",
+    ),
+    gridTable(
+      ["Shock", "Projected net IRR", "Investor profit"],
+      [
+        [`— Base case (none)`, pct(cons.irrAnnual), money0(cons.profit)],
+        ...d.sensitivity.map((s) => [s.label, pct(s.irr), money0(s.profit)]),
+      ],
+      [4160, 2600, 2600],
+    ),
+    body(""),
+    body([
+      t("Breakeven: ", { bold: true }),
+      t(
+        d.breakevenPriceDropPct == null
+          ? "investor profit remains positive even under a sale-price decline of more than 60% — beyond any observed correction in the target submarkets."
+          : `investor profit reaches zero at a sale-price decline of approximately ${d.breakevenPriceDropPct.toFixed(1)}% versus the Conservative case — which itself is already discounted from observed comparables (Section 3).`,
+      ),
+    ]),
+
+    // ── 7. STRUCTURE ──
+    h1("7. Structure, Terms & Governance"),
+    kvTable([
+      ["Units", "Fixed at $1,000 per unit; ownership percentages are arithmetic. The subscription window closes at land acquisition — no later-stage dilution."],
+      ["Distributions", "Return of capital as home sales close; profit distributed at program completion, pro rata to units held."],
+      ["Builder compensation", d.compLabel],
+      ["Manager", "Vixus Investment. Investor units are non-voting; investors receive information rights and monthly reporting."],
+      ["Offering exemption", "Rule 506(b) of Regulation D; Florida §517.061(11) as applicable. Schedule K-1 issued annually. One dedicated vehicle per program — entities are never reused across programs."],
+      ["Reporting", "Investor portal: monthly capital statement, per-home budget vs. actual, bank-statement reconciliation and distribution history."],
+    ]),
+
+    // ── 8. RISKS ──
+    new Paragraph({ children: [new PageBreak()] }),
+    h1("8. Risk Factors & Mitigants"),
+    body(
+      "An investment in the Project involves significant risk and is suitable only for investors who can bear the loss of their entire investment. The following summary is not exhaustive; the definitive offering documents will contain a complete statement of risk factors.",
+    ),
+    h2("Market risk"),
+    body(
+      "Home prices and absorption in the target submarkets may decline. Mitigants: the Conservative base case underwrites discounted sale prices and extended marketing periods; the product is positioned at entry-level price points, where the buyer pool is deepest; weekly MLS analytics are monitored for early signs of deterioration; and lender loan-to-value caps provide an independent third-party check on value.",
+    ),
+    h2("Construction cost and schedule risk"),
+    body(
+      "Costs may exceed budget and construction may take longer than projected. Mitigants: a fixed product line of repeatedly built plans with known cost history; vertical integration in truss supply; a contingency reserve funded in the base case; and scenario buffers applied to both cost and duration.",
+    ),
+    h2("Permitting risk"),
+    body(
+      "Permit issuance may be delayed. Mitigants: submarkets are selected in part for permit velocity; the Pipeline files permit applications ahead of need; and construction lenders do not close until the substantial majority of permits are issued, which independently disciplines the schedule.",
+    ),
+    h2("Financing risk"),
+    body(
+      "Construction credit may become more expensive or unavailable, and facilities carry maturity and extension provisions. Mitigants: facilities are modeled line-by-line from executed term sheets, including extension fees in the Conservative case; interest accrues on drawn balances only; and the program can operate on an all-equity basis at reduced scale if credit conditions deteriorate.",
+    ),
+    h2("Liquidity and concentration risk"),
+    body(
+      "Units are illiquid, transfers are restricted, and the Project is concentrated in Florida residential real estate. Capital may remain committed for the full program duration; investors should commit only capital they can leave invested for the full term.",
+    ),
+    h2("Sponsor and key-person risk"),
+    body(
+      "The Project depends on the continued involvement of the Builder’s and the Manager’s principals. Mitigants: a standardized product line and documented processes reduce dependence on any individual; builder’s risk insurance is carried during construction; delivered homes carry a 2-10 structural warranty.",
+    ),
+    h2("Projection risk"),
+    body(
+      "Projections are inherently uncertain and depend on assumptions about prices, costs, schedules and financing that may not materialize. Actual returns may be materially lower than projected, and losses — up to the entire investment — are possible.",
+    ),
+
+    // ── 9. DISCLOSURES ──
+    h1("9. Additional Disclosures"),
+    body(
+      "No person has been authorized to make any representation not contained in this Summary, and any such representation must not be relied upon. Delivery of this Summary does not imply that the information herein is correct as of any date after the date on the cover. Prior performance of the Builder, the Manager or their affiliates — including homes delivered and sales volume — is not indicative of the Project’s future results. Certain figures herein are generated by the Manager’s simulation platform as of the date on the cover and are refreshed with each edition; the underlying assumptions are available to prospective investors upon request. This Summary is confidential and may not be reproduced or distributed, in whole or in part, without the Manager’s prior written consent.",
+    ),
+    new Paragraph({
+      spacing: { before: 300 },
+      children: [t("Contact: Vixus Investment · 8250 Exchange Dr, Suite 134, Orlando, FL 32809", { color: GRAY })],
+    }),
+
+    // ── APPENDIX A ──
+    new Paragraph({ children: [new PageBreak()] }),
+    h1("Appendix A — Financial Detail"),
+    body(
+      "This appendix opens the calculations behind the projections in Section 6. Every table is produced by the same simulation engine, on the same assumptions, for the Conservative (base) case; no figure is entered by hand.",
+    ),
+    h2("A.1  Per-home economics"),
+    body(
+      "Unit-level underwriting for each home in the program basket, at Conservative-case (buffered) values. Sale proceeds are shown net of closing costs; permit costs are embedded in the construction disbursement schedule; financing costs and performance-based builder compensation accrue at program level and appear in A.4.",
+    ),
+    gridTable(
+      ["Home", "Lot", "Construction", "Sale (net)", "Net profit"],
+      [
+        ...d.base.units.map((u) => [
+          u.label,
+          money0(u.adjLot),
+          money0(u.adjBuild),
+          money0(u.adjSaleNet),
+          money0(u.profit),
+        ]),
+        [
+          "Program total",
+          money0(d.closing.lots),
+          money0(d.closing.construction),
+          money0(d.closing.sales),
+          money0(d.base.units.reduce((s, u) => s + u.profit, 0)),
+        ],
+      ],
+      [3560, 1450, 1450, 1450, 1450],
+      { boldLastRow: true },
+    ),
+    body(""),
+    h2("A.2  Month-by-month prospective ledger"),
+    body(
+      "The program’s full projected cash movement by month: capital calls, land and permits, construction disbursements (including builder compensation), net bank flows (draws in, fees, interest and payoff out), sale closings and distributions — running to a cash balance that never goes below zero. This is the ledger on which the IRR is computed; the complete dated, line-item ledger is available on the Manager’s platform.",
+    ),
+    gridTable(
+      ["Month", "Capital calls", "Land", "Construction", "Bank (net)", "Sale proceeds", "Distributions", "Ending cash"],
+      d.monthly.map((m) => [
+        String(m.month),
+        m.calls ? money0(m.calls) : "—",
+        m.land ? money0(m.land) : "—",
+        m.construction ? money0(m.construction) : "—",
+        m.bankNet ? money0(m.bankNet) : "—",
+        m.sales ? money0(m.sales) : "—",
+        m.distributions ? money0(m.distributions) : "—",
+        money0(m.endingCash),
+      ]),
+      [760, 1290, 1140, 1290, 1190, 1290, 1290, 1110],
+    ),
+    body(""),
+    h2("A.3  Return methodology"),
+    bullet([
+      t("Net IRR", { bold: true }),
+      t(
+        " is the annualized internal rate of return (XIRR) computed on the dated investor cash flows of the ledger in A.2 — capital calls as outflows, distributions as inflows — after builder compensation and all project-level costs, before investor-level taxes.",
+      ),
+    ]),
+    bullet([t("Equity multiple", { bold: true }), t(" is total distributions divided by total capital called.")]),
+    bullet([
+      t("Peak invested capital", { bold: true }),
+      t(
+        " is the maximum cumulative capital outstanding at any point in the program — the figure on which the raise is sized — not the sum of all calls.",
+      ),
+    ]),
+    bullet(
+      "Capital calls are just-in-time: capital is called only when projected project cash cannot cover the next obligation, so idle cash does not depress the IRR and investors are never called earlier than the schedule requires.",
+    ),
+    h2("A.4  Reconciliation statement"),
+    body(
+      "The identity below is verified by the engine for every scenario before a report can be issued; a discrepancy of even one cent blocks generation.",
+    ),
+    kvTable(
+      [
+        ["Total sale proceeds (net of closing costs)", money2(d.closing.sales)],
+        ["(−) Land acquisition", money2(-d.closing.lots)],
+        ["(−) Vertical construction (incl. embedded builder fees)", money2(-d.closing.construction)],
+        ["(−) Financing costs (interest + all lender fees)", money2(-d.closing.bankCost)],
+        ["(−) Builder compensation (performance / promote)", money2(-d.closing.builderComp)],
+        [
+          "(=) Investor profit",
+          `${money2(d.closing.result)}   (equals Section 6 — difference ${money2(d.closing.diff)})`,
+        ],
+      ],
+      4600,
+    ),
+  ];
+
+  return new Document({
+    numbering: {
+      config: [
+        {
+          reference: "bullets",
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.BULLET,
+              text: "•",
+              alignment: AlignmentType.LEFT,
+              style: { paragraph: { indent: { left: 360, hanging: 200 } } },
+            },
+          ],
+        },
+      ],
+    },
+    styles: { default: { document: { run: { font: FONT, size: 22 } } } },
+    sections: [
+      {
+        properties: {
+          page: {
+            size: { width: 12240, height: 15840 },
+            margin: {
+              top: convertInchesToTwip(0.9),
+              bottom: convertInchesToTwip(0.9),
+              left: convertInchesToTwip(1),
+              right: convertInchesToTwip(1),
+            },
+          },
+        },
+        headers: {
+          default: new Header({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.RIGHT,
+                children: [new TextRun({ text: "CONFIDENTIAL", font: FONT, size: 16, color: GRAY })],
+              }),
+            ],
+          }),
+        },
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [
+                  new TextRun({
+                    text: `4U Custom Homes × Vixus Investment — Investment Summary · ${d.simName} · Page `,
+                    font: FONT,
+                    size: 16,
+                    color: GRAY,
+                  }),
+                  new TextRun({ children: [PageNumber.CURRENT], font: FONT, size: 16, color: GRAY }),
+                ],
+              }),
+            ],
+          }),
+        },
+        children,
+      },
+    ],
+  });
+}

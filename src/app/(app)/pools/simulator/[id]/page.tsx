@@ -361,6 +361,13 @@ export default async function SimulationPage({
               </button>
             </form>
           )}
+          <a
+            href={`/api/simulations/${sim.id}/report`}
+            title="Investment Summary canônico (DOCX) — 3 cenários + sensibilidade + apêndice financeiro, sempre fresco do catálogo"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            📄 Investment Summary
+          </a>
           <form action={duplicateSimulation}>
             <input type="hidden" name="simulationId" value={sim.id} />
             <button
