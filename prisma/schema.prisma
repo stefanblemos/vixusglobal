@@ -1102,6 +1102,7 @@ model CatalogModel {
   name          String    @unique
   houseType     HouseType
   buildMonths   Decimal   @db.Decimal(4, 1)
+  sqft          Int? // metragem (living area) — habilita benchmark $/sf vs ATTOM
   contractorFee Decimal?  @db.Decimal(20, 2) // override; null = usa o fee do tipo (HouseTypeFee)
   notes         String?
   createdAt     DateTime  @default(now())

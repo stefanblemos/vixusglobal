@@ -13,6 +13,14 @@ const num = (v: FormDataEntryValue | null, fallback = 0) => {
   const n = Number(String(v ?? "").replace(/,/g, "").trim());
   return Number.isFinite(n) ? n : fallback;
 };
+// inteiro opcional (sqft etc.): vazio = null
+const optInt = (v: FormDataEntryValue | null): number | null => {
+  const s0 = String(v ?? "").replace(/,/g, "").trim();
+  if (s0 === "") return null;
+  const n = Math.round(Number(s0));
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
 const optNum = (v: FormDataEntryValue | null) => {
   const s = String(v ?? "").replace(/,/g, "").trim();
   if (s === "") return null;
@@ -131,6 +139,7 @@ export async function saveModel(
     name,
     houseType: String(formData.get("houseType") ?? "MID_RANGE") as HouseType,
     buildMonths: num(formData.get("buildMonths"), 4),
+    sqft: optInt(formData.get("sqft")),
     contractorFee: optNum(formData.get("contractorFee")),
     notes: String(formData.get("notes") ?? "").trim() || null,
   };
@@ -146,6 +155,7 @@ export async function saveModel(
         name: before.name,
         houseType: before.houseType,
         buildMonths: before.buildMonths,
+        sqft: before.sqft,
         contractorFee: before.contractorFee,
         notes: before.notes,
       },

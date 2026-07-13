@@ -154,6 +154,7 @@ export default async function PoolCatalogPage({
             name: m.name,
             houseType: m.houseType,
             buildMonths: m.buildMonths.toString(),
+            sqft: m.sqft?.toString() ?? null,
             contractorFee: m.contractorFee?.toString() ?? null,
             notes: m.notes,
             locations: m.locations.map((ml) => ({

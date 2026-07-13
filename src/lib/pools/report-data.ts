@@ -9,6 +9,7 @@ import {
 } from "@/lib/pools/build-sim-input";
 import marketStats from "@/data/market-stats.json";
 import { phasesOf, type ProjectPhases } from "@/lib/pools/phases";
+import { benchmarkOf, type BenchmarkRow } from "@/lib/pools/benchmark";
 
 // Monta o pacote de dados do Investment Summary de UMA simulação: os 3 cenários rodados
 // frescos do catálogo, sensibilidade/breakeven sobre o Conservador (base case do report),
@@ -75,6 +76,8 @@ export type ReportData = {
   customAssumptions: number;
   // fases do projeto (base case) + janela real do loan — tabela na seção 5
   projectPhases: ProjectPhases;
+  // premissas × vendidos no submarket (ATTOM) — tabela no §3 + grounding da IA
+  benchmark: BenchmarkRow[];
 };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -306,5 +309,9 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     market: marketStats,
     customAssumptions: countOverrides((sim.overrides as SimOverrides | null) ?? null),
     projectPhases: phasesOf(consResult, sim.bankProfile?.termMonths ?? null),
+    benchmark: benchmarkOf(
+      consResult.units,
+      new Map((await prisma.catalogModel.findMany({ select: { name: true, sqft: true } })).map((m) => [m.name, m.sqft])),
+    ).rows,
   };
 }

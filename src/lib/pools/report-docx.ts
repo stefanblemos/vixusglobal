@@ -394,6 +394,30 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     body(
       "Program pricing is underwritten against these observed comparables: projected sale prices per plan are set relative to the prevailing median for new construction in each submarket, and the Conservative case applies an additional discount on top of that benchmark.",
     ),
+    // Benchmark de premissas × vendidos (aprovado 14/07) — a ponte entre mercado e projeções
+    ...(d.benchmark.some((b) => b.verdict !== "NO_DATA")
+      ? [
+          h2("Underwriting vs. observed market"),
+          body(
+            "Each underwriting assumption below is positioned against closed transactions in its submarket (same ATTOM extract): lot costs against sold lots, and sale prices against sold new-construction homes — per square foot where floor-plan areas are on file, at the whole-home level otherwise.",
+          ),
+          gridTable(
+            ["Assumption", "Program", "Market median (sold)", "Percentile"],
+            d.benchmark
+              .filter((b) => b.verdict !== "NO_DATA")
+              .map((b) => [
+                `${b.kind === "lot" ? "Lot cost" : "Sale price"} — ${b.label.replace("@", "·")}`,
+                b.unit === "$/sf" ? `$${b.ours.toFixed(0)}/SF` : money0(b.ours),
+                b.marketMedian == null
+                  ? "—"
+                  : `${b.unit === "$/sf" ? `$${b.marketMedian.toFixed(0)}/SF` : money0(b.marketMedian)}  (n=${b.n})`,
+                b.percentile == null ? "—" : `P${b.percentile}`,
+              ]),
+            [3960, 1800, 2400, 1200],
+          ),
+          body(""),
+        ]
+      : []),
     ...(prose?.marketCommentary?.length
       ? [
           h2("Market commentary"),

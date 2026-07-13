@@ -1,3 +1,4 @@
+import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
@@ -30,6 +31,7 @@ import { BankMultiSelect } from "@/components/bank-multiselect";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
 import { SimLedger, type LedgerRow } from "@/components/sim-ledger";
 import { daysToMonths, phasesOf } from "@/lib/pools/phases";
+import { benchmarkOf } from "@/lib/pools/benchmark";
 
 export const dynamic = "force-dynamic";
 
@@ -745,6 +747,81 @@ export default async function SimulationPage({
                       )}
                     </p>
                   )}
+                </div>
+              </section>
+            );
+          })()}
+
+          {/* Benchmark de premissas × vendidos no submarket (ATTOM) — aprovado 14/07 */}
+          {(() => {
+            const sqftByModel = new Map(
+              catalogModelLocations.map((ml) => [ml.model.name, ml.model.sqft ?? null]),
+            );
+            const bm = benchmarkOf(r.units, sqftByModel);
+            const fmtV = (v: number, unit: string) =>
+              unit === "$/sf" ? `$${v.toFixed(0)}/sf` : formatMoney(v, "USD").replace(".00", "");
+            const BADGE: Record<string, [string, string]> = {
+              CONSERVATIVE: ["✓ conservador", "bg-emerald-50 text-emerald-700"],
+              IN_RANGE: ["✓ dentro da faixa", "bg-emerald-50 text-emerald-700"],
+              TOP: ["⚠ topo do mercado", "bg-amber-50 text-amber-700"],
+              BELOW: ["⚠ abaixo do vendido", "bg-amber-50 text-amber-700"],
+              NO_DATA: ["— sem dados ATTOM", "bg-slate-100 text-slate-500"],
+            };
+            return (
+              <section className="rounded-xl border border-slate-200 bg-white">
+                <div className="border-b border-slate-100 px-5 py-4">
+                  <h2 className="text-base font-medium text-slate-800">Benchmark vs mercado</h2>
+                  <p className="text-xs text-slate-400">
+                    Premissas desta simulação × VENDIDOS no submarket (ATTOM {bm.extractDate},{" "}
+                    {bm.windowDays} dias). Vendas comparam em $/SF quando o modelo tem metragem
+                    no catálogo; sem metragem, preço absoluto (mistura tamanhos — cadastre o
+                    sqft do modelo para o benchmark justo).
+                  </p>
+                </div>
+                <div className="overflow-x-auto px-5 py-3">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-slate-100">
+                        <th className={th}>Premissa</th>
+                        <th className={thRight}>Nosso valor</th>
+                        <th className={thRight}>Mediana do vendido</th>
+                        <th className={thRight}>Percentil</th>
+                        <th className={thRight}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(["lot", "sale"] as const).map((kind) => (
+                        <React.Fragment key={kind}>
+                          <tr className="bg-slate-50/70">
+                            <td colSpan={5} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                              {kind === "lot" ? "Lotes (custo) × lotes vendidos" : "Vendas × new construction vendida"}
+                            </td>
+                          </tr>
+                          {bm.rows
+                            .filter((b) => b.kind === kind)
+                            .map((b) => (
+                              <tr key={b.label} className="border-b border-slate-50">
+                                <td className={td}>{b.label}</td>
+                                <td className={tdRight}>{fmtV(b.ours, b.unit)}</td>
+                                <td className={tdRight}>
+                                  {b.marketMedian == null ? "—" : fmtV(b.marketMedian, b.unit)}
+                                  {b.n > 0 && <span className="ml-1 text-[10px] text-slate-400">n={b.n}</span>}
+                                </td>
+                                <td className={tdRight}>{b.percentile == null ? "—" : `P${b.percentile}`}</td>
+                                <td className="px-3 py-1.5 text-right">
+                                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${BADGE[b.verdict][1]}`}>
+                                    {BADGE[b.verdict][0]}
+                                    {b.verdict === "CONSERVATIVE" && b.deltaPct != null && b.kind === "lot"
+                                      ? ` +${Math.round(b.deltaPct * 100)}%`
+                                      : ""}
+                                  </span>
+                                </td>
+                              </tr>
+                            ))}
+                        </React.Fragment>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </section>
             );

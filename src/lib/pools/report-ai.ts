@@ -83,6 +83,15 @@ function groundingOf(d: ReportData) {
       investorProfitUsd: Math.round(cons.profit),
     },
     breakevenSalePriceDropPct: d.breakevenPriceDropPct, // null = >60%
+    underwritingVsMarket: d.benchmark
+      .filter((b) => b.verdict !== "NO_DATA")
+      .map((b) => ({
+        assumption: `${b.kind === "lot" ? "lot cost" : "sale price"} — ${b.label}`,
+        program: `${b.unit === "$/sf" ? "$" + b.ours + "/sf" : "$" + b.ours.toLocaleString("en-US")}`,
+        marketMedianSold: b.marketMedian == null ? null : `${b.unit === "$/sf" ? "$" + b.marketMedian + "/sf" : "$" + b.marketMedian.toLocaleString("en-US")}`,
+        percentileAmongSold: b.percentile,
+        sampleSize: b.n,
+      })),
     note: "Conservative case already applies a sale-price discount and cost/timeline buffers on top of catalog values.",
   };
 }

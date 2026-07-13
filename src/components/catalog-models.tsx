@@ -23,6 +23,7 @@ export type ModelRow = {
   name: string;
   houseType: string;
   buildMonths: string;
+  sqft: string | null;
   contractorFee: string | null;
   notes: string | null;
   locations: Array<{
@@ -218,6 +219,16 @@ function ModelModal({
             <div>
               <label htmlFor="mod-months" className={labelClass}>Build months</label>
               <input id="mod-months" name="buildMonths" defaultValue={model?.buildMonths ?? "4"} className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="mod-sqft" className={labelClass}>Sqft (living area)</label>
+              <input
+                id="mod-sqft"
+                name="sqft"
+                defaultValue={model?.sqft ?? ""}
+                placeholder="habilita benchmark $/sf"
+                className={inputClass}
+              />
             </div>
             <div>
               <label htmlFor="mod-fee" className={labelClass}>Contractor fee override</label>

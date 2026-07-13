@@ -16,6 +16,8 @@ if (!csvPath) {
 const SUBMARKETS = [
   { key: "marion-oaks", name: "Marion Oaks (Ocala)", match: /MARION OAKS/ },
   { key: "citrus-springs", name: "Citrus Springs", match: /CITRUS SPRINGS/ },
+  { key: "rainbow-lakes", name: "Rainbow Lakes", match: /RAINBOW LAKES/ },
+  { key: "rolling-hills", name: "Rolling Hills", match: /ROLLING HILLS/ },
   { key: "poinciana", name: "Poinciana", match: /POINCIANA/ },
 ];
 
@@ -46,9 +48,8 @@ if (!refDate) {
 const windowStart = new Date(refDate.getTime() - 90 * 86400_000);
 
 const stats = SUBMARKETS.map((sm) => {
-  const all = rows.filter(
-    (r) => sm.match.test((r.LegalSubdivision ?? "").toUpperCase()) && r.MLSPropertyType === "Residential",
-  );
+  const inSub = rows.filter((r) => sm.match.test((r.LegalSubdivision ?? "").toUpperCase()));
+  const all = inSub.filter((r) => r.MLSPropertyType === "Residential");
   const sold90 = all.filter((r) => {
     if (r.ListingStatus !== "Sold") return false;
     const d = parseDate(r.MLSSoldDate);
@@ -58,11 +59,22 @@ const stats = SUBMARKETS.map((sm) => {
     .map((r) => Number(r.MLSSoldPrice) / Number(r.LivingAreaSquareFeet))
     .filter((v) => Number.isFinite(v) && v > 30 && v < 1000);
   const dom = sold90.map((r) => Number(r.DaysOnMarket)).filter((v) => Number.isFinite(v) && v >= 0);
-  const nc = sold90.filter((r) => (r.NewConstructionYN ?? "").trim() === "Y").length;
-  const ncPpsf = sold90
-    .filter((r) => (r.NewConstructionYN ?? "").trim() === "Y")
+  const ncSold = sold90.filter((r) => (r.NewConstructionYN ?? "").trim() === "Y");
+  const ncPpsf = ncSold
     .map((r) => Number(r.MLSSoldPrice) / Number(r.LivingAreaSquareFeet))
     .filter((v) => Number.isFinite(v) && v > 30 && v < 1000);
+  // Benchmark de premissas: distribuições COMPLETAS (ordenadas) p/ percentil exato —
+  // lotes vendidos (Lots and Land) e preços de new construction vendida
+  const lotsSold = inSub
+    .filter((r) => r.MLSPropertyType === "Lots and Land" && r.ListingStatus === "Sold")
+    .map((r) => Number(r.MLSSoldPrice))
+    .filter((v) => Number.isFinite(v) && v > 1000 && v < 500000)
+    .sort((a, b) => a - b);
+  const ncSoldPrices = ncSold
+    .map((r) => Number(r.MLSSoldPrice))
+    .filter((v) => Number.isFinite(v) && v > 50000 && v < 2000000)
+    .sort((a, b) => a - b);
+  const round0 = (v) => Math.round(v);
   return {
     key: sm.key,
     name: sm.name,
@@ -70,8 +82,13 @@ const stats = SUBMARKETS.map((sm) => {
     medianPricePerSf: median(ppsf),
     medianPricePerSfNewConstruction: median(ncPpsf),
     medianDaysOnMarket: median(dom),
-    newConstructionSharePct: sold90.length ? Math.round((100 * nc) / sold90.length) : null,
+    newConstructionSharePct: sold90.length ? Math.round((100 * ncSold.length) / sold90.length) : null,
     activeListings: all.filter((r) => r.ListingStatus === "Active").length,
+    benchmark: {
+      lotsSold: lotsSold.map(round0),
+      ncSoldPrices: ncSoldPrices.map(round0),
+      ncPpsf: [...ncPpsf].sort((a, b) => a - b).map((v) => Math.round(v * 10) / 10),
+    },
   };
 });
 
