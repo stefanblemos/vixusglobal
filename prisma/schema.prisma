@@ -1074,10 +1074,12 @@ enum BuilderCompMode {
 }
 
 // Plano de desembolso da obra (6 fases). LIGHT_START reduz a exposição inicial: até o
-// permit caem 25% (vs 40% no padrão) — capital inicial ≈ lote + 25% da obra.
+// permit caem 25% (vs 40% no padrão). PARTNER (sócios) alivia ainda mais: 20% até o
+// permit, resto distribuído na obra.
 enum SimPaymentPlan {
   STANDARD // 10/30/20/20/15/5
   LIGHT_START // 10/15/25/25/20/5
+  PARTNER // 10/10/25/25/25/5
 }
 
 model CatalogLocation {

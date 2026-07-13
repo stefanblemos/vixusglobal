@@ -83,7 +83,7 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
       perfTiming: sim.perfTiming,
       promoteTiers: sim.promoteTiers ?? undefined,
       flatFeePerHouse: sim.flatFeePerHouse,
-      paymentPlan: sim.paymentPlan as "STANDARD" | "LIGHT_START",
+      paymentPlan: sim.paymentPlan as "STANDARD" | "LIGHT_START" | "PARTNER",
       equityGatePct: sim.equityGatePct,
       unitGapDays: sim.unitGapDays,
       scenarioCode: sim.scenarioCode,
@@ -122,8 +122,9 @@ export async function updateSimulationSettings(
   const perfTiming = String(formData.get("perfTiming") ?? sim.perfTiming);
   const flatRaw = Number(String(formData.get("flatFeePerHouse") ?? "").replace(/,/g, ""));
   const flatFeePerHouse = Number.isFinite(flatRaw) && flatRaw >= 0 ? flatRaw : Number(sim.flatFeePerHouse);
+  const planRaw = String(formData.get("paymentPlan") ?? "");
   const paymentPlan =
-    String(formData.get("paymentPlan") ?? "") === "LIGHT_START" ? "LIGHT_START" : "STANDARD";
+    planRaw === "LIGHT_START" || planRaw === "PARTNER" ? planRaw : "STANDARD";
   const upfrontFunding = String(formData.get("upfrontFunding") ?? "") === "on";
   // Waterfall é OPT-IN: os controles mandam os tiers só quando ativos (PROMOTE sempre;
   // open book só com o checkbox marcado). Vazio = sem waterfall.
@@ -163,7 +164,7 @@ export async function updateSimulationSettings(
       perfPct,
       perfTiming,
       flatFeePerHouse,
-      paymentPlan: paymentPlan as "STANDARD" | "LIGHT_START",
+      paymentPlan: paymentPlan as "STANDARD" | "LIGHT_START" | "PARTNER",
       upfrontFunding,
       promoteTiers: promoteTiers ?? Prisma.DbNull,
       result: JSON.parse(JSON.stringify(result)),

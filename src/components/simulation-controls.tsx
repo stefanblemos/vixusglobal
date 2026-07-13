@@ -217,6 +217,7 @@ export function SimulationControls({
           >
             <option value="STANDARD">Padrão — 10/30/20/20/15/5</option>
             <option value="LIGHT_START">Início leve — 10/15/25/25/20/5</option>
+            <option value="PARTNER">Sócios — 10/10/25/25/25/5</option>
           </select>
         </div>
 

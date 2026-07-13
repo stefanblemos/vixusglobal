@@ -353,7 +353,11 @@ export default async function SimulationPage({
                   ? `open book + flat ${formatMoney(Number(sim.flatFeePerHouse), "USD")}/casa${(sim.promoteTiers as unknown[] | null)?.length ? " + promote" : ""}`
                   : "contractor fee"}
             {" · "}
-            {sim.paymentPlan === "LIGHT_START" ? "desembolso 10/15/25/25/20/5" : "desembolso 10/30/20/20/15/5"}
+            {sim.paymentPlan === "LIGHT_START"
+              ? "desembolso 10/15/25/25/20/5"
+              : sim.paymentPlan === "PARTNER"
+                ? "desembolso sócios 10/10/25/25/25/5"
+                : "desembolso 10/30/20/20/15/5"}
             {sim.pool ? ` · pool ${sim.pool.code}` : ""}
           </p>
         </div>

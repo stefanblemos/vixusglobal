@@ -39,7 +39,7 @@ const COMPS: Array<[string, Partial<SimInput>]> = [
   ["OPEN_BOOK_PROMOTE", { compMode: "OPEN_BOOK", flatFeePerHouse: 20000, promoteTiers: [{ hurdlePct: 8, promotePct: 0 }, { hurdlePct: null, promotePct: 30 }] }],
   ["PROMOTE", { compMode: "PROMOTE", promoteTiers: [{ hurdlePct: 8, promotePct: 0 }, { hurdlePct: 15, promotePct: 20 }, { hurdlePct: null, promotePct: 35 }] }],
 ];
-const PLANS: Array<"STANDARD" | "LIGHT_START"> = ["STANDARD", "LIGHT_START"];
+const PLANS: Array<"STANDARD" | "LIGHT_START" | "PARTNER"> = ["STANDARD", "LIGHT_START", "PARTNER"];
 
 function baseInput(sc: SimScenario, bank: SimBank | null): SimInput {
   return {

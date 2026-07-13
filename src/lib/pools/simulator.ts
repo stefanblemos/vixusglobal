@@ -116,7 +116,7 @@ export type SimInput = {
   perfPct: number; // fração (0.35) — modo PERFORMANCE
   perfTiming: "PER_SALE" | "PROJECT_COMPLETION";
   promoteTiers: PromoteTier[] | null; // modo PROMOTE (pago na conclusão)
-  paymentPlan: "STANDARD" | "LIGHT_START"; // 10/30/20/20/15/5 ou 10/15/25/25/20/5
+  paymentPlan: "STANDARD" | "LIGHT_START" | "PARTNER"; // 10/30/20/20/15/5 · 10/15/25/25/20/5 · 10/10/25/25/25/5
   equityGatePct: number; // fração
   unitGapDays: number;
   scenario: SimScenario;
@@ -268,6 +268,7 @@ function schedule(u: SimUnitInput, idx: number, input: SimInput) {
 
 // Planos de desembolso da obra (6 fases). LIGHT_START alivia o início: até o permit caem
 // 25% (vs 40%) — exposição inicial ≈ lote + 25% da obra (+ juros estimados sem reserve).
+// PARTNER (sócios): só 20% até o permit — aporte inicial mais leve, resto na obra.
 const PHASE_NAMES = [
   "Permit application",
   "Permit issued",
@@ -277,9 +278,10 @@ const PHASE_NAMES = [
   "CO issued",
 ] as const;
 
-export const PAYMENT_PLANS: Record<"STANDARD" | "LIGHT_START", number[]> = {
+export const PAYMENT_PLANS: Record<"STANDARD" | "LIGHT_START" | "PARTNER", number[]> = {
   STANDARD: [0.1, 0.3, 0.2, 0.2, 0.15, 0.05],
   LIGHT_START: [0.1, 0.15, 0.25, 0.25, 0.2, 0.05],
+  PARTNER: [0.1, 0.1, 0.25, 0.25, 0.25, 0.05],
 };
 
 // Depois do closing, as PRIMEIRAS medições do banco levam ~15 dias — nenhum draw antes
