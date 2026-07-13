@@ -173,6 +173,45 @@ export async function updateSimulationSettings(
   return undefined;
 }
 
+// Edita a CESTA (casas + ciclos) de uma simulação existente — a simulação é viva:
+// valida no catálogo, re-roda o motor e sobrescreve o snapshot. Erros voltam visíveis
+// (React 19: nunca return silencioso em form de edição).
+export async function updateSimulationUnits(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const id = String(formData.get("simulationId") ?? "");
+  if (!id) return { error: "Simulation not found." };
+  const sim = await prisma.poolSimulation.findUnique({ where: { id } });
+  if (!sim) return { error: "Simulation not found." };
+  const units = parseUnits(String(formData.get("units") ?? "[]"));
+  if (units.length === 0) return { error: "A cesta precisa de pelo menos uma casa." };
+
+  const input = await buildSimInput({
+    fundingMode: sim.fundingMode,
+    upfrontFunding: sim.upfrontFunding,
+    compMode: sim.compMode,
+    perfPct: sim.perfPct,
+    perfTiming: sim.perfTiming,
+    promoteTiers: (sim.promoteTiers as PromoteTierInput[] | null) ?? null,
+    flatFeePerHouse: sim.flatFeePerHouse,
+    paymentPlan: sim.paymentPlan,
+    equityGatePct: sim.equityGatePct,
+    unitGapDays: sim.unitGapDays,
+    scenarioCode: sim.scenarioCode,
+    bankProfileId: sim.bankProfileId,
+    units,
+  });
+  if ("error" in input) return { error: input.error };
+  const result = simulate(input);
+  await prisma.poolSimulation.update({
+    where: { id },
+    data: { units: units as object[], result: JSON.parse(JSON.stringify(result)) },
+  });
+  revalidatePath(`/pools/simulator/${id}`);
+  return undefined;
+}
+
 // Duplica a simulação (a original é "viva" e sobrescreve — duplicar é como se guarda
 // uma versão). Copia premissas + cesta + snapshot; sem vínculo com pool.
 export async function duplicateSimulation(formData: FormData): Promise<void> {

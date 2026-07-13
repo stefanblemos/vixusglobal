@@ -26,11 +26,12 @@ export type SimCatalog = {
   pools: Array<{ id: string; code: string; name: string }>;
 };
 
-type UnitRow = { locationId: string; modelId: string; cycle: number };
+export type UnitRow = { locationId: string; modelId: string; cycle: number };
 
 // Modal de adição de casa: localização primeiro → modelos daquela localização, com os
 // valores de construção/venda; quantidade cria N linhas iguais de uma vez.
-function AddHouseModal({
+// Exportado: também usado pelo editor de cesta da página de resultado.
+export function AddHouseModal({
   catalog,
   modelsFor,
   allowCycles,

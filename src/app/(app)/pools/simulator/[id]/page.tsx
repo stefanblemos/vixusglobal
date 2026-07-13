@@ -12,6 +12,7 @@ import {
 import { simulate, type SimResult } from "@/lib/pools/simulator";
 import { buildSimInput, type PromoteTierInput, type UnitRef } from "@/lib/pools/build-sim-input";
 import { SimulationControls } from "@/components/simulation-controls";
+import { SimulationUnitsEditor } from "@/components/simulation-units-editor";
 import { BankMultiSelect } from "@/components/bank-multiselect";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
 import { SimLedger, type LedgerRow } from "@/components/sim-ledger";
@@ -272,7 +273,7 @@ export default async function SimulationPage({
   const injectionDays = new Set(
     (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
   );
-  const [allBanks, allScenarios] = await Promise.all([
+  const [allBanks, allScenarios, catalogLocations, catalogModelLocations] = await Promise.all([
     prisma.bankProfile.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -282,7 +283,22 @@ export default async function SimulationPage({
       },
     }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
+    prisma.catalogLocation.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.catalogModelLocation.findMany({ include: { model: true } }),
   ]);
+  // catálogo p/ o editor de cesta (mesma forma do /simulator/new)
+  const unitsCatalog = {
+    locations: catalogLocations,
+    modelLocations: catalogModelLocations.map((ml) => ({
+      locationId: ml.locationId,
+      modelId: ml.modelId,
+      modelName: ml.model.name,
+      salePrice: Number(ml.salePrice),
+      costPerformance: ml.costPerformance == null ? null : Number(ml.costPerformance),
+      costContractor: ml.costContractor == null ? null : Number(ml.costContractor),
+      costOpenBook: ml.costOpenBook == null ? null : Number(ml.costOpenBook),
+    })),
+  };
   const bankOptions = allBanks.map((b) => ({
     id: b.id,
     name: b.name,
@@ -367,6 +383,16 @@ export default async function SimulationPage({
           >
             📄 Investment Summary
           </a>
+          <SimulationUnitsEditor
+            simulationId={sim.id}
+            fundingMode={sim.fundingMode}
+            initialUnits={((sim.units as UnitRef[]) ?? []).map((u) => ({
+              locationId: u.locationId,
+              modelId: u.modelId,
+              cycle: u.cycle ?? 1,
+            }))}
+            catalog={unitsCatalog}
+          />
           <form action={duplicateSimulation}>
             <input type="hidden" name="simulationId" value={sim.id} />
             <button
