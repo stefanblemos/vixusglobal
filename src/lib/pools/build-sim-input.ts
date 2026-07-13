@@ -22,9 +22,25 @@ export type ComboOverride = {
   contractorFee?: number;
   buildMonths?: number;
 };
+// Grade "Cenário — os três lado a lado": overrides POR CENÁRIO (chave = code do cenário).
+// Só os campos que o motor realmente usa (stressSlippagePct fica fora — não entra na conta).
+export type ScenarioOverride = {
+  salePriceBufferPct?: number;
+  constructionCostBufferPct?: number;
+  lotCostBufferPct?: number;
+  closingFeePct?: number;
+  contingencyReservePct?: number;
+  landAcquisitionDays?: number;
+  saleClosingDays?: number;
+  constructionDurationBufferM?: number;
+  salesAbsorptionMonths?: number;
+  emdPct?: number;
+  unitGapDays?: number;
+};
 export type SimOverrides = {
   locations?: Record<string, LocationOverride>;
   combos?: Record<string, ComboOverride>; // chave "modelId|locationId"
+  scenarios?: Record<string, ScenarioOverride>; // chave = code (OPT/REAL/CONS/custom)
 };
 
 export const comboKey = (modelId: string, locationId: string) => `${modelId}|${locationId}`;
@@ -34,6 +50,7 @@ export function countOverrides(o: SimOverrides | null | undefined): number {
   let n = 0;
   for (const v of Object.values(o.locations ?? {})) n += Object.keys(v).length;
   for (const v of Object.values(o.combos ?? {})) n += Object.keys(v).length;
+  for (const v of Object.values(o.scenarios ?? {})) n += Object.keys(v).length;
   return n;
 }
 
@@ -57,6 +74,8 @@ export async function buildSimInput(sim: {
 }): Promise<SimInput | { error: string }> {
   const scenario = await prisma.bufferScenario.findUnique({ where: { code: sim.scenarioCode } });
   if (!scenario) return { error: "Scenario not found." };
+  // overrides da grade de cenário (aba Premissas) para ESTE cenário
+  const so = sim.overrides?.scenarios?.[sim.scenarioCode] ?? {};
   const bank = sim.bankProfileId
     ? await prisma.bankProfile.findUnique({
         where: { id: sim.bankProfileId },
@@ -135,20 +154,24 @@ export async function buildSimInput(sim: {
         ? sim.paymentPlan
         : "STANDARD",
     equityGatePct: Number(sim.equityGatePct) / 100,
-    // gap entre início das casas vem do CENÁRIO (Ótimo 10 · Real 20 · Conservador 30)
-    unitGapDays: scenario.unitGapDays,
+    // gap entre início das casas vem do CENÁRIO (Ótimo 10 · Real 20 · Conservador 30);
+    // a grade da aba Premissas pode sobrescrever POR CENÁRIO (so.<campo> ?? catálogo)
+    unitGapDays: so.unitGapDays ?? scenario.unitGapDays,
     scenario: {
-      salePriceBufferPct: Number(scenario.salePriceBufferPct),
-      constructionCostBufferPct: Number(scenario.constructionCostBufferPct),
-      lotCostBufferPct: Number(scenario.lotCostBufferPct),
-      closingFeePct: Number(scenario.closingFeePct),
-      contingencyReservePct: Number(scenario.contingencyReservePct),
-      landAcquisitionDays: scenario.landAcquisitionDays,
-      saleClosingDays: scenario.saleClosingDays,
-      constructionDurationBufferM: Number(scenario.constructionDurationBufferM),
+      salePriceBufferPct: so.salePriceBufferPct ?? Number(scenario.salePriceBufferPct),
+      constructionCostBufferPct:
+        so.constructionCostBufferPct ?? Number(scenario.constructionCostBufferPct),
+      lotCostBufferPct: so.lotCostBufferPct ?? Number(scenario.lotCostBufferPct),
+      closingFeePct: so.closingFeePct ?? Number(scenario.closingFeePct),
+      contingencyReservePct: so.contingencyReservePct ?? Number(scenario.contingencyReservePct),
+      landAcquisitionDays: so.landAcquisitionDays ?? scenario.landAcquisitionDays,
+      saleClosingDays: so.saleClosingDays ?? scenario.saleClosingDays,
+      constructionDurationBufferM:
+        so.constructionDurationBufferM ?? Number(scenario.constructionDurationBufferM),
       salesAbsorptionMonths:
-        scenario.salesAbsorptionMonths == null ? null : Number(scenario.salesAbsorptionMonths),
-      emdPct: Number(scenario.emdPct),
+        so.salesAbsorptionMonths ??
+        (scenario.salesAbsorptionMonths == null ? null : Number(scenario.salesAbsorptionMonths)),
+      emdPct: so.emdPct ?? Number(scenario.emdPct),
     },
     bank: bank
       ? {

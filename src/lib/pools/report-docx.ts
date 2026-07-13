@@ -598,7 +598,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       ? [
           body([
             t(
-              `Certain unit-level assumptions (${d.customAssumptions} value${d.customAssumptions > 1 ? "s" : ""} — sale prices, costs and/or timelines) were adjusted by the Manager specifically for this program and differ from the Manager's standing catalog; catalog reference values are available to prospective investors upon request.`,
+              `Certain underwriting assumptions (${d.customAssumptions} value${d.customAssumptions > 1 ? "s" : ""} — sale prices, costs, timelines and/or scenario parameters) were adjusted by the Manager specifically for this program and differ from the Manager's standing catalog; catalog reference values are available to prospective investors upon request.`,
               { size: 18, color: GRAY, italics: true },
             ),
           ]),

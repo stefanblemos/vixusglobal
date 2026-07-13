@@ -24,6 +24,7 @@ import {
   SimulationPremissas,
   type PremissasCombo,
   type PremissasLocation,
+  type PremissasScenario,
 } from "@/components/simulation-premissas";
 import { BankMultiSelect } from "@/components/bank-multiselect";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
@@ -295,7 +296,7 @@ export default async function SimulationPage({
         lois: { orderBy: { createdAt: "desc" }, take: 1, select: { loiNumber: true, loiDate: true } },
       },
     }),
-    prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
+    prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.catalogLocation.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -355,6 +356,24 @@ export default async function SimulationPage({
         buildMonths: Number(ml.model.buildMonths),
       },
     }));
+
+  const premissasScenarios: PremissasScenario[] = allScenarios.map((sc) => ({
+    code: sc.code,
+    name: sc.name,
+    catalog: {
+      salePriceBufferPct: Number(sc.salePriceBufferPct),
+      constructionCostBufferPct: Number(sc.constructionCostBufferPct),
+      lotCostBufferPct: Number(sc.lotCostBufferPct),
+      closingFeePct: Number(sc.closingFeePct),
+      contingencyReservePct: Number(sc.contingencyReservePct),
+      landAcquisitionDays: sc.landAcquisitionDays,
+      saleClosingDays: sc.saleClosingDays,
+      constructionDurationBufferM: Number(sc.constructionDurationBufferM),
+      salesAbsorptionMonths: sc.salesAbsorptionMonths == null ? null : Number(sc.salesAbsorptionMonths),
+      emdPct: Number(sc.emdPct),
+      unitGapDays: sc.unitGapDays,
+    },
+  }));
 
   const bankOptions = allBanks.map((b) => ({
     id: b.id,
@@ -517,8 +536,10 @@ export default async function SimulationPage({
           key={JSON.stringify(simOverrides)}
           simulationId={sim.id}
           scenarioName={sim.scenario.name}
+          baseCode="CONS"
           locations={premissasLocations}
           combos={premissasCombos}
+          scenarios={premissasScenarios}
           overrides={simOverrides}
         />
       )}

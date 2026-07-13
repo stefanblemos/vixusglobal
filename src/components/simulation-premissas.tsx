@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useActionState } from "react";
 import { updateSimulationOverrides, type FormState } from "@/lib/actions/simulations";
 
@@ -31,9 +31,15 @@ export type PremissasCombo = {
     buildMonths: number;
   };
 };
+export type PremissasScenario = {
+  code: string;
+  name: string;
+  catalog: Record<string, number | null>;
+};
 type Overrides = {
   locations?: Record<string, Record<string, number>>;
   combos?: Record<string, Record<string, number>>;
+  scenarios?: Record<string, Record<string, number>>;
 };
 
 const LOC_FIELDS = [
@@ -50,6 +56,31 @@ const COMBO_FIELDS = [
   ["contractorFee", "Fee $"],
   ["buildMonths", "Obra (m)"],
 ] as const;
+
+// Grade de cenário: linhas em dois grupos — fatos do projeto e buffers de pessimismo
+const SCEN_GROUPS: Array<{ title: string; fields: Array<[string, string, string]> }> = [
+  {
+    title: "Fatos do projeto (contrato/mercado)",
+    fields: [
+      ["emdPct", "EMD %", "caução na oferta do lote"],
+      ["closingFeePct", "Closing fee da venda %", "comissões + custos de venda"],
+      ["landAcquisitionDays", "Closing do lote (dias)", "caução → escritura (escrow)"],
+      ["saleClosingDays", "Closing da venda (dias)", "contrato do comprador → caixa"],
+    ],
+  },
+  {
+    title: "Buffers de pessimismo (definem cada cenário)",
+    fields: [
+      ["salePriceBufferPct", "Preço de venda %", ""],
+      ["constructionCostBufferPct", "Custo de obra %", ""],
+      ["lotCostBufferPct", "Custo do lote %", ""],
+      ["contingencyReservePct", "Contingência %", "reserva sobre lote+obra, devolvida se não usada"],
+      ["constructionDurationBufferM", "Prazo de obra (± meses)", ""],
+      ["salesAbsorptionMonths", "Absorção (+ meses)", "soma aos dias de venda do location"],
+      ["unitGapDays", "Gap entre casas (dias)", ""],
+    ],
+  },
+];
 
 function Cell({
   value,
@@ -85,14 +116,18 @@ function Cell({
 export function SimulationPremissas({
   simulationId,
   scenarioName,
+  baseCode,
   locations,
   combos,
+  scenarios,
   overrides,
 }: {
   simulationId: string;
   scenarioName: string;
+  baseCode: string; // cenário-base do Investment Summary (CONS) — badge na coluna
   locations: PremissasLocation[];
   combos: PremissasCombo[];
+  scenarios: PremissasScenario[];
   overrides: Overrides | null;
 }) {
   // estado inicial: override ?? catálogo (cópia editável)
@@ -115,11 +150,22 @@ export function SimulationPremissas({
         cmb[c.key][k] = ov != null ? String(ov) : cat != null ? String(cat) : "";
       }
     }
-    return { loc, cmb };
-  }, [locations, combos, overrides]);
+    const scn: Record<string, Record<string, string>> = {};
+    for (const s of scenarios) {
+      scn[s.code] = {};
+      for (const g of SCEN_GROUPS)
+        for (const [k] of g.fields) {
+          const ov = overrides?.scenarios?.[s.code]?.[k];
+          const cat = s.catalog[k];
+          scn[s.code][k] = ov != null ? String(ov) : cat != null ? String(cat) : "";
+        }
+    }
+    return { loc, cmb, scn };
+  }, [locations, combos, scenarios, overrides]);
 
   const [loc, setLoc] = useState(initial.loc);
   const [cmb, setCmb] = useState(initial.cmb);
+  const [scn, setScn] = useState(initial.scn);
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateSimulationOverrides,
     undefined,
@@ -137,8 +183,14 @@ export function SimulationPremissas({
       for (const [k, v] of Object.entries(fields)) if (v !== "" && Number.isFinite(Number(v))) e[k] = Number(v);
       if (Object.keys(e).length) out.combos![key] = e;
     }
+    out.scenarios = {};
+    for (const [code, fields] of Object.entries(scn)) {
+      const e: Record<string, number> = {};
+      for (const [k, v] of Object.entries(fields)) if (v !== "" && Number.isFinite(Number(v))) e[k] = Number(v);
+      if (Object.keys(e).length) out.scenarios[code] = e;
+    }
     return out;
-  }, [loc, cmb]);
+  }, [loc, cmb, scn]);
 
   const touched =
     locations.some((l) =>
@@ -154,6 +206,15 @@ export function SimulationPremissas({
         const v = cmb[c.key]?.[k] ?? "";
         return v !== "" && cat != null && Number(v) !== cat;
       }),
+    ) ||
+    scenarios.some((s) =>
+      SCEN_GROUPS.some((g) =>
+        g.fields.some(([k]) => {
+          const cat = s.catalog[k];
+          const v = scn[s.code]?.[k] ?? "";
+          return v !== "" && cat != null && Number(v) !== cat;
+        }),
+      ),
     );
 
   return (
@@ -234,6 +295,66 @@ export function SimulationPremissas({
             </div>
           </div>
 
+          <div>
+            <h3 className="mb-1 text-sm font-semibold text-slate-700">Cenário — os três lado a lado</h3>
+            <p className="mb-2 text-xs text-slate-400">
+              Cópia editável dos cenários do catálogo, só para esta simulação. Quer um cenário
+              reutilizável em várias simulações? Crie um cenário custom no Catalog → Scenarios.
+            </p>
+            <div className="overflow-x-auto rounded-lg border border-slate-100">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className={th}>Parâmetro</th>
+                    {scenarios.map((s) => (
+                      <th key={s.code} className={thR}>
+                        {s.name}
+                        {s.code === baseCode && (
+                          <span className="ml-1 rounded-full bg-[#1f3a5f] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-white">
+                            BASE DO REPORT
+                          </span>
+                        )}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {SCEN_GROUPS.map((g) => (
+                    <React.Fragment key={g.title}>
+                      <tr className="bg-slate-50/80">
+                        <td
+                          colSpan={scenarios.length + 1}
+                          className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500"
+                        >
+                          {g.title}
+                        </td>
+                      </tr>
+                      {g.fields.map(([k, label, hint]) => (
+                        <tr key={k} className="border-b border-slate-50">
+                          <td className="px-3 py-2 text-sm text-slate-600">
+                            {label}
+                            {hint && <span className="block text-[10px] text-slate-400">{hint}</span>}
+                          </td>
+                          {scenarios.map((s) => (
+                            <td key={s.code} className="w-32 px-2 py-1.5">
+                              <Cell
+                                value={scn[s.code]?.[k] ?? ""}
+                                catalog={s.catalog[k]}
+                                onChange={(v) =>
+                                  setScn((st) => ({ ...st, [s.code]: { ...st[s.code], [k]: v } }))
+                                }
+                              />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
 
           <form action={formAction} className="flex items-center justify-between">
@@ -257,8 +378,18 @@ export function SimulationPremissas({
                     cmbReset[c.key][k] = cat != null ? String(cat) : "";
                   }
                 }
+                const scnReset: typeof scn = {};
+                for (const s of scenarios) {
+                  scnReset[s.code] = {};
+                  for (const g of SCEN_GROUPS)
+                    for (const [k] of g.fields) {
+                      const cat = s.catalog[k];
+                      scnReset[s.code][k] = cat != null ? String(cat) : "";
+                    }
+                }
                 setLoc(locReset);
                 setCmb(cmbReset);
+                setScn(scnReset);
               }}
               className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100"
             >

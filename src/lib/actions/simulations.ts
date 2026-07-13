@@ -283,6 +283,47 @@ export async function updateSimulationOverrides(
     }
     if (Object.keys(entry).length) clean.combos![key] = entry;
   }
+  // Grade de cenário (3 colunas): normaliza contra os valores ATUAIS de cada cenário
+  clean.scenarios = {};
+  const SCEN_FIELDS = [
+    "salePriceBufferPct",
+    "constructionCostBufferPct",
+    "lotCostBufferPct",
+    "closingFeePct",
+    "contingencyReservePct",
+    "landAcquisitionDays",
+    "saleClosingDays",
+    "constructionDurationBufferM",
+    "salesAbsorptionMonths",
+    "emdPct",
+    "unitGapDays",
+  ] as const;
+  for (const [code, o] of Object.entries(raw.scenarios ?? {})) {
+    const sc = await prisma.bufferScenario.findUnique({ where: { code } });
+    if (!sc) continue;
+    const cat: Record<string, number | null> = {
+      salePriceBufferPct: Number(sc.salePriceBufferPct),
+      constructionCostBufferPct: Number(sc.constructionCostBufferPct),
+      lotCostBufferPct: Number(sc.lotCostBufferPct),
+      closingFeePct: Number(sc.closingFeePct),
+      contingencyReservePct: Number(sc.contingencyReservePct),
+      landAcquisitionDays: sc.landAcquisitionDays,
+      saleClosingDays: sc.saleClosingDays,
+      constructionDurationBufferM: Number(sc.constructionDurationBufferM),
+      salesAbsorptionMonths: sc.salesAbsorptionMonths == null ? null : Number(sc.salesAbsorptionMonths),
+      emdPct: Number(sc.emdPct),
+      unitGapDays: sc.unitGapDays,
+    };
+    const entry: Record<string, number> = {};
+    for (const k of SCEN_FIELDS) {
+      const rawV = (o as Record<string, unknown>)[k];
+      // buffers podem ser NEGATIVOS (−5% de venda, −0.5m de prazo) — só valida finito
+      const v = rawV === "" || rawV == null ? null : Number(rawV);
+      if (v != null && Number.isFinite(v) && v !== cat[k]) entry[k] = v;
+    }
+    if (Object.keys(entry).length) clean.scenarios[code] = entry;
+  }
+
   const overrides = countOverrides(clean) > 0 ? clean : null;
 
   const input = await buildSimInput({
