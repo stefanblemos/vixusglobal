@@ -42,6 +42,9 @@ export type ReportData = {
   simName: string;
   generatedAt: string; // ISO date
   fundingMode: "EQUITY" | "BANK";
+  compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
+  hasPromote: boolean; // promote/waterfall ativo (PROMOTE, ou OPEN_BOOK com tiers)
+  flatFeePerHouse: number;
   compLabel: string;
   bankName: string | null;
   scenarios: ScenarioKpis[];
@@ -283,6 +286,11 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     simName: sim.name,
     generatedAt: new Date().toISOString().slice(0, 10),
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
+    compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK",
+    hasPromote:
+      sim.compMode === "PROMOTE" ||
+      (sim.compMode === "OPEN_BOOK" && !!(sim.promoteTiers as unknown[] | null)?.length),
+    flatFeePerHouse: Number(sim.flatFeePerHouse ?? 0),
     compLabel,
     bankName: sim.bankProfile?.name ?? null,
     scenarios,

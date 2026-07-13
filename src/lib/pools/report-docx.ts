@@ -291,7 +291,10 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     // ── 1. EXECUTIVE SUMMARY ──
     h1("1. Executive Summary"),
     body(
-      "The Project is a residential build-to-sell program executed by 4U Custom Homes (the “Builder”) and administered by Vixus Investment (the “Manager”) in high-absorption submarkets of Central and Southwest Florida. Investor capital funds land acquisition and vertical construction of single-family homes that are sold upon completion; capital is recycled through consecutive, pre-permitted construction cycles (the “Pipeline”), so that the same equity base produces multiple homes over the life of the program.",
+      "The Project is a residential build-to-sell program executed by 4U Custom Homes (the “Builder”) and administered by Vixus Investment (the “Manager”) in high-absorption submarkets of Central and Southwest Florida. " +
+        (d.cycles.length > 1
+          ? "Investor capital funds land acquisition and vertical construction of single-family homes that are sold upon completion; capital is recycled through consecutive, pre-permitted construction cycles (the “Pipeline”), so that the same equity base produces multiple homes over the life of the program."
+          : "Investor capital funds land acquisition and vertical construction of single-family homes in a single construction wave with staggered starts; capital is returned as each home sells and closes."),
     ),
     kvTable([
       ["Vehicle", "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each"],
@@ -365,11 +368,40 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         " UFES graduate with a commercial career in the Brazilian construction sector: Commercial Director at Avantec Engenharia — the engineering and design firm co-owned by the founding partners — and previously Commercial Manager at Orla Construções. Co-founded 4U in 2019; leads sales, pricing and broker relationships across the group’s six Florida regions.",
       ),
     ]),
-    body([
-      t("Alignment of interests: the Builder’s compensation is "),
-      t("subordinated to project performance", { bold: true }),
-      t(" — under the performance model, 4U earns only a share of realized net profit. There is no development fee payable regardless of outcome."),
-    ]),
+    // Alinhamento de interesses — DINÂMICO por modo de remuneração (feedback do advogado
+    // 14/07: a prosa fixa de "performance" contradizia o open book das págs. 3 e 7)
+    ...(d.compMode === "PERFORMANCE" || d.compMode === "PROMOTE"
+      ? [
+          body([
+            t("Alignment of interests: the Builder’s compensation is "),
+            t("subordinated to project performance", { bold: true }),
+            t(
+              " — under this model, 4U earns only a share of realized net profit. There is no development fee payable regardless of outcome.",
+            ),
+          ]),
+        ]
+      : d.compMode === "OPEN_BOOK"
+        ? [
+            body([
+              t("Alignment of interests: construction is delivered on an "),
+              t("open-book basis", { bold: true }),
+              t(
+                ` — the Builder bills documented construction cost plus a fixed, fully disclosed fee of ${money0(d.flatFeePerHouse)} per home. The Builder’s margin is transparent and capped per home, every cost is auditable against invoices on the Manager’s platform` +
+                  (d.hasPromote
+                    ? ", and any additional performance share accrues only above investor return hurdles (see Section 7)."
+                    : ", and cost overruns compress the Builder’s effective economics — not the investor’s protections."),
+              ),
+            ]),
+          ]
+        : [
+            body([
+              t("Alignment of interests: the Builder works under a "),
+              t("fixed contractor fee", { bold: true }),
+              t(
+                " embedded in the construction contract — the Builder’s compensation is capped per home and fully reflected in the per-home economics of Appendix A; construction cost risk within the contract is borne by the Builder, not the investors.",
+              ),
+            ]),
+          ]),
 
     // ── 3. MARKET ──
     h1("3. Market Opportunity"),
@@ -426,31 +458,49 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         ]
       : []),
 
-    // ── 4. STRATEGY ──
-    h1("4. Investment Strategy — the Pipeline"),
-    body(
-      "The program’s core mechanic is disciplined capital recycling. Homes are organized in chained cycles: while the first basket of homes is under construction, lots for the following cycle are acquired and permit applications are filed in advance, so that each closed sale immediately triggers the start of the next home (“sell one, start one”). The initial raise is sized to fund the first cycle in full plus the land and permit-application costs of the second; from the third cycle onward, expansion is funded primarily by recycled sale proceeds.",
-    ),
-    bullet(
-      "Permit discipline: permit costs are always funded by equity — construction lenders do not fund permits. Pre-permitting is what allows a new home to break ground the day after its triggering sale closes.",
-    ),
-    ...(savingPct != null && savingPct > 0
+    // ── 4. STRATEGY — prosa acompanha a estrutura REAL (feedback do advogado 14/07:
+    // descrever a esteira num projeto de ciclo único contradizia o §6) ──
+    h1(d.cycles.length > 1 ? "4. Investment Strategy — the Pipeline" : "4. Investment Strategy"),
+    ...(d.cycles.length > 1
       ? [
-          bullet([
-            t("Capital efficiency: the Pipeline delivers the program’s "),
-            t(`${nHomes} homes`, { bold: true }),
-            t(" with approximately "),
-            t(`${savingPct}% less peak capital`, { bold: true }),
-            t(
-              ` than building all homes simultaneously (${money0(cons.peakCapital)} vs. ${money0(d.singleShotPeak!)}) — the same aggregate profit on materially less equity at risk, which is what drives the projected IRR.`,
-            ),
-          ]),
+          body(
+            "The program’s core mechanic is disciplined capital recycling. Homes are organized in chained cycles: while the first basket of homes is under construction, lots for the following cycle are acquired and permit applications are filed in advance, so that each closed sale immediately triggers the start of the next home (“sell one, start one”). The initial raise is sized to fund the first cycle in full plus the land and permit-application costs of the second; from the third cycle onward, expansion is funded primarily by recycled sale proceeds.",
+          ),
+          bullet(
+            "Permit discipline: permit costs are always funded by equity — construction lenders do not fund permits. Pre-permitting is what allows a new home to break ground the day after its triggering sale closes.",
+          ),
+          ...(savingPct != null && savingPct > 0
+            ? [
+                bullet([
+                  t("Capital efficiency: the Pipeline delivers the program’s "),
+                  t(`${nHomes} homes`, { bold: true }),
+                  t(" with approximately "),
+                  t(`${savingPct}% less peak capital`, { bold: true }),
+                  t(
+                    ` than building all homes simultaneously (${money0(cons.peakCapital)} vs. ${money0(d.singleShotPeak!)}) — the same aggregate profit on materially less equity at risk, which is what drives the projected IRR.`,
+                  ),
+                ]),
+              ]
+            : []),
+          bullet(
+            "Just-in-time treasury: investor capital is called only when project cash cannot cover the next obligation, and surplus cash is returned as soon as the forward schedule no longer requires it.",
+          ),
+          bullet([t("Cycle structure for this Project: "), t(cyclesText, { bold: true }), t(".")]),
         ]
-      : []),
-    bullet(
-      "Just-in-time treasury: investor capital is called only when project cash cannot cover the next obligation, and surplus cash is returned as soon as the forward schedule no longer requires it.",
-    ),
-    bullet([t("Cycle structure for this Project: "), t(cyclesText, { bold: true }), t(".")]),
+      : [
+          body(
+            `The program builds its ${nHomes} homes in a single construction wave with staggered starts, so that lot acquisition, permitting and construction advance as a coordinated schedule rather than all at once. Homes are sold individually upon completion, and investor capital is returned as each sale closes — the timeline in Section 5 shows the resulting phase windows.`,
+          ),
+          bullet(
+            "Permit discipline: permit costs are always funded by equity — construction lenders do not fund permits. Construction begins only after the lot is owned and the permit is issued.",
+          ),
+          bullet(
+            "Just-in-time treasury: investor capital is called only when project cash cannot cover the next obligation, and surplus cash is returned as soon as the forward schedule no longer requires it — capital is never idle by design.",
+          ),
+          bullet(
+            "The same engine supports multi-cycle programs (“sell one, start one”), where sale proceeds trigger the next home; this Project is underwritten as a single cycle.",
+          ),
+        ]),
 
     // ── 5. FINANCING ──
     h1("5. Construction Financing Discipline"),
@@ -612,6 +662,50 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       ["Offering exemption", "Rule 506(b) of Regulation D; Florida §517.061(11) as applicable. Schedule K-1 issued annually. One dedicated vehicle per program — entities are never reused across programs."],
       ["Reporting", "Investor portal: monthly capital statement, per-home budget vs. actual, bank-statement reconciliation and distribution history."],
     ]),
+    body(""),
+    // Governança e proteções — feedback do advogado 14/07: o documento não dizia quem
+    // controla a LLC, quem movimenta a conta e o que acontece quando algo derrapa
+    h2("Governance & investor protections"),
+    body([
+      t("Control. ", { bold: true }),
+      t(
+        "The company is manager-managed: Vixus Investment, as manager, conducts the ordinary course of the program — land acquisition within the disclosed basket, construction disbursements, sales and distributions. Investors hold non-voting units with full information rights. Matters outside the ordinary course, including amendments to the operating agreement and transactions with affiliates beyond the disclosed construction arrangement, are governed by the operating agreement.",
+      ),
+    ]),
+    body([
+      t("Bank account and cash controls. ", { bold: true }),
+      t(
+        "The program’s bank account is held in the company’s own name and operated by the Manager. The Builder is never paid on demand: construction funds are released against the milestone disbursement schedule reflected in Appendix A, and every account movement is recorded in the platform ledger and reconciled monthly against the bank statement — investors see the same reconciliation on the portal, not a summary prepared separately for them.",
+      ),
+    ]),
+    body([
+      t("If the program slips. ", { bold: true }),
+      t(
+        "The base case already funds a contingency reserve and carries the Conservative buffers of Section 6 (discounted sale prices, cost overruns, extended construction and marketing timelines). Cost overruns draw on the contingency reserve first" +
+          (d.compMode === "OPEN_BOOK"
+            ? "; under the open-book model the Builder’s fee is fixed per home, so overruns do not increase the Builder’s compensation."
+            : d.compMode === "PERFORMANCE" || d.compMode === "PROMOTE"
+              ? "; under the performance model, overruns reduce the Builder’s own share before they reach investor capital."
+              : "; construction cost risk within the fixed-price contract is borne by the Builder.") +
+          " Slower sales extend the timeline rather than force distressed pricing — the sensitivity table in Section 6 quantifies the effect on returns, and the breakeven analysis states how much price decline the program tolerates before investor capital is impaired." +
+          (d.projectPhases.loan
+            ? " Where construction debt is used, facility term overruns and extension fees are modeled explicitly (Section 5) rather than discovered later."
+            : "") +
+          " Monthly reporting against the per-home budget surfaces deviations early, while corrective options — repricing, re-sequencing starts, or pausing acquisitions not yet contracted — remain available.",
+      ),
+    ]),
+    new Paragraph({
+      spacing: { after: 200, line: 264 },
+      children: [
+        new TextRun({
+          text: "Definitive governance, consent and transfer provisions are those of the operating agreement and subscription documents, which prevail over this summary.",
+          font: FONT,
+          size: 16,
+          color: GRAY,
+          italics: true,
+        }),
+      ],
+    }),
 
     // ── 8. RISKS ──
     new Paragraph({ children: [new PageBreak()] }),
