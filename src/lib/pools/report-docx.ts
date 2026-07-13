@@ -5,6 +5,7 @@ import {
   Footer,
   Header,
   HeadingLevel,
+  ImageRun,
   LevelFormat,
   PageBreak,
   PageNumber,
@@ -19,6 +20,7 @@ import {
 } from "docx";
 import type { ReportData } from "@/lib/pools/report-data";
 import type { ReportProse } from "@/lib/pools/report-ai";
+import { LOGO_4U, LOGO_VIXUS } from "@/lib/pools/report-logos";
 
 // Investment Summary canônico por simulação — prosa aprovada pelo Stefan em 13/07/2026
 // (rascunho validado com o advogado). Texto fixo em inglês; números vêm do ReportData.
@@ -40,6 +42,8 @@ const t = (text: string, opts: Record<string, unknown> = {}) =>
 
 const body = (children: string | TextRun[], opts: Record<string, unknown> = {}) =>
   new Paragraph({
+    // corpo do documento justificado (padrão institucional) — opts pode sobrescrever
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { after: 160, line: 288 },
     children: Array.isArray(children) ? children : [t(children)],
     ...opts,
@@ -62,6 +66,7 @@ const h2 = (text: string) =>
 const bullet = (children: string | TextRun[]) =>
   new Paragraph({
     numbering: { reference: "bullets", level: 0 },
+    alignment: AlignmentType.JUSTIFIED,
     spacing: { after: 100, line: 276 },
     children: Array.isArray(children) ? children : [t(children)],
   });
@@ -166,35 +171,105 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       ? Math.round((1 - cons.peakCapital / d.singleShotPeak) * 100)
       : null;
 
+  // Logos com a mesma altura visual (px a 96dpi), centralizadas lado a lado
+  const logoH = 52;
+  const logo4uW = Math.round((LOGO_4U.width / LOGO_4U.height) * logoH); // horizontal: 4U + HOMES
+  const vixusH = 78; // marca da Vixus é mais "quadrada" — um pouco maior p/ equilibrar
+  const logoVixusW = Math.round((LOGO_VIXUS.width / LOGO_VIXUS.height) * vixusH);
+
+  const navyBandCell = (inner: Paragraph[]) =>
+    new Table({
+      width: { size: W, type: WidthType.DXA },
+      columnWidths: [W],
+      borders: {
+        top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              width: { size: W, type: WidthType.DXA },
+              shading: { type: ShadingType.CLEAR, fill: NAVY },
+              margins: { top: 420, bottom: 420, left: 400, right: 400 },
+              children: inner,
+            }),
+          ],
+        }),
+      ],
+    });
+
   const children: (Paragraph | Table)[] = [
     // ── COVER ──
-    new Paragraph({ spacing: { before: 2200 }, children: [] }),
+    new Paragraph({ spacing: { before: 900 }, children: [] }),
+    // logos lado a lado, centralizadas
     new Paragraph({
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: "4U CUSTOM HOMES  ×  VIXUS INVESTMENT", font: FONT, size: 26, color: GRAY, bold: true })],
+      children: [
+        new ImageRun({
+          type: "png",
+          data: Buffer.from(LOGO_4U.data, "base64"),
+          transformation: { width: logo4uW, height: logoH },
+        }),
+        new TextRun({ text: "      ", font: FONT, size: 40 }),
+        new ImageRun({
+          type: "png",
+          data: Buffer.from(LOGO_VIXUS.data, "base64"),
+          transformation: { width: logoVixusW, height: vixusH },
+        }),
+      ],
     }),
+    new Paragraph({ spacing: { before: 1500 }, children: [] }),
+    // faixa navy com o título — cara de capa de fundo
+    navyBandCell([
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 160 },
+        children: [new TextRun({ text: "INVESTMENT SUMMARY", font: FONT, size: 60, bold: true, color: "FFFFFF" })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { after: 120 },
+        children: [new TextRun({ text: d.simName, font: FONT, size: 30, bold: true, color: "D9E2F0" })],
+      }),
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [
+          new TextRun({
+            text: "Residential Build-to-Sell Program — Central & Southwest Florida",
+            font: FONT,
+            size: 22,
+            color: "9FB3CF",
+          }),
+        ],
+      }),
+    ]),
+    new Paragraph({ spacing: { before: 600 }, children: [] }),
     new Paragraph({
-      spacing: { before: 300 },
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: "INVESTMENT SUMMARY", font: FONT, size: 56, bold: true, color: NAVY })],
+      children: [
+        new TextRun({ text: "4U Custom Homes — Builder    ·    Vixus Investment — Manager", font: FONT, size: 22, color: GRAY }),
+      ],
     }),
+    new Paragraph({ spacing: { before: 2400 }, children: [] }),
     new Paragraph({
+      alignment: AlignmentType.CENTER,
+      border: { top: { style: BorderStyle.SINGLE, size: 6, color: NAVY } },
       spacing: { before: 200 },
-      alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: d.simName, font: FONT, size: 28, bold: true, color: "334155" })],
+      children: [],
     }),
     new Paragraph({
-      spacing: { before: 120 },
       alignment: AlignmentType.CENTER,
-      children: [new TextRun({ text: "Residential Build-to-Sell Program — Central & Southwest Florida", font: FONT, size: 24, color: GRAY })],
-    }),
-    new Paragraph({
-      spacing: { before: 2600 },
-      alignment: AlignmentType.CENTER,
+      spacing: { before: 160 },
       children: [new TextRun({ text: "CONFIDENTIAL — FOR DISCUSSION PURPOSES ONLY", font: FONT, size: 20, bold: true, color: "991B1B" })],
     }),
     new Paragraph({
       alignment: AlignmentType.CENTER,
+      spacing: { before: 80 },
       children: [t(`${d.generatedAt}${recipient ? `  ·  Prepared for ${recipient}` : ""}`, { color: GRAY })],
     }),
     new Paragraph({ children: [new PageBreak()] }),
