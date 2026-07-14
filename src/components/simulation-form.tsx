@@ -24,6 +24,8 @@ export type SimCatalog = {
   scenarios: Array<{ code: string; name: string }>;
   banks: Array<{ id: string; name: string }>;
   pools: Array<{ id: string; code: string; name: string }>;
+  // default do catálogo — a simulação carrega uma CÓPIA ao ligar o waterfall
+  waterfallTiers?: Array<{ hurdlePct: number | null; promotePct: number }>;
 };
 
 export type UnitRow = { locationId: string; modelId: string; cycle: number };
@@ -172,11 +174,18 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
   // waterfall = promote da VIXUS (Development Manager) — opt-in em qualquer modalidade
   const [waterfallOn, setWaterfallOn] = useState(false);
   const [vehicle, setVehicle] = useState("VIXUS_MANAGED");
-  const [tiers, setTiers] = useState<Array<{ hurdlePct: string; promotePct: string }>>([
-    { hurdlePct: "8", promotePct: "0" },
-    { hurdlePct: "15", promotePct: "20" },
-    { hurdlePct: "", promotePct: "35" },
-  ]);
+  const [tiers, setTiers] = useState<Array<{ hurdlePct: string; promotePct: string }>>(
+    catalog.waterfallTiers?.length
+      ? catalog.waterfallTiers.map((t) => ({
+          hurdlePct: t.hurdlePct == null ? "" : String(t.hurdlePct),
+          promotePct: String(t.promotePct),
+        }))
+      : [
+          { hurdlePct: "8", promotePct: "0" },
+          { hurdlePct: "15", promotePct: "20" },
+          { hurdlePct: "", promotePct: "35" },
+        ],
+  );
   const tiersActive = waterfallOn;
 
   const modelsFor = useMemo(() => {
@@ -396,7 +405,7 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
           </h3>
           <p className="mb-3 text-xs text-slate-400">
             Hurdle = retorno a.a. do investidor sobre o capital médio em risco. Cada faixa
-            entrega o promote % à 4U; hurdle vazio = acima do último. Pago na conclusão.
+            entrega o promote % à VIXUS (developer); hurdle vazio = acima do último. Pago na conclusão.
             {compMode === "OPEN_BOOK" &&
               " No open book o waterfall é por cima da taxa flat — remova todos os tiers para simular só a taxa."}
           </p>
@@ -413,7 +422,7 @@ export function SimulationForm({ catalog }: { catalog: SimCatalog }) {
                   placeholder="acima"
                   className={`${inputClass} w-20`}
                 />
-                <label className="text-xs text-slate-500">% a.a. → 4U leva</label>
+                <label className="text-xs text-slate-500">% a.a. → Vixus leva</label>
                 <input
                   value={t.promotePct}
                   onChange={(e) =>

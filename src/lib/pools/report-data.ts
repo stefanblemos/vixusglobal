@@ -47,6 +47,7 @@ export type ReportData = {
   clientEntityName: string | null;
   compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
   hasPromote: boolean; // promote/waterfall ativo (PROMOTE, ou OPEN_BOOK com tiers)
+  promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
   flatFeePerHouse: number;
   compLabel: string;
   bankName: string | null;
@@ -73,6 +74,7 @@ export type ReportData = {
     bankCost: number;
     builderComp: number; // 4U (performance/legado)
     promote: number; // Vixus (developer waterfall)
+    vehicle: number; // custos do veículo (abertura/contador/annual report/encerramento)
     contractorFeeTotal: number;
     result: number;
     diff: number; // vs kpis.profit — tem que ser 0.00
@@ -100,7 +102,8 @@ function closingOf(r: SimResult) {
     r.kpis.bankExtensionFee;
   const builderComp = r.kpis.perfFeeTotal;
   const promote = r.kpis.promoteTotal ?? 0; // snapshot antigo: promote embutido no perf
-  const result = round2(sales - lots - construction - bankCost - builderComp - promote);
+  const vehicle = r.kpis.vehicleCostTotal ?? 0;
+  const result = round2(sales - lots - construction - bankCost - builderComp - promote - vehicle);
   return {
     sales: round2(sales),
     lots: round2(lots),
@@ -108,6 +111,7 @@ function closingOf(r: SimResult) {
     bankCost: round2(bankCost),
     builderComp: round2(builderComp),
     promote: round2(promote),
+    vehicle: round2(vehicle),
     contractorFeeTotal: round2(r.kpis.contractorFeeTotal),
     result,
     diff: round2(result - r.kpis.profit),
@@ -135,6 +139,7 @@ function monthlyOf(r: SimResult): MonthlyRow[] {
       case "PHASE":
       case "CONTINGENCY":
       case "PERF_FEE":
+      case "VEHICLE":
         row.construction += -e.amount;
         break;
       case "SALE":
@@ -210,6 +215,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
+    vehicleStructure: sim.vehicleStructure,
   };
 
   const allScenarios = await prisma.bufferScenario.findMany({
@@ -298,6 +304,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     // waterfall da Vixus: opt-in em QUALQUER modalidade (14/07) — basta ter tiers
     hasPromote:
       sim.compMode === "PROMOTE" || !!(sim.promoteTiers as unknown[] | null)?.length,
+    promoteTiers: (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ?? null,
     flatFeePerHouse: Number(sim.flatFeePerHouse ?? 0),
     compLabel,
     bankName: sim.bankProfile?.name ?? null,

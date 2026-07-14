@@ -36,10 +36,17 @@ export type PremissasScenario = {
   name: string;
   catalog: Record<string, number | null>;
 };
+export type PremissasVehicleCost = {
+  id: string;
+  name: string;
+  timing: string;
+  catalogAmount: number;
+};
 type Overrides = {
   locations?: Record<string, Record<string, number>>;
   combos?: Record<string, Record<string, number>>;
   scenarios?: Record<string, Record<string, number>>;
+  vehicleCosts?: Record<string, number>;
 };
 
 const LOC_FIELDS = [
@@ -120,6 +127,7 @@ export function SimulationPremissas({
   locations,
   combos,
   scenarios,
+  vehicleCosts,
   overrides,
 }: {
   simulationId: string;
@@ -128,6 +136,7 @@ export function SimulationPremissas({
   locations: PremissasLocation[];
   combos: PremissasCombo[];
   scenarios: PremissasScenario[];
+  vehicleCosts: PremissasVehicleCost[];
   overrides: Overrides | null;
 }) {
   // estado inicial: override ?? catálogo (cópia editável)
@@ -160,12 +169,18 @@ export function SimulationPremissas({
           scn[s.code][k] = ov != null ? String(ov) : cat != null ? String(cat) : "";
         }
     }
-    return { loc, cmb, scn };
-  }, [locations, combos, scenarios, overrides]);
+    const veh: Record<string, string> = {};
+    for (const c of vehicleCosts) {
+      const ov = overrides?.vehicleCosts?.[c.id];
+      veh[c.id] = ov != null ? String(ov) : String(c.catalogAmount);
+    }
+    return { loc, cmb, scn, veh };
+  }, [locations, combos, scenarios, vehicleCosts, overrides]);
 
   const [loc, setLoc] = useState(initial.loc);
   const [cmb, setCmb] = useState(initial.cmb);
   const [scn, setScn] = useState(initial.scn);
+  const [veh, setVeh] = useState(initial.veh);
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateSimulationOverrides,
     undefined,
@@ -189,8 +204,11 @@ export function SimulationPremissas({
       for (const [k, v] of Object.entries(fields)) if (v !== "" && Number.isFinite(Number(v))) e[k] = Number(v);
       if (Object.keys(e).length) out.scenarios[code] = e;
     }
+    out.vehicleCosts = {};
+    for (const [id, v] of Object.entries(veh))
+      if (v !== "" && Number.isFinite(Number(v))) out.vehicleCosts[id] = Number(v);
     return out;
-  }, [loc, cmb, scn]);
+  }, [loc, cmb, scn, veh]);
 
   const touched =
     locations.some((l) =>
@@ -215,7 +233,11 @@ export function SimulationPremissas({
           return v !== "" && cat != null && Number(v) !== cat;
         }),
       ),
-    );
+    ) ||
+    vehicleCosts.some((c) => {
+      const v = veh[c.id] ?? "";
+      return v !== "" && Number(v) !== c.catalogAmount;
+    });
 
   return (
     <div className="space-y-6">
@@ -294,6 +316,39 @@ export function SimulationPremissas({
               </table>
             </div>
           </div>
+
+          {vehicleCosts.length > 0 && (
+            <div>
+              <h3 className="mb-1 text-sm font-semibold text-slate-700">Custos do veículo</h3>
+              <p className="mb-2 text-xs text-slate-400">
+                Abertura, encerramento e recorrentes da LLC do programa — fluxos datados, pagos
+                antes do waterfall. Cópia do catálogo; ajuste vale só para esta simulação.
+              </p>
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {vehicleCosts.map((c) => (
+                  <div key={c.id}>
+                    <label className="mb-1 block text-xs font-medium text-slate-600">
+                      {c.name}
+                      <span className="block text-[10px] font-normal text-slate-400">
+                        {c.timing === "FORMATION"
+                          ? "única — abertura"
+                          : c.timing === "DISSOLUTION"
+                            ? "única — encerramento"
+                            : c.timing === "ANNUAL"
+                              ? "anual (parcial cobra inteiro)"
+                              : "mensal"}
+                      </span>
+                    </label>
+                    <Cell
+                      value={veh[c.id] ?? ""}
+                      catalog={c.catalogAmount}
+                      onChange={(v) => setVeh((s0) => ({ ...s0, [c.id]: v }))}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div>
             <h3 className="mb-1 text-sm font-semibold text-slate-700">Cenário — os três lado a lado</h3>
@@ -387,9 +442,12 @@ export function SimulationPremissas({
                       scnReset[s.code][k] = cat != null ? String(cat) : "";
                     }
                 }
+                const vehReset: typeof veh = {};
+                for (const c of vehicleCosts) vehReset[c.id] = String(c.catalogAmount);
                 setLoc(locReset);
                 setCmb(cmbReset);
                 setScn(scnReset);
+                setVeh(vehReset);
               }}
               className="rounded-lg border border-slate-300 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100"
             >

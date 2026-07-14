@@ -594,3 +594,75 @@ export async function deleteScenario(formData: FormData): Promise<void> {
   await logChange("SCENARIO", code, before.name, "DELETE", []);
   revalidatePath(CATALOG);
 }
+
+// ── Waterfall default da Vixus + custos do veículo (14/07) ───────────────────
+// Semântica replace-set: o form manda a lista completa; salvamos e logamos o resumo.
+
+export async function saveWaterfallTiers(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
+  let tiers: Array<{ hurdlePct: number | null; promotePct: number }>;
+  try {
+    tiers = JSON.parse(String(formData.get("tiers") ?? "[]"));
+  } catch {
+    return { error: "Tiers inválidos." };
+  }
+  const clean = tiers
+    .map((t) => ({
+      hurdlePct: t.hurdlePct == null || (t.hurdlePct as unknown) === "" ? null : Number(t.hurdlePct),
+      promotePct: Number(t.promotePct),
+    }))
+    .filter((t) => Number.isFinite(t.promotePct) && t.promotePct >= 0 && (t.hurdlePct == null || Number.isFinite(t.hurdlePct)));
+  if (clean.length === 0) return { error: "Defina pelo menos um tier." };
+
+  const before = await prisma.catalogWaterfallTier.findMany({ orderBy: { sortOrder: "asc" } });
+  await prisma.$transaction([
+    prisma.catalogWaterfallTier.deleteMany({}),
+    prisma.catalogWaterfallTier.createMany({
+      data: clean.map((t, i) => ({ ...t, sortOrder: i })),
+    }),
+  ]);
+  const fmt = (ts: Array<{ hurdlePct: unknown; promotePct: unknown }>) =>
+    ts.map((t) => `${t.hurdlePct ?? "acima"}→${t.promotePct}%`).join(" · ");
+  await logChange("WATERFALL", "default", "Waterfall Vixus (default)", "UPDATE", [
+    { field: "tiers", from: fmt(before), to: fmt(clean) },
+  ]);
+  revalidatePath(CATALOG);
+  return { ok: true };
+}
+
+export async function saveVehicleCosts(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
+  let costs: Array<{ name: string; amount: number; timing: string }>;
+  try {
+    costs = JSON.parse(String(formData.get("costs") ?? "[]"));
+  } catch {
+    return { error: "Custos inválidos." };
+  }
+  const TIMINGS = new Set(["FORMATION", "DISSOLUTION", "ANNUAL", "MONTHLY"]);
+  const clean = costs
+    .map((c) => ({
+      name: String(c.name ?? "").trim(),
+      amount: Number(c.amount),
+      timing: String(c.timing) as "FORMATION" | "DISSOLUTION" | "ANNUAL" | "MONTHLY",
+    }))
+    .filter((c) => c.name && Number.isFinite(c.amount) && c.amount >= 0 && TIMINGS.has(c.timing));
+
+  const before = await prisma.catalogVehicleCost.findMany({ orderBy: { sortOrder: "asc" } });
+  await prisma.$transaction([
+    prisma.catalogVehicleCost.deleteMany({}),
+    prisma.catalogVehicleCost.createMany({
+      data: clean.map((c, i) => ({ ...c, sortOrder: i })),
+    }),
+  ]);
+  const fmt2 = (cs: Array<{ name: string; amount: unknown; timing: string }>) =>
+    cs.map((c) => `${c.name} $${c.amount} (${c.timing})`).join(" · ");
+  await logChange("VEHICLE_COST", "default", "Custos do veículo", "UPDATE", [
+    { field: "costs", from: fmt2(before.map((b) => ({ name: b.name, amount: Number(b.amount), timing: b.timing }))), to: fmt2(clean) },
+  ]);
+  revalidatePath(CATALOG);
+  return { ok: true };
+}

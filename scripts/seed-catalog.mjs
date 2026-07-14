@@ -123,6 +123,31 @@ async function main() {
       });
     }
   }
+  // Waterfall default da Vixus (developer) — CREATE-ONLY: só semeia se a tabela está vazia
+  // (o Stefan edita no catálogo; seed nunca sobrescreve — armadilha já mordida 3x)
+  if ((await prisma.catalogWaterfallTier.count()) === 0) {
+    await prisma.catalogWaterfallTier.createMany({
+      data: [
+        { hurdlePct: 8, promotePct: 0, sortOrder: 0 },
+        { hurdlePct: 15, promotePct: 20, sortOrder: 1 },
+        { hurdlePct: null, promotePct: 35, sortOrder: 2 },
+      ],
+    });
+    console.log("waterfall default semeado (8→0 / 15→20 / acima→35)");
+  }
+  // Custos do veículo (LLC da Vixus) — valores do Stefan, 14/07; CREATE-ONLY
+  if ((await prisma.catalogVehicleCost.count()) === 0) {
+    await prisma.catalogVehicleCost.createMany({
+      data: [
+        { name: "Abertura da LLC", amount: 650, timing: "FORMATION", sortOrder: 0 },
+        { name: "Encerramento da LLC", amount: 500, timing: "DISSOLUTION", sortOrder: 1 },
+        { name: "Contador — IR anual", amount: 1200, timing: "ANNUAL", sortOrder: 2 },
+        { name: "Annual report (FL)", amount: 350, timing: "ANNUAL", sortOrder: 3 },
+      ],
+    });
+    console.log("custos do veículo semeados (650/500/1200/350)");
+  }
+
   const counts = await Promise.all([
     prisma.bufferScenario.count(),
     prisma.catalogLocation.count(),

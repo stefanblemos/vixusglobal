@@ -53,6 +53,7 @@ export function SimulationControls({
   sim,
   scenarios,
   banks,
+  defaultTiers,
 }: {
   sim: {
     id: string;
@@ -71,6 +72,7 @@ export function SimulationControls({
   };
   scenarios: Array<{ code: string; name: string }>;
   banks: Array<{ id: string; name: string }>;
+  defaultTiers?: Array<{ hurdlePct: number | null; promotePct: number }>;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState<FormState, FormData>(
@@ -340,13 +342,32 @@ export function SimulationControls({
             <span className="text-xs font-medium text-slate-600">
               Tiers do waterfall — hurdle % a.a. sobre o capital médio em risco → % da faixa p/ a VIXUS (developer)
             </span>
-            <button
-              type="button"
-              onClick={submit}
-              className="rounded bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]"
-            >
-              Aplicar tiers
-            </button>
+            <div className="flex items-center gap-2">
+              {defaultTiers && defaultTiers.length > 0 && (
+                <button
+                  type="button"
+                  title="Volta aos tiers default do catálogo (não salva até Aplicar)"
+                  onClick={() =>
+                    setTiers(
+                      defaultTiers.map((t) => ({
+                        hurdlePct: t.hurdlePct == null ? "" : String(t.hurdlePct),
+                        promotePct: String(t.promotePct),
+                      })),
+                    )
+                  }
+                  className="rounded border border-slate-300 px-3 py-1 text-xs text-slate-600 hover:bg-slate-100"
+                >
+                  ↺ padrão do catálogo
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={submit}
+                className="rounded bg-[#1f3a5f] px-3 py-1 text-xs font-medium text-white hover:bg-[#16304f]"
+              >
+                Aplicar tiers
+              </button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {tiers.map((t, i) => (
@@ -360,7 +381,7 @@ export function SimulationControls({
                   placeholder="acima"
                   className={`${inputClass} w-16 px-2 py-1 text-right`}
                 />
-                <span className="text-xs text-slate-400">% → 4U</span>
+                <span className="text-xs text-slate-400">% → Vixus</span>
                 <input
                   value={t.promotePct}
                   onChange={(e) =>

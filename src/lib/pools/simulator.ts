@@ -122,6 +122,13 @@ export type SimInput = {
   scenario: SimScenario;
   bank: SimBank | null;
   units: SimUnitInput[];
+  // Custos do VEÍCULO (LLC da Vixus): abertura/encerramento/anuais — fluxos datados,
+  // pagos pelo investidor ANTES do waterfall; null/[] = sem custos (entidade do cliente)
+  vehicleCosts?: Array<{
+    name: string;
+    amount: number;
+    timing: "FORMATION" | "DISSOLUTION" | "ANNUAL" | "MONTHLY";
+  }> | null;
 };
 
 export type SimEvent = {
@@ -141,7 +148,8 @@ export type SimEvent = {
     | "BANK_FEE"
     | "BANK_RESERVE"
     | "BANK_INTEREST"
-    | "BANK_PAYOFF";
+    | "BANK_PAYOFF"
+    | "VEHICLE"; // custos do veículo (abertura/encerramento/contador/annual report)
   bankAmount?: number; // delta no saldo devedor do loan causado pelo evento
   // categoria do custo bancário (p/ o quadro mensal) e valor informativo (juro pago da
   // reserve não mexe em caixa nem saldo — o custo do mês vai aqui)
@@ -193,6 +201,7 @@ export type SimResult = {
     cashToClosing: number; // + excedente devolvido em cheque · − investidor paga no closing
     equityGateAmount: number;
     loanClosingDay: number | null; // dia do closing do loan (null = equity) — p/ fases/term
+    vehicleCostTotal: number; // custos do veículo (só VIXUS_MANAGED)
   };
   events: SimEvent[];
   monthly: Array<{ month: number; inflow: number; outflow: number; balance: number }>;
@@ -874,6 +883,31 @@ export function simulate(input: SimInput): SimResult {
     }
   }
 
+  // ── 4b. Custos do VEÍCULO (LLC da Vixus): abertura em D+0, anuais a cada 12 meses
+  // (ano parcial final cobra INTEIRO — regra do Stefan 14/07), mensais a cada 30d,
+  // encerramento no fim do programa. Antes da ordenação: entram no JIT normalmente.
+  let vehicleCostTotal = 0;
+  if (input.vehicleCosts?.length) {
+    const endDay = flows.reduce((m, f) => Math.max(m, f.day), 0);
+    const pushVehicle = (day: number, amount: number, label: string) => {
+      flows.push({ day, amount: -round2(amount), label, kind: "VEHICLE" });
+      vehicleCostTotal += amount;
+    };
+    for (const c of input.vehicleCosts) {
+      if (c.amount <= 0) continue;
+      if (c.timing === "FORMATION") pushVehicle(0, c.amount, `Veículo • ${c.name}`);
+      else if (c.timing === "DISSOLUTION") pushVehicle(endDay, c.amount, `Veículo • ${c.name}`);
+      else if (c.timing === "ANNUAL") {
+        const years = Math.max(1, Math.ceil(endDay / 365));
+        for (let y = 1; y <= years; y++)
+          pushVehicle(Math.min(y * 365, endDay), c.amount, `Veículo • ${c.name} (ano ${y})`);
+      } else if (c.timing === "MONTHLY") {
+        for (let d = 30; d <= endDay; d += 30) pushVehicle(d, c.amount, `Veículo • ${c.name}`);
+      }
+    }
+    vehicleCostTotal = round2(vehicleCostTotal);
+  }
+
   // ── 5. Ledger do investidor: JIT com aportes múltiplos de $1.000 ──
   // No mesmo dia, entradas processam ANTES das saídas (a venda liquida o payoff do banco no
   // mesmo dia) — senão o motor injeta aporte-fantasma para cobrir uma saída já financiada.
@@ -1080,6 +1114,7 @@ export function simulate(input: SimInput): SimResult {
       cashToClosing: round2(cashToClosing),
       equityGateAmount: round2((input.equityGatePct ?? 0) * totalCost),
       loanClosingDay: bank ? loanClosingDay : null,
+      vehicleCostTotal,
     },
     events,
     monthly,

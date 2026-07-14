@@ -72,6 +72,7 @@ export async function createSimulation(_prev: FormState, formData: FormData): Pr
   const vehicleStructure =
     String(formData.get("vehicleStructure") ?? "") === "CLIENT_ENTITY" ? "CLIENT_ENTITY" : "VIXUS_MANAGED";
   const clientEntityName = String(formData.get("clientEntityName") ?? "").trim() || null;
+  (sim as Record<string, unknown>).vehicleStructure = vehicleStructure;
   if (sim.compMode === "PROMOTE" && !sim.promoteTiers)
     return { error: "Defina pelo menos um tier do promote." };
   const input = await buildSimInput(sim);
@@ -165,6 +166,7 @@ export async function updateSimulationSettings(
     bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
+    vehicleStructure,
   };
   const input = await buildSimInput(fields);
   if ("error" in input) return { error: input.error };
@@ -220,6 +222,7 @@ export async function updateSimulationUnits(
     bankProfileId: sim.bankProfileId,
     units,
     overrides: (sim.overrides as SimOverrides | null) ?? null,
+    vehicleStructure: sim.vehicleStructure,
   });
   if ("error" in input) return { error: input.error };
   const result = simulate(input);
@@ -338,6 +341,15 @@ export async function updateSimulationOverrides(
     if (Object.keys(entry).length) clean.scenarios[code] = entry;
   }
 
+  // Custos do veículo: valor ≠ catálogo vira override (mesma regra dos demais)
+  clean.vehicleCosts = {};
+  for (const [costId, v] of Object.entries(raw.vehicleCosts ?? {})) {
+    const cost = await prisma.catalogVehicleCost.findUnique({ where: { id: costId } });
+    if (!cost) continue;
+    const nV = Number(v);
+    if (Number.isFinite(nV) && nV >= 0 && nV !== Number(cost.amount)) clean.vehicleCosts[costId] = nV;
+  }
+
   const overrides = countOverrides(clean) > 0 ? clean : null;
 
   const input = await buildSimInput({
@@ -423,6 +435,7 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
+    vehicleStructure: sim.vehicleStructure,
   });
   if ("error" in input) return;
   const result = simulate(input);
@@ -538,6 +551,7 @@ function simFields(sim: {
   scenarioCode: string;
   units: unknown;
   overrides?: unknown;
+  vehicleStructure: string;
 }) {
   return {
     upfrontFunding: sim.upfrontFunding,
@@ -552,6 +566,7 @@ function simFields(sim: {
     scenarioCode: sim.scenarioCode,
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
+    vehicleStructure: sim.vehicleStructure,
   };
 }
 

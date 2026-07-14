@@ -46,7 +46,17 @@ const input: SimInput = {
   scenario: SC,
   bank: null,
   units: [U, U, U],
+  vehicleCosts: [
+    { name: "Abertura da LLC", amount: 650, timing: "FORMATION" },
+    { name: "Encerramento da LLC", amount: 500, timing: "DISSOLUTION" },
+    { name: "Contador — IR anual", amount: 1200, timing: "ANNUAL" },
+    { name: "Annual report (FL)", amount: 350, timing: "ANNUAL" },
+  ],
 };
 const r = simulate(input);
 console.log("perfFee(4U):", r.kpis.perfFeeTotal, "· promote(Vixus):", r.kpis.promoteTotal, "· lucro:", r.kpis.profit, "· TIR:", r.kpis.irrAnnual);
 console.log("eventos PERF_FEE:", r.events.filter((e) => e.kind === "PERF_FEE").map((e) => `${e.label} ${e.amount}`));
+console.log("veiculo total:", r.kpis.vehicleCostTotal, "· eventos:", r.events.filter((e) => e.kind === "VEHICLE").map((e) => `D+${e.day} ${e.label} ${e.amount}`));
+const soma = r.units.reduce((s0, u) => s0 + u.adjSaleNet - u.adjLot - u.adjBuild, 0);
+const fecha = Math.round((soma - r.kpis.perfFeeTotal - (r.kpis.promoteTotal ?? 0) - r.kpis.vehicleCostTotal - r.kpis.profit) * 100) / 100;
+console.log("fechamento diff:", fecha);

@@ -161,6 +161,23 @@ const aiNote = (d: ReportData, prose: ReportProse) =>
 export function buildReportDocx(d: ReportData, recipient?: string, prose?: ReportProse | null): Document {
   const isClient = d.vehicleStructure === "CLIENT_ENTITY";
   const entityName = d.clientEntityName || "the investor group's own entity";
+  // waterfall da Vixus por extenso: "up to 8% p.a. — 0%; 8–15% — 20%; above 15% — 35%"
+  const tiersText = (() => {
+    const ts = d.promoteTiers ?? [];
+    if (!ts.length) return "";
+    let prev: number | null = null;
+    const parts = ts.map((t0) => {
+      const range =
+        t0.hurdlePct == null
+          ? `above ${prev ?? 0}% p.a.`
+          : prev == null
+            ? `up to ${t0.hurdlePct}% p.a.`
+            : `${prev}–${t0.hurdlePct}% p.a.`;
+      if (t0.hurdlePct != null) prev = t0.hurdlePct;
+      return `${range} — ${t0.promotePct}%`;
+    });
+    return parts.join("; ");
+  })();
   const cons = d.scenarios.find((s) => s.code === d.baseCode)!;
   const scenarioName = (s: { code: string; name: string }) => SCENARIO_EN[s.code] ?? s.name;
   const isBank = d.fundingMode === "BANK";
@@ -326,7 +343,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         ? [
             [
               "Developer compensation",
-              "Vixus Investment (Development Manager) — waterfall/promote payable at completion, only above investor return hurdles (Section 7)",
+              `Vixus Investment (Development Manager) — waterfall payable at completion, only above investor return hurdles: ${tiersText}`,
             ] as [string, string],
           ]
         : []),
@@ -697,13 +714,21 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         ? ([
             [
               "Developer compensation",
-              "Vixus Investment (Development Manager) earns a waterfall/promote: tiered share of profit only above investor return hurdles, payable at completion — investors are paid their preferred return first.",
+              `Vixus Investment (Development Manager) earns a waterfall only above investor return hurdles (annualized, on average capital at risk): ${tiersText}. Payable at completion — investors are paid their preferred return first.`,
+            ],
+          ] as Array<[string, string]>)
+        : []),
+      ...(!isClient && d.closing.vehicle > 0
+        ? ([
+            [
+              "Vehicle costs",
+              "Formation, annual accounting and state filings, and dissolution costs of the vehicle are modeled explicitly as dated cash flows in the projections (Appendix A) — not omitted or footnoted.",
             ],
           ] as Array<[string, string]>)
         : []),
       ...(isClient
         ? ([
-            ["Offering / tax", "No securities are offered by Vixus or 4U; interests, governance and tax elections (including K-1s) are matters of the investor entity and its advisors."],
+            ["Offering / tax", "No securities are offered by Vixus or 4U; interests, governance and tax elections (including K-1s) are matters of the investor entity and its advisors — entity-level formation and administration costs are borne by the entity directly and are not included in the program projections."],
             ["Reporting", "Platform access for the entity and its members: program statement, per-home budget vs. actual, bank reconciliation support and distribution history."],
           ] as Array<[string, string]>)
         : ([
@@ -903,6 +928,9 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         ["(−) Builder compensation (performance)", money2(-d.closing.builderComp)],
         ...(d.closing.promote > 0
           ? ([["(−) Developer promote (Vixus waterfall)", money2(-d.closing.promote)]] as Array<[string, string]>)
+          : []),
+        ...(d.closing.vehicle > 0
+          ? ([["(−) Vehicle formation & administration", money2(-d.closing.vehicle)]] as Array<[string, string]>)
           : []),
         [
           "(=) Investor profit",

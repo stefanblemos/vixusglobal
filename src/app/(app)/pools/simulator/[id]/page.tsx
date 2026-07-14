@@ -54,6 +54,7 @@ const KIND_LABEL: Record<string, string> = {
   BANK_RESERVE: "Reserve",
   BANK_INTEREST: "Juros banco",
   BANK_PAYOFF: "Payoff banco",
+  VEHICLE: "Custos do veículo",
 };
 
 function Card({ label, value, hint }: { label: string; value: string; hint?: string }) {
@@ -290,7 +291,7 @@ export default async function SimulationPage({
   const injectionDays = new Set(
     (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
   );
-  const [allBanks, allScenarios, catalogLocations, catalogModelLocations, houseTypeFees] = await Promise.all([
+  const [allBanks, allScenarios, catalogLocations, catalogModelLocations, houseTypeFees, defaultWaterfallTiers, catalogVehicleCosts] = await Promise.all([
     prisma.bankProfile.findMany({
       orderBy: { name: "asc" },
       select: {
@@ -313,6 +314,8 @@ export default async function SimulationPage({
     }),
     prisma.catalogModelLocation.findMany({ include: { model: true } }),
     prisma.houseTypeFee.findMany(),
+    prisma.catalogWaterfallTier.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.catalogVehicleCost.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
   // catálogo p/ o editor de cesta (mesma forma do /simulator/new) — só plain objects
   // atravessam a fronteira server→client (Decimal do Prisma não pode vazar)
@@ -401,6 +404,7 @@ export default async function SimulationPage({
     bankProfileId: sim.bankProfileId,
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
+    vehicleStructure: sim.vehicleStructure,
   };
   const scenarioCards = await Promise.all(
     allScenarios.map(async (s) => {
@@ -545,6 +549,16 @@ export default async function SimulationPage({
           locations={premissasLocations}
           combos={premissasCombos}
           scenarios={premissasScenarios}
+          vehicleCosts={
+            sim.vehicleStructure === "VIXUS_MANAGED"
+              ? catalogVehicleCosts.map((c) => ({
+                  id: c.id,
+                  name: c.name,
+                  timing: c.timing,
+                  catalogAmount: Number(c.amount),
+                }))
+              : []
+          }
           overrides={simOverrides}
         />
       )}
@@ -581,6 +595,10 @@ export default async function SimulationPage({
             null,
         }}
         scenarios={allScenarios}
+        defaultTiers={defaultWaterfallTiers.map((t) => ({
+          hurdlePct: t.hurdlePct == null ? null : Number(t.hurdlePct),
+          promotePct: Number(t.promotePct),
+        }))}
         banks={allBanks}
       />
       )}
@@ -978,7 +996,8 @@ export default async function SimulationPage({
               r.kpis.bankExtensionFee;
             const perf = r.kpis.perfFeeTotal;
             const promote = r.kpis.promoteTotal ?? 0; // snapshot antigo: promote dentro do perf
-            const resultado = Math.round((vendas - lotes - obra - bankCost - perf - promote) * 100) / 100;
+            const veiculo = r.kpis.vehicleCostTotal ?? 0; // snapshot antigo: sem custos do veículo
+            const resultado = Math.round((vendas - lotes - obra - bankCost - perf - promote - veiculo) * 100) / 100;
             const diff = Math.round((resultado - r.kpis.profit) * 100) / 100;
             const fecha = Math.abs(diff) <= 0.01;
             const row = "flex items-baseline justify-between px-5 py-1.5 text-sm";
@@ -1064,6 +1083,12 @@ export default async function SimulationPage({
                     <div className={row}>
                       <span className="text-slate-600">(−) Vixus — waterfall (developer)</span>
                       <span className="tabular-nums">{formatMoney(-promote, "USD")}</span>
+                    </div>
+                  )}
+                  {veiculo > 0 && (
+                    <div className={row}>
+                      <span className="text-slate-600">(−) Custos do veículo (abertura/contador/encerramento)</span>
+                      <span className="tabular-nums">{formatMoney(-veiculo, "USD")}</span>
                     </div>
                   )}
                   <div className={`${row} border-t border-slate-100 pt-2`}>

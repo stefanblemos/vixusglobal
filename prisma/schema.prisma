@@ -1103,6 +1103,34 @@ model CatalogLocation {
   poolHouses PoolHouse[]
 }
 
+// Waterfall DEFAULT da Vixus (developer) — tiers editáveis no catálogo; a simulação
+// carrega uma CÓPIA ao ligar o waterfall (editar na simulação não muda o default)
+model CatalogWaterfallTier {
+  id         String   @id @default(cuid())
+  hurdlePct  Decimal? @db.Decimal(6, 2) // % a.a. sobre o capital médio em risco; null = "acima"
+  promotePct Decimal  @db.Decimal(6, 2) // % da faixa para a VIXUS
+  sortOrder  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+// Custos estimados do VEÍCULO (LLC da Vixus): abertura, encerramento, contador anual etc.
+// Entram como fluxos datados na simulação (antes do waterfall) — só quando VIXUS_MANAGED.
+model CatalogVehicleCost {
+  id        String            @id @default(cuid())
+  name      String
+  amount    Decimal           @db.Decimal(20, 2)
+  timing    VehicleCostTiming
+  sortOrder Int               @default(0)
+  updatedAt DateTime          @updatedAt
+}
+
+enum VehicleCostTiming {
+  FORMATION // única, em D+0 (abertura)
+  DISSOLUTION // única, no fim do programa (encerramento)
+  ANNUAL // a cada 12 meses; ano parcial final cobra inteiro (regra do Stefan)
+  MONTHLY // a cada 30 dias
+}
+
 model CatalogModel {
   id            String    @id @default(cuid())
   name          String    @unique

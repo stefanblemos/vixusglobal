@@ -41,6 +41,7 @@ export type SimOverrides = {
   locations?: Record<string, LocationOverride>;
   combos?: Record<string, ComboOverride>; // chave "modelId|locationId"
   scenarios?: Record<string, ScenarioOverride>; // chave = code (OPT/REAL/CONS/custom)
+  vehicleCosts?: Record<string, number>; // chave = id do CatalogVehicleCost → valor ajustado
 };
 
 export const comboKey = (modelId: string, locationId: string) => `${modelId}|${locationId}`;
@@ -51,6 +52,7 @@ export function countOverrides(o: SimOverrides | null | undefined): number {
   for (const v of Object.values(o.locations ?? {})) n += Object.keys(v).length;
   for (const v of Object.values(o.combos ?? {})) n += Object.keys(v).length;
   for (const v of Object.values(o.scenarios ?? {})) n += Object.keys(v).length;
+  n += Object.keys(o.vehicleCosts ?? {}).length;
   return n;
 }
 
@@ -71,6 +73,7 @@ export async function buildSimInput(sim: {
   bankProfileId: string | null;
   units: UnitRef[];
   overrides?: SimOverrides | null;
+  vehicleStructure?: string; // VIXUS_MANAGED (default) carrega os custos do veículo
 }): Promise<SimInput | { error: string }> {
   const scenario = await prisma.bufferScenario.findUnique({ where: { code: sim.scenarioCode } });
   if (!scenario) return { error: "Scenario not found." };
@@ -140,6 +143,16 @@ export async function buildSimInput(sim: {
     });
   }
   if (units.length === 0) return { error: "Add at least one house to simulate." };
+
+  // Custos do veículo: só quando a LLC é da Vixus; entidade do cliente arca fora do programa
+  const vehicleCosts =
+    (sim.vehicleStructure ?? "VIXUS_MANAGED") === "VIXUS_MANAGED"
+      ? (await prisma.catalogVehicleCost.findMany({ orderBy: { sortOrder: "asc" } })).map((c) => ({
+          name: c.name,
+          amount: sim.overrides?.vehicleCosts?.[c.id] ?? Number(c.amount),
+          timing: c.timing as "FORMATION" | "DISSOLUTION" | "ANNUAL" | "MONTHLY",
+        }))
+      : null;
 
   return {
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
@@ -221,5 +234,6 @@ export async function buildSimInput(sim: {
         }
       : null,
     units,
+    vehicleCosts,
   };
 }

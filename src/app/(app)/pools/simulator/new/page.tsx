@@ -5,7 +5,7 @@ import { SimulationForm } from "@/components/simulation-form";
 export const dynamic = "force-dynamic";
 
 export default async function NewSimulationPage() {
-  const [locations, modelLocations, scenarios, banks, pools] = await Promise.all([
+  const [locations, modelLocations, scenarios, banks, pools, waterfallTiers] = await Promise.all([
     prisma.catalogLocation.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.catalogModelLocation.findMany({ include: { model: true } }),
     prisma.bufferScenario.findMany({ orderBy: { sortOrder: "asc" }, select: { code: true, name: true } }),
@@ -15,6 +15,7 @@ export default async function NewSimulationPage() {
       orderBy: { code: "asc" },
       select: { id: true, code: true, name: true },
     }),
+    prisma.catalogWaterfallTier.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
 
   return (
@@ -44,6 +45,10 @@ export default async function NewSimulationPage() {
           scenarios,
           banks,
           pools,
+          waterfallTiers: waterfallTiers.map((t) => ({
+            hurdlePct: t.hurdlePct == null ? null : Number(t.hurdlePct),
+            promotePct: Number(t.promotePct),
+          })),
         }}
       />
     </div>
