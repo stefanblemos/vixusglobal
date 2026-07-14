@@ -420,7 +420,12 @@ export default async function SimulationPage({
       return {
         code: s.code,
         name: s.name,
-        kpis: { irr: res.kpis.irrAnnual, profit: res.kpis.profit, peak: res.kpis.peakCapital },
+        kpis: {
+          irr: res.kpis.irrAnnual,
+          profit: res.kpis.profit,
+          peak: res.kpis.peakCapital,
+          roi: res.kpis.peakCapital > 0 ? res.kpis.profit / res.kpis.peakCapital : null,
+        },
       };
     }),
   );
@@ -600,7 +605,7 @@ export default async function SimulationPage({
             (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ??
             null,
         }}
-        scenarios={allScenarios}
+        scenarios={allScenarios.map((sc) => ({ code: sc.code, name: sc.name }))}
         defaultTiers={defaultWaterfallTiers.map((t) => ({
           hurdlePct: t.hurdlePct == null ? null : Number(t.hurdlePct),
           promotePct: Number(t.promotePct),
@@ -629,7 +634,10 @@ export default async function SimulationPage({
                   {s.kpis.irr != null ? `TIR ${(s.kpis.irr * 100).toFixed(1)}%` : "TIR —"} ·{" "}
                   {formatMoney(s.kpis.profit, "USD")}
                 </div>
-                <div className="text-xs text-slate-400">pico {formatMoney(s.kpis.peak, "USD")}</div>
+                <div className="text-xs text-slate-400">
+                  {s.kpis.roi != null ? `ROI ${(s.kpis.roi * 100).toFixed(1)}% · ` : ""}
+                  pico {formatMoney(s.kpis.peak, "USD")}
+                </div>
               </>
             ) : (
               <div className="text-sm text-slate-400">catálogo incompleto p/ este cenário</div>
@@ -657,7 +665,7 @@ export default async function SimulationPage({
               label="TIR do investidor (a.a.)"
               value={r.kpis.irrAnnual != null ? `${(r.kpis.irrAnnual * 100).toFixed(2)}%` : "—"}
               hint={
-                r.kpis.irrMonthly != null ? `${(r.kpis.irrMonthly * 100).toFixed(2)}% a.m.` : undefined
+                `ROI ${r.kpis.peakCapital > 0 ? ((r.kpis.profit / r.kpis.peakCapital) * 100).toFixed(1) : "—"}% sobre o pico${r.kpis.irrMonthly != null ? ` · ${(r.kpis.irrMonthly * 100).toFixed(2)}% a.m.` : ""}`
               }
             />
             <Card
@@ -1122,97 +1130,203 @@ export default async function SimulationPage({
               <h2 className="text-base font-medium text-slate-800">Comparar bancos</h2>
               <p className="text-xs text-slate-400">
                 Roda esta mesma simulação para cada banco (perfis do catálogo, incl. os lidos de
-                LOI) e marca a melhor opção — maior TIR do investidor, lucro desempata. Atenção à
-                troca TIR × lucro: banco que financia fees/reserve no loan pede MENOS aporte
-                (TIR sobe) mesmo custando mais no total — o lucro absoluto pode ser menor.
+                LOI). Não existe &quot;melhor banco&quot; absoluto — existe o melhor para a
+                pergunta que você está fazendo: os cards respondem cada pergunta e a tabela mostra
+                os três ângulos com barras na mesma escala.
               </p>
             </div>
-            {comparison && comparison.length > 0 && (
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-100">
-                      <th className={th}>Banco</th>
-                      <th className={thRight}>TIR investidor</th>
-                      <th className={thRight}>Lucro</th>
-                      <th className={thRight}>Aporte (pico)</th>
-                      <th className={thRight}>Custo do banco</th>
-                      <th className={thRight}>Cash to closing</th>
-                      <th className={thRight}></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {comparison.map((c) => (
-                      <tr
-                        key={c.bankId}
-                        className={`border-b border-slate-50 ${c.best ? "bg-emerald-50/50" : ""}`}
-                      >
-                        <td className={`${td} font-medium text-slate-800`}>
-                          {c.bankName}
-                          {c.best && (
-                            <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">
-                              ★ melhor opção
-                            </span>
-                          )}
-                          {sim.bankProfileId === c.bankId && (
-                            <span className="ml-2 text-xs text-slate-400">(atual)</span>
-                          )}
-                        </td>
-                        <td className={`${tdRight} font-semibold`}>
-                          {c.irr != null ? `${(c.irr * 100).toFixed(1)}%` : "—"}
-                        </td>
-                        <td className={`${tdRight} ${c.profit < 0 ? "text-red-600" : ""}`}>
-                          {formatMoney(c.profit, "USD")}
-                        </td>
-                        <td className={tdRight}>
-                          {formatMoney(c.peak, "USD")}
-                          {(c.feesFinanced || (c.reserveFunded ?? 0) > 0) && (
-                            <span
-                              className="block text-[10px] text-emerald-600"
-                              title="Fees/reserve rolados no loan não saem do caixa do investidor — por isso o aporte cai (e a TIR sobe) mesmo com custo total maior"
-                            >
-                              {[
-                                c.feesFinanced ? "fees no loan" : null,
-                                (c.reserveFunded ?? 0) > 0 ? "reserve no loan" : null,
-                              ]
-                                .filter(Boolean)
-                                .join(" · ")}
-                            </span>
-                          )}
-                        </td>
-                        <td className={tdRight}>
-                          {formatMoney(c.bankCost, "USD")}
-                          {c.interest != null && (
-                            <span className="block text-[10px] text-slate-400">
-                              juros {formatMoney(c.interest, "USD")} · closing {formatMoney(c.upfront ?? 0, "USD")}
-                              {(c.otherFees ?? 0) > 0 ? ` · taxas ${formatMoney(c.otherFees!, "USD")}` : ""}
-                              {(c.extFee ?? 0) > 0 ? ` · ext ${formatMoney(c.extFee!, "USD")}` : ""}
-                            </span>
-                          )}
-                        </td>
-                        <td className={`${tdRight} ${(c.ctc ?? 0) > 0 ? "text-emerald-700" : (c.ctc ?? 0) < 0 ? "text-red-600" : "text-slate-400"}`}>
-                          {Math.abs(c.ctc ?? 0) > 0.01 ? formatMoney(c.ctc!, "USD") : "—"}
-                        </td>
-                        <td className={tdRight}>
-                          {sim.bankProfileId !== c.bankId && (
-                            <form action={useComparedBank} className="inline">
-                              <input type="hidden" name="simulationId" value={sim.id} />
-                              <input type="hidden" name="bankId" value={c.bankId} />
-                              <button
-                                type="submit"
-                                className="rounded bg-[#1f3a5f] px-2 py-1 text-xs font-medium text-white hover:bg-[#16304f]"
-                              >
-                                Usar este
-                              </button>
-                            </form>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+            {comparison && comparison.length > 0 && (() => {
+              // Desenho aprovado 14/07: cards de critério + barras por coluna + campeões.
+              // ROI = lucro ÷ aporte pico (o que conversa com o tamanho da captação).
+              const rows = comparison.map((c) => ({
+                ...c,
+                roi: c.peak > 0 ? c.profit / c.peak : null,
+              }));
+              const maxIrr = Math.max(...rows.map((c) => c.irr ?? -Infinity));
+              const maxRoi = Math.max(...rows.map((c) => c.roi ?? -Infinity));
+              const maxProfit = Math.max(...rows.map((c) => c.profit));
+              const bestIrr = rows.find((c) => c.irr === maxIrr);
+              const bestRoi = rows.find((c) => c.roi === maxRoi);
+              const bestProfit = rows.find((c) => c.profit === maxProfit);
+              const pctBar = (v: number | null, max: number) =>
+                v == null || max <= 0 ? 0 : Math.max(4, Math.round((v / max) * 100));
+              const Dot = ({ color }: { color: string }) => (
+                <span
+                  className="ml-1.5 inline-block h-[7px] w-[7px] rounded-full align-[1px]"
+                  style={{ background: color }}
+                />
+              );
+              const Bar = ({ pct, color }: { pct: number; color: string }) => (
+                <span className="mt-1 block h-[7px] w-[120px] rounded bg-slate-100">
+                  <span className="block h-full rounded" style={{ width: `${pct}%`, background: color }} />
+                </span>
+              );
+              const GREEN = "#10b981";
+              const INDIGO = "#6366f1";
+              const AMBER = "#f59e0b";
+              return (
+                <div>
+                  {/* cards de critério: qual pergunta você está fazendo? */}
+                  <div className="grid grid-cols-1 gap-3 px-5 pt-4 md:grid-cols-3">
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                        💨 Retorno mais rápido (TIR)
+                      </div>
+                      <div className="mt-1 text-base font-bold text-slate-900">{bestIrr?.bankName ?? "—"}</div>
+                      <div className="text-sm text-slate-700">
+                        {bestIrr?.irr != null ? `${(bestIrr.irr * 100).toFixed(1)}% a.a.` : "—"} · aporte{" "}
+                        {bestIrr ? formatMoney(bestIrr.peak, "USD").replace(/\.\d\d$/, "") : "—"}
+                      </div>
+                      <div className="mt-1.5 text-[10.5px] leading-snug text-slate-500">
+                        {bestIrr?.feesFinanced || (bestIrr?.reserveFunded ?? 0) > 0
+                          ? "Financia fees/reserve dentro do loan → menos aporte seu. "
+                          : ""}
+                        Escolha quando o capital é <b>escasso</b> ou tem outro destino.
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700">
+                        💰 Rendimento por dólar (ROI)
+                      </div>
+                      <div className="mt-1 text-base font-bold text-slate-900">{bestRoi?.bankName ?? "—"}</div>
+                      <div className="text-sm text-slate-700">
+                        {bestRoi?.roi != null ? `${(bestRoi.roi * 100).toFixed(1)}% sobre o pico` : "—"}
+                        {bestRoi?.roi != null ? ` · ${(1 + bestRoi.roi).toFixed(2)}x` : ""}
+                      </div>
+                      <div className="mt-1.5 text-[10.5px] leading-snug text-slate-500">
+                        Cada dólar aportado volta com mais. Escolha quando o capital está{" "}
+                        <b>disponível</b> e o que importa é o rendimento dele.
+                      </div>
+                    </div>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">
+                        🏦 Mais dinheiro no bolso (Lucro)
+                      </div>
+                      <div className="mt-1 text-base font-bold text-slate-900">{bestProfit?.bankName ?? "—"}</div>
+                      <div className="text-sm text-slate-700">
+                        {bestProfit ? formatMoney(bestProfit.profit, "USD") : "—"} no projeto
+                      </div>
+                      <div className="mt-1.5 text-[10.5px] leading-snug text-slate-500">
+                        Geralmente o banco mais barato. Escolha quando o objetivo é o{" "}
+                        <b>resultado total</b>, não a velocidade.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="border-b border-slate-100">
+                          <th className={th}>Banco</th>
+                          <th className={th}>
+                            TIR
+                            <Dot color={GREEN} />
+                          </th>
+                          <th className={th}>
+                            ROI (lucro ÷ pico)
+                            <Dot color={INDIGO} />
+                          </th>
+                          <th className={th}>
+                            Lucro
+                            <Dot color={AMBER} />
+                          </th>
+                          <th className={thRight}>Aporte (pico)</th>
+                          <th className={thRight}>Custo do banco</th>
+                          <th className={thRight}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((c) => (
+                          <tr key={c.bankId} className="border-b border-slate-50">
+                            <td className={`${td} font-medium text-slate-800`}>
+                              {c.bankName}
+                              {sim.bankProfileId === c.bankId && (
+                                <span className="ml-2 text-xs text-slate-400">(atual)</span>
+                              )}
+                            </td>
+                            <td className={td}>
+                              <span className={c.irr === maxIrr ? "font-bold text-slate-900" : ""}>
+                                {c.irr != null ? `${(c.irr * 100).toFixed(1)}%` : "—"}
+                              </span>
+                              {c.irr === maxIrr && <Dot color={GREEN} />}
+                              <Bar pct={pctBar(c.irr, maxIrr)} color={GREEN} />
+                            </td>
+                            <td className={td}>
+                              <span className={c.roi === maxRoi ? "font-bold text-slate-900" : ""}>
+                                {c.roi != null ? `${(c.roi * 100).toFixed(1)}%` : "—"}
+                              </span>
+                              {c.roi === maxRoi && <Dot color={INDIGO} />}
+                              {c.roi != null && (
+                                <span className="ml-1 text-[10px] text-slate-400">{(1 + c.roi).toFixed(2)}x</span>
+                              )}
+                              <Bar pct={pctBar(c.roi, maxRoi)} color={INDIGO} />
+                            </td>
+                            <td className={td}>
+                              <span className={`${c.profit === maxProfit ? "font-bold text-slate-900" : ""} ${c.profit < 0 ? "text-red-600" : ""}`}>
+                                {formatMoney(c.profit, "USD")}
+                              </span>
+                              {c.profit === maxProfit && <Dot color={AMBER} />}
+                              <Bar pct={pctBar(c.profit, maxProfit)} color={AMBER} />
+                            </td>
+                            <td className={tdRight}>
+                              {formatMoney(c.peak, "USD")}
+                              {(c.feesFinanced || (c.reserveFunded ?? 0) > 0) && (
+                                <span
+                                  className="block text-[10px] text-emerald-600"
+                                  title="Fees/reserve rolados no loan não saem do caixa do investidor — por isso o aporte cai (e a TIR sobe) mesmo com custo total maior"
+                                >
+                                  {[
+                                    c.feesFinanced ? "fees no loan" : null,
+                                    (c.reserveFunded ?? 0) > 0 ? "reserve no loan" : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")}
+                                </span>
+                              )}
+                            </td>
+                            <td className={tdRight}>
+                              {formatMoney(c.bankCost, "USD")}
+                              {c.interest != null && (
+                                <span className="block text-[10px] text-slate-400">
+                                  juros {formatMoney(c.interest, "USD")} · closing {formatMoney(c.upfront ?? 0, "USD")}
+                                  {(c.otherFees ?? 0) > 0 ? ` · taxas ${formatMoney(c.otherFees!, "USD")}` : ""}
+                                  {(c.extFee ?? 0) > 0 ? ` · ext ${formatMoney(c.extFee!, "USD")}` : ""}
+                                </span>
+                              )}
+                              {Math.abs(c.ctc ?? 0) > 0.01 && (
+                                <span className={`block text-[10px] ${(c.ctc ?? 0) > 0 ? "text-emerald-600" : "text-red-500"}`}>
+                                  cash to closing {formatMoney(c.ctc!, "USD")}
+                                </span>
+                              )}
+                            </td>
+                            <td className={tdRight}>
+                              {sim.bankProfileId !== c.bankId && (
+                                <form action={useComparedBank} className="inline">
+                                  <input type="hidden" name="simulationId" value={sim.id} />
+                                  <input type="hidden" name="bankId" value={c.bankId} />
+                                  <button
+                                    type="submit"
+                                    className="rounded bg-[#1f3a5f] px-2 py-1 text-xs font-medium text-white hover:bg-[#16304f]"
+                                  >
+                                    Usar este
+                                  </button>
+                                </form>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mx-5 mb-4 rounded-r-lg border-l-2 border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    <b className="text-slate-800">Como ler:</b> cada coluna tem seu campeão (bolinha
+                    da cor da coluna) e as barras estão na escala do melhor de cada coluna — dá para
+                    ver o quão perto os outros chegam. Capital escasso → decida pela TIR; capital
+                    disponível → ROI e lucro pesam mais.
+                  </div>
+                </div>
+              );
+            })()}
             <BankMultiSelect
               simulationId={sim.id}
               banks={bankOptions}

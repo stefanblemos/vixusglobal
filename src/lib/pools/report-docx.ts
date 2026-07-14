@@ -631,6 +631,8 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       [
         ["Projected net IRR", ...d.scenarios.map((s) => pct(s.irrAnnual))],
         ["Equity multiple", ...d.scenarios.map((s) => (s.equityMultiple == null ? "—" : `${s.equityMultiple.toFixed(2)}x`))],
+        // ROI sobre o PICO — o que conversa com o tamanho da captação (aprovado 14/07)
+        ["Return on peak capital", ...d.scenarios.map((s) => (s.peakCapital > 0 ? pct(s.profit / s.peakCapital) : "—"))],
         ["Peak invested capital", ...d.scenarios.map((s) => money0(s.peakCapital))],
         ["Total investor profit", ...d.scenarios.map((s) => money0(s.profit))],
         ["Program duration (months)", ...d.scenarios.map((s) => String(months(s.durationDays)))],
