@@ -533,6 +533,14 @@ type CompareRow = {
   profit: number;
   peak: number;
   bankCost: number;
+  // decomposição do custo (pedido do Stefan 14/07: juros/fees explícitos) + o "porquê"
+  // do aporte menor (fees/reserve financiados no loan não saem do caixa do investidor)
+  upfront?: number;
+  interest?: number;
+  otherFees?: number;
+  extFee?: number;
+  feesFinanced?: boolean;
+  reserveFunded?: number;
   ctc?: number;
   best?: boolean;
 };
@@ -583,7 +591,10 @@ export async function compareSimulationBanks(formData: FormData): Promise<void> 
     const input = await buildSimInput({ ...simFields(sim), fundingMode: "BANK", bankProfileId: bankId });
     if ("error" in input) continue;
     const r = simulate(input);
-    const bank = await prisma.bankProfile.findUnique({ where: { id: bankId }, select: { name: true } });
+    const bank = await prisma.bankProfile.findUnique({
+      where: { id: bankId },
+      select: { name: true, feesFinanced: true },
+    });
     rows.push({
       bankId,
       bankName: bank?.name ?? "?",
@@ -591,6 +602,12 @@ export async function compareSimulationBanks(formData: FormData): Promise<void> 
       profit: r.kpis.profit,
       peak: r.kpis.totalInvested,
       ctc: r.kpis.cashToClosing ?? 0,
+      upfront: Math.round(r.kpis.bankUpfrontFees * 100) / 100,
+      interest: Math.round(r.kpis.bankInterestTotal * 100) / 100,
+      otherFees: Math.round((r.kpis.bankOtherFees ?? 0) * 100) / 100,
+      extFee: Math.round(r.kpis.bankExtensionFee * 100) / 100,
+      feesFinanced: bank?.feesFinanced ?? false,
+      reserveFunded: Math.round(r.kpis.bankReserveFunded * 100) / 100,
       bankCost:
         Math.round(
           (r.kpis.bankUpfrontFees +

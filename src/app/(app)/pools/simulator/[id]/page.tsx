@@ -81,6 +81,12 @@ type CompareRow = {
   profit: number;
   peak: number;
   bankCost: number;
+  upfront?: number;
+  interest?: number;
+  otherFees?: number;
+  extFee?: number;
+  feesFinanced?: boolean;
+  reserveFunded?: number;
   ctc?: number;
   best?: boolean;
 };
@@ -1116,7 +1122,9 @@ export default async function SimulationPage({
               <h2 className="text-base font-medium text-slate-800">Comparar bancos</h2>
               <p className="text-xs text-slate-400">
                 Roda esta mesma simulação para cada banco (perfis do catálogo, incl. os lidos de
-                LOI) e marca a melhor opção — maior TIR do investidor, lucro desempata.
+                LOI) e marca a melhor opção — maior TIR do investidor, lucro desempata. Atenção à
+                troca TIR × lucro: banco que financia fees/reserve no loan pede MENOS aporte
+                (TIR sobe) mesmo custando mais no total — o lucro absoluto pode ser menor.
               </p>
             </div>
             {comparison && comparison.length > 0 && (
@@ -1156,8 +1164,32 @@ export default async function SimulationPage({
                         <td className={`${tdRight} ${c.profit < 0 ? "text-red-600" : ""}`}>
                           {formatMoney(c.profit, "USD")}
                         </td>
-                        <td className={tdRight}>{formatMoney(c.peak, "USD")}</td>
-                        <td className={tdRight}>{formatMoney(c.bankCost, "USD")}</td>
+                        <td className={tdRight}>
+                          {formatMoney(c.peak, "USD")}
+                          {(c.feesFinanced || (c.reserveFunded ?? 0) > 0) && (
+                            <span
+                              className="block text-[10px] text-emerald-600"
+                              title="Fees/reserve rolados no loan não saem do caixa do investidor — por isso o aporte cai (e a TIR sobe) mesmo com custo total maior"
+                            >
+                              {[
+                                c.feesFinanced ? "fees no loan" : null,
+                                (c.reserveFunded ?? 0) > 0 ? "reserve no loan" : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ")}
+                            </span>
+                          )}
+                        </td>
+                        <td className={tdRight}>
+                          {formatMoney(c.bankCost, "USD")}
+                          {c.interest != null && (
+                            <span className="block text-[10px] text-slate-400">
+                              juros {formatMoney(c.interest, "USD")} · closing {formatMoney(c.upfront ?? 0, "USD")}
+                              {(c.otherFees ?? 0) > 0 ? ` · taxas ${formatMoney(c.otherFees!, "USD")}` : ""}
+                              {(c.extFee ?? 0) > 0 ? ` · ext ${formatMoney(c.extFee!, "USD")}` : ""}
+                            </span>
+                          )}
+                        </td>
                         <td className={`${tdRight} ${(c.ctc ?? 0) > 0 ? "text-emerald-700" : (c.ctc ?? 0) < 0 ? "text-red-600" : "text-slate-400"}`}>
                           {Math.abs(c.ctc ?? 0) > 0.01 ? formatMoney(c.ctc!, "USD") : "—"}
                         </td>
