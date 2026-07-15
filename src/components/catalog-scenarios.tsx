@@ -69,7 +69,7 @@ const GROUPS: Array<{
     title: "Outros",
     hint: "Stress e organização.",
     fields: [
-      { name: "unitGapDays", label: "Gap entre casas (dias)", hint: "Dias entre o início de uma casa e a próxima (Ótimo 10 · Real 20 · Cons 30)" },
+      { name: "unitGapDays", label: "Gap entre lotes (dias)", hint: "Dias entre a CAUÇÃO de um lote e a do próximo — cadência de compra (Ótimo 10 · Real 20 · Cons 30); a obra segue o lote" },
       { name: "stressSlippagePct", label: "Slippage %", hint: "Derrapagem extra sobre o custo total (modo stress)" },
       { name: "sortOrder", label: "Ordem", hint: "Posição na lista de cenários" },
     ],

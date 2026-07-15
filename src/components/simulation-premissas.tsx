@@ -84,7 +84,7 @@ const SCEN_GROUPS: Array<{ title: string; fields: Array<[string, string, string]
       ["contingencyReservePct", "Contingência %", "reserva sobre lote+obra, devolvida se não usada"],
       ["constructionDurationBufferM", "Prazo de obra (± meses)", ""],
       ["salesAbsorptionMonths", "Absorção (+ meses)", "soma aos dias de venda do location"],
-      ["unitGapDays", "Gap entre casas (dias)", ""],
+      ["unitGapDays", "Gap entre lotes (dias)", "cadência de caução: um lote a cada N dias"],
     ],
   },
 ];

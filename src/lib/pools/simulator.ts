@@ -254,16 +254,23 @@ type Flow = {
   infoAmount?: number;
 };
 
-// Cronograma de uma unidade (forward, unidades espaçadas por unitGapDays).
-// Como o mercado funciona (regra do Stefan, 13/07): busca do lote (lotLeadDays do
-// location) → CAUÇÃO no contrato → escrow (landAcquisitionDays do cenário, ~15d) →
-// closing do lote → permit CONTA A PARTIR DO PAGAMENTO → obra → CO → marketing
-// (saleDays + absorção) → contrato do comprador → closing da venda (saleClosingDays,
-// ~45d) → dinheiro no caixa.
-function schedule(u: SimUnitInput, idx: number, input: SimInput) {
+// Cronograma de uma unidade (forward). Como o mercado funciona (regra do Stefan, 13/07):
+// busca do lote (lotLeadDays do location) → CAUÇÃO no contrato → escrow
+// (landAcquisitionDays do cenário, ~15d) → closing do lote → permit CONTA A PARTIR DO
+// PAGAMENTO → obra → CO → marketing (saleDays + absorção) → contrato do comprador →
+// closing da venda (saleClosingDays, ~45d) → dinheiro no caixa.
+//
+// GAP REANCORADO NA CAUÇÃO (regra do Stefan, 15/07 — opção B): o unitGapDays espaça as
+// COMPRAS de lote (caução), não o início das buscas — "compramos um lote a cada 15 dias;
+// 4 lotes ⇒ o último 45 dias após o primeiro". A busca é retrodatada a partir da caução
+// (tReq = tEmd − lotLeadDays, nunca < 0). Antes o gap espaçava o tReq, e locations com
+// lotLeadDays diferentes comprimiam os contratos (caso PH6-R01: 20d virava 5d).
+function schedule(u: SimUnitInput, prevEmd: number | null, input: SimInput) {
   const sc = input.scenario;
-  const tReq = idx * input.unitGapDays; // início da BUSCA do lote (nada sai do caixa aqui)
-  const tEmd = tReq + u.lotLeadDays; // lote achado, contrato assinado → caução
+  // 1ª casa: caução assim que a busca termina; seguintes: ≥ gap após a caução anterior,
+  // mas nunca antes do próprio tempo de busca do location (tReq ≥ 0)
+  const tEmd = prevEmd == null ? u.lotLeadDays : Math.max(prevEmd + input.unitGapDays, u.lotLeadDays);
+  const tReq = tEmd - u.lotLeadDays; // início da BUSCA do lote (nada sai do caixa aqui)
   const tLotClose = tEmd + sc.landAcquisitionDays;
   const tPermitOk = tLotClose + u.permitDays; // pagou o lote, inicia a contagem do permit
   const tBuildStart = tPermitOk;
@@ -380,13 +387,15 @@ export function simulate(input: SimInput): SimResult {
   {
     const cyclesSorted = [...new Set(units.map((u) => u.cycle))].sort((a, b) => a - b);
     let prevSales: number[] = [];
+    let prevEmd: number | null = null; // caução anterior do ciclo 1 — o gap encadeia AQUI
     for (const [ci, c] of cyclesSorted.entries()) {
       const group = units.filter((u) => u.cycle === c);
       group.forEach((u, j) => {
         const sch =
           ci === 0
-            ? schedule(u, j, input)
+            ? schedule(u, prevEmd, input)
             : scheduleQueued(u, prevSales[Math.min(j, prevSales.length - 1)], input);
+        if (ci === 0) prevEmd = sch.tEmd;
         u.tReq = sch.tReq;
         u.tEmd = sch.tEmd;
         u.tLotClose = sch.tLotClose;
