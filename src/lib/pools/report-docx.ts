@@ -173,6 +173,99 @@ function kpiStrip(cells: Array<{ label: string; value: string; sub: string; main
   });
 }
 
+// Grade de números grandes do track record (feedback 15/07: "sem muito texto, só números")
+function bigStatGrid(stats: Array<{ value: string; label: string }>) {
+  const cw = Math.floor(W / stats.length);
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: stats.map(() => cw),
+    rows: [
+      new TableRow({
+        children: stats.map(
+          (s) =>
+            new TableCell({
+              width: { size: cw, type: WidthType.DXA },
+              shading: { type: ShadingType.CLEAR, fill: "F8FAFC" },
+              margins: { top: 260, bottom: 260, left: 120, right: 120 },
+              children: [
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  children: [t(s.value, { size: 52, bold: true, color: NAVY })],
+                }),
+                new Paragraph({
+                  alignment: AlignmentType.CENTER,
+                  spacing: { before: 60 },
+                  children: [t(s.label.toUpperCase(), { size: 15, bold: true, color: GRAY })],
+                }),
+              ],
+            }),
+        ),
+      }),
+    ],
+  });
+}
+
+// Timeline visual do §5 (feedback 15/07) — Gantt em tabela: uma coluna por mês, células
+// pintadas onde a fase tem SEGMENTO ativo (gaps da esteira aparecem em branco, como no app)
+function ganttTable(pp: ReportData["projectPhases"]) {
+  const M = Math.max(1, Math.ceil(pp.totalDays / 30));
+  const labelW = 2000;
+  const cellW = Math.floor((W - labelW) / M);
+  const EN: Record<string, string> = { lots: "Lots", permits: "Permits", build: "Construction", sales: "Sales" };
+  const COLOR: Record<string, string> = {
+    lots: "A3B18A",
+    permits: "94A3B8",
+    build: "F59E0B",
+    sales: "22C55E",
+    loan: NAVY,
+  };
+  const rows: Array<{ key: string; label: string; segments: Array<[number, number]> }> = [
+    ...pp.phases.map((p) => ({ key: p.key, label: EN[p.key] ?? p.label, segments: p.segments })),
+    ...(pp.loan ? [{ key: "loan", label: "Loan outstanding", segments: pp.loan.segments }] : []),
+  ];
+  const cell = (fill: string, w: number, text = "") =>
+    new TableCell({
+      width: { size: w, type: WidthType.DXA },
+      shading: { type: ShadingType.CLEAR, fill },
+      margins: { top: 30, bottom: 30, left: 20, right: 20 },
+      children: [
+        new Paragraph({ alignment: AlignmentType.CENTER, children: [t(text, { size: 12, color: GRAY })] }),
+      ],
+    });
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: [labelW, ...Array.from({ length: M }, () => cellW)],
+    rows: [
+      new TableRow({
+        children: [
+          cell("FFFFFF", labelW, "Month"),
+          ...Array.from({ length: M }, (_, i) =>
+            cell("FFFFFF", cellW, M <= 14 || (i + 1) % 3 === 1 || i === M - 1 ? String(i + 1) : ""),
+          ),
+        ],
+      }),
+      ...rows.map(
+        (r) =>
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: labelW, type: WidthType.DXA },
+                margins: { top: 30, bottom: 30, left: 80, right: 40 },
+                children: [new Paragraph({ children: [t(r.label, { size: 16, bold: true, color: "475569" })] })],
+              }),
+              ...Array.from({ length: M }, (_, i) => {
+                const a = i * 30;
+                const b = (i + 1) * 30;
+                const active = r.segments.some(([s0, s1]) => s0 < b && s1 > a);
+                return cell(active ? COLOR[r.key] : "F1F5F9", cellW);
+              }),
+            ],
+          }),
+      ),
+    ],
+  });
+}
+
 // Selo "Capital Sized Using the Stress-Tested Scenario" — faixa fina azul-clara
 const sealBand = (text: string) =>
   new Table({
@@ -426,25 +519,15 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       alignment: AlignmentType.LEFT,
       spacing: { after: 220 },
     }),
+    // Ordem psicológica (feedback 15/07): primeiro compra-se a EMPRESA, depois a estrutura
+    bullet([
+      t("Proven sponsor — ", { bold: true }),
+      t("450+ homes delivered and $100M+ in accumulated sales volume since 2019, across six Florida regions (Section 2)."),
+    ]),
     bullet([
       t("Capital sized for the Stress Case — ", { bold: true }),
       t("investors fund the program through its stressed scenario, not its expected outcome."),
     ]),
-    ...(isBank
-      ? [
-          bullet([
-            t("Disciplined construction leverage — ", { bold: true }),
-            t(
-              "interest accrues on drawn balances only, and the facility is modeled line-by-line from executed term sheets (Section 5).",
-            ),
-          ]),
-        ]
-      : [
-          bullet([
-            t("All-equity program — ", { bold: true }),
-            t("no construction debt: no lender fees, no interest-rate exposure, no maturity risk."),
-          ]),
-        ]),
     ...(d.compMode === "OPEN_BOOK"
       ? [
           bullet([
@@ -465,6 +548,21 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
               t("construction cost risk within the contract is borne by the Builder, not the investors."),
             ]),
           ]),
+    ...(isBank
+      ? [
+          bullet([
+            t("Disciplined construction leverage — ", { bold: true }),
+            t(
+              "interest accrues on drawn balances only, and the facility is modeled line-by-line from executed term sheets (Section 5).",
+            ),
+          ]),
+        ]
+      : [
+          bullet([
+            t("All-equity program — ", { bold: true }),
+            t("no construction debt: no lender fees, no interest-rate exposure, no maturity risk."),
+          ]),
+        ]),
     ...(d.hasPromote
       ? [
           bullet([
@@ -487,12 +585,16 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           ]),
         ]),
     bullet([
+      t("Proprietary technology platform — ", { bold: true }),
+      t("every capital call, construction draw and distribution is tracked on the sponsor's own platform; this Summary is generated from it (Section 2)."),
+    ]),
+    bullet([
       t("Underwriting benchmarked against closed transactions — ", { bold: true }),
       t("assumptions are positioned against sold MLS comparables from a weekly ATTOM data feed (Section 3), not asking prices."),
     ]),
     bullet([
-      t("Reporting from the operating ledger — ", { bold: true }),
-      t("monthly investor statements are generated directly from the same platform used to run the business, not from separately prepared spreadsheets."),
+      t("Monthly investor reporting — ", { bold: true }),
+      t("statements are generated directly from the operating ledger, not from separately prepared spreadsheets."),
     ]),
     ...(d.cycles.length > 1
       ? [
@@ -502,10 +604,6 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           ]),
         ]
       : []),
-    bullet([
-      t("Proven sponsor — ", { bold: true }),
-      t("450+ homes delivered and $100M+ in accumulated sales volume since 2019, across six Florida regions (Section 2)."),
-    ]),
     new Paragraph({ children: [new PageBreak()] }),
 
     // ── 1. EXECUTIVE SUMMARY ──
@@ -542,7 +640,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       children: [
         new TextRun({
           text:
-            "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's historical execution data. Expected returns are not guaranteed." +
+            "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's delivery history of 450+ homes (Section 2). Expected returns are not guaranteed." +
             (stressSized
               ? " The raise is sized to the Stress Case — investors fund the program through its stressed scenario, not its expected outcome."
               : ""),
@@ -606,6 +704,14 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
 
     // ── 2. SPONSOR ──
     h1("2. Sponsor & Track Record"),
+    // Números grandes primeiro (feedback 15/07) — o investidor compra a empresa antes da casa
+    bigStatGrid([
+      { value: "450+", label: "Homes delivered" },
+      { value: "$100M+", label: "Sales volume" },
+      { value: "6", label: "Florida markets" },
+      { value: "2019", label: "Operating since" },
+    ]),
+    body(""),
     h2("4U Custom Homes — the Builder"),
     bullet([
       t("Founded in 2019; headquartered in Orlando, Florida. Over "),
@@ -642,24 +748,65 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       ),
     ]),
     h2("Leadership"),
-    bullet([
-      t("Stefan Braga Lemos — Founder & COO.", { bold: true }),
-      t(
-        " Civil engineer (Federal University of Espírito Santo, Brazil). Before founding 4U in 2019, he co-owned an engineering and design firm in Brazil (Avantec Engenharia) and served in the group’s truss operation. He oversees construction operations and the group’s investment platform.",
-      ),
-    ]),
-    bullet([
-      t("Evair Gallardo — CEO.", { bold: true }),
-      t(
-        " Entrepreneur with founding and director experience in the Brazilian telecommunications sector (Kerax Telecom). He leads the group’s strategic development and is CEO of Truss Direct, the group’s truss manufacturing operation, founded during the pandemic to secure the supply chain.",
-      ),
-    ]),
-    bullet([
-      t("Patrick Geaquinto — Founder & VP of Sales.", { bold: true }),
-      t(
-        " UFES graduate with a commercial career in the Brazilian construction sector: Commercial Director at Avantec Engenharia — the engineering and design firm co-owned by the founding partners — and previously Commercial Manager at Orla Construções. Co-founded 4U in 2019; leads sales, pricing and broker relationships across the group’s six Florida regions.",
-      ),
-    ]),
+    // Formato executivo (feedback 15/07): nome/cargo + "Responsible for" — currículo vira função
+    new Table({
+      width: { size: W, type: WidthType.DXA },
+      columnWidths: [3120, 3120, 3120],
+      rows: [
+        new TableRow({
+          children: [
+            {
+              name: "Stefan Braga Lemos",
+              title: "Founder & COO",
+              areas: ["Operations", "Construction", "Cost control", "Investment platform"],
+              bg: "Civil engineer; co-owned Avantec Engenharia (Brazil) before founding 4U in 2019.",
+            },
+            {
+              name: "Evair Gallardo",
+              title: "CEO",
+              areas: ["Strategy", "Corporate development", "Supply chain (Truss Direct)"],
+              bg: "Founder and director experience in Brazilian telecom (Kerax); CEO of Truss Direct.",
+            },
+            {
+              name: "Patrick Geaquinto",
+              title: "Founder & VP of Sales",
+              areas: ["Sales & pricing", "Broker network", "Market coverage"],
+              bg: "Commercial Director at Avantec Engenharia; previously Orla Construções. Co-founded 4U in 2019.",
+            },
+          ].map(
+            (p) =>
+              new TableCell({
+                width: { size: 3120, type: WidthType.DXA },
+                shading: { type: ShadingType.CLEAR, fill: "F8FAFC" },
+                margins: { top: 160, bottom: 160, left: 160, right: 160 },
+                children: [
+                  new Paragraph({ children: [t(p.name, { size: 21, bold: true, color: NAVY })] }),
+                  new Paragraph({
+                    spacing: { after: 100 },
+                    children: [t(p.title.toUpperCase(), { size: 15, bold: true, color: GRAY })],
+                  }),
+                  new Paragraph({
+                    spacing: { after: 40 },
+                    children: [t("Responsible for:", { size: 16, italics: true, color: GRAY })],
+                  }),
+                  ...p.areas.map(
+                    (a) =>
+                      new Paragraph({
+                        spacing: { after: 20 },
+                        children: [t("✔  ", { size: 17, color: "16A34A" }), t(a, { size: 18 })],
+                      }),
+                  ),
+                  new Paragraph({
+                    spacing: { before: 100 },
+                    children: [t(p.bg, { size: 15, italics: true, color: GRAY })],
+                  }),
+                ],
+              }),
+          ),
+        }),
+      ],
+    }),
+    body(""),
     // Alinhamento de interesses — DINÂMICO por modo de remuneração (feedback do advogado
     // 14/07: a prosa fixa de "performance" contradizia o open book das págs. 3 e 7)
     ...(d.compMode === "PERFORMANCE" || d.compMode === "PROMOTE"
@@ -699,7 +846,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     h1("3. Market Opportunity"),
     body([
       t(
-        `The program builds entry-level and mid-range single-family homes in Florida submarkets selected for permit velocity, lot availability and sustained absorption. The statistics below are derived from ATTOM MLS analytics — a weekly data feed covering the target counties (extract of ${d.market.extractDate}, ${d.market.totalListings.toLocaleString("en-US")} listings across ${d.market.counties.join(", ")} counties) — and are refreshed for every edition of this Summary. Sold statistics reflect the trailing ${d.market.windowDays} days.`,
+        `The program builds entry-level and mid-range single-family homes in Florida submarkets selected for permit velocity, lot availability and sustained absorption. Statistics are derived from a weekly ATTOM MLS feed (extract of ${d.market.extractDate}; ${d.market.totalListings.toLocaleString("en-US")} listings across ${d.market.counties.join(", ")} counties; sold figures reflect the trailing ${d.market.windowDays} days) and refresh with every edition of this Summary.`,
       ),
     ]),
     gridTable(
@@ -715,15 +862,13 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       [2360, 1540, 1540, 1240, 1240, 1440],
     ),
     body(""),
-    body(
-      "Program pricing is underwritten against these observed comparables: the Expected Case sets projected sale prices per plan relative to the prevailing median for new construction in each submarket, and the Stress Case applies an additional discount on top of that benchmark.",
-    ),
-    // Benchmark de premissas × vendidos (aprovado 14/07) — a ponte entre mercado e projeções
+    // Benchmark de premissas × vendidos (aprovado 14/07) — a ponte entre mercado e projeções.
+    // §3 enxugado 15/07: a frase de pricing foi fundida aqui (era um parágrafo próprio)
     ...(d.benchmark.some((b) => b.verdict !== "NO_DATA")
       ? [
           h2("Underwriting vs. observed market"),
           body(
-            "Each underwriting assumption below is positioned against closed transactions in its submarket (same ATTOM extract): lot costs against sold lots, and sale prices against sold new-construction homes — per square foot where floor-plan areas are on file, at the whole-home level otherwise.",
+            "Each underwriting assumption below is positioned against closed transactions in its submarket: lot costs against sold lots, sale prices against sold new-construction homes ($/SF where floor-plan areas are on file). The Expected Case prices relative to these observed medians; the Stress Case applies an additional discount on top.",
           ),
           gridTable(
             ["Assumption", "Program", "Market median (sold)", "Percentile"],
@@ -741,7 +886,11 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           ),
           body(""),
         ]
-      : []),
+      : [
+          body(
+            "Program pricing is underwritten against these observed comparables: the Expected Case prices relative to the prevailing new-construction medians in each submarket, and the Stress Case applies an additional discount on top.",
+          ),
+        ]),
     ...(prose?.marketCommentary?.length
       ? [
           h2("Market commentary"),
@@ -856,6 +1005,19 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       { boldLastRow: !!d.projectPhases.loan },
     ),
     body(""),
+    ganttTable(d.projectPhases),
+    new Paragraph({
+      spacing: { before: 80, after: 200 },
+      children: [
+        new TextRun({
+          text: "Each column is one program month; shaded blocks are the months in which the phase is actually active — white gaps within a phase reflect the per-cycle batching described above.",
+          font: FONT,
+          size: 16,
+          color: GRAY,
+          italics: true,
+        }),
+      ],
+    }),
     ...(d.projectPhases.loan
       ? [
           body([
@@ -879,7 +1041,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       t("Three scenarios are presented below. The "),
       t("Expected Case", { bold: true }),
       t(
-        " is the base operating case — its assumptions are benchmarked against closed transactions in Section 3 and the Builder's execution history. The ",
+        " is the base operating case — its assumptions are benchmarked against closed transactions in Section 3 and the Builder's delivery history (Section 2). The ",
       ),
       t("Stress Case", { bold: true }),
       t(
@@ -907,6 +1069,13 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
                     : "additional scenario",
               { size: 17, italics: true, color: GRAY },
             ),
+          ),
+        ],
+        // "o Expected realmente é o cenário central" — sem %, só a hierarquia (feedback 15/07)
+        [
+          "Probability",
+          ...ordered.map((s) =>
+            t(s === expected ? "highest" : "low", { size: 17, italics: true, color: GRAY }),
           ),
         ],
         ["Projected net IRR", ...ordered.map((s, i) => t(pct(s.irrAnnual), { size: 19, bold: i === 0 }))],
@@ -1127,13 +1296,19 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       "Projections are inherently uncertain and depend on assumptions about prices, costs, schedules and financing that may not materialize. Actual returns may be materially lower than projected, and losses — up to the entire investment — are possible.",
     ),
 
-    // ── CLOSING REMARKS (IA — só quando gerada) ──
-    ...(prose?.closingRemarks
-      ? [h1("9. Closing Remarks"), body(prose.closingRemarks), aiNote(d, prose)]
-      : []),
+    // ── CLOSING REMARKS — sempre presente; a IA (quando gerada) resume os números e o
+    // documento termina em filosofia, não em números (feedback 15/07) ──
+    h1("9. Closing Remarks"),
+    ...(prose?.closingRemarks ? [body(prose.closingRemarks), aiNote(d, prose)] : []),
+    body([
+      t(
+        "The objective of this program is not to maximize projected returns on paper, but to preserve investor capital while delivering attractive risk-adjusted performance through disciplined execution.",
+        { italics: true },
+      ),
+    ]),
 
     // ── DISCLOSURES ──
-    h1(prose?.closingRemarks ? "10. Additional Disclosures" : "9. Additional Disclosures"),
+    h1("10. Additional Disclosures"),
     body(
       "No person has been authorized to make any representation not contained in this Summary, and any such representation must not be relied upon. Delivery of this Summary does not imply that the information herein is correct as of any date after the date on the cover. Prior performance of the Builder, the Manager or their affiliates — including homes delivered and sales volume — is not indicative of the Project’s future results. Certain figures herein are generated by the Manager’s simulation platform as of the date on the cover and are refreshed with each edition; the underlying assumptions are available to prospective investors upon request. This Summary is confidential and may not be reproduced or distributed, in whole or in part, without the Manager’s prior written consent.",
     ),
