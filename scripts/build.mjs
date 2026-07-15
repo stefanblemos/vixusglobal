@@ -23,6 +23,8 @@ if (process.env.VERCEL_ENV === "production") {
   run("node scripts/seed-catalog.mjs");
   // Remove o Maragogi do seed (substituído por T1/T2; ressuscitava a cada deploy)
   run("node scripts/fix-remove-maragogi.mjs");
+  // Ficha dos modelos (foto/specs/descrição do site 4U) — create-only por campo
+  run("node scripts/fix-model-specs.mjs");
   // Funde a duplicada Vixus International → Vixus America ANTES do seed da PH3
   // (o seed antigo criou uma casca por não olhar aliases; no-op depois de aplicado)
   run("node scripts/fix-vai-dupe.mjs");

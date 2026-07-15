@@ -266,55 +266,161 @@ function ganttTable(pp: ReportData["projectPhases"]) {
   });
 }
 
-// Galeria "The homes in this program" (Fase 3 — 15/07): fotos/renders dos modelos da
-// cesta, 2 por linha, legenda embaixo; dimensões vêm do catálogo (proporção preservada)
-function photoGallery(photos: ReportData["modelPhotos"]) {
+// Ficha "The homes in this program" (mock aprovado 15/07): foto + specs + linha de
+// underwriting (preço da simulação, $/SF, percentil do §3). Layout A = 1 modelo (card
+// cheio, foto à esquerda); Layout B = 2+ modelos (grade compacta, 2 por linha).
+type ModelCard = ReportData["modelCards"][number];
+
+const cardImage = (c: ModelCard, imgW: number) =>
+  new ImageRun({
+    type: c.dataUri.startsWith("data:image/png") ? "png" : "jpg",
+    data: Buffer.from(c.dataUri.slice(c.dataUri.indexOf(",") + 1), "base64"),
+    transformation: { width: imgW, height: Math.max(1, Math.round((imgW * c.height) / c.width)) },
+  });
+
+const specLineOf = (c: ModelCard) =>
+  [
+    c.beds != null ? `${c.beds} bed` : null,
+    c.baths != null ? `${c.baths} bath` : null,
+    c.garage != null ? `${c.garage}-car garage` : null,
+    c.livingSqft != null ? `${c.livingSqft.toLocaleString("en-US")} SF living` : null,
+    c.builtSqft != null ? `${c.builtSqft.toLocaleString("en-US")} SF built` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+const underwritingOf = (c: ModelCard) =>
+  `Sale price ${money0(c.salePrice)}` +
+  (c.ppsf != null ? ` · $${c.ppsf}/SF living` : "") +
+  (c.percentile != null
+    ? ` — P${c.percentile} of closed new-construction sales in ${c.locations.join(", ")} (Section 3)`
+    : ` — ${c.locations.join(", ")}`);
+
+function modelCardsBlock(cards: ReportData["modelCards"]): (Paragraph | Table)[] {
+  const NO_BORDERS = {
+    top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+  };
+
+  if (cards.length === 1) {
+    // Layout A — card cheio: foto à esquerda, painel de specs à direita
+    const c = cards[0];
+    const photoW = 5100;
+    const panelW = W - photoW;
+    const spec = (v: string, l: string) =>
+      new TableCell({
+        width: { size: Math.floor((panelW - 320) / 2), type: WidthType.DXA },
+        margins: { top: 40, bottom: 40, left: 0, right: 60 },
+        children: [
+          new Paragraph({ children: [t(v, { size: 21, bold: true, color: "0F172A" })] }),
+          new Paragraph({ children: [t(l.toUpperCase(), { size: 12, color: GRAY })] }),
+        ],
+      });
+    const specCells: TableCell[] = [];
+    if (c.beds != null) specCells.push(spec(String(c.beds), "Bedrooms"));
+    if (c.baths != null) specCells.push(spec(String(c.baths), "Bathrooms"));
+    if (c.livingSqft != null) specCells.push(spec(`${c.livingSqft.toLocaleString("en-US")} SF`, "Living area"));
+    if (c.builtSqft != null) specCells.push(spec(`${c.builtSqft.toLocaleString("en-US")} SF`, "Built area"));
+    if (c.garage != null) specCells.push(spec(`${c.garage}-car`, "Garage"));
+    if (c.buildMonths > 0) specCells.push(spec(`${c.buildMonths} mo`, "Build time"));
+    const specRows: TableRow[] = [];
+    for (let i = 0; i < specCells.length; i += 2) {
+      specRows.push(
+        new TableRow({ children: [specCells[i], ...(specCells[i + 1] ? [specCells[i + 1]] : [])] }),
+      );
+    }
+    return [
+      new Table({
+        width: { size: W, type: WidthType.DXA },
+        columnWidths: [photoW, panelW],
+        borders: NO_BORDERS,
+        rows: [
+          new TableRow({
+            children: [
+              new TableCell({
+                width: { size: photoW, type: WidthType.DXA },
+                margins: { top: 0, bottom: 0, left: 0, right: 100 },
+                children: [new Paragraph({ children: [cardImage(c, 330)] })],
+              }),
+              new TableCell({
+                width: { size: panelW, type: WidthType.DXA },
+                shading: { type: ShadingType.CLEAR, fill: "F8FAFC" },
+                margins: { top: 140, bottom: 140, left: 160, right: 160 },
+                children: [
+                  new Paragraph({ children: [t(c.name, { size: 22, bold: true, color: NAVY })] }),
+                  ...(c.tagline
+                    ? [
+                        new Paragraph({
+                          spacing: { after: 120 },
+                          children: [t(c.tagline, { size: 15, italics: true, color: GRAY })],
+                        }),
+                      ]
+                    : [new Paragraph({ spacing: { after: 80 }, children: [] })]),
+                  ...(specRows.length
+                    ? [
+                        new Table({
+                          width: { size: panelW - 320, type: WidthType.DXA },
+                          columnWidths: [Math.floor((panelW - 320) / 2), Math.floor((panelW - 320) / 2)],
+                          borders: NO_BORDERS,
+                          rows: specRows,
+                        }),
+                      ]
+                    : []),
+                  new Paragraph({
+                    spacing: { before: 140 },
+                    border: { top: { style: BorderStyle.SINGLE, size: 4, color: "E2E8F0" } },
+                    children: [t("UNDERWRITTEN IN THIS PROGRAM", { size: 12, bold: true, color: GRAY })],
+                  }),
+                  new Paragraph({
+                    spacing: { before: 40 },
+                    children: [t(underwritingOf(c), { size: 17 })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ];
+  }
+
+  // Layout B — grade compacta, 2 por linha, spec + underwriting sob a foto
   const colW = Math.floor(W / 2);
-  const imgW = 285; // px @96dpi ≈ largura útil da célula
-  const cell = (p: ReportData["modelPhotos"][number] | null) =>
+  const cell = (c: ModelCard | null) =>
     new TableCell({
       width: { size: colW, type: WidthType.DXA },
       margins: { top: 100, bottom: 100, left: 100, right: 100 },
-      children: p
+      children: c
         ? [
+            new Paragraph({ alignment: AlignmentType.CENTER, children: [cardImage(c, 285)] }),
             new Paragraph({
-              alignment: AlignmentType.CENTER,
-              children: [
-                new ImageRun({
-                  type: p.dataUri.startsWith("data:image/png") ? "png" : "jpg",
-                  data: Buffer.from(p.dataUri.slice(p.dataUri.indexOf(",") + 1), "base64"),
-                  transformation: {
-                    width: imgW,
-                    height: Math.max(1, Math.round((imgW * p.height) / p.width)),
-                  },
-                }),
-              ],
-            }),
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
               spacing: { before: 60 },
-              children: [t(p.name, { size: 16, bold: true, color: GRAY })],
+              children: [t(c.name, { size: 17, bold: true, color: NAVY })],
+            }),
+            new Paragraph({ children: [t(specLineOf(c), { size: 14, color: "475569" })] }),
+            new Paragraph({
+              spacing: { before: 30 },
+              children: [t(underwritingOf(c), { size: 13, color: GRAY, italics: true })],
             }),
           ]
         : [new Paragraph({ children: [] })],
     });
   const rows: TableRow[] = [];
-  for (let i = 0; i < photos.length; i += 2) {
-    rows.push(new TableRow({ children: [cell(photos[i]), cell(photos[i + 1] ?? null)] }));
+  for (let i = 0; i < cards.length; i += 2) {
+    rows.push(new TableRow({ children: [cell(cards[i]), cell(cards[i + 1] ?? null)] }));
   }
-  return new Table({
-    width: { size: W, type: WidthType.DXA },
-    columnWidths: [colW, colW],
-    borders: {
-      top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-      bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-      left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-      right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-      insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-    },
-    rows,
-  });
+  return [
+    new Table({
+      width: { size: W, type: WidthType.DXA },
+      columnWidths: [colW, colW],
+      borders: NO_BORDERS,
+      rows,
+    }),
+  ];
 }
 
 // Selo "Capital Sized Using the Stress-Tested Scenario" — faixa fina azul-clara
@@ -820,16 +926,16 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           }),
         ]
       : []),
-    // Galeria dos modelos da cesta (só quando há foto cadastrada no catálogo)
-    ...(d.modelPhotos.length > 0
+    // Ficha dos modelos da cesta (só quando há foto cadastrada no catálogo)
+    ...(d.modelCards.length > 0
       ? [
           h2("The homes in this program"),
-          photoGallery(d.modelPhotos),
+          ...modelCardsBlock(d.modelCards),
           new Paragraph({
             spacing: { before: 60, after: 160 },
             children: [
               new TextRun({
-                text: "Floor plans shown are the standardized models included in this program's basket; per-home economics for each are detailed in Appendix A.1.",
+                text: "Model specifications as published by the Builder (4youhomes.com/portfolio); underwriting figures from this program's Expected Case. Per-home economics for each home are detailed in Appendix A.1.",
                 font: FONT,
                 size: 16,
                 color: GRAY,

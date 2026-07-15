@@ -142,6 +142,13 @@ export async function saveModel(
     sqft: optInt(formData.get("sqft")),
     contractorFee: optNum(formData.get("contractorFee")),
     notes: String(formData.get("notes") ?? "").trim() || null,
+    // ficha do modelo (card do Investment Summary)
+    beds: optInt(formData.get("beds")),
+    baths: optNum(formData.get("baths")),
+    garageSpaces: optInt(formData.get("garageSpaces")),
+    builtSqft: optInt(formData.get("builtSqft")),
+    tagline: String(formData.get("tagline") ?? "").trim() || null,
+    description: String(formData.get("description") ?? "").trim() || null,
   };
 
   const dup = await prisma.catalogModel.findUnique({ where: { name } });
@@ -158,6 +165,12 @@ export async function saveModel(
         sqft: before.sqft,
         contractorFee: before.contractorFee,
         notes: before.notes,
+        beds: before.beds,
+        baths: before.baths,
+        garageSpaces: before.garageSpaces,
+        builtSqft: before.builtSqft,
+        tagline: before.tagline,
+        description: before.description,
       },
       data,
     );

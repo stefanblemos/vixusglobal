@@ -89,8 +89,25 @@ export type ReportData = {
   projectPhases: ProjectPhases;
   // premissas × vendidos no submarket (ATTOM) — tabela no §3 + grounding da IA
   benchmark: BenchmarkRow[];
-  // fotos/renders dos modelos DA CESTA (galeria "The homes in this program" no §2)
-  modelPhotos: Array<{ name: string; dataUri: string; width: number; height: number }>;
+  // ficha dos modelos DA CESTA ("The homes in this program" no §2): foto + specs +
+  // linha de underwriting (preço da simulação, $/SF, percentil do benchmark do §3)
+  modelCards: Array<{
+    name: string;
+    dataUri: string;
+    width: number;
+    height: number;
+    beds: number | null;
+    baths: number | null;
+    garage: number | null;
+    livingSqft: number | null;
+    builtSqft: number | null;
+    tagline: string | null;
+    buildMonths: number;
+    salePrice: number; // preço subscrito na simulação (com overrides)
+    locations: string[];
+    ppsf: number | null; // salePrice ÷ living sqft
+    percentile: number | null; // posição vs vendidos (benchmark §3), quando houver
+  }>;
   // histórico realizado da 4U (scripts/track-record.mjs ← export do 4U Builder) — §2
   trackRecord: typeof trackRecord;
 };
@@ -341,21 +358,52 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     projectPhases: phasesOf(realResult, sim.bankProfile?.termMonths ?? null),
     ...(await (async () => {
       const models = await prisma.catalogModel.findMany({
-        select: { id: true, name: true, sqft: true, photo: true, photoWidth: true, photoHeight: true },
+        select: {
+          id: true,
+          name: true,
+          sqft: true,
+          photo: true,
+          photoWidth: true,
+          photoHeight: true,
+          beds: true,
+          baths: true,
+          garageSpaces: true,
+          builtSqft: true,
+          tagline: true,
+        },
       });
       const basketIds = new Set(((sim.units as UnitRef[]) ?? []).map((u) => u.modelId));
-      return {
-        benchmark: benchmarkOf(realResult.units, new Map(models.map((m) => [m.name, m.sqft]))).rows,
-        // galeria do §2: só modelos DA CESTA que têm foto, na ordem do catálogo
-        modelPhotos: models
-          .filter((m) => basketIds.has(m.id) && m.photo && m.photoWidth && m.photoHeight)
-          .map((m) => ({
+      const benchmark = benchmarkOf(realResult.units, new Map(models.map((m) => [m.name, m.sqft]))).rows;
+      // ficha do §2: só modelos DA CESTA que têm foto; underwriting vem das units do
+      // Expected (salePrice já com overrides) e o percentil do benchmark de vendidos
+      const modelCards = models
+        .filter((m) => basketIds.has(m.id) && m.photo && m.photoWidth && m.photoHeight)
+        .map((m) => {
+          const units = realResult.units.filter((u) => u.modelName === m.name);
+          const salePrice = units[0]?.salePrice ?? 0;
+          const saleRow = benchmark.find(
+            (b) => b.kind === "sale" && b.label.startsWith(m.name) && b.percentile != null,
+          );
+          return {
             name: m.name,
             dataUri: m.photo!,
             width: m.photoWidth!,
             height: m.photoHeight!,
-          })),
-      };
+            beds: m.beds,
+            baths: m.baths == null ? null : Number(m.baths),
+            garage: m.garageSpaces,
+            livingSqft: m.sqft,
+            builtSqft: m.builtSqft,
+            tagline: m.tagline,
+            buildMonths: units[0]?.buildMonths ?? 0,
+            salePrice,
+            locations: [...new Set(units.map((u) => u.locationName))],
+            ppsf: m.sqft && salePrice > 0 ? Math.round(salePrice / m.sqft) : null,
+            percentile: saleRow?.percentile ?? null,
+          };
+        })
+        .filter((c) => c.salePrice > 0);
+      return { benchmark, modelCards };
     })()),
   };
 }

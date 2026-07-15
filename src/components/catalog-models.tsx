@@ -29,6 +29,13 @@ export type ModelRow = {
   notes: string | null;
   hasPhoto: boolean; // data URI fica no server — aqui só o flag + dimensões
   photoDims: string | null;
+  // ficha do modelo (card do report)
+  beds: string | null;
+  baths: string | null;
+  garageSpaces: string | null;
+  builtSqft: string | null;
+  tagline: string | null;
+  description: string | null;
   locations: Array<{
     id: string; // CatalogModelLocation id
     locationId: string;
@@ -354,6 +361,38 @@ function ModelModal({
               <label htmlFor="mod-notes" className={labelClass}>Notes</label>
               <input id="mod-notes" name="notes" defaultValue={model?.notes ?? ""} className={inputClass} />
             </div>
+            {/* Ficha do modelo — sai no card "The homes in this program" do report */}
+            <div>
+              <label htmlFor="mod-beds" className={labelClass}>Bedrooms</label>
+              <input id="mod-beds" name="beds" defaultValue={model?.beds ?? ""} className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="mod-baths" className={labelClass}>Bathrooms</label>
+              <input id="mod-baths" name="baths" defaultValue={model?.baths ?? ""} placeholder="ex.: 2.5" className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="mod-garage" className={labelClass}>Garage (cars)</label>
+              <input id="mod-garage" name="garageSpaces" defaultValue={model?.garageSpaces ?? ""} className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="mod-built" className={labelClass}>Built area (SF)</label>
+              <input id="mod-built" name="builtSqft" defaultValue={model?.builtSqft ?? ""} placeholder="total sob telhado" className={inputClass} />
+            </div>
+            <div className="col-span-2">
+              <label htmlFor="mod-tagline" className={labelClass}>Tagline (report)</label>
+              <input id="mod-tagline" name="tagline" defaultValue={model?.tagline ?? ""} placeholder="uma linha de posicionamento" className={inputClass} />
+            </div>
+          </div>
+          <div>
+            <label htmlFor="mod-desc" className={labelClass}>Description (report)</label>
+            <textarea
+              id="mod-desc"
+              name="description"
+              defaultValue={model?.description ?? ""}
+              rows={3}
+              placeholder="parágrafo 'About' do modelo — reutilizado nos reports"
+              className={inputClass}
+            />
           </div>
 
           {state?.error && <p className="text-sm text-red-600">{state.error}</p>}

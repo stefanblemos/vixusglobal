@@ -1144,6 +1144,14 @@ model CatalogModel {
   photo         String?   @db.Text
   photoWidth    Int?
   photoHeight   Int?
+  // ficha do modelo (specs do site 4youhomes.com/portfolio ou preenchidas à mão) —
+  // aparecem no card "The homes in this program" do Investment Summary
+  beds          Int?
+  baths         Decimal?  @db.Decimal(3, 1)
+  garageSpaces  Int?
+  builtSqft     Int? // área total sob telhado; living area é o sqft acima
+  tagline       String? // uma linha de posicionamento (ex.: "Timeless architecture…")
+  description   String?   @db.Text // parágrafo "About" — salvo p/ reutilizar
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
