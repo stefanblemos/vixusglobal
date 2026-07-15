@@ -182,6 +182,46 @@ export async function deleteModel(formData: FormData): Promise<void> {
   revalidatePath(CATALOG);
 }
 
+// Foto/render do modelo p/ o Investment Summary. O client redimensiona (canvas, ~1200px,
+// JPEG) antes de enviar; aqui só validamos o data URI e guardamos as dimensões, que o
+// DOCX usa p/ manter a proporção no ImageRun. photo vazio = remover.
+export async function saveModelPhoto(
+  _prev: CatalogFormState,
+  formData: FormData,
+): Promise<CatalogFormState> {
+  const id = String(formData.get("id") ?? "");
+  const photo = String(formData.get("photo") ?? "");
+  const model = await prisma.catalogModel.findUnique({ where: { id } });
+  if (!model) return { error: "Model not found." };
+
+  if (photo) {
+    if (!/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(photo))
+      return { error: "Invalid image — JPEG or PNG only." };
+    if (photo.length > 2_000_000)
+      return { error: "Image still too large after compression — try a smaller photo." };
+    const width = optInt(formData.get("width"));
+    const height = optInt(formData.get("height"));
+    if (!width || !height) return { error: "Missing image dimensions." };
+    await prisma.catalogModel.update({
+      where: { id },
+      data: { photo, photoWidth: width, photoHeight: height },
+    });
+    await logChange("MODEL", id, model.name, "UPDATE", [
+      { field: "photo", from: model.photo ? "(photo)" : null, to: `(photo ${width}×${height})` },
+    ]);
+  } else {
+    await prisma.catalogModel.update({
+      where: { id },
+      data: { photo: null, photoWidth: null, photoHeight: null },
+    });
+    await logChange("MODEL", id, model.name, "UPDATE", [
+      { field: "photo", from: model.photo ? "(photo)" : null, to: null },
+    ]);
+  }
+  revalidatePath(CATALOG);
+  return { ok: true };
+}
+
 // Valores do modelo NUM local: venda + custo performance + custo-base contractor (o lote
 // vem do location). O log entra no histórico do MODELO, com o nome do local no campo.
 export async function saveModelLocation(

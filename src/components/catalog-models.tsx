@@ -7,6 +7,7 @@ import {
   deleteModelLocation,
   saveModel,
   saveModelLocation,
+  saveModelPhoto,
   type CatalogFormState,
 } from "@/lib/actions/catalog";
 import type { HistoryEntry } from "@/components/catalog-locations";
@@ -26,6 +27,8 @@ export type ModelRow = {
   sqft: string | null;
   contractorFee: string | null;
   notes: string | null;
+  hasPhoto: boolean; // data URI fica no server — aqui só o flag + dimensões
+  photoDims: string | null;
   locations: Array<{
     id: string; // CatalogModelLocation id
     locationId: string;
@@ -163,6 +166,111 @@ function AddModelLocation({
   );
 }
 
+// Foto/render do modelo (Fase 3 do report — 15/07): o arquivo é redimensionado AQUI no
+// browser (canvas, máx. 1200px, JPEG) antes de ir p/ o server — nada de upload gigante.
+function ModelPhotoEditor({ model }: { model: ModelRow }) {
+  const [state, formAction, pending] = useActionState<CatalogFormState, FormData>(
+    saveModelPhoto,
+    undefined,
+  );
+  const [dataUri, setDataUri] = useState<string | null>(null);
+  const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setErr(null);
+    const url = URL.createObjectURL(f);
+    const img = new window.Image();
+    img.onload = () => {
+      const maxW = 1200;
+      const scale = Math.min(1, maxW / img.naturalWidth);
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+      const uri = canvas.toDataURL("image/jpeg", 0.82);
+      URL.revokeObjectURL(url);
+      if (uri.length > 2_000_000) {
+        setErr("Imagem grande demais mesmo após compressão — tente uma foto menor.");
+        return;
+      }
+      setDataUri(uri);
+      setDims({ w, h });
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      setErr("Não consegui ler esse arquivo como imagem (use JPEG ou PNG).");
+    };
+    img.src = url;
+  }
+
+  return (
+    <div className="border-t border-slate-100 px-6 py-4">
+      <h4 className="mb-1 text-sm font-semibold text-slate-700">Foto / render do modelo</h4>
+      <p className="mb-2 text-xs text-slate-400">
+        Aparece na galeria “The homes in this program” do Investment Summary. JPEG/PNG —
+        redimensionada automaticamente para 1200px.
+      </p>
+      {state?.ok && !dataUri && (
+        <p className="mb-2 text-xs font-medium text-green-600">Foto salva ✓</p>
+      )}
+      {model.hasPhoto && !dataUri && (
+        <p className="mb-2 text-xs text-slate-500">
+          Foto cadastrada ✓ {model.photoDims && <span className="text-slate-400">({model.photoDims}px)</span>}
+        </p>
+      )}
+      {dataUri && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={dataUri} alt="Prévia" className="mb-2 max-h-40 rounded-lg border border-slate-200" />
+      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <form action={formAction} className="flex flex-wrap items-center gap-2">
+          <input type="hidden" name="id" value={model.id} />
+          <input type="hidden" name="photo" value={dataUri ?? ""} />
+          <input type="hidden" name="width" value={dims?.w ?? ""} />
+          <input type="hidden" name="height" value={dims?.h ?? ""} />
+          <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
+            {model.hasPhoto ? "Trocar foto…" : "Escolher foto…"}
+            <input type="file" accept="image/jpeg,image/png" onChange={onFile} className="hidden" />
+          </label>
+          {dataUri && (
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
+            >
+              {pending ? "Salvando…" : "Salvar foto"}
+            </button>
+          )}
+        </form>
+        {model.hasPhoto && (
+          // form próprio: remover NUNCA pode levar junto a foto recém-selecionada ao lado
+          <form action={formAction}>
+            <input type="hidden" name="id" value={model.id} />
+            <input type="hidden" name="photo" value="" />
+            <button
+              type="submit"
+              disabled={pending}
+              onClick={() => {
+                setDataUri(null);
+                setDims(null);
+              }}
+              className="rounded-lg border border-red-200 px-3 py-2 text-sm text-red-500 hover:bg-red-50"
+            >
+              Remover foto
+            </button>
+          </form>
+        )}
+        {(err || state?.error) && <p className="w-full text-sm text-red-600">{err ?? state?.error}</p>}
+      </div>
+    </div>
+  );
+}
+
 function ModelModal({
   model,
   allLocations,
@@ -280,6 +388,8 @@ function ModelModal({
             </div>
           </div>
         </form>
+
+        {model && <ModelPhotoEditor model={model} />}
 
         {model && (
           <div className="border-t border-slate-100 px-6 py-4">
@@ -411,7 +521,14 @@ export function CatalogModels({
                 onClick={() => setSelected(m.id)}
                 className="cursor-pointer border-b border-slate-50 hover:bg-slate-50/70"
               >
-                <td className={`${td} font-medium text-slate-800`}>{m.name}</td>
+                <td className={`${td} font-medium text-slate-800`}>
+                  {m.name}
+                  {m.hasPhoto && (
+                    <span className="ml-1 text-xs" title="foto cadastrada — aparece no Investment Summary">
+                      📷
+                    </span>
+                  )}
+                </td>
                 <td className={td}>{HOUSE_TYPE_LABEL[m.houseType] ?? m.houseType}</td>
                 <td className={td}>{m.buildMonths}</td>
                 <td className={td}>

@@ -1139,6 +1139,11 @@ model CatalogModel {
   sqft          Int? // metragem (living area) — habilita benchmark $/sf vs ATTOM
   contractorFee Decimal?  @db.Decimal(20, 2) // override; null = usa o fee do tipo (HouseTypeFee)
   notes         String?
+  // foto/render do modelo p/ o Investment Summary — data URI (jpeg/png) já redimensionado
+  // no client (~1200px); dimensões guardadas p/ o ImageRun do DOCX manter a proporção
+  photo         String?   @db.Text
+  photoWidth    Int?
+  photoHeight   Int?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 

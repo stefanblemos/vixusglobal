@@ -88,6 +88,8 @@ export type ReportData = {
   projectPhases: ProjectPhases;
   // premissas × vendidos no submarket (ATTOM) — tabela no §3 + grounding da IA
   benchmark: BenchmarkRow[];
+  // fotos/renders dos modelos DA CESTA (galeria "The homes in this program" no §2)
+  modelPhotos: Array<{ name: string; dataUri: string; width: number; height: number }>;
 };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -333,9 +335,23 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     market: marketStats,
     customAssumptions: countOverrides((sim.overrides as SimOverrides | null) ?? null),
     projectPhases: phasesOf(realResult, sim.bankProfile?.termMonths ?? null),
-    benchmark: benchmarkOf(
-      realResult.units,
-      new Map((await prisma.catalogModel.findMany({ select: { name: true, sqft: true } })).map((m) => [m.name, m.sqft])),
-    ).rows,
+    ...(await (async () => {
+      const models = await prisma.catalogModel.findMany({
+        select: { id: true, name: true, sqft: true, photo: true, photoWidth: true, photoHeight: true },
+      });
+      const basketIds = new Set(((sim.units as UnitRef[]) ?? []).map((u) => u.modelId));
+      return {
+        benchmark: benchmarkOf(realResult.units, new Map(models.map((m) => [m.name, m.sqft]))).rows,
+        // galeria do §2: só modelos DA CESTA que têm foto, na ordem do catálogo
+        modelPhotos: models
+          .filter((m) => basketIds.has(m.id) && m.photo && m.photoWidth && m.photoHeight)
+          .map((m) => ({
+            name: m.name,
+            dataUri: m.photo!,
+            width: m.photoWidth!,
+            height: m.photoHeight!,
+          })),
+      };
+    })()),
   };
 }

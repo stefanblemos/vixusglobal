@@ -266,6 +266,57 @@ function ganttTable(pp: ReportData["projectPhases"]) {
   });
 }
 
+// Galeria "The homes in this program" (Fase 3 — 15/07): fotos/renders dos modelos da
+// cesta, 2 por linha, legenda embaixo; dimensões vêm do catálogo (proporção preservada)
+function photoGallery(photos: ReportData["modelPhotos"]) {
+  const colW = Math.floor(W / 2);
+  const imgW = 285; // px @96dpi ≈ largura útil da célula
+  const cell = (p: ReportData["modelPhotos"][number] | null) =>
+    new TableCell({
+      width: { size: colW, type: WidthType.DXA },
+      margins: { top: 100, bottom: 100, left: 100, right: 100 },
+      children: p
+        ? [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [
+                new ImageRun({
+                  type: p.dataUri.startsWith("data:image/png") ? "png" : "jpg",
+                  data: Buffer.from(p.dataUri.slice(p.dataUri.indexOf(",") + 1), "base64"),
+                  transformation: {
+                    width: imgW,
+                    height: Math.max(1, Math.round((imgW * p.height) / p.width)),
+                  },
+                }),
+              ],
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 60 },
+              children: [t(p.name, { size: 16, bold: true, color: GRAY })],
+            }),
+          ]
+        : [new Paragraph({ children: [] })],
+    });
+  const rows: TableRow[] = [];
+  for (let i = 0; i < photos.length; i += 2) {
+    rows.push(new TableRow({ children: [cell(photos[i]), cell(photos[i + 1] ?? null)] }));
+  }
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: [colW, colW],
+    borders: {
+      top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      insideHorizontal: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      insideVertical: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+    },
+    rows,
+  });
+}
+
 // Selo "Capital Sized Using the Stress-Tested Scenario" — faixa fina azul-clara
 const sealBand = (text: string) =>
   new Table({
@@ -730,6 +781,25 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       "Vertically integrated through Truss Direct, the group’s truss manufacturer supplying 90+ projects per month — insulating the program from a key supply-chain bottleneck.",
     ),
     bullet("BBB accredited; every home delivered with a 2-10 structural warranty and covered by builder’s risk insurance during construction."),
+    // Galeria dos modelos da cesta (só quando há foto cadastrada no catálogo)
+    ...(d.modelPhotos.length > 0
+      ? [
+          h2("The homes in this program"),
+          photoGallery(d.modelPhotos),
+          new Paragraph({
+            spacing: { before: 60, after: 160 },
+            children: [
+              new TextRun({
+                text: "Floor plans shown are the standardized models included in this program's basket; per-home economics for each are detailed in Appendix A.1.",
+                font: FONT,
+                size: 16,
+                color: GRAY,
+                italics: true,
+              }),
+            ],
+          }),
+        ]
+      : []),
     h2(isClient ? "Vixus Investment — the Development Manager" : "Vixus Investment — the Manager"),
     body(
       isClient

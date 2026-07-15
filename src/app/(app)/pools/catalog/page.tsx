@@ -161,6 +161,9 @@ export default async function PoolCatalogPage({
             sqft: m.sqft?.toString() ?? null,
             contractorFee: m.contractorFee?.toString() ?? null,
             notes: m.notes,
+            // só o flag — o data URI da foto NÃO desce p/ a lista (peso da página)
+            hasPhoto: !!m.photo,
+            photoDims: m.photoWidth && m.photoHeight ? `${m.photoWidth}×${m.photoHeight}` : null,
             locations: m.locations.map((ml) => ({
               id: ml.id,
               locationId: ml.locationId,
