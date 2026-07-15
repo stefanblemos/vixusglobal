@@ -51,7 +51,10 @@ export type ReportData = {
   hasPromote: boolean; // promote/waterfall ativo (PROMOTE, ou OPEN_BOOK com tiers)
   promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
   flatFeePerHouse: number;
-  compLabel: string;
+  // insumos p/ o docx montar o label de remuneração no idioma do documento
+  perfPct: number;
+  perfTiming: "PER_SALE" | "PROJECT_COMPLETION";
+  compLabel: string; // versão em inglês (legado/uso interno)
   bankName: string | null;
   scenarios: ScenarioKpis[];
   base: SimResult; // Expected Case (REAL) — base operacional do report
@@ -329,6 +332,8 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
       sim.compMode === "PROMOTE" || !!(sim.promoteTiers as unknown[] | null)?.length,
     promoteTiers: (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ?? null,
     flatFeePerHouse: Number(sim.flatFeePerHouse ?? 0),
+    perfPct: Number(sim.perfPct ?? 0),
+    perfTiming: (sim.perfTiming as "PER_SALE" | "PROJECT_COMPLETION") ?? "PROJECT_COMPLETION",
     compLabel,
     bankName: sim.bankProfile?.name ?? null,
     scenarios,

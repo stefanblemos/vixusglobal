@@ -482,13 +482,39 @@ export default async function SimulationPage({
               </button>
             </form>
           )}
-          <a
-            href={`/api/simulations/${sim.id}/report`}
-            title="Investment Summary canônico (DOCX) — 3 cenários + sensibilidade + apêndice financeiro, sempre fresco do catálogo"
-            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
-          >
-            📄 Investment Summary
-          </a>
+          {/* Idioma escolhido ANTES de gerar (15/07): EN canônico · PT/ES = tradução livre
+              com ressalva de que o inglês prevalece. <details> nativo — sem client component */}
+          <details className="relative">
+            <summary
+              title="Investment Summary canônico (DOCX) — 3 cenários + sensibilidade + apêndice financeiro, sempre fresco do catálogo. Escolha o idioma."
+              className="cursor-pointer list-none rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+            >
+              📄 Investment Summary ▾
+            </summary>
+            <div className="absolute right-0 z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+              <a
+                href={`/api/simulations/${sim.id}/report`}
+                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                🇺🇸 English <span className="text-xs text-slate-400">(canônico)</span>
+              </a>
+              <a
+                href={`/api/simulations/${sim.id}/report?lang=pt`}
+                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                🇧🇷 Português (BR)
+              </a>
+              <a
+                href={`/api/simulations/${sim.id}/report?lang=es`}
+                className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+              >
+                🇲🇽 Español (LatAm)
+              </a>
+              <p className="border-t border-slate-100 px-4 pb-1 pt-2 text-[10px] leading-snug text-slate-400">
+                PT/ES são traduções livres — a versão em inglês prevalece (nota no documento).
+              </p>
+            </div>
+          </details>
           <SimulationUnitsEditor
             simulationId={sim.id}
             fundingMode={sim.fundingMode}

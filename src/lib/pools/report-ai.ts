@@ -55,10 +55,7 @@ STRICT RULES — violating any of these makes the output unusable:
 - closingRemarks: 1 paragraph closing the document — restate the program shape, the
   Expected Case figures and the stress-tested downside, and why the underwriting holds
   against the observed data (benchmarked assumptions, breakeven cushion, stress sizing).
-  End without a call to action.
-
-DATA (the only source of truth):
-`;
+  End without a call to action.`;
 
 function hashOf(payload: unknown): string {
   return createHash("sha256").update(JSON.stringify(payload)).digest("hex").slice(0, 24);
@@ -124,18 +121,31 @@ function groundingOf(d: ReportData) {
   };
 }
 
+export type ReportProseLang = "en" | "pt" | "es";
+
+const LANG_INSTRUCTION: Record<ReportProseLang, string> = {
+  en: "",
+  pt: "\n- WRITE THE OUTPUT IN BRAZILIAN PORTUGUESE (pt-BR), institutional register. Keep US market terms that Brazilian investors use (permit, closing, MLS, breakeven) and scenario names as: Cenário Esperado (Expected), Cenário de Estresse (Stress), Cenário de Alta (Upside). Currency stays in US$ as given.",
+  es: "\n- WRITE THE OUTPUT IN LATIN AMERICAN SPANISH (es-419), institutional register. Keep US market terms commonly used by investors (permit, closing, MLS, breakeven) and scenario names as: Escenario Esperado (Expected), Escenario de Estrés (Stress), Escenario de Alza (Upside). Currency stays in US$ as given.",
+};
+
 export async function getReportProse(
   simulationId: string,
   d: ReportData,
+  lang: ReportProseLang = "en",
 ): Promise<ReportProse | null> {
   const grounding = groundingOf(d);
-  const hash = hashOf(grounding);
+  const hash = hashOf(grounding) + ":" + lang;
 
   const sim = await prisma.poolSimulation.findUnique({
     where: { id: simulationId },
     select: { reportAi: true },
   });
-  const cached = sim?.reportAi as CachedProse | null;
+  // cache por idioma: { en: {...}, pt: {...} } — formato antigo (flat) vale como "en"
+  const raw = sim?.reportAi as Record<string, CachedProse> | (CachedProse & { marketCommentary?: string[] }) | null;
+  const store: Record<string, CachedProse> =
+    raw && "marketCommentary" in raw ? { en: raw as CachedProse } : ((raw as Record<string, CachedProse>) ?? {});
+  const cached = store[lang] ?? null;
   if (cached?.hash === hash && cached.marketCommentary?.length) return cached;
 
   try {
@@ -144,7 +154,11 @@ export async function getReportProse(
       model: MODEL,
       max_tokens: 1500,
       messages: [
-        { role: "user", content: PROMPT + JSON.stringify(grounding, null, 2) },
+        {
+          role: "user",
+          content:
+            PROMPT + LANG_INSTRUCTION[lang] + "\n\nDATA (the only source of truth):\n" + JSON.stringify(grounding, null, 2),
+        },
       ],
       output_config: { format: zodOutputFormat(reportProseSchema) },
     });
@@ -158,7 +172,7 @@ export async function getReportProse(
     };
     await prisma.poolSimulation.update({
       where: { id: simulationId },
-      data: { reportAi: prose },
+      data: { reportAi: { ...store, [lang]: prose } },
     });
     return prose;
   } catch (e) {

@@ -33,17 +33,18 @@ async function main() {
   console.log(`Ledger mensal: ${data.monthly.length} meses · Mercado: extrato ${data.market.extractDate}`);
   if (Math.abs(data.closing.diff) > 0.01) throw new Error("Fechamento NÃO bate ao centavo — report seria bloqueado.");
 
+  const lang = (["en", "pt", "es"].includes(process.argv[4] ?? "") ? process.argv[4] : "en") as "en" | "pt" | "es";
   // prosa da Claude quando a chave existe (mesmo caminho da rota); sem chave → sem prosa
-  const prose = process.env.ANTHROPIC_API_KEY ? await getReportProse(sim.id, data) : null;
+  const prose = process.env.ANTHROPIC_API_KEY ? await getReportProse(sim.id, data, lang) : null;
   if (prose) {
     console.log(`Prosa AI (${prose.model}, cache hash ok):`);
     for (const p of prose.marketCommentary) console.log(`  [market] ${p.slice(0, 140)}…`);
     console.log(`  [closing] ${prose.closingRemarks.slice(0, 140)}…`);
   } else console.log("Prosa AI: — (sem chave ou falha — report sai sem a seção)");
 
-  const buf = await Packer.toBuffer(buildReportDocx(data, undefined, prose));
+  const buf = await Packer.toBuffer(buildReportDocx(data, undefined, prose, lang));
   fs.writeFileSync(outPath, buf);
-  console.log(`DOCX: ${outPath} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
+  console.log(`DOCX (${lang}): ${outPath} (${(buf.byteLength / 1024).toFixed(0)} KB)`);
 }
 
 main()
