@@ -47,6 +47,7 @@ export type ReportData = {
   // estrutura do veículo: LLC da Vixus ou entidade própria do grupo (Vixus = Dev Manager)
   vehicleStructure: "VIXUS_MANAGED" | "CLIENT_ENTITY";
   clientEntityName: string | null;
+  vehicleEntityName: string | null; // LLC dedicada (capa); null = "to be formed"
   compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
   hasPromote: boolean; // promote/waterfall ativo (PROMOTE, ou OPEN_BOOK com tiers)
   promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
@@ -326,6 +327,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",
     vehicleStructure: sim.vehicleStructure as "VIXUS_MANAGED" | "CLIENT_ENTITY",
     clientEntityName: sim.clientEntityName ?? null,
+    vehicleEntityName: sim.vehicleEntityName ?? null,
     compMode: sim.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK",
     // waterfall da Vixus: opt-in em QUALQUER modalidade (14/07) — basta ter tiers
     hasPromote:

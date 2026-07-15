@@ -603,6 +603,8 @@ export default async function SimulationPage({
       {tab === "setup" && (
       <SimulationControls
         key={[
+          sim.name,
+          sim.vehicleEntityName ?? "",
           sim.scenarioCode,
           sim.fundingMode,
           sim.bankProfileId ?? "",
@@ -616,6 +618,8 @@ export default async function SimulationPage({
         ].join("|")}
         sim={{
           id: sim.id,
+          name: sim.name,
+          vehicleEntityName: sim.vehicleEntityName,
           scenarioCode: sim.scenarioCode,
           fundingMode: sim.fundingMode,
           bankProfileId: sim.bankProfileId,

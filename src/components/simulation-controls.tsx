@@ -56,6 +56,8 @@ export function SimulationControls({
   defaultTiers,
 }: {
   sim: {
+    name: string;
+    vehicleEntityName: string | null;
     id: string;
     scenarioCode: string;
     fundingMode: string;
@@ -89,6 +91,9 @@ export function SimulationControls({
   const [paymentPlan, setPaymentPlan] = useState(sim.paymentPlan);
   const [vehicle, setVehicle] = useState(sim.vehicleStructure ?? "VIXUS_MANAGED");
   const [entityName, setEntityName] = useState(sim.clientEntityName ?? "");
+  // nome do projeto (renomeável) + LLC dedicada (capa do report) — 15/07
+  const [projName, setProjName] = useState(sim.name);
+  const [vehEntity, setVehEntity] = useState(sim.vehicleEntityName ?? "");
   const [upfront, setUpfront] = useState(sim.upfrontFunding);
   // waterfall = promote da VIXUS (Development Manager) — opt-in em QUALQUER modalidade
   // da 4U (regra do Stefan, 14/07); PROMOTE legado continua forçando os tiers
@@ -121,6 +126,8 @@ export function SimulationControls({
       setFlatFee(sim.flatFeePerHouse);
       setPaymentPlan(sim.paymentPlan);
       setUpfront(sim.upfrontFunding);
+      setProjName(sim.name);
+      setVehEntity(sim.vehicleEntityName ?? "");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -146,6 +153,21 @@ export function SimulationControls({
         <input type="hidden" name="promoteTiers" value={tiersJson} />
         <input type="hidden" name="vehicleStructure" value={vehicle} />
         <input type="hidden" name="clientEntityName" value={entityName} />
+        <input type="hidden" name="vehicleEntityName" value={vehEntity} />
+
+        <div>
+          <span className={labelClass}>Nome do projeto</span>
+          <input
+            name="name"
+            value={projName}
+            onChange={(e) => setProjName(e.target.value)}
+            onBlur={() => {
+              if (projName.trim() && projName !== sim.name) submit();
+            }}
+            title="Renomeia a simulação — reflete na capa do report, no rodapé e no nome do arquivo"
+            className="w-36 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm outline-none focus:border-[#1f3a5f]"
+          />
+        </div>
 
         <div>
           <span className={labelClass}>Cenário</span>
@@ -304,6 +326,16 @@ export function SimulationControls({
                 onBlur={submit}
                 placeholder="nome da entidade"
                 className={`${inputClass} w-44`}
+              />
+            )}
+            {vehicle === "VIXUS_MANAGED" && (
+              <input
+                value={vehEntity}
+                onChange={(e) => setVehEntity(e.target.value)}
+                onBlur={submit}
+                placeholder="LLC dedicada (ex.: VHP VII LLC)"
+                title="Nome da LLC dedicada — aparece na capa do report; vazio = 'to be formed'"
+                className={`${inputClass} w-52`}
               />
             )}
           </div>

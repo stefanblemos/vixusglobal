@@ -718,6 +718,53 @@ export function buildReportDocx(
         spacing: { after: 120 },
         children: [new TextRun({ text: d.simName, font: FONT, size: 30, bold: true, color: "D9E2F0" })],
       }),
+      // Entidade na capa (mock aprovado 15/07): LLC dedicada nomeada, "to be formed" quando
+      // vazia, ou "Prepared for <entidade do grupo>" no caso CLIENT_ENTITY
+      ...(isClient
+        ? d.clientEntityName
+          ? [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                spacing: { after: 100 },
+                children: [
+                  new TextRun({
+                    text: tr(
+                      `Prepared for ${d.clientEntityName}`,
+                      `Preparado para ${d.clientEntityName}`,
+                      `Preparado para ${d.clientEntityName}`,
+                    ),
+                    font: FONT,
+                    size: 21,
+                    color: "9FC0E8",
+                  }),
+                ],
+              }),
+            ]
+          : []
+        : [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 100 },
+              children: [
+                new TextRun({
+                  text: d.vehicleEntityName
+                    ? tr(
+                        `${d.vehicleEntityName} — a dedicated investment vehicle`,
+                        `${d.vehicleEntityName} — veículo de investimento dedicado`,
+                        `${d.vehicleEntityName} — vehículo de inversión dedicado`,
+                      )
+                    : tr(
+                        "Dedicated Florida LLC — to be formed",
+                        "LLC dedicada na Flórida — a constituir",
+                        "LLC dedicada en Florida — a constituirse",
+                      ),
+                  font: FONT,
+                  size: 21,
+                  color: "9FC0E8",
+                }),
+              ],
+            }),
+          ]),
       new Paragraph({
         alignment: AlignmentType.CENTER,
         children: [
@@ -739,11 +786,17 @@ export function buildReportDocx(
       alignment: AlignmentType.CENTER,
       children: [
         new TextRun({
-          text: tr(
-            "4U Custom Homes — Builder    ·    Vixus Investment — Manager",
-            "4U Custom Homes — Construtora    ·    Vixus Investment — Gestora",
-            "4U Custom Homes — Constructora    ·    Vixus Investment — Administrador",
-          ),
+          text: isClient
+            ? tr(
+                "4U Custom Homes — Builder    ·    Vixus Investment — Development Manager",
+                "4U Custom Homes — Construtora    ·    Vixus Investment — Development Manager",
+                "4U Custom Homes — Constructora    ·    Vixus Investment — Development Manager",
+              )
+            : tr(
+                "4U Custom Homes — Builder    ·    Vixus Investment — Manager",
+                "4U Custom Homes — Construtora    ·    Vixus Investment — Gestora",
+                "4U Custom Homes — Constructora    ·    Vixus Investment — Administrador",
+              ),
           font: FONT,
           size: 22,
           color: GRAY,
@@ -1180,11 +1233,17 @@ export function buildReportDocx(
               `${entityName} — detida e controlada pelo grupo investidor (estrutura escolhida pelo grupo para seu próprio perfil jurídico e tributário); Vixus Investment contratada como Development Manager`,
               `${entityName} — de propiedad y bajo control del grupo inversor (estructura elegida por el grupo para su propio perfil legal y fiscal); Vixus Investment contratada como Development Manager`,
             )
-          : tr(
-              "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each",
-              "LLC dedicada na Flórida (a constituir para este programa); classe única de cotas sem voto de $1.000 cada",
-              "LLC dedicada en Florida (a constituirse para este programa); clase única de unidades sin voto de $1,000 cada una",
-            ),
+          : d.vehicleEntityName
+            ? tr(
+                `${d.vehicleEntityName} — dedicated Florida limited liability company; single class of non-voting investor units of $1,000 each`,
+                `${d.vehicleEntityName} — LLC dedicada na Flórida; classe única de cotas sem voto de $1.000 cada`,
+                `${d.vehicleEntityName} — LLC dedicada en Florida; clase única de unidades sin voto de $1,000 cada una`,
+              )
+            : tr(
+                "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each",
+                "LLC dedicada na Flórida (a constituir para este programa); classe única de cotas sem voto de $1.000 cada",
+                "LLC dedicada en Florida (a constituirse para este programa); clase única de unidades sin voto de $1,000 cada una",
+              ),
       ],
       [
         tr("Projected duration (Expected Case)", "Duração projetada (Cenário Esperado)", "Duración proyectada (Escenario Esperado)"),

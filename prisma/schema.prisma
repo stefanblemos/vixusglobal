@@ -1369,6 +1369,8 @@ model PoolSimulation {
   pool   InvestmentPool? @relation(fields: [poolId], references: [id], onDelete: SetNull)
 
   name          String
+  // nome da LLC dedicada (VIXUS_MANAGED) — aparece na capa do report; vazio = "to be formed"
+  vehicleEntityName String?
   fundingMode   SimFundingMode  @default(BANK)
   bankProfileId String?
   bankProfile   BankProfile?    @relation(fields: [bankProfileId], references: [id])

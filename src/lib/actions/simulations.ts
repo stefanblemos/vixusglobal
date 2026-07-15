@@ -141,6 +141,13 @@ export async function updateSimulationSettings(
     formData.get("clientEntityName") != null
       ? String(formData.get("clientEntityName")).trim() || null
       : sim.clientEntityName;
+  // nome do projeto (renomeável — 15/07) e nome da LLC dedicada (capa do report)
+  const newName =
+    formData.get("name") != null ? String(formData.get("name")).trim() || sim.name : sim.name;
+  const vehicleEntityName =
+    formData.get("vehicleEntityName") != null
+      ? String(formData.get("vehicleEntityName")).trim() || null
+      : sim.vehicleEntityName;
   // Waterfall é OPT-IN: os controles mandam os tiers só quando ativos (PROMOTE sempre;
   // open book só com o checkbox marcado). Vazio = sem waterfall.
   const tiersField = formData.get("promoteTiers");
@@ -174,6 +181,7 @@ export async function updateSimulationSettings(
   await prisma.poolSimulation.update({
     where: { id },
     data: {
+      name: newName,
       scenarioCode,
       fundingMode: fundingMode as SimFundingMode,
       bankProfileId,
@@ -185,6 +193,7 @@ export async function updateSimulationSettings(
       upfrontFunding,
       vehicleStructure,
       clientEntityName: vehicleStructure === "CLIENT_ENTITY" ? clientEntityName : null,
+      vehicleEntityName: vehicleStructure === "VIXUS_MANAGED" ? vehicleEntityName : null,
       promoteTiers: promoteTiers ?? Prisma.DbNull,
       result: JSON.parse(JSON.stringify(result)),
     },
