@@ -22,7 +22,7 @@ export const reportProseSchema = z.object({
   closingRemarks: z
     .string()
     .describe(
-      "One closing paragraph in English tying the thesis together using ONLY figures provided (program, base case, breakeven cushion vs observed market). No predictions, no superlatives.",
+      "One closing paragraph in English tying the thesis together using ONLY figures provided (program, Expected Case, stress-tested downside, breakeven cushion vs observed market). No predictions, no superlatives.",
     ),
 });
 
@@ -49,9 +49,13 @@ STRICT RULES — violating any of these makes the output unusable:
   (absorption, days on market, price per SF, new-construction share — compare submarkets
   where meaningful). Paragraph 2: how THIS program relates to that data (its submarkets,
   scenario discounts, and the breakeven cushion versus observed conditions).
+- Scenario language: the "Expected Case" is the base operating case (most likely outcome);
+  the "Stress Case" is a deliberately adverse scenario that sizes the raise. Never call the
+  Expected Case a guarantee, a promise or a target that will be achieved.
 - closingRemarks: 1 paragraph closing the document — restate the program shape, the
-  Conservative base case figures, and why the underwriting holds against the observed data
-  (breakeven cushion, buffers). End without a call to action.
+  Expected Case figures and the stress-tested downside, and why the underwriting holds
+  against the observed data (benchmarked assumptions, breakeven cushion, stress sizing).
+  End without a call to action.
 
 DATA (the only source of truth):
 `;
@@ -62,7 +66,14 @@ function hashOf(payload: unknown): string {
 
 // Monta o payload de grounding — tudo que a IA pode citar, e nada além
 function groundingOf(d: ReportData) {
-  const cons = d.scenarios.find((s) => s.code === d.baseCode)!;
+  const expected = d.scenarios.find((s) => s.code === d.baseCode)!; // REAL
+  const stress = d.scenarios.find((s) => s.code === "CONS") ?? expected;
+  const kpisOf = (s: typeof expected) => ({
+    netIrrPct: s.irrAnnual == null ? null : Math.round(s.irrAnnual * 1000) / 10,
+    equityMultiple: s.equityMultiple,
+    peakCapitalUsd: Math.round(s.peakCapital),
+    investorProfitUsd: Math.round(s.profit),
+  });
   return {
     extractDate: d.market.extractDate,
     windowDays: d.market.windowDays,
@@ -74,15 +85,11 @@ function groundingOf(d: ReportData) {
       locations: d.locations,
       fundingMode: d.fundingMode,
       bankName: d.bankName,
-      durationMonths: Math.ceil(cons.durationDays / 30),
+      durationMonths: Math.ceil(expected.durationDays / 30),
     },
-    conservativeBaseCase: {
-      netIrrPct: cons.irrAnnual == null ? null : Math.round(cons.irrAnnual * 1000) / 10,
-      equityMultiple: cons.equityMultiple,
-      peakCapitalUsd: Math.round(cons.peakCapital),
-      investorProfitUsd: Math.round(cons.profit),
-    },
-    breakevenSalePriceDropPct: d.breakevenPriceDropPct, // null = >60%
+    expectedCase: kpisOf(expected),
+    stressCase: kpisOf(stress),
+    breakevenSalePriceDropPct: d.breakevenPriceDropPct, // null = >60% (vs Expected Case)
     underwritingVsMarket: d.benchmark
       .filter((b) => b.verdict !== "NO_DATA")
       .map((b) => ({
@@ -92,7 +99,7 @@ function groundingOf(d: ReportData) {
         percentileAmongSold: b.percentile,
         sampleSize: b.n,
       })),
-    note: "Conservative case already applies a sale-price discount and cost/timeline buffers on top of catalog values.",
+    note: "The Expected Case is the base operating case, benchmarked against closed transactions (underwritingVsMarket); the Stress Case applies a sale-price discount and cost/timeline buffers on top of it and is the case used to size the raise. Sensitivity and breakeven are computed on the Expected Case.",
   };
 }
 

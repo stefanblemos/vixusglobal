@@ -132,7 +132,7 @@ export function SimulationPremissas({
 }: {
   simulationId: string;
   scenarioName: string;
-  baseCode: string; // cenário-base do Investment Summary (CONS) — badge na coluna
+  baseCode: string; // cenário-base do Investment Summary (REAL/Expected) — badge na coluna
   locations: PremissasLocation[];
   combos: PremissasCombo[];
   scenarios: PremissasScenario[];
@@ -366,7 +366,7 @@ export function SimulationPremissas({
                         {s.name}
                         {s.code === baseCode && (
                           <span className="ml-1 rounded-full bg-[#1f3a5f] px-1.5 py-0.5 text-[9px] font-medium tracking-wide text-white">
-                            BASE DO REPORT
+                            EXPECTED · BASE DO REPORT
                           </span>
                         )}
                       </th>

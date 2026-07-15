@@ -12,7 +12,8 @@ import { phasesOf, type ProjectPhases } from "@/lib/pools/phases";
 import { benchmarkOf, type BenchmarkRow } from "@/lib/pools/benchmark";
 
 // Monta o pacote de dados do Investment Summary de UMA simulação: os 3 cenários rodados
-// frescos do catálogo, sensibilidade/breakeven sobre o Conservador (base case do report),
+// frescos do catálogo, sensibilidade/breakeven sobre o Expected Case (REAL — base operacional
+// do report desde 15/07; a captação continua dimensionada pelo pico do Stress/CONS),
 // fechamento ao centavo, ledger mensal agregado e a tabela de mercado do ATTOM.
 
 export type ScenarioKpis = {
@@ -52,7 +53,7 @@ export type ReportData = {
   compLabel: string;
   bankName: string | null;
   scenarios: ScenarioKpis[];
-  base: SimResult; // Conservador — base case
+  base: SimResult; // Expected Case (REAL) — base operacional do report
   baseCode: string;
   cycles: Array<{ cycle: number; homes: number }>;
   // pico de capital se TODAS as casas fossem tocadas juntas (ciclo único) — mede a
@@ -224,8 +225,8 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
   });
 
   const scenarios: ScenarioKpis[] = [];
-  let consInput: SimInput | null = null;
-  let consResult: SimResult | null = null;
+  let realInput: SimInput | null = null;
+  let realResult: SimResult | null = null;
   for (const s of allScenarios) {
     const input = await buildSimInput({ ...fieldsBase, scenarioCode: s.code });
     if ("error" in input) return { error: `${s.name}: ${input.error}` };
@@ -239,21 +240,21 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
       profit: res.kpis.profit,
       durationDays: res.kpis.durationDays,
     });
-    if (s.code === "CONS") {
-      consInput = input;
-      consResult = res;
+    if (s.code === "REAL") {
+      realInput = input;
+      realResult = res;
     }
   }
-  if (!consInput || !consResult) return { error: "Conservative scenario (CONS) not found." };
+  if (!realInput || !realResult) return { error: "Expected scenario (REAL) not found." };
 
-  // Sensibilidade sobre o base case — tornado clássico
+  // Sensibilidade sobre o Expected Case (padrão de mercado: estressa-se o caso-base declarado)
   const sens: SensitivityRow[] = [
-    { label: "Sale price −5%", input: withPrice(consInput, 0.95) },
-    { label: "Sale price +5%", input: withPrice(consInput, 1.05) },
-    { label: "Construction cost +5%", input: withCost(consInput, 1.05) },
-    { label: "Construction cost −5%", input: withCost(consInput, 0.95) },
-    { label: "Timeline +2 months", input: withDuration(consInput, 2) },
-    { label: "Timeline −2 months", input: withDuration(consInput, -2) },
+    { label: "Sale price −5%", input: withPrice(realInput, 0.95) },
+    { label: "Sale price +5%", input: withPrice(realInput, 1.05) },
+    { label: "Construction cost +5%", input: withCost(realInput, 1.05) },
+    { label: "Construction cost −5%", input: withCost(realInput, 0.95) },
+    { label: "Timeline +2 months", input: withDuration(realInput, 2) },
+    { label: "Timeline −2 months", input: withDuration(realInput, -2) },
   ].map(({ label, input }) => {
     const r = simulate(input);
     return { label, irr: r.kpis.irrAnnual, profit: r.kpis.profit };
@@ -261,15 +262,15 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
 
   // Breakeven: maior queda de preço em que o lucro ainda é ≥ 0 (bisseção, 0–60%)
   let breakeven: number | null = null;
-  if (consResult.kpis.profit > 0) {
+  if (realResult.kpis.profit > 0) {
     let lo = 0;
     let hi = 0.6;
-    if (simulate(withPrice(consInput, 1 - hi)).kpis.profit > 0) {
+    if (simulate(withPrice(realInput, 1 - hi)).kpis.profit > 0) {
       breakeven = null; // nem −60% zera — reportar como ">60%" no doc
     } else {
       for (let i = 0; i < 24; i++) {
         const mid = (lo + hi) / 2;
-        if (simulate(withPrice(consInput, 1 - mid)).kpis.profit >= 0) lo = mid;
+        if (simulate(withPrice(realInput, 1 - mid)).kpis.profit >= 0) lo = mid;
         else hi = mid;
       }
       breakeven = Math.round(lo * 1000) / 10; // % com 1 casa
@@ -277,12 +278,12 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
   }
 
   const cyclesMap = new Map<number, number>();
-  for (const u of consResult.units) cyclesMap.set(u.cycle ?? 1, (cyclesMap.get(u.cycle ?? 1) ?? 0) + 1);
+  for (const u of realResult.units) cyclesMap.set(u.cycle ?? 1, (cyclesMap.get(u.cycle ?? 1) ?? 0) + 1);
   const cycles = [...cyclesMap.entries()].sort((a, b) => a[0] - b[0]).map(([cycle, homes]) => ({ cycle, homes }));
 
   const singleShotPeak =
     cycles.length > 1
-      ? simulate({ ...consInput, units: consInput.units.map((u) => ({ ...u, cycle: 1 })) }).kpis.peakCapital
+      ? simulate({ ...realInput, units: realInput.units.map((u) => ({ ...u, cycle: 1 })) }).kpis.peakCapital
       : null;
 
   const compLabel =
@@ -309,11 +310,11 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     compLabel,
     bankName: sim.bankProfile?.name ?? null,
     scenarios,
-    base: consResult,
-    baseCode: "CONS",
+    base: realResult,
+    baseCode: "REAL",
     cycles,
     singleShotPeak,
-    locations: [...new Set(consResult.units.map((u) => u.locationName))],
+    locations: [...new Set(realResult.units.map((u) => u.locationName))],
     bankTerms: sim.bankProfile
       ? {
           ltcBuildPct: Number(sim.bankProfile.ltcBuildPct),
@@ -327,13 +328,13 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
       : null,
     sensitivity: sens,
     breakevenPriceDropPct: breakeven,
-    closing: closingOf(consResult),
-    monthly: monthlyOf(consResult),
+    closing: closingOf(realResult),
+    monthly: monthlyOf(realResult),
     market: marketStats,
     customAssumptions: countOverrides((sim.overrides as SimOverrides | null) ?? null),
-    projectPhases: phasesOf(consResult, sim.bankProfile?.termMonths ?? null),
+    projectPhases: phasesOf(realResult, sim.bankProfile?.termMonths ?? null),
     benchmark: benchmarkOf(
-      consResult.units,
+      realResult.units,
       new Map((await prisma.catalogModel.findMany({ select: { name: true, sqft: true } })).map((m) => [m.name, m.sqft])),
     ).rows,
   };

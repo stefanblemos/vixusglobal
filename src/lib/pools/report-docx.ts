@@ -137,11 +137,104 @@ function gridTable(header: string[], rows: (string | TextRun)[][], widths: numbe
   });
 }
 
-// Nomes dos cenários no DB são em português — o documento é em inglês
+// Bloco de retorno do Executive Summary (aprovado 15/07): Expected em navy, Downside e
+// Upside ao lado — a primeira coisa que o investidor lê é o caso esperado, não o stress.
+function kpiStrip(cells: Array<{ label: string; value: string; sub: string; main?: boolean }>) {
+  const mainW = 3600;
+  const sideW = Math.floor((W - mainW) / Math.max(1, cells.length - 1));
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: cells.map((c) => (c.main ? mainW : sideW)),
+    rows: [
+      new TableRow({
+        children: cells.map(
+          (c) =>
+            new TableCell({
+              width: { size: c.main ? mainW : sideW, type: WidthType.DXA },
+              shading: { type: ShadingType.CLEAR, fill: c.main ? NAVY : "F8FAFC" },
+              margins: { top: 160, bottom: 160, left: 160, right: 160 },
+              children: [
+                new Paragraph({
+                  children: [t(c.label.toUpperCase(), { size: 14, bold: true, color: c.main ? "B9C6DA" : GRAY })],
+                }),
+                new Paragraph({
+                  spacing: { before: 60 },
+                  children: [t(c.value, { size: c.main ? 44 : 34, bold: true, color: c.main ? "FFFFFF" : "0F172A" })],
+                }),
+                new Paragraph({
+                  spacing: { before: 60 },
+                  children: [t(c.sub, { size: 14, italics: true, color: c.main ? "B9C6DA" : GRAY })],
+                }),
+              ],
+            }),
+        ),
+      }),
+    ],
+  });
+}
+
+// Selo "Capital Sized Using the Stress-Tested Scenario" — faixa fina azul-clara
+const sealBand = (text: string) =>
+  new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: [W],
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: W, type: WidthType.DXA },
+            shading: { type: ShadingType.CLEAR, fill: "EFF6FF" },
+            margins: { top: 90, bottom: 90, left: 160, right: 160 },
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.CENTER,
+                children: [t(text, { size: 19, bold: true, color: NAVY })],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+
+// Box de destaque com filete navy à esquerda (pergunta + resposta) — usado no §6
+function calloutBox(title: string, text: string) {
+  return new Table({
+    width: { size: W, type: WidthType.DXA },
+    columnWidths: [W],
+    rows: [
+      new TableRow({
+        children: [
+          new TableCell({
+            width: { size: W, type: WidthType.DXA },
+            shading: { type: ShadingType.CLEAR, fill: "F8FAFC" },
+            borders: { left: { style: BorderStyle.SINGLE, size: 24, color: NAVY } },
+            margins: { top: 140, bottom: 140, left: 200, right: 160 },
+            children: [
+              new Paragraph({
+                spacing: { after: 80 },
+                children: [t(title, { size: 20, bold: true, color: NAVY })],
+              }),
+              new Paragraph({
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { line: 276 },
+                children: [t(text, { size: 20 })],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ],
+  });
+}
+
+// Nomes dos cenários no DB são em português — o documento é em inglês.
+// Narrativa aprovada 15/07: Expected é o caso-base declarado (benchmarked no §3), Stress
+// dimensiona a captação, Upside é mercado forte + execução. Motor e app continuam OPT/REAL/CONS.
 const SCENARIO_EN: Record<string, string> = {
-  OPT: "Optimistic",
-  REAL: "Realistic",
-  CONS: "Conservative",
+  OPT: "Upside Case",
+  REAL: "Expected Case",
+  CONS: "Stress Case",
 };
 
 const aiNote = (d: ReportData, prose: ReportProse) =>
@@ -178,8 +271,19 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     });
     return parts.join("; ");
   })();
-  const cons = d.scenarios.find((s) => s.code === d.baseCode)!;
   const scenarioName = (s: { code: string; name: string }) => SCENARIO_EN[s.code] ?? s.name;
+  // Expected (REAL) = base operacional; Stress (CONS) dimensiona a captação; Upside (OPT)
+  const expected = d.scenarios.find((s) => s.code === d.baseCode) ?? d.scenarios[0];
+  const stress = d.scenarios.find((s) => s.code === "CONS") ?? expected;
+  const upside = d.scenarios.find((s) => s.code === "OPT") ?? expected;
+  // ordem de leitura da tabela: Expected → Stress → Upside, e qualquer cenário extra depois
+  const ordered = [
+    expected,
+    ...(stress !== expected ? [stress] : []),
+    ...(upside !== expected && upside !== stress ? [upside] : []),
+  ];
+  for (const s of d.scenarios) if (!ordered.includes(s)) ordered.push(s);
+  const stressSized = stress.peakCapital > expected.peakCapital + 0.5;
   const isBank = d.fundingMode === "BANK";
   const nHomes = d.base.units.length;
   const cyclesText =
@@ -188,7 +292,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       : "single construction cycle";
   const savingPct =
     d.singleShotPeak && d.singleShotPeak > 0
-      ? Math.round((1 - cons.peakCapital / d.singleShotPeak) * 100)
+      ? Math.round((1 - expected.peakCapital / d.singleShotPeak) * 100)
       : null;
 
   // Logos com a mesma altura visual (px a 96dpi), centralizadas lado a lado
@@ -311,8 +415,97 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           ),
         ]),
     body(
-      "This Summary contains forward-looking statements, projections and scenario analyses that are based on assumptions believed to be reasonable as of the date hereof. Projected returns are hypothetical, are not guarantees of future performance, and actual results will differ — possibly materially. Unless expressly stated otherwise, all projected returns are presented net of builder compensation and project-level fees described herein, and before any taxes payable by investors. Recipients should conduct their own due diligence and consult their own legal, tax and financial advisors.",
+      "This Summary contains forward-looking statements, projections and scenario analyses that are based on assumptions believed to be reasonable as of the date hereof. The “Expected Case” presented herein is the Manager's base operating case — the outcome the Manager considers most likely — and not a guarantee or a promise of performance; the “Stress Case” is a deliberately adverse scenario used to size the offering. Projected and expected returns are hypothetical, are not guarantees of future performance, and actual results will differ — possibly materially. Unless expressly stated otherwise, all projected returns are presented net of builder compensation and project-level fees described herein, and before any taxes payable by investors. Recipients should conduct their own due diligence and consult their own legal, tax and financial advisors.",
     ),
+    new Paragraph({ children: [new PageBreak()] }),
+
+    // ── INVESTMENT HIGHLIGHTS (aprovado 15/07) — o investidor decide em segundos se
+    // continua lendo; TODOS os bullets são condicionais às variáveis da simulação ──
+    h1("Investment Highlights"),
+    body([t(`Why invest in ${d.simName}?`, { bold: true, size: 24, color: NAVY })], {
+      alignment: AlignmentType.LEFT,
+      spacing: { after: 220 },
+    }),
+    bullet([
+      t("Capital sized for the Stress Case — ", { bold: true }),
+      t("investors fund the program through its stressed scenario, not its expected outcome."),
+    ]),
+    ...(isBank
+      ? [
+          bullet([
+            t("Disciplined construction leverage — ", { bold: true }),
+            t(
+              "interest accrues on drawn balances only, and the facility is modeled line-by-line from executed term sheets (Section 5).",
+            ),
+          ]),
+        ]
+      : [
+          bullet([
+            t("All-equity program — ", { bold: true }),
+            t("no construction debt: no lender fees, no interest-rate exposure, no maturity risk."),
+          ]),
+        ]),
+    ...(d.compMode === "OPEN_BOOK"
+      ? [
+          bullet([
+            t("Open-book construction — ", { bold: true }),
+            t("the Builder's margin is fixed and fully disclosed per home; every cost is auditable against invoices."),
+          ]),
+        ]
+      : d.compMode === "PERFORMANCE" || d.compMode === "PROMOTE"
+        ? [
+            bullet([
+              t("Builder paid on performance — ", { bold: true }),
+              t("builder compensation is subordinated to realized project profit; no fee is payable regardless of outcome."),
+            ]),
+          ]
+        : [
+            bullet([
+              t("Fixed-price construction contract — ", { bold: true }),
+              t("construction cost risk within the contract is borne by the Builder, not the investors."),
+            ]),
+          ]),
+    ...(d.hasPromote
+      ? [
+          bullet([
+            t("Preferred-return waterfall — ", { bold: true }),
+            t("the Development Manager is compensated only above investor return hurdles; investors are paid first."),
+          ]),
+        ]
+      : []),
+    ...(isClient
+      ? [
+          bullet([
+            t("Investor-owned entity — ", { bold: true }),
+            t("the group holds the money and controls its own vehicle; Vixus runs the program as Development Manager."),
+          ]),
+        ]
+      : [
+          bullet([
+            t("Dedicated LLC for this program — ", { bold: true }),
+            t("one vehicle per program, never reused; fixed $1,000 units with no later-stage dilution."),
+          ]),
+        ]),
+    bullet([
+      t("Underwriting benchmarked against closed transactions — ", { bold: true }),
+      t("assumptions are positioned against sold MLS comparables from a weekly ATTOM data feed (Section 3), not asking prices."),
+    ]),
+    bullet([
+      t("Reporting from the operating ledger — ", { bold: true }),
+      t("monthly investor statements are generated directly from the same platform used to run the business, not from separately prepared spreadsheets."),
+    ]),
+    ...(d.cycles.length > 1
+      ? [
+          bullet([
+            t(`Capital recycling across ${d.cycles.length} chained cycles — `, { bold: true }),
+            t("the same equity base produces multiple homes, which is what drives the projected IRR (Section 4)."),
+          ]),
+        ]
+      : []),
+    bullet([
+      t("Proven sponsor — ", { bold: true }),
+      t("450+ homes delivered and $100M+ in accumulated sales volume since 2019, across six Florida regions (Section 2)."),
+    ]),
     new Paragraph({ children: [new PageBreak()] }),
 
     // ── 1. EXECUTIVE SUMMARY ──
@@ -323,21 +516,67 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
           ? "Investor capital funds land acquisition and vertical construction of single-family homes that are sold upon completion; capital is recycled through consecutive, pre-permitted construction cycles (the “Pipeline”), so that the same equity base produces multiple homes over the life of the program."
           : "Investor capital funds land acquisition and vertical construction of single-family homes in a single construction wave with staggered starts; capital is returned as each home sells and closes."),
     ),
+    // Bloco de retorno (substitui a linha "Projected net IRR (base case)" que liderava
+    // com o número do stress): Expected primeiro, em navy — lê-se da esquerda p/ direita
+    kpiStrip([
+      {
+        label: "Expected Investor IRR (net)",
+        value: pct(expected.irrAnnual),
+        sub: "base operating case · most likely outcome",
+        main: true,
+      },
+      {
+        label: "Stress-Tested Downside",
+        value: pct(stress.irrAnnual),
+        sub: `price discounts, cost overruns, extended timelines${stress.profit >= 0 ? " — capital preserved" : ""}`,
+      },
+      {
+        label: "Upside Potential",
+        value: pct(upside.irrAnnual),
+        sub: "strong market conditions & execution",
+      },
+    ]),
+    ...(stressSized ? [sealBand("🛡  CAPITAL SIZED USING THE STRESS-TESTED SCENARIO")] : []),
+    new Paragraph({
+      spacing: { before: 100, after: 220, line: 252 },
+      children: [
+        new TextRun({
+          text:
+            "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's historical execution data. Expected returns are not guaranteed." +
+            (stressSized
+              ? " The raise is sized to the Stress Case — investors fund the program through its stressed scenario, not its expected outcome."
+              : ""),
+          font: FONT,
+          size: 16,
+          color: GRAY,
+          italics: true,
+        }),
+      ],
+    }),
+    h2("Investment at a Glance"),
     kvTable([
+      [
+        "Program",
+        `${nHomes} home${nHomes > 1 ? "s" : ""} in ${d.cycles.length > 1 ? `${d.cycles.length} chained cycles` : "a single cycle"} across ${d.locations.join(", ")}`,
+      ],
       [
         "Vehicle",
         isClient
           ? `${entityName} — owned and controlled by the investor group (structure selected by the group for its own legal and tax profile); Vixus Investment engaged as Development Manager`
           : "Dedicated Florida limited liability company (to be formed for this program); single class of non-voting investor units of $1,000 each",
       ],
+      ["Projected duration (Expected Case)", `${months(expected.durationDays)} months`],
+      ["Peak invested capital (Expected Case)", money0(expected.peakCapital)],
       [
-        "Program",
-        `${nHomes} home${nHomes > 1 ? "s" : ""} in ${d.cycles.length > 1 ? `${d.cycles.length} chained cycles` : "a single cycle"} across ${d.locations.join(", ")}`,
+        "Target raise",
+        stressSized
+          ? `${money0(stress.peakCapital)} — sized using the Stress Case (Section 6)`
+          : `${money0(expected.peakCapital)} (Expected Case peak capital)`,
       ],
-      ["Target raise", `${money0(cons.peakCapital)} (Conservative-case peak capital)`],
-      ["Projected net IRR (base case)", `${pct(cons.irrAnnual)}  (Conservative case; Optimistic / Realistic shown in §6)`],
-      ["Projected equity multiple", cons.equityMultiple == null ? "—" : `${cons.equityMultiple.toFixed(2)}x`],
-      ["Projected duration", `${months(cons.durationDays)} months`],
+      [
+        "Projected equity multiple (Expected Case)",
+        expected.equityMultiple == null ? "—" : `${expected.equityMultiple.toFixed(2)}x`,
+      ],
       ["Builder compensation", d.compLabel],
       ...(d.hasPromote
         ? [
@@ -391,6 +630,17 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         ? "Vixus Investment acts as Development Manager to investor-owned entities: it runs the program — land acquisition within the disclosed basket, construction disbursements against milestones, sales coordination and reporting — under a development management agreement, without custody of the investor entity. The same purpose-built platform tracks every dollar, and the entity's members receive statements generated from the same ledger Vixus uses to run the program."
         : "Vixus Investment administers investor vehicles for the group: capitalization, capital calls, construction-loan reconciliation, tax (K-1) coordination and investor reporting. The Manager operates a purpose-built platform that tracks every dollar from subscription to distribution; investors receive statements generated from the same ledger the Manager uses to run the business.",
     ),
+    // Diferencial que quase nenhum sponsor pequeno tem — o software (feedback 15/07)
+    h2("Technology-driven investment management"),
+    body([
+      t(
+        "Every capital call, construction draw, budget variance and distribution is tracked in the same proprietary platform used to operate the business — investors receive reports generated directly from the operating ledger, not from manually prepared spreadsheets. ",
+      ),
+      t("This Summary itself is an output of that platform: ", { bold: true }),
+      t(
+        "each edition is generated from a live simulation, refreshed against the weekly MLS extract, and blocked from issuance unless its sources and uses reconcile to the cent (Appendix A.4). A traditional sponsor updates a spreadsheet; this program's numbers cannot drift from its books.",
+      ),
+    ]),
     h2("Leadership"),
     bullet([
       t("Stefan Braga Lemos — Founder & COO.", { bold: true }),
@@ -466,7 +716,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     ),
     body(""),
     body(
-      "Program pricing is underwritten against these observed comparables: projected sale prices per plan are set relative to the prevailing median for new construction in each submarket, and the Conservative case applies an additional discount on top of that benchmark.",
+      "Program pricing is underwritten against these observed comparables: the Expected Case sets projected sale prices per plan relative to the prevailing median for new construction in each submarket, and the Stress Case applies an additional discount on top of that benchmark.",
     ),
     // Benchmark de premissas × vendidos (aprovado 14/07) — a ponte entre mercado e projeções
     ...(d.benchmark.some((b) => b.verdict !== "NO_DATA")
@@ -519,7 +769,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
                   t(" with approximately "),
                   t(`${savingPct}% less peak capital`, { bold: true }),
                   t(
-                    ` than building all homes simultaneously (${money0(cons.peakCapital)} vs. ${money0(d.singleShotPeak!)}) — the same aggregate profit on materially less equity at risk, which is what drives the projected IRR.`,
+                    ` than building all homes simultaneously (${money0(expected.peakCapital)} vs. ${money0(d.singleShotPeak!)}) — the same aggregate profit on materially less equity at risk, which is what drives the projected IRR.`,
                   ),
                 ]),
               ]
@@ -613,43 +863,96 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
               `The construction facility is outstanding for ${daysToMonths(d.projectPhases.loan.activeDays).toFixed(1)} of the program's ${daysToMonths(d.projectPhases.totalDays).toFixed(1)} months — interest accrues on drawn balances only` +
                 (d.projectPhases.loan.termDays != null
                   ? d.projectPhases.loan.overrunDays > 0
-                    ? `; the base case exceeds the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term by ${daysToMonths(d.projectPhases.loan.overrunDays).toFixed(1)} months, and the corresponding extension fee is carried in every figure of Section 6.`
-                    : `, within the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term (no extension fees in the base case).`
+                    ? `; the Expected Case exceeds the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term by ${daysToMonths(d.projectPhases.loan.overrunDays).toFixed(1)} months, and the corresponding extension fee is carried in every figure of Section 6.`
+                    : `, within the facility's ${Math.round(d.projectPhases.loan.termDays / 30)}-month term (no extension fees in the Expected Case).`
                   : "."),
             ),
           ]),
         ]
       : []),
 
-    // ── 6. PROJECTIONS ──
+    // ── 6. PROJECTIONS — narrativa Expected/Stress/Upside (aprovada 15/07): o Expected
+    // é o caso-base declarado (defendido pelo benchmark do §3); o Stress dimensiona a
+    // captação; a coluna Expected vem primeiro e em negrito ──
     h1("6. Financial Projections"),
-    body(
-      "Three scenarios are presented below. The Conservative case is the base case for underwriting: it assumes discounted sale prices, cost overruns, extended construction and marketing timelines, and a fully funded contingency reserve. All figures are net of builder compensation and project-level costs, and before investor-level taxes.",
-    ),
+    body([
+      t("Three scenarios are presented below. The "),
+      t("Expected Case", { bold: true }),
+      t(
+        " is the base operating case — its assumptions are benchmarked against closed transactions in Section 3 and the Builder's execution history. The ",
+      ),
+      t("Stress Case", { bold: true }),
+      t(
+        " exists to answer one question: what happens if sale prices fall, costs overrun and timelines extend, all at once" +
+          (stressSized ? " — and it is the case used to size the raise" : "") +
+          ". All figures are net of builder compensation and project-level costs, and before investor-level taxes.",
+      ),
+    ]),
     gridTable(
-      ["", ...d.scenarios.map((s) => (s.code === d.baseCode ? `${scenarioName(s)} (base)` : scenarioName(s)))],
+      ["Scenario", ...ordered.map((s) => scenarioName(s))],
       [
-        ["Projected net IRR", ...d.scenarios.map((s) => pct(s.irrAnnual))],
-        ["Equity multiple", ...d.scenarios.map((s) => (s.equityMultiple == null ? "—" : `${s.equityMultiple.toFixed(2)}x`))],
+        // papel declarado de cada coluna — elimina a dúvida "qual devo acreditar?"
+        [
+          "Role",
+          ...ordered.map((s) =>
+            t(
+              s === expected
+                ? "most likely outcome"
+                : s === stress
+                  ? stressSized
+                    ? "capital protection · sizes the raise"
+                    : "capital protection"
+                  : s === upside
+                    ? "strong market & execution"
+                    : "additional scenario",
+              { size: 17, italics: true, color: GRAY },
+            ),
+          ),
+        ],
+        ["Projected net IRR", ...ordered.map((s, i) => t(pct(s.irrAnnual), { size: 19, bold: i === 0 }))],
+        [
+          "Equity multiple",
+          ...ordered.map((s, i) =>
+            t(s.equityMultiple == null ? "—" : `${s.equityMultiple.toFixed(2)}x`, { size: 19, bold: i === 0 }),
+          ),
+        ],
         // ROI sobre o PICO — o que conversa com o tamanho da captação (aprovado 14/07)
-        ["Return on peak capital", ...d.scenarios.map((s) => (s.peakCapital > 0 ? pct(s.profit / s.peakCapital) : "—"))],
-        ["Peak invested capital", ...d.scenarios.map((s) => money0(s.peakCapital))],
-        ["Total investor profit", ...d.scenarios.map((s) => money0(s.profit))],
-        ["Program duration (months)", ...d.scenarios.map((s) => String(months(s.durationDays)))],
+        [
+          "Return on peak capital",
+          ...ordered.map((s, i) =>
+            t(s.peakCapital > 0 ? pct(s.profit / s.peakCapital) : "—", { size: 19, bold: i === 0 }),
+          ),
+        ],
+        ["Peak invested capital", ...ordered.map((s, i) => t(money0(s.peakCapital), { size: 19, bold: i === 0 }))],
+        ["Total investor profit", ...ordered.map((s, i) => t(money0(s.profit), { size: 19, bold: i === 0 }))],
+        [
+          "Program duration (months)",
+          ...ordered.map((s, i) => t(String(months(s.durationDays)), { size: 19, bold: i === 0 })),
+        ],
       ],
-      [2760, ...d.scenarios.map(() => Math.floor(6600 / d.scenarios.length))],
+      [2760, ...ordered.map(() => Math.floor(6600 / ordered.length))],
     ),
     body(""),
-    h2("Sources & Uses — Conservative case"),
+    // Responde a pergunta que todo investidor fará ao comparar os dois picos
+    ...(stressSized
+      ? [
+          calloutBox(
+            "Why is the raise larger than the Expected Case capital requirement?",
+            `The offering is intentionally sized using the Stress Case peak of ${money0(stress.peakCapital)} rather than the Expected Case peak of ${money0(expected.peakCapital)}. This ensures sufficient capital remains available if costs increase, timelines extend or sale prices soften — capital calls are just-in-time, so capital not required under actual conditions is simply never called or is returned earlier.`,
+          ),
+          body(""),
+        ]
+      : []),
+    h2("Sources & Uses — Expected Case"),
     gridTable(
       ["Uses", "Amount", "Sources", "Amount"],
       [
-        ["Land acquisition", money0(d.closing.lots), "Investor equity (peak)", money0(cons.peakCapital)],
+        ["Land acquisition", money0(d.closing.lots), "Investor equity (peak)", money0(expected.peakCapital)],
         [
           "Vertical construction",
           money0(d.closing.construction),
           isBank ? "Construction facility (committed)" : "Recycled sale proceeds",
-          isBank ? money0(d.base.kpis.bankCommitted) : money0(d.closing.sales - cons.peakCapital),
+          isBank ? money0(d.base.kpis.bankCommitted) : money0(d.closing.sales - expected.peakCapital),
         ],
         ["Financing costs (all-in)", money0(d.closing.bankCost), isBank ? "Recycled sale proceeds" : "", isBank ? money0(d.closing.sales) : ""],
         [
@@ -674,14 +977,14 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
         " against projected investor profit. The full calculation detail — per-home economics, the month-by-month prospective ledger, the return methodology and the reconciliation statement — is presented in Appendix A.",
       ),
     ]),
-    h2("Sensitivity — base case"),
+    h2("Sensitivity — Expected Case"),
     body(
-      "Each variable below is shocked independently on the Conservative case; all other assumptions held constant.",
+      "Each variable below is shocked independently on the Expected Case — the declared base operating case — with all other assumptions held constant; the Stress Case in the table above shows the combined effect of adverse moves occurring together.",
     ),
     gridTable(
       ["Shock", "Projected net IRR", "Investor profit"],
       [
-        [`— Base case (none)`, pct(cons.irrAnnual), money0(cons.profit)],
+        [`— Expected Case (none)`, pct(expected.irrAnnual), money0(expected.profit)],
         ...d.sensitivity.map((s) => [s.label, pct(s.irr), money0(s.profit)]),
       ],
       [4160, 2600, 2600],
@@ -691,8 +994,8 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       t("Breakeven: ", { bold: true }),
       t(
         d.breakevenPriceDropPct == null
-          ? "investor profit remains positive even under a sale-price decline of more than 60% — beyond any observed correction in the target submarkets."
-          : `investor profit reaches zero at a sale-price decline of approximately ${d.breakevenPriceDropPct.toFixed(1)}% versus the Conservative case — which itself is already discounted from observed comparables (Section 3).`,
+          ? "investor profit remains positive even under a sale-price decline of more than 60% versus the Expected Case — beyond any observed correction in the target submarkets."
+          : `investor profit reaches zero at a sale-price decline of approximately ${d.breakevenPriceDropPct.toFixed(1)}% versus the Expected Case — whose sale-price assumptions are themselves positioned against closed comparables in Section 3, not asking prices.`,
       ),
     ]),
 
@@ -761,7 +1064,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     body([
       t("If the program slips. ", { bold: true }),
       t(
-        "The base case already funds a contingency reserve and carries the Conservative buffers of Section 6 (discounted sale prices, cost overruns, extended construction and marketing timelines). Cost overruns draw on the contingency reserve first" +
+        "The underwriting funds a contingency reserve, and the raise is sized to the Stress Case of Section 6 — which assumes discounted sale prices, cost overruns and extended construction and marketing timelines occurring together. Cost overruns draw on the contingency reserve first" +
           (d.compMode === "OPEN_BOOK"
             ? "; under the open-book model the Builder’s fee is fixed per home, so overruns do not increase the Builder’s compensation."
             : d.compMode === "PERFORMANCE" || d.compMode === "PROMOTE"
@@ -797,11 +1100,11 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     ),
     h2("Market risk"),
     body(
-      "Home prices and absorption in the target submarkets may decline. Mitigants: the Conservative base case underwrites discounted sale prices and extended marketing periods; the product is positioned at entry-level price points, where the buyer pool is deepest; weekly MLS analytics are monitored for early signs of deterioration; and lender loan-to-value caps provide an independent third-party check on value.",
+      "Home prices and absorption in the target submarkets may decline. Mitigants: the raise is sized to the Stress Case, which underwrites discounted sale prices and extended marketing periods; the product is positioned at entry-level price points, where the buyer pool is deepest; weekly MLS analytics are monitored for early signs of deterioration; and lender loan-to-value caps provide an independent third-party check on value.",
     ),
     h2("Construction cost and schedule risk"),
     body(
-      "Costs may exceed budget and construction may take longer than projected. Mitigants: a fixed product line of repeatedly built plans with known cost history; vertical integration in truss supply; a contingency reserve funded in the base case; and scenario buffers applied to both cost and duration.",
+      "Costs may exceed budget and construction may take longer than projected. Mitigants: a fixed product line of repeatedly built plans with known cost history; vertical integration in truss supply; a funded contingency reserve; and the Stress Case applies buffers to both cost and duration on top of the Expected Case.",
     ),
     h2("Permitting risk"),
     body(
@@ -809,7 +1112,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     ),
     h2("Financing risk"),
     body(
-      "Construction credit may become more expensive or unavailable, and facilities carry maturity and extension provisions. Mitigants: facilities are modeled line-by-line from executed term sheets, including extension fees in the Conservative case; interest accrues on drawn balances only; and the program can operate on an all-equity basis at reduced scale if credit conditions deteriorate.",
+      "Construction credit may become more expensive or unavailable, and facilities carry maturity and extension provisions. Mitigants: facilities are modeled line-by-line from executed term sheets, including extension fees where a scenario exceeds the facility term; interest accrues on drawn balances only; and the program can operate on an all-equity basis at reduced scale if credit conditions deteriorate.",
     ),
     h2("Liquidity and concentration risk"),
     body(
@@ -834,8 +1137,31 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     body(
       "No person has been authorized to make any representation not contained in this Summary, and any such representation must not be relied upon. Delivery of this Summary does not imply that the information herein is correct as of any date after the date on the cover. Prior performance of the Builder, the Manager or their affiliates — including homes delivered and sales volume — is not indicative of the Project’s future results. Certain figures herein are generated by the Manager’s simulation platform as of the date on the cover and are refreshed with each edition; the underlying assumptions are available to prospective investors upon request. This Summary is confidential and may not be reproduced or distributed, in whole or in part, without the Manager’s prior written consent.",
     ),
+    // Mensagem institucional de encerramento (feedback 15/07) — a cultura que o resto
+    // do documento tenta transmitir, dita uma vez, por extenso
     new Paragraph({
-      spacing: { before: 300 },
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 420, after: 60 },
+      border: { top: { style: BorderStyle.SINGLE, size: 6, color: NAVY } },
+      children: [],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 160, after: 160 },
+      children: [
+        new TextRun({ text: "Our commitment is simple: ", font: FONT, size: 22, bold: true, color: NAVY }),
+        new TextRun({
+          text: "preserve investor capital first, execute with discipline, and pursue attractive risk-adjusted returns through transparency, technology, and operational excellence.",
+          font: FONT,
+          size: 22,
+          italics: true,
+          color: NAVY,
+        }),
+      ],
+    }),
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 120 },
       children: [t("Contact: Vixus Investment · 8250 Exchange Dr, Suite 134, Orlando, FL 32809", { color: GRAY })],
     }),
 
@@ -843,11 +1169,11 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     new Paragraph({ children: [new PageBreak()] }),
     h1("Appendix A — Financial Detail"),
     body(
-      "This appendix opens the calculations behind the projections in Section 6. Every table is produced by the same simulation engine, on the same assumptions, for the Conservative (base) case; no figure is entered by hand.",
+      "This appendix opens the calculations behind the projections in Section 6. Every table is produced by the same simulation engine, on the same assumptions, for the Expected Case — the base operating case; the Stress and Upside Cases differ only by the disclosed scenario buffers. No figure is entered by hand.",
     ),
     h2("A.1  Per-home economics"),
     body(
-      "Unit-level underwriting for each home in the program basket, at Conservative-case (buffered) values. Sale proceeds are shown net of closing costs; permit costs are embedded in the construction disbursement schedule; financing costs and performance-based builder compensation accrue at program level and appear in A.4.",
+      "Unit-level underwriting for each home in the program basket, at Expected Case values. Sale proceeds are shown net of closing costs; permit costs are embedded in the construction disbursement schedule; financing costs and performance-based builder compensation accrue at program level and appear in A.4.",
     ),
     ...(d.customAssumptions > 0
       ? [
@@ -911,7 +1237,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
     bullet([
       t("Peak invested capital", { bold: true }),
       t(
-        " is the maximum cumulative capital outstanding at any point in the program — the figure on which the raise is sized — not the sum of all calls.",
+        " is the maximum cumulative capital outstanding at any point in the program — not the sum of all calls. The raise itself is sized on the Stress Case peak (Section 6).",
       ),
     ]),
     bullet(

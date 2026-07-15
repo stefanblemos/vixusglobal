@@ -556,7 +556,7 @@ export default async function SimulationPage({
           key={JSON.stringify(simOverrides)}
           simulationId={sim.id}
           scenarioName={sim.scenario.name}
-          baseCode="CONS"
+          baseCode="REAL"
           locations={premissasLocations}
           combos={premissasCombos}
           scenarios={premissasScenarios}
