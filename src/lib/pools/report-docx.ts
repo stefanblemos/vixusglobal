@@ -891,14 +891,53 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       "Vertically integrated through Truss Direct, the group’s truss manufacturer supplying 90+ projects per month — insulating the program from a key supply-chain bottleneck.",
     ),
     bullet("BBB accredited; every home delivered with a 2-10 structural warranty and covered by builder’s risk insurance during construction."),
-    // Histórico realizado (Fase 1.5 — 15/07): a evidência que sustenta o Expected Case.
-    // SEMPRE rotulado como TIR estimada sobre datas/lucros reais — nunca "realizada".
-    ...(d.trackRecord.sample.n > 0
+    // Execution at scale (mock aprovado 15/07): n grande de DATAS da planilha TrackRecord
+    // — cria a escada 450+ → 304 → 44 e prova a máquina; financials dela são internos
+    ...(d.trackRecord.execution && d.trackRecord.execution.trackedProjects > 0
       ? [
-          h2("Historical performance — closed projects"),
+          h2("Execution at scale"),
           body([
             t(
-              `The Builder's operating system records ${d.trackRecord.sample.n} closed projects with realized results and complete milestone dates (closings ${d.trackRecord.sample.periodYears}). On these projects, the realized net return on total project cost — lot plus construction — was a median of `,
+              "Every project is tracked milestone-by-milestone — permit, foundation, certificate of occupancy, closing — in the Builder's operating system. Across the ",
+            ),
+            t(
+              `${d.trackRecord.execution.trackedProjects} projects tracked in the current extraction (${d.trackRecord.execution.periodYears})`,
+              { bold: true },
+            ),
+            t(":"),
+          ]),
+          bigStatGrid([
+            {
+              value: `${(d.trackRecord.execution.buildMedianDays / 30).toFixed(1)} mo`,
+              label: `Median build time · n=${d.trackRecord.execution.buildN}`,
+            },
+            {
+              value: `${(d.trackRecord.execution.permitToCoMedianDays / 30).toFixed(1)} mo`,
+              label: `Median permit → CO · n=${d.trackRecord.execution.permitToCoN}`,
+            },
+            {
+              value: `≈${Math.round(d.trackRecord.execution.ramp.toCount / Math.max(1, d.trackRecord.execution.ramp.fromCount))}×`,
+              label: `Delivery ramp · ${d.trackRecord.execution.ramp.fromCount} COs ${d.trackRecord.execution.ramp.fromYear} → ${d.trackRecord.execution.ramp.toCount} in ${d.trackRecord.execution.ramp.toYear}`,
+            },
+            {
+              value: String(d.trackRecord.execution.inProductionNow),
+              label: "Homes in production today",
+            },
+          ]),
+          body(""),
+        ]
+      : []),
+    // Retornos verificados — NARRATIVA DE AMOSTRAGEM (regra do Stefan 15/07: o registro é
+    // COMPLETO; a amostra é extraída dele, e a janela recente é escolha técnica — nunca
+    // escrever que os projetos antigos não têm controle). TIR sempre "estimated".
+    ...(d.trackRecord.sample.n > 0
+      ? [
+          h2("Verified investor returns — representative sample"),
+          body([
+            t("Returns are measured on a "),
+            t(`representative sample of ${d.trackRecord.sample.n} recent closed projects`, { bold: true }),
+            t(
+              `, drawn from the Builder's complete project records: every client project closed in ${d.trackRecord.sample.periodYears} with full milestone and financial detail in the current data extraction. The recent window is the decision-relevant sample — it reflects today's construction costs, pricing and cycle times, the same environment this program is underwritten in. On these projects, the realized net return on total project cost — lot plus construction — was a median of `,
             ),
             t(`${d.trackRecord.roiPerCyclePct.median}% per cycle`, { bold: true }),
             t(
@@ -916,7 +955,7 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
             children: [
               new TextRun({
                 text:
-                  `Estimated IRR applies the program's actual client payment schedule (${d.trackRecord.paymentPlanPct.join("/")}) to each project's real permit, foundation, completion and closing dates; the conservative floor assumes all capital deployed on day one — under that floor, no project in the sample returned less than ${d.trackRecord.conservativeFloorIrrPct.min}% annualized. These are estimates derived from realized profits and actual dates, not realized IRRs, and prior performance is not indicative of future results. Sample: closed projects with complete records in the current operating system; the Builder's full delivery history exceeds 450 homes.`,
+                  `Estimated IRR applies the program's actual client payment schedule (${d.trackRecord.paymentPlanPct.join("/")}) to each project's real permit, foundation, completion and closing dates; the conservative floor assumes all capital deployed on day one — under that floor, no project in the sample returned less than ${d.trackRecord.conservativeFloorIrrPct.min}% annualized. These are estimates derived from realized profits and actual dates, not realized IRRs, and prior performance is not indicative of future results.`,
                 font: FONT,
                 size: 16,
                 color: GRAY,

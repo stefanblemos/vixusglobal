@@ -93,13 +93,21 @@ function groundingOf(d: ReportData) {
     builderTrackRecord:
       d.trackRecord.sample.n > 0
         ? {
-            closedProjects: d.trackRecord.sample.n,
-            period: d.trackRecord.sample.periodYears,
+            sampleClosedProjects: d.trackRecord.sample.n,
+            samplePeriod: d.trackRecord.sample.periodYears,
             realizedRoiPerCycleMedianPct: d.trackRecord.roiPerCyclePct.median,
             estimatedIrrMedianPct: d.trackRecord.estimatedIrrPct.median,
             conservativeFloorIrrMedianPct: d.trackRecord.conservativeFloorIrrPct.median,
             medianCycleMonths: Math.round((d.trackRecord.cycle.medianDays / 30) * 10) / 10,
-            note: "IRR figures are ESTIMATES applying the actual client payment schedule to real project dates — never call them realized IRRs.",
+            executionAtScale: d.trackRecord.execution
+              ? {
+                  trackedProjects: d.trackRecord.execution.trackedProjects,
+                  medianBuildMonths: Math.round((d.trackRecord.execution.buildMedianDays / 30) * 10) / 10,
+                  cosByYear: d.trackRecord.execution.cosByYear,
+                  homesInProduction: d.trackRecord.execution.inProductionNow,
+                }
+              : null,
+            note: "IRR figures are ESTIMATES applying the actual client payment schedule to real project dates — never call them realized IRRs. The return sample is a REPRESENTATIVE SAMPLE drawn from the Builder's complete project records (recent window by design) — never imply older projects lack records.",
           }
         : null,
     breakevenSalePriceDropPct: d.breakevenPriceDropPct, // null = >60% (vs Expected Case)

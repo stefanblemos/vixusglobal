@@ -48,5 +48,26 @@
     "p25": 22,
     "p75": 36.3,
     "min": 14.5
+  },
+  "execution": {
+    "trackedProjects": 304,
+    "periodYears": "2023–2026",
+    "buildMedianDays": 114,
+    "buildN": 232,
+    "permitToCoMedianDays": 132,
+    "permitToCoN": 253,
+    "cosByYear": {
+      "2023": 30,
+      "2024": 85,
+      "2025": 117,
+      "2026": 21
+    },
+    "ramp": {
+      "fromYear": 2023,
+      "fromCount": 30,
+      "toYear": 2025,
+      "toCount": 117
+    },
+    "inProductionNow": 28
   }
 }

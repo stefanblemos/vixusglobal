@@ -1,5 +1,10 @@
 // Track record da 4U → src/data/track-record.json (Fase 1.5 do Investment Summary).
-// Uso: node scripts/track-record.mjs "C:\caminho\4U Builder.csv"
+// Uso: node scripts/track-record.mjs "C:\caminho\4U Builder.csv" ["C:\caminho\TrackRecord.xlsx"]
+//
+// 2º arquivo (opcional): planilha "4UHomes_TrackRecord" (aba Project Detail) — dela saem
+// SÓ AS DATAS (execution at scale: obra mediana, permit→CO, rampa de COs, em produção).
+// Os financials dessa planilha são o lucro da 4U — INTERNOS, nunca entram no report
+// (decisão do Stefan 15/07; obras a custo/intercompany distorceriam qualquer agregado).
 //
 // Lê o export do 4U Builder, filtra obras FECHADAS com lucro realizado e as 4 datas
 // (permit, foundation, CO, closing) e agrega:
@@ -14,10 +19,12 @@
 // Rodar de novo quando o 4U Builder exportar a história completa (pré-296 e 968+).
 import fs from "node:fs";
 import path from "node:path";
+import * as XLSX from "xlsx";
 
 const csvPath = process.argv[2];
+const xlsxPath = process.argv[3] ?? null;
 if (!csvPath) {
-  console.error('Uso: node scripts/track-record.mjs "<caminho do 4U Builder.csv>"');
+  console.error('Uso: node scripts/track-record.mjs "<4U Builder.csv>" ["<TrackRecord.xlsx>"]');
   process.exit(1);
 }
 
@@ -142,6 +149,40 @@ const byYear = {};
 for (const s of sample) byYear[s.year] = (byYear[s.year] ?? 0) + 1;
 const years = Object.keys(byYear).map(Number).sort((a, b) => a - b);
 
+// Execution at scale — datas da planilha TrackRecord (aba Project Detail), quando dada.
+// Colunas fixas do layout enviado: 1=#, 5=Permit Issue, 6=Foundation, 7=CO, 8=Closing.
+let execution = null;
+if (xlsxPath) {
+  const wb = XLSX.read(fs.readFileSync(xlsxPath), { cellDates: true });
+  const ws = wb.Sheets["Project Detail"] ?? wb.Sheets[wb.SheetNames[0]];
+  const grid = XLSX.utils.sheet_to_json(ws, { header: 1 });
+  const isD = (v) => v instanceof Date && !Number.isNaN(v.getTime());
+  const jobs = grid
+    .slice(4)
+    .filter((r) => r[1] != null)
+    .map((r) => ({ pi: isD(r[5]) ? r[5] : null, fo: isD(r[6]) ? r[6] : null, co: isD(r[7]) ? r[7] : null, cl: isD(r[8]) ? r[8] : null }));
+  const build = jobs.filter((j) => j.fo && j.co && days(j.fo, j.co) > 0).map((j) => days(j.fo, j.co));
+  const p2co = jobs.filter((j) => j.pi && j.co && days(j.pi, j.co) > 0).map((j) => days(j.pi, j.co));
+  const cosByYear = {};
+  for (const j of jobs) if (j.co) cosByYear[j.co.getUTCFullYear()] = (cosByYear[j.co.getUTCFullYear()] ?? 0) + 1;
+  const coYears = Object.keys(cosByYear).map(Number).sort((a, b) => a - b);
+  const bestYear = coYears.reduce((a, y) => (cosByYear[y] >= cosByYear[a] ? y : a), coYears[0]);
+  execution = {
+    trackedProjects: jobs.length,
+    periodYears: (() => {
+      const ys = jobs.filter((j) => j.pi).map((j) => j.pi.getUTCFullYear());
+      return `${Math.min(...ys)}–${Math.max(...ys)}`;
+    })(),
+    buildMedianDays: Math.round(median(build)),
+    buildN: build.length,
+    permitToCoMedianDays: Math.round(median(p2co)),
+    permitToCoN: p2co.length,
+    cosByYear,
+    ramp: { fromYear: coYears[0], fromCount: cosByYear[coYears[0]], toYear: bestYear, toCount: cosByYear[bestYear] },
+    inProductionNow: jobs.filter((j) => j.pi && !j.co).length, // na data do extrato
+  };
+}
+
 // fluxos combinados (TIR agregada do "portfólio" histórico)
 const out = {
   source: path.basename(csvPath),
@@ -183,6 +224,8 @@ const out = {
     p75: r1(pctile(floors, 0.75) * 100),
     min: r1(Math.min(...floors) * 100),
   },
+  // "Execution at scale" — SÓ datas (financials da planilha = internos, nunca aqui)
+  execution,
 };
 
 const outPath = path.join(import.meta.dirname, "..", "src", "data", "track-record.json");
