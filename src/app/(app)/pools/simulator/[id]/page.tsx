@@ -1562,6 +1562,7 @@ export default async function SimulationPage({
 
           <SimLedger
             isBank={isBank}
+            simName={sim.name}
             rows={r.events.map(
               (e): LedgerRow => ({
                 day: e.day,
