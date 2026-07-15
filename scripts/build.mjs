@@ -19,8 +19,10 @@ run("npx prisma generate");
 if (process.env.VERCEL_ENV === "production") {
   // Catálogo do simulador de pools (cenários OPT/REAL/CONS, locais, modelos, banco) —
   // upserts idempotentes; precisa do client gerado e das migrations aplicadas.
-  console.log("▲ Seeding pool simulator catalog (idempotent)");
+  console.log("▲ Seeding pool simulator catalog (bootstrap-only)");
   run("node scripts/seed-catalog.mjs");
+  // Remove o Maragogi do seed (substituído por T1/T2; ressuscitava a cada deploy)
+  run("node scripts/fix-remove-maragogi.mjs");
   // Funde a duplicada Vixus International → Vixus America ANTES do seed da PH3
   // (o seed antigo criou uma casca por não olhar aliases; no-op depois de aplicado)
   run("node scripts/fix-vai-dupe.mjs");

@@ -49,6 +49,10 @@ async function main() {
   // 9% a.a. sobre o sacado, orig 1,75% + broker 1% + title 1,33%, reserve 6 meses financiada,
   // $20 processing + $185 inspection por draw, $20 ACH por lote, $350 reconveyance por payoff,
   // sweep 85% com quitação na última casa.
+  // BOOTSTRAP-ONLY (14/07): o Stefan curou o catálogo — o seed só popula base VAZIA.
+  // O upsert antigo ressuscitava a cada deploy o que ele tinha deletado (caso Maragogi).
+  const banksEmpty = (await prisma.bankProfile.count()) === 0;
+  if (banksEmpty) {
   const bc = await prisma.bankProfile.upsert({
     where: { name: "Builders Capital" },
     create: {
@@ -104,24 +108,29 @@ async function main() {
       update: {},
     });
   }
-  // Locais/modelos são CREATE-ONLY: o seed cria o que faltar e nunca sobrescreve valores
-  // ajustados pela tela (que têm trilha de auditoria em CatalogChangeLog).
-  const locByName = {};
-  for (const l of LOCATIONS) {
-    const row = await prisma.catalogLocation.upsert({ where: { name: l.name }, create: l, update: {} });
-    locByName[l.name] = row.id;
   }
-  for (const m of MODELS) {
-    const { values, ...data } = m;
-    const row = await prisma.catalogModel.upsert({ where: { name: m.name }, create: data, update: {} });
-    for (const [locName, v] of Object.entries(values)) {
-      const locationId = locByName[locName];
-      await prisma.catalogModelLocation.upsert({
-        where: { modelId_locationId: { modelId: row.id, locationId } },
-        create: { modelId: row.id, locationId, salePrice: v.sale, costPerformance: v.perf },
-        update: {},
-      });
+  // Locais/modelos/combinações: BOOTSTRAP-ONLY (só popula base vazia). O upsert por nome
+  // ressuscitava a cada deploy o que o usuário deletou pela tela (caso Maragogi, 14/07) —
+  // deletar no catálogo agora é definitivo.
+  if ((await prisma.catalogModel.count()) === 0 && (await prisma.catalogLocation.count()) === 0) {
+    const locByName = {};
+    for (const l of LOCATIONS) {
+      const row = await prisma.catalogLocation.upsert({ where: { name: l.name }, create: l, update: {} });
+      locByName[l.name] = row.id;
     }
+    for (const m of MODELS) {
+      const { values, ...data } = m;
+      const row = await prisma.catalogModel.upsert({ where: { name: m.name }, create: data, update: {} });
+      for (const [locName, v] of Object.entries(values)) {
+        const locationId = locByName[locName];
+        await prisma.catalogModelLocation.upsert({
+          where: { modelId_locationId: { modelId: row.id, locationId } },
+          create: { modelId: row.id, locationId, salePrice: v.sale, costPerformance: v.perf },
+          update: {},
+        });
+      }
+    }
+    console.log("catálogo de locations/modelos semeado (base vazia)");
   }
   // Waterfall default da Vixus (developer) — CREATE-ONLY: só semeia se a tabela está vazia
   // (o Stefan edita no catálogo; seed nunca sobrescreve — armadilha já mordida 3x)
