@@ -1,0 +1,2293 @@
+{
+ "name": "PH6-R01 · 24 casas, 4 ciclos · Real",
+ "scenarioCode": "REAL",
+ "scenarioName": "Real",
+ "input": {
+  "fundingMode": "EQUITY",
+  "upfrontFunding": false,
+  "compMode": "PERFORMANCE",
+  "perfPct": 0.25,
+  "perfTiming": "PER_SALE",
+  "promoteTiers": null,
+  "flatFeePerHouse": 0,
+  "paymentPlan": "STANDARD",
+  "equityGatePct": 0.1,
+  "unitGapDays": 20,
+  "scenario": {
+   "salePriceBufferPct": 1,
+   "constructionCostBufferPct": 2,
+   "lotCostBufferPct": 0,
+   "closingFeePct": 10,
+   "contingencyReservePct": 0,
+   "landAcquisitionDays": 15,
+   "saleClosingDays": 45,
+   "constructionDurationBufferM": 0,
+   "salesAbsorptionMonths": 0,
+   "emdPct": 5
+  },
+  "bank": null,
+  "units": [
+   {
+    "cycle": 1,
+    "label": "C1 • Grumari — Marion Oaks",
+    "locationName": "Marion Oaks",
+    "modelName": "Grumari",
+    "permitDays": 40,
+    "lotLeadDays": 30,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 225000,
+    "costContractor": 220000,
+    "costOpenBook": 195000,
+    "contractorFee": 25000,
+    "lotCost": 48000,
+    "salePrice": 345000
+   },
+   {
+    "cycle": 1,
+    "label": "C1 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 1,
+    "label": "C1 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 1,
+    "label": "C1 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 1,
+    "label": "C1 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 1,
+    "label": "C1 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 2,
+    "label": "C2 • Grumari — Marion Oaks",
+    "locationName": "Marion Oaks",
+    "modelName": "Grumari",
+    "permitDays": 40,
+    "lotLeadDays": 30,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 225000,
+    "costContractor": 220000,
+    "costOpenBook": 195000,
+    "contractorFee": 25000,
+    "lotCost": 48000,
+    "salePrice": 345000
+   },
+   {
+    "cycle": 2,
+    "label": "C2 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 2,
+    "label": "C2 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 2,
+    "label": "C2 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 2,
+    "label": "C2 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 2,
+    "label": "C2 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 3,
+    "label": "C3 • Grumari — Marion Oaks",
+    "locationName": "Marion Oaks",
+    "modelName": "Grumari",
+    "permitDays": 40,
+    "lotLeadDays": 30,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 225000,
+    "costContractor": 220000,
+    "costOpenBook": 195000,
+    "contractorFee": 25000,
+    "lotCost": 48000,
+    "salePrice": 345000
+   },
+   {
+    "cycle": 3,
+    "label": "C3 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 3,
+    "label": "C3 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 3,
+    "label": "C3 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 3,
+    "label": "C3 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 3,
+    "label": "C3 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 4,
+    "label": "C4 • Grumari — Marion Oaks",
+    "locationName": "Marion Oaks",
+    "modelName": "Grumari",
+    "permitDays": 40,
+    "lotLeadDays": 30,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 225000,
+    "costContractor": 220000,
+    "costOpenBook": 195000,
+    "contractorFee": 25000,
+    "lotCost": 48000,
+    "salePrice": 345000
+   },
+   {
+    "cycle": 4,
+    "label": "C4 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 4,
+    "label": "C4 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 4,
+    "label": "C4 • Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 40,
+    "lotLeadDays": 25,
+    "saleDays": 30,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 315000
+   },
+   {
+    "cycle": 4,
+    "label": "C4 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   },
+   {
+    "cycle": 4,
+    "label": "C4 • Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 40,
+    "lotLeadDays": 35,
+    "saleDays": 30,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 350000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 68000,
+    "salePrice": 610000
+   }
+  ],
+  "vehicleCosts": null
+ },
+ "expected": {
+  "kpis": {
+   "totalInvested": 2032685,
+   "totalReturned": 2993855,
+   "profit": 961170,
+   "irrAnnual": 0.22691914460349566,
+   "irrMonthly": 0.017188235467566537,
+   "equityMultiple": 1.47,
+   "peakCapital": 2032685,
+   "durationDays": 1093,
+   "perfFeeTotal": 320390,
+   "promoteTotal": 0,
+   "contractorFeeTotal": 0,
+   "bankCommitted": 0,
+   "bankUpfrontFees": 0,
+   "bankInterestTotal": 0,
+   "bankOtherFees": 0,
+   "bankReserveFunded": 0,
+   "bankReserveUnused": 0,
+   "bankExtensionFee": 0,
+   "cashToClosing": 0,
+   "equityGateAmount": 784480,
+   "loanClosingDay": null,
+   "vehicleCostTotal": 0
+  },
+  "events": [
+   {
+    "day": 30,
+    "kind": "INJECTION",
+    "amount": 2400,
+    "cash": 2400
+   },
+   {
+    "day": 30,
+    "kind": "LOT",
+    "amount": -2400,
+    "cash": 0
+   },
+   {
+    "day": 45,
+    "kind": "INJECTION",
+    "amount": 22950,
+    "cash": 22950
+   },
+   {
+    "day": 45,
+    "kind": "PHASE",
+    "amount": -22950,
+    "cash": 0
+   },
+   {
+    "day": 45,
+    "kind": "INJECTION",
+    "amount": 45600,
+    "cash": 45600
+   },
+   {
+    "day": 45,
+    "kind": "LOT",
+    "amount": -45600,
+    "cash": 0
+   },
+   {
+    "day": 50,
+    "kind": "INJECTION",
+    "amount": 1400,
+    "cash": 1400
+   },
+   {
+    "day": 50,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 0
+   },
+   {
+    "day": 65,
+    "kind": "INJECTION",
+    "amount": 21930,
+    "cash": 21930
+   },
+   {
+    "day": 65,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 0
+   },
+   {
+    "day": 65,
+    "kind": "INJECTION",
+    "amount": 26600,
+    "cash": 26600
+   },
+   {
+    "day": 65,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 0
+   },
+   {
+    "day": 70,
+    "kind": "INJECTION",
+    "amount": 1400,
+    "cash": 1400
+   },
+   {
+    "day": 70,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 0
+   },
+   {
+    "day": 85,
+    "kind": "INJECTION",
+    "amount": 21930,
+    "cash": 21930
+   },
+   {
+    "day": 85,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 0
+   },
+   {
+    "day": 85,
+    "kind": "INJECTION",
+    "amount": 26600,
+    "cash": 26600
+   },
+   {
+    "day": 85,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 0
+   },
+   {
+    "day": 86,
+    "kind": "INJECTION",
+    "amount": 68850,
+    "cash": 68850
+   },
+   {
+    "day": 86,
+    "kind": "PHASE",
+    "amount": -68850,
+    "cash": 0
+   },
+   {
+    "day": 90,
+    "kind": "INJECTION",
+    "amount": 1400,
+    "cash": 1400
+   },
+   {
+    "day": 90,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 0
+   },
+   {
+    "day": 105,
+    "kind": "INJECTION",
+    "amount": 21930,
+    "cash": 21930
+   },
+   {
+    "day": 105,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 0
+   },
+   {
+    "day": 105,
+    "kind": "INJECTION",
+    "amount": 26600,
+    "cash": 26600
+   },
+   {
+    "day": 105,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 0
+   },
+   {
+    "day": 106,
+    "kind": "INJECTION",
+    "amount": 65790,
+    "cash": 65790
+   },
+   {
+    "day": 106,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 0
+   },
+   {
+    "day": 110,
+    "kind": "INJECTION",
+    "amount": 3400,
+    "cash": 3400
+   },
+   {
+    "day": 110,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 0
+   },
+   {
+    "day": 125,
+    "kind": "INJECTION",
+    "amount": 40290,
+    "cash": 40290
+   },
+   {
+    "day": 125,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 0
+   },
+   {
+    "day": 125,
+    "kind": "INJECTION",
+    "amount": 64600,
+    "cash": 64600
+   },
+   {
+    "day": 125,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 0
+   },
+   {
+    "day": 126,
+    "kind": "INJECTION",
+    "amount": 65790,
+    "cash": 65790
+   },
+   {
+    "day": 126,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 0
+   },
+   {
+    "day": 130,
+    "kind": "INJECTION",
+    "amount": 3400,
+    "cash": 3400
+   },
+   {
+    "day": 130,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 0
+   },
+   {
+    "day": 133,
+    "kind": "INJECTION",
+    "amount": 45900,
+    "cash": 45900
+   },
+   {
+    "day": 133,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 0
+   },
+   {
+    "day": 145,
+    "kind": "INJECTION",
+    "amount": 40290,
+    "cash": 40290
+   },
+   {
+    "day": 145,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 0
+   },
+   {
+    "day": 145,
+    "kind": "INJECTION",
+    "amount": 64600,
+    "cash": 64600
+   },
+   {
+    "day": 145,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 0
+   },
+   {
+    "day": 146,
+    "kind": "INJECTION",
+    "amount": 65790,
+    "cash": 65790
+   },
+   {
+    "day": 146,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 0
+   },
+   {
+    "day": 153,
+    "kind": "INJECTION",
+    "amount": 43860,
+    "cash": 43860
+   },
+   {
+    "day": 153,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 157,
+    "kind": "INJECTION",
+    "amount": 45900,
+    "cash": 45900
+   },
+   {
+    "day": 157,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 0
+   },
+   {
+    "day": 166,
+    "kind": "INJECTION",
+    "amount": 120870,
+    "cash": 120870
+   },
+   {
+    "day": 166,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 0
+   },
+   {
+    "day": 173,
+    "kind": "INJECTION",
+    "amount": 43860,
+    "cash": 43860
+   },
+   {
+    "day": 173,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 177,
+    "kind": "INJECTION",
+    "amount": 43860,
+    "cash": 43860
+   },
+   {
+    "day": 177,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 181,
+    "kind": "INJECTION",
+    "amount": 34425,
+    "cash": 34425
+   },
+   {
+    "day": 181,
+    "kind": "PHASE",
+    "amount": -34425,
+    "cash": 0
+   },
+   {
+    "day": 186,
+    "kind": "INJECTION",
+    "amount": 120870,
+    "cash": 120870
+   },
+   {
+    "day": 186,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 0
+   },
+   {
+    "day": 193,
+    "kind": "INJECTION",
+    "amount": 43860,
+    "cash": 43860
+   },
+   {
+    "day": 193,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 197,
+    "kind": "INJECTION",
+    "amount": 43860,
+    "cash": 43860
+   },
+   {
+    "day": 197,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 201,
+    "kind": "INJECTION",
+    "amount": 32895,
+    "cash": 32895
+   },
+   {
+    "day": 201,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 0
+   },
+   {
+    "day": 215,
+    "kind": "INJECTION",
+    "amount": 11475,
+    "cash": 11475
+   },
+   {
+    "day": 215,
+    "kind": "PHASE",
+    "amount": -11475,
+    "cash": 0
+   },
+   {
+    "day": 217,
+    "kind": "INJECTION",
+    "amount": 43860,
+    "cash": 43860
+   },
+   {
+    "day": 217,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 221,
+    "kind": "INJECTION",
+    "amount": 32895,
+    "cash": 32895
+   },
+   {
+    "day": 221,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 0
+   },
+   {
+    "day": 225,
+    "kind": "INJECTION",
+    "amount": 80580,
+    "cash": 80580
+   },
+   {
+    "day": 225,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 235,
+    "kind": "INJECTION",
+    "amount": 10965,
+    "cash": 10965
+   },
+   {
+    "day": 235,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 0
+   },
+   {
+    "day": 241,
+    "kind": "INJECTION",
+    "amount": 32895,
+    "cash": 32895
+   },
+   {
+    "day": 241,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 0
+   },
+   {
+    "day": 245,
+    "kind": "INJECTION",
+    "amount": 80580,
+    "cash": 80580
+   },
+   {
+    "day": 245,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 246,
+    "kind": "INJECTION",
+    "amount": 2400,
+    "cash": 2400
+   },
+   {
+    "day": 246,
+    "kind": "LOT",
+    "amount": -2400,
+    "cash": 0
+   },
+   {
+    "day": 255,
+    "kind": "INJECTION",
+    "amount": 10965,
+    "cash": 10965
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 0
+   },
+   {
+    "day": 255,
+    "kind": "INJECTION",
+    "amount": 80580,
+    "cash": 80580
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 256,
+    "kind": "INJECTION",
+    "amount": 1400,
+    "cash": 1400
+   },
+   {
+    "day": 256,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 0
+   },
+   {
+    "day": 261,
+    "kind": "INJECTION",
+    "amount": 22950,
+    "cash": 22950
+   },
+   {
+    "day": 261,
+    "kind": "PHASE",
+    "amount": -22950,
+    "cash": 0
+   },
+   {
+    "day": 261,
+    "kind": "INJECTION",
+    "amount": 45600,
+    "cash": 45600
+   },
+   {
+    "day": 261,
+    "kind": "LOT",
+    "amount": -45600,
+    "cash": 0
+   },
+   {
+    "day": 266,
+    "kind": "INJECTION",
+    "amount": 1400,
+    "cash": 1400
+   },
+   {
+    "day": 266,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 0
+   },
+   {
+    "day": 271,
+    "kind": "INJECTION",
+    "amount": 21930,
+    "cash": 21930
+   },
+   {
+    "day": 271,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 0
+   },
+   {
+    "day": 271,
+    "kind": "INJECTION",
+    "amount": 26600,
+    "cash": 26600
+   },
+   {
+    "day": 271,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 0
+   },
+   {
+    "day": 275,
+    "kind": "INJECTION",
+    "amount": 10965,
+    "cash": 10965
+   },
+   {
+    "day": 275,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 0
+   },
+   {
+    "day": 275,
+    "kind": "INJECTION",
+    "amount": 80580,
+    "cash": 80580
+   },
+   {
+    "day": 275,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 281,
+    "kind": "INJECTION",
+    "amount": 21930,
+    "cash": 21930
+   },
+   {
+    "day": 281,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 0
+   },
+   {
+    "day": 281,
+    "kind": "INJECTION",
+    "amount": 26600,
+    "cash": 26600
+   },
+   {
+    "day": 281,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 0
+   },
+   {
+    "day": 285,
+    "kind": "INJECTION",
+    "amount": 60435,
+    "cash": 60435
+   },
+   {
+    "day": 285,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 0
+   },
+   {
+    "day": 286,
+    "kind": "INJECTION",
+    "amount": 1400,
+    "cash": 1400
+   },
+   {
+    "day": 286,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 0
+   },
+   {
+    "day": 300,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 286335
+   },
+   {
+    "day": 300,
+    "kind": "RETURN",
+    "amount": -98761.25,
+    "cash": 187573.75
+   },
+   {
+    "day": 301,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 165643.75
+   },
+   {
+    "day": 301,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 139043.75
+   },
+   {
+    "day": 301,
+    "kind": "PHASE",
+    "amount": -68850,
+    "cash": 70193.75
+   },
+   {
+    "day": 305,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 60435
+   },
+   {
+    "day": 305,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 0
+   },
+   {
+    "day": 310,
+    "kind": "SALE",
+    "amount": 313605,
+    "cash": 313605
+   },
+   {
+    "day": 310,
+    "kind": "RETURN",
+    "amount": -136251.25,
+    "cash": 177353.75
+   },
+   {
+    "day": 311,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 111563.75
+   },
+   {
+    "day": 315,
+    "kind": "PERF_FEE",
+    "amount": -9026.25,
+    "cash": 102537.5
+   },
+   {
+    "day": 320,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 388872.5
+   },
+   {
+    "day": 321,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 323082.5
+   },
+   {
+    "day": 325,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 313323.75
+   },
+   {
+    "day": 325,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 293178.75
+   },
+   {
+    "day": 336,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 289778.75
+   },
+   {
+    "day": 340,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 576113.75
+   },
+   {
+    "day": 341,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 510323.75
+   },
+   {
+    "day": 345,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 500565
+   },
+   {
+    "day": 345,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 480420
+   },
+   {
+    "day": 349,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 434520
+   },
+   {
+    "day": 351,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 394230
+   },
+   {
+    "day": 351,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 329630
+   },
+   {
+    "day": 356,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 326230
+   },
+   {
+    "day": 359,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 282370
+   },
+   {
+    "day": 369,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 238510
+   },
+   {
+    "day": 371,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 198220
+   },
+   {
+    "day": 371,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 133620
+   },
+   {
+    "day": 373,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 87720
+   },
+   {
+    "day": 383,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 43860
+   },
+   {
+    "day": 389,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 0
+   },
+   {
+    "day": 390,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 554490
+   },
+   {
+    "day": 390,
+    "kind": "RETURN",
+    "amount": -17185,
+    "cash": 537305
+   },
+   {
+    "day": 391,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 416435
+   },
+   {
+    "day": 393,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 372575
+   },
+   {
+    "day": 395,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 351677.5
+   },
+   {
+    "day": 397,
+    "kind": "PHASE",
+    "amount": -34425,
+    "cash": 317252.5
+   },
+   {
+    "day": 407,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 284357.5
+   },
+   {
+    "day": 410,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 838847.5
+   },
+   {
+    "day": 411,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 717977.5
+   },
+   {
+    "day": 413,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 674117.5
+   },
+   {
+    "day": 415,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 653220
+   },
+   {
+    "day": 417,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 620325
+   },
+   {
+    "day": 431,
+    "kind": "PHASE",
+    "amount": -11475,
+    "cash": 608850
+   },
+   {
+    "day": 437,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 575955
+   },
+   {
+    "day": 441,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 564990
+   },
+   {
+    "day": 451,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 554025
+   },
+   {
+    "day": 451,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 473445
+   },
+   {
+    "day": 452,
+    "kind": "LOT",
+    "amount": -2400,
+    "cash": 471045
+   },
+   {
+    "day": 462,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 469645
+   },
+   {
+    "day": 467,
+    "kind": "PHASE",
+    "amount": -22950,
+    "cash": 446695
+   },
+   {
+    "day": 467,
+    "kind": "LOT",
+    "amount": -45600,
+    "cash": 401095
+   },
+   {
+    "day": 471,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 390130
+   },
+   {
+    "day": 471,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 309550
+   },
+   {
+    "day": 472,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 308150
+   },
+   {
+    "day": 477,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 286220
+   },
+   {
+    "day": 477,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 259620
+   },
+   {
+    "day": 481,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 179040
+   },
+   {
+    "day": 482,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 177640
+   },
+   {
+    "day": 487,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 155710
+   },
+   {
+    "day": 487,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 129110
+   },
+   {
+    "day": 497,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 107180
+   },
+   {
+    "day": 497,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 80580
+   },
+   {
+    "day": 501,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 506,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 286335
+   },
+   {
+    "day": 506,
+    "kind": "RETURN",
+    "amount": -68067.5,
+    "cash": 218267.5
+   },
+   {
+    "day": 507,
+    "kind": "PHASE",
+    "amount": -68850,
+    "cash": 149417.5
+   },
+   {
+    "day": 511,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 139658.75
+   },
+   {
+    "day": 511,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 79223.75
+   },
+   {
+    "day": 516,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 365558.75
+   },
+   {
+    "day": 517,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 299768.75
+   },
+   {
+    "day": 521,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 290010
+   },
+   {
+    "day": 526,
+    "kind": "SALE",
+    "amount": 313605,
+    "cash": 603615
+   },
+   {
+    "day": 527,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 537825
+   },
+   {
+    "day": 531,
+    "kind": "PERF_FEE",
+    "amount": -9026.25,
+    "cash": 528798.75
+   },
+   {
+    "day": 531,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 468363.75
+   },
+   {
+    "day": 536,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 754698.75
+   },
+   {
+    "day": 537,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 688908.75
+   },
+   {
+    "day": 541,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 679150
+   },
+   {
+    "day": 551,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 659005
+   },
+   {
+    "day": 555,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 613105
+   },
+   {
+    "day": 562,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 609705
+   },
+   {
+    "day": 565,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 565845
+   },
+   {
+    "day": 571,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 545700
+   },
+   {
+    "day": 575,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 501840
+   },
+   {
+    "day": 577,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 461550
+   },
+   {
+    "day": 577,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 396950
+   },
+   {
+    "day": 579,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 351050
+   },
+   {
+    "day": 582,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 347650
+   },
+   {
+    "day": 585,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 303790
+   },
+   {
+    "day": 589,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 259930
+   },
+   {
+    "day": 597,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 219640
+   },
+   {
+    "day": 597,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 155040
+   },
+   {
+    "day": 599,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 111180
+   },
+   {
+    "day": 603,
+    "kind": "PHASE",
+    "amount": -34425,
+    "cash": 76755
+   },
+   {
+    "day": 609,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 32895
+   },
+   {
+    "day": 613,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 0
+   },
+   {
+    "day": 616,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 554490
+   },
+   {
+    "day": 616,
+    "kind": "RETURN",
+    "amount": -174502.5,
+    "cash": 379987.5
+   },
+   {
+    "day": 617,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 259117.5
+   },
+   {
+    "day": 621,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 238220
+   },
+   {
+    "day": 623,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 205325
+   },
+   {
+    "day": 633,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 172430
+   },
+   {
+    "day": 636,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 726920
+   },
+   {
+    "day": 637,
+    "kind": "PHASE",
+    "amount": -11475,
+    "cash": 715445
+   },
+   {
+    "day": 637,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 594575
+   },
+   {
+    "day": 641,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 573677.5
+   },
+   {
+    "day": 647,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 562712.5
+   },
+   {
+    "day": 657,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 551747.5
+   },
+   {
+    "day": 658,
+    "kind": "LOT",
+    "amount": -2400,
+    "cash": 549347.5
+   },
+   {
+    "day": 667,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 538382.5
+   },
+   {
+    "day": 668,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 536982.5
+   },
+   {
+    "day": 673,
+    "kind": "PHASE",
+    "amount": -22950,
+    "cash": 514032.5
+   },
+   {
+    "day": 673,
+    "kind": "LOT",
+    "amount": -45600,
+    "cash": 468432.5
+   },
+   {
+    "day": 677,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 387852.5
+   },
+   {
+    "day": 678,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 386452.5
+   },
+   {
+    "day": 678,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 385052.5
+   },
+   {
+    "day": 683,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 363122.5
+   },
+   {
+    "day": 683,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 336522.5
+   },
+   {
+    "day": 693,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 314592.5
+   },
+   {
+    "day": 693,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 292662.5
+   },
+   {
+    "day": 693,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 266062.5
+   },
+   {
+    "day": 693,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 239462.5
+   },
+   {
+    "day": 697,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 158882.5
+   },
+   {
+    "day": 707,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 78302.5
+   },
+   {
+    "day": 712,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 364637.5
+   },
+   {
+    "day": 713,
+    "kind": "PHASE",
+    "amount": -68850,
+    "cash": 295787.5
+   },
+   {
+    "day": 717,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 286028.75
+   },
+   {
+    "day": 722,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 572363.75
+   },
+   {
+    "day": 723,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 506573.75
+   },
+   {
+    "day": 727,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 496815
+   },
+   {
+    "day": 727,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 416235
+   },
+   {
+    "day": 732,
+    "kind": "SALE",
+    "amount": 313605,
+    "cash": 729840
+   },
+   {
+    "day": 732,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 1016175
+   },
+   {
+    "day": 733,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 950385
+   },
+   {
+    "day": 733,
+    "kind": "PHASE",
+    "amount": -65790,
+    "cash": 884595
+   },
+   {
+    "day": 737,
+    "kind": "PERF_FEE",
+    "amount": -9026.25,
+    "cash": 875568.75
+   },
+   {
+    "day": 737,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 865810
+   },
+   {
+    "day": 737,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 805375
+   },
+   {
+    "day": 757,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 744940
+   },
+   {
+    "day": 761,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 699040
+   },
+   {
+    "day": 771,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 655180
+   },
+   {
+    "day": 777,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 635035
+   },
+   {
+    "day": 781,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 591175
+   },
+   {
+    "day": 781,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 547315
+   },
+   {
+    "day": 785,
+    "kind": "PHASE",
+    "amount": -45900,
+    "cash": 501415
+   },
+   {
+    "day": 788,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 498015
+   },
+   {
+    "day": 795,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 454155
+   },
+   {
+    "day": 797,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 434010
+   },
+   {
+    "day": 803,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 393720
+   },
+   {
+    "day": 803,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 329120
+   },
+   {
+    "day": 805,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 285260
+   },
+   {
+    "day": 805,
+    "kind": "PHASE",
+    "amount": -43860,
+    "cash": 241400
+   },
+   {
+    "day": 808,
+    "kind": "LOT",
+    "amount": -3400,
+    "cash": 238000
+   },
+   {
+    "day": 809,
+    "kind": "PHASE",
+    "amount": -34425,
+    "cash": 203575
+   },
+   {
+    "day": 819,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 170680
+   },
+   {
+    "day": 823,
+    "kind": "PHASE",
+    "amount": -40290,
+    "cash": 130390
+   },
+   {
+    "day": 823,
+    "kind": "LOT",
+    "amount": -64600,
+    "cash": 65790
+   },
+   {
+    "day": 829,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 32895
+   },
+   {
+    "day": 829,
+    "kind": "PHASE",
+    "amount": -32895,
+    "cash": 0
+   },
+   {
+    "day": 842,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 554490
+   },
+   {
+    "day": 842,
+    "kind": "RETURN",
+    "amount": -390282.5,
+    "cash": 164207.5
+   },
+   {
+    "day": 843,
+    "kind": "PHASE",
+    "amount": -11475,
+    "cash": 152732.5
+   },
+   {
+    "day": 843,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 31862.5
+   },
+   {
+    "day": 847,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 10965
+   },
+   {
+    "day": 853,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 0
+   },
+   {
+    "day": 862,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 554490
+   },
+   {
+    "day": 862,
+    "kind": "RETURN",
+    "amount": -310212.5,
+    "cash": 244277.5
+   },
+   {
+    "day": 863,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 233312.5
+   },
+   {
+    "day": 863,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 222347.5
+   },
+   {
+    "day": 863,
+    "kind": "PHASE",
+    "amount": -120870,
+    "cash": 101477.5
+   },
+   {
+    "day": 867,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 80580
+   },
+   {
+    "day": 903,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 918,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 286335
+   },
+   {
+    "day": 918,
+    "kind": "RETURN",
+    "amount": -195996.25,
+    "cash": 90338.75
+   },
+   {
+    "day": 923,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 80580
+   },
+   {
+    "day": 923,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 928,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 286335
+   },
+   {
+    "day": 928,
+    "kind": "RETURN",
+    "amount": -286335,
+    "cash": 0
+   },
+   {
+    "day": 928,
+    "kind": "SALE",
+    "amount": 286335,
+    "cash": 286335
+   },
+   {
+    "day": 928,
+    "kind": "RETURN",
+    "amount": -186237.5,
+    "cash": 100097.5
+   },
+   {
+    "day": 933,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 90338.75
+   },
+   {
+    "day": 933,
+    "kind": "PERF_FEE",
+    "amount": -9758.75,
+    "cash": 80580
+   },
+   {
+    "day": 933,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 0
+   },
+   {
+    "day": 938,
+    "kind": "SALE",
+    "amount": 313605,
+    "cash": 313605
+   },
+   {
+    "day": 938,
+    "kind": "RETURN",
+    "amount": -62838.75,
+    "cash": 250766.25
+   },
+   {
+    "day": 943,
+    "kind": "PERF_FEE",
+    "amount": -9026.25,
+    "cash": 241740
+   },
+   {
+    "day": 953,
+    "kind": "PHASE",
+    "amount": -80580,
+    "cash": 161160
+   },
+   {
+    "day": 963,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 100725
+   },
+   {
+    "day": 983,
+    "kind": "PHASE",
+    "amount": -60435,
+    "cash": 40290
+   },
+   {
+    "day": 1003,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 20145
+   },
+   {
+    "day": 1023,
+    "kind": "PHASE",
+    "amount": -20145,
+    "cash": 0
+   },
+   {
+    "day": 1068,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 554490
+   },
+   {
+    "day": 1068,
+    "kind": "RETURN",
+    "amount": -533592.5,
+    "cash": 20897.5
+   },
+   {
+    "day": 1073,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 0
+   },
+   {
+    "day": 1088,
+    "kind": "SALE",
+    "amount": 554490,
+    "cash": 554490
+   },
+   {
+    "day": 1088,
+    "kind": "RETURN",
+    "amount": -533592.5,
+    "cash": 20897.5
+   },
+   {
+    "day": 1093,
+    "kind": "PERF_FEE",
+    "amount": -20897.5,
+    "cash": 0
+   }
+  ]
+ }
+}

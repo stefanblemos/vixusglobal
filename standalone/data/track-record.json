@@ -1,0 +1,73 @@
+{
+  "source": "4U Builder.csv",
+  "extractDate": "2026-07-15",
+  "basis": "total project cost (lot + construction)",
+  "paymentPlanPct": [
+    10,
+    30,
+    20,
+    20,
+    15,
+    5
+  ],
+  "export": {
+    "totalJobs": 304,
+    "prefixRange": "296–967"
+  },
+  "sample": {
+    "n": 44,
+    "criteria": "closed + realized net profit + complete permit/foundation/CO/closing dates",
+    "periodYears": "2023–2025",
+    "closingsByYear": {
+      "2023": 9,
+      "2024": 31,
+      "2025": 4
+    },
+    "holdingAdjusted": 3
+  },
+  "roiPerCyclePct": {
+    "median": 12.4,
+    "min": 7,
+    "max": 26.3
+  },
+  "cycle": {
+    "medianDays": 178,
+    "buildMedianDays": 107,
+    "coToClosingMedianDays": 50
+  },
+  "estimatedIrrPct": {
+    "median": 44.9,
+    "p25": 33.3,
+    "p75": 58.4,
+    "min": 18.2,
+    "above20": 43,
+    "above28": 37
+  },
+  "conservativeFloorIrrPct": {
+    "median": 27.6,
+    "p25": 22,
+    "p75": 36.3,
+    "min": 14.5
+  },
+  "execution": {
+    "trackedProjects": 304,
+    "periodYears": "2023–2026",
+    "buildMedianDays": 114,
+    "buildN": 232,
+    "permitToCoMedianDays": 132,
+    "permitToCoN": 253,
+    "cosByYear": {
+      "2023": 30,
+      "2024": 85,
+      "2025": 117,
+      "2026": 21
+    },
+    "ramp": {
+      "fromYear": 2023,
+      "fromCount": 30,
+      "toYear": 2025,
+      "toCount": 117
+    },
+    "inProductionNow": 28
+  }
+}

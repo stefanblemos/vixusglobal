@@ -1,0 +1,216 @@
+{
+ "name": "PH7 variante · open book + plano PARTNER + entidade do cliente",
+ "scenarioCode": "REAL",
+ "scenarioName": "Real",
+ "input": {
+  "fundingMode": "EQUITY",
+  "upfrontFunding": false,
+  "compMode": "OPEN_BOOK",
+  "perfPct": 0.35,
+  "perfTiming": "PROJECT_COMPLETION",
+  "promoteTiers": [
+   {
+    "hurdlePct": 8,
+    "promotePct": 0
+   },
+   {
+    "hurdlePct": 10,
+    "promotePct": 15
+   },
+   {
+    "hurdlePct": 12,
+    "promotePct": 20
+   },
+   {
+    "hurdlePct": 14,
+    "promotePct": 25
+   },
+   {
+    "hurdlePct": 16,
+    "promotePct": 30
+   },
+   {
+    "hurdlePct": 18,
+    "promotePct": 35
+   }
+  ],
+  "flatFeePerHouse": 30000,
+  "paymentPlan": "PARTNER",
+  "equityGatePct": 0.1,
+  "unitGapDays": 20,
+  "scenario": {
+   "salePriceBufferPct": 0,
+   "constructionCostBufferPct": 2,
+   "lotCostBufferPct": 0,
+   "closingFeePct": 9.5,
+   "contingencyReservePct": 0,
+   "landAcquisitionDays": 15,
+   "saleClosingDays": 45,
+   "constructionDurationBufferM": 0,
+   "salesAbsorptionMonths": 0,
+   "emdPct": 5
+  },
+  "bank": null,
+  "units": [
+   {
+    "cycle": 1,
+    "label": "Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 45,
+    "lotLeadDays": 60,
+    "saleDays": 60,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 335000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 75000,
+    "salePrice": 615000
+   }
+  ],
+  "vehicleCosts": null
+ },
+ "expected": {
+  "kpis": {
+   "totalInvested": 426900,
+   "totalReturned": 550597.56,
+   "profit": 123697.56,
+   "irrAnnual": 0.5656832608462046,
+   "irrMonthly": 0.03806685801959708,
+   "equityMultiple": 1.29,
+   "peakCapital": 426900,
+   "durationDays": 375,
+   "perfFeeTotal": 0,
+   "promoteTotal": 5977.44,
+   "contractorFeeTotal": 30000,
+   "bankCommitted": 0,
+   "bankUpfrontFees": 0,
+   "bankInterestTotal": 0,
+   "bankOtherFees": 0,
+   "bankReserveFunded": 0,
+   "bankReserveUnused": 0,
+   "bankExtensionFee": 0,
+   "cashToClosing": 0,
+   "equityGateAmount": 42690,
+   "loanClosingDay": null,
+   "vehicleCostTotal": 0
+  },
+  "events": [
+   {
+    "day": 60,
+    "kind": "INJECTION",
+    "amount": 3750,
+    "cash": 3750
+   },
+   {
+    "day": 60,
+    "kind": "LOT",
+    "amount": -3750,
+    "cash": 0
+   },
+   {
+    "day": 75,
+    "kind": "INJECTION",
+    "amount": 35190,
+    "cash": 35190
+   },
+   {
+    "day": 75,
+    "kind": "PHASE",
+    "amount": -35190,
+    "cash": 0
+   },
+   {
+    "day": 75,
+    "kind": "INJECTION",
+    "amount": 71250,
+    "cash": 71250
+   },
+   {
+    "day": 75,
+    "kind": "LOT",
+    "amount": -71250,
+    "cash": 0
+   },
+   {
+    "day": 121,
+    "kind": "INJECTION",
+    "amount": 35190,
+    "cash": 35190
+   },
+   {
+    "day": 121,
+    "kind": "PHASE",
+    "amount": -35190,
+    "cash": 0
+   },
+   {
+    "day": 180,
+    "kind": "INJECTION",
+    "amount": 87975,
+    "cash": 87975
+   },
+   {
+    "day": 180,
+    "kind": "PHASE",
+    "amount": -87975,
+    "cash": 0
+   },
+   {
+    "day": 210,
+    "kind": "INJECTION",
+    "amount": 87975,
+    "cash": 87975
+   },
+   {
+    "day": 210,
+    "kind": "PHASE",
+    "amount": -87975,
+    "cash": 0
+   },
+   {
+    "day": 240,
+    "kind": "INJECTION",
+    "amount": 87975,
+    "cash": 87975
+   },
+   {
+    "day": 240,
+    "kind": "PHASE",
+    "amount": -87975,
+    "cash": 0
+   },
+   {
+    "day": 280,
+    "kind": "INJECTION",
+    "amount": 17595,
+    "cash": 17595
+   },
+   {
+    "day": 280,
+    "kind": "PHASE",
+    "amount": -17595,
+    "cash": 0
+   },
+   {
+    "day": 375,
+    "kind": "SALE",
+    "amount": 556575,
+    "cash": 556575
+   },
+   {
+    "day": 375,
+    "kind": "RETURN",
+    "amount": -550597.56,
+    "cash": 0
+   },
+   {
+    "day": 375,
+    "kind": "PERF_FEE",
+    "amount": -5977.44,
+    "cash": 0
+   }
+  ]
+ }
+}

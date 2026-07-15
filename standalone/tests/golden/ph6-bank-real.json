@@ -1,0 +1,1212 @@
+{
+ "name": "PH-6 · banco · Real",
+ "scenarioCode": "REAL",
+ "scenarioName": "Real",
+ "input": {
+  "fundingMode": "BANK",
+  "upfrontFunding": true,
+  "compMode": "OPEN_BOOK",
+  "perfPct": 0.35,
+  "perfTiming": "PROJECT_COMPLETION",
+  "promoteTiers": null,
+  "flatFeePerHouse": 20000,
+  "paymentPlan": "PARTNER",
+  "equityGatePct": 0.1,
+  "unitGapDays": 20,
+  "scenario": {
+   "salePriceBufferPct": 1,
+   "constructionCostBufferPct": 2,
+   "lotCostBufferPct": 0,
+   "closingFeePct": 9.5,
+   "contingencyReservePct": 0,
+   "landAcquisitionDays": 15,
+   "saleClosingDays": 45,
+   "constructionDurationBufferM": 0,
+   "salesAbsorptionMonths": 0,
+   "emdPct": 5
+  },
+  "bank": {
+   "ltcBuildPct": 90,
+   "ltcLandPct": 50,
+   "financeLand": false,
+   "ltvPct": 70,
+   "haircutPct": 0,
+   "perUnitCap": null,
+   "closingPermitPct": 80,
+   "effectiveAprPct": 9,
+   "interestBasis": "DRAWN",
+   "originationPct": 1.75,
+   "originationFlat": 0,
+   "brokerPct": 1,
+   "titleEscrowPct": 0,
+   "closingFeePct": 0,
+   "processingFee": 495,
+   "budgetReviewFee": 475,
+   "appraisalFee": 600,
+   "legalFee": 500,
+   "feesFinanced": false,
+   "servicingMonthly": 0,
+   "inspectionFeePerDraw": 295,
+   "drawProcessingFee": 0,
+   "achFeePerBatch": 0,
+   "hasInterestReserve": false,
+   "reserveMonths": 6,
+   "reserveInEnvelope": false,
+   "overfundingMode": "NONE",
+   "releaseMode": "SWEEP_FULL",
+   "sweepPct": 100,
+   "reconveyanceFee": 0,
+   "termMonths": 12,
+   "extensionFeePct": 1,
+   "applyExtensionFee": false,
+   "customFees": [
+    {
+     "name": "Underwriting Fee",
+     "timing": "CLOSING",
+     "kind": "FLAT",
+     "amount": 1500
+    },
+    {
+     "name": "Other Fees",
+     "timing": "CLOSING",
+     "kind": "FLAT",
+     "amount": 900
+    }
+   ]
+  },
+  "units": [
+   {
+    "cycle": 1,
+    "label": "Grumari — Marion Oaks",
+    "locationName": "Marion Oaks",
+    "modelName": "Grumari",
+    "permitDays": 45,
+    "lotLeadDays": 60,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 222000,
+    "costContractor": 212000,
+    "costOpenBook": 195000,
+    "contractorFee": 25000,
+    "lotCost": 48000,
+    "salePrice": 359000
+   },
+   {
+    "cycle": 1,
+    "label": "Grumari — Marion Oaks",
+    "locationName": "Marion Oaks",
+    "modelName": "Grumari",
+    "permitDays": 45,
+    "lotLeadDays": 60,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 222000,
+    "costContractor": 212000,
+    "costOpenBook": 195000,
+    "contractorFee": 25000,
+    "lotCost": 48000,
+    "salePrice": 359000
+   },
+   {
+    "cycle": 1,
+    "label": "Ubatuba — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Ubatuba",
+    "permitDays": 45,
+    "lotLeadDays": 45,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 205000,
+    "costContractor": 195000,
+    "costOpenBook": 185000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 295000
+   },
+   {
+    "cycle": 1,
+    "label": "Maragogi - T1 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Maragogi - T1",
+    "permitDays": 45,
+    "lotLeadDays": 60,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 315000,
+    "costContractor": 300000,
+    "costOpenBook": 265000,
+    "contractorFee": 50000,
+    "lotCost": 75000,
+    "salePrice": 519000
+   },
+   {
+    "cycle": 1,
+    "label": "Maragogi - T1 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Maragogi - T1",
+    "permitDays": 45,
+    "lotLeadDays": 60,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 315000,
+    "costContractor": 300000,
+    "costOpenBook": 265000,
+    "contractorFee": 50000,
+    "lotCost": 75000,
+    "salePrice": 519000
+   },
+   {
+    "cycle": 1,
+    "label": "Stonegate Ranch - G3 — Rolling Hills",
+    "locationName": "Rolling Hills",
+    "modelName": "Stonegate Ranch - G3",
+    "permitDays": 45,
+    "lotLeadDays": 60,
+    "saleDays": 60,
+    "buildMonths": 5,
+    "costPerformance": 395000,
+    "costContractor": 375000,
+    "costOpenBook": 315000,
+    "contractorFee": 50000,
+    "lotCost": 75000,
+    "salePrice": 615000
+   },
+   {
+    "cycle": 1,
+    "label": "Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 45,
+    "lotLeadDays": 45,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 310000
+   },
+   {
+    "cycle": 1,
+    "label": "Oakview Ranch — Rainbow Lakes",
+    "locationName": "Rainbow Lakes",
+    "modelName": "Oakview Ranch",
+    "permitDays": 45,
+    "lotLeadDays": 45,
+    "saleDays": 60,
+    "buildMonths": 4,
+    "costPerformance": 215000,
+    "costContractor": 200000,
+    "costOpenBook": 190000,
+    "contractorFee": 25000,
+    "lotCost": 28000,
+    "salePrice": 310000
+   }
+  ],
+  "vehicleCosts": [
+   {
+    "name": "Abertura da LLC",
+    "amount": 650,
+    "timing": "FORMATION"
+   },
+   {
+    "name": "Encerramento da LLC",
+    "amount": 500,
+    "timing": "DISSOLUTION"
+   },
+   {
+    "name": "Contador — IR anual",
+    "amount": 1200,
+    "timing": "ANNUAL"
+   },
+   {
+    "name": "Annual report (FL)",
+    "amount": 350,
+    "timing": "ANNUAL"
+   }
+  ]
+ },
+ "expected": {
+  "kpis": {
+   "totalInvested": 913975.33,
+   "totalReturned": 1392718.3,
+   "profit": 478742.97,
+   "irrAnnual": 0.39159848078967374,
+   "irrMonthly": 0.02792042458908739,
+   "equityMultiple": 1.52,
+   "peakCapital": 913975.33,
+   "durationDays": 485,
+   "perfFeeTotal": 0,
+   "promoteTotal": 0,
+   "contractorFeeTotal": 160000,
+   "bankCommitted": 2285000,
+   "bankUpfrontFees": 67307.5,
+   "bankInterestTotal": 39627.83,
+   "bankOtherFees": 9440,
+   "bankReserveFunded": 0,
+   "bankReserveUnused": 0,
+   "bankExtensionFee": 0,
+   "cashToClosing": 0,
+   "equityGateAmount": 240420,
+   "loanClosingDay": 240,
+   "vehicleCostTotal": 4250
+  },
+  "events": [
+   {
+    "day": 0,
+    "kind": "INJECTION",
+    "amount": 913975.33,
+    "cash": 913975.33
+   },
+   {
+    "day": 0,
+    "kind": "VEHICLE",
+    "amount": -650,
+    "cash": 913325.33
+   },
+   {
+    "day": 60,
+    "kind": "LOT",
+    "amount": -2400,
+    "cash": 910925.33
+   },
+   {
+    "day": 75,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 888995.33
+   },
+   {
+    "day": 75,
+    "kind": "LOT",
+    "amount": -45600,
+    "cash": 843395.33
+   },
+   {
+    "day": 80,
+    "kind": "LOT",
+    "amount": -2400,
+    "cash": 840995.33
+   },
+   {
+    "day": 95,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 819065.33
+   },
+   {
+    "day": 95,
+    "kind": "LOT",
+    "amount": -45600,
+    "cash": 773465.33
+   },
+   {
+    "day": 100,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 772065.33
+   },
+   {
+    "day": 115,
+    "kind": "PHASE",
+    "amount": -20910,
+    "cash": 751155.33
+   },
+   {
+    "day": 115,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 724555.33
+   },
+   {
+    "day": 120,
+    "kind": "LOT",
+    "amount": -3750,
+    "cash": 720805.33
+   },
+   {
+    "day": 121,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 698875.33
+   },
+   {
+    "day": 135,
+    "kind": "PHASE",
+    "amount": -29070,
+    "cash": 669805.33
+   },
+   {
+    "day": 135,
+    "kind": "LOT",
+    "amount": -71250,
+    "cash": 598555.33
+   },
+   {
+    "day": 140,
+    "kind": "LOT",
+    "amount": -3750,
+    "cash": 594805.33
+   },
+   {
+    "day": 141,
+    "kind": "PHASE",
+    "amount": -21930,
+    "cash": 572875.33
+   },
+   {
+    "day": 155,
+    "kind": "PHASE",
+    "amount": -29070,
+    "cash": 543805.33
+   },
+   {
+    "day": 155,
+    "kind": "LOT",
+    "amount": -71250,
+    "cash": 472555.33
+   },
+   {
+    "day": 160,
+    "kind": "LOT",
+    "amount": -3750,
+    "cash": 468805.33
+   },
+   {
+    "day": 161,
+    "kind": "PHASE",
+    "amount": -20910,
+    "cash": 447895.33
+   },
+   {
+    "day": 175,
+    "kind": "PHASE",
+    "amount": -34170,
+    "cash": 413725.33
+   },
+   {
+    "day": 175,
+    "kind": "LOT",
+    "amount": -71250,
+    "cash": 342475.33
+   },
+   {
+    "day": 180,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 341075.33
+   },
+   {
+    "day": 181,
+    "kind": "PHASE",
+    "amount": -29070,
+    "cash": 312005.33
+   },
+   {
+    "day": 195,
+    "kind": "PHASE",
+    "amount": -21420,
+    "cash": 290585.33
+   },
+   {
+    "day": 195,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 263985.33
+   },
+   {
+    "day": 200,
+    "kind": "LOT",
+    "amount": -1400,
+    "cash": 262585.33
+   },
+   {
+    "day": 201,
+    "kind": "PHASE",
+    "amount": -29070,
+    "cash": 233515.33
+   },
+   {
+    "day": 215,
+    "kind": "PHASE",
+    "amount": -21420,
+    "cash": 212095.33
+   },
+   {
+    "day": 215,
+    "kind": "LOT",
+    "amount": -26600,
+    "cash": 185495.33
+   },
+   {
+    "day": 221,
+    "kind": "PHASE",
+    "amount": -34170,
+    "cash": 151325.33
+   },
+   {
+    "day": 240,
+    "kind": "BANK_FEE",
+    "amount": -67307.5,
+    "cash": 84017.83
+   },
+   {
+    "day": 241,
+    "kind": "PHASE",
+    "amount": -21420,
+    "cash": 62597.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 72675,
+    "cash": 135272.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 72675,
+    "cash": 207947.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 72675,
+    "cash": 280622.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 54825,
+    "cash": 335447.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 54825,
+    "cash": 390272.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 54825,
+    "cash": 445097.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 54825,
+    "cash": 499922.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 54825,
+    "cash": 554747.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 54825,
+    "cash": 609572.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 52275,
+    "cash": 661847.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 52275,
+    "cash": 714122.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_DRAW",
+    "amount": 10965,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 725087.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 714122.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -52275,
+    "cash": 661847.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -52275,
+    "cash": 609572.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -54825,
+    "cash": 554747.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -54825,
+    "cash": 499922.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -54825,
+    "cash": 445097.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -54825,
+    "cash": 390272.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -54825,
+    "cash": 335447.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -54825,
+    "cash": 280622.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -72675,
+    "cash": 207947.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -72675,
+    "cash": 135272.83
+   },
+   {
+    "day": 255,
+    "kind": "PHASE",
+    "amount": -72675,
+    "cash": 62597.83
+   },
+   {
+    "day": 256,
+    "kind": "BANK_DRAW",
+    "amount": 52275,
+    "cash": 114872.83
+   },
+   {
+    "day": 256,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 114872.83
+   },
+   {
+    "day": 256,
+    "kind": "PHASE",
+    "amount": -52275,
+    "cash": 62597.83
+   },
+   {
+    "day": 261,
+    "kind": "PHASE",
+    "amount": -21420,
+    "cash": 41177.83
+   },
+   {
+    "day": 270,
+    "kind": "BANK_DRAW",
+    "amount": 10965,
+    "cash": 52142.83
+   },
+   {
+    "day": 270,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 52142.83
+   },
+   {
+    "day": 270,
+    "kind": "BANK_INTEREST",
+    "amount": -5473.95,
+    "cash": 46668.88
+   },
+   {
+    "day": 270,
+    "kind": "PHASE",
+    "amount": -10965,
+    "cash": 35703.88
+   },
+   {
+    "day": 272,
+    "kind": "BANK_DRAW",
+    "amount": 72675,
+    "cash": 108378.88
+   },
+   {
+    "day": 272,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 108378.88
+   },
+   {
+    "day": 272,
+    "kind": "PHASE",
+    "amount": -72675,
+    "cash": 35703.88
+   },
+   {
+    "day": 276,
+    "kind": "BANK_DRAW",
+    "amount": 72675,
+    "cash": 108378.88
+   },
+   {
+    "day": 276,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 108378.88
+   },
+   {
+    "day": 276,
+    "kind": "PHASE",
+    "amount": -72675,
+    "cash": 35703.88
+   },
+   {
+    "day": 280,
+    "kind": "BANK_DRAW",
+    "amount": 85425,
+    "cash": 121128.88
+   },
+   {
+    "day": 280,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 121128.88
+   },
+   {
+    "day": 280,
+    "kind": "PHASE",
+    "amount": -85425,
+    "cash": 35703.88
+   },
+   {
+    "day": 288,
+    "kind": "BANK_DRAW",
+    "amount": 53550,
+    "cash": 89253.88
+   },
+   {
+    "day": 288,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 89253.88
+   },
+   {
+    "day": 288,
+    "kind": "PHASE",
+    "amount": -53550,
+    "cash": 35703.88
+   },
+   {
+    "day": 290,
+    "kind": "BANK_DRAW",
+    "amount": 10455,
+    "cash": 46158.88
+   },
+   {
+    "day": 290,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 46158.88
+   },
+   {
+    "day": 290,
+    "kind": "PHASE",
+    "amount": -10455,
+    "cash": 35703.88
+   },
+   {
+    "day": 296,
+    "kind": "BANK_DRAW",
+    "amount": 72675,
+    "cash": 108378.88
+   },
+   {
+    "day": 296,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 108378.88
+   },
+   {
+    "day": 296,
+    "kind": "PHASE",
+    "amount": -72675,
+    "cash": 35703.88
+   },
+   {
+    "day": 300,
+    "kind": "BANK_INTEREST",
+    "amount": -8243.14,
+    "cash": 27460.74
+   },
+   {
+    "day": 308,
+    "kind": "BANK_DRAW",
+    "amount": 53550,
+    "cash": 81010.74
+   },
+   {
+    "day": 308,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 81010.74
+   },
+   {
+    "day": 308,
+    "kind": "PHASE",
+    "amount": -53550,
+    "cash": 27460.74
+   },
+   {
+    "day": 310,
+    "kind": "BANK_DRAW",
+    "amount": 85425,
+    "cash": 112885.74
+   },
+   {
+    "day": 310,
+    "kind": "BANK_DRAW",
+    "amount": 14535,
+    "cash": 127420.74
+   },
+   {
+    "day": 310,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 127420.74
+   },
+   {
+    "day": 310,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 127420.74
+   },
+   {
+    "day": 310,
+    "kind": "PHASE",
+    "amount": -14535,
+    "cash": 112885.74
+   },
+   {
+    "day": 310,
+    "kind": "PHASE",
+    "amount": -85425,
+    "cash": 27460.74
+   },
+   {
+    "day": 312,
+    "kind": "BANK_DRAW",
+    "amount": 53550,
+    "cash": 81010.74
+   },
+   {
+    "day": 312,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 81010.74
+   },
+   {
+    "day": 312,
+    "kind": "PHASE",
+    "amount": -53550,
+    "cash": 27460.74
+   },
+   {
+    "day": 330,
+    "kind": "BANK_DRAW",
+    "amount": 14535,
+    "cash": 41995.74
+   },
+   {
+    "day": 330,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 41995.74
+   },
+   {
+    "day": 330,
+    "kind": "BANK_INTEREST",
+    "amount": -9916.16,
+    "cash": 32079.58
+   },
+   {
+    "day": 330,
+    "kind": "PHASE",
+    "amount": -14535,
+    "cash": 17544.58
+   },
+   {
+    "day": 332,
+    "kind": "BANK_DRAW",
+    "amount": 53550,
+    "cash": 71094.58
+   },
+   {
+    "day": 332,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 71094.58
+   },
+   {
+    "day": 332,
+    "kind": "PHASE",
+    "amount": -53550,
+    "cash": 17544.58
+   },
+   {
+    "day": 336,
+    "kind": "BANK_DRAW",
+    "amount": 53550,
+    "cash": 71094.58
+   },
+   {
+    "day": 336,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 71094.58
+   },
+   {
+    "day": 336,
+    "kind": "PHASE",
+    "amount": -53550,
+    "cash": 17544.58
+   },
+   {
+    "day": 340,
+    "kind": "BANK_DRAW",
+    "amount": 85425,
+    "cash": 102969.58
+   },
+   {
+    "day": 340,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 102969.58
+   },
+   {
+    "day": 340,
+    "kind": "PHASE",
+    "amount": -85425,
+    "cash": 17544.58
+   },
+   {
+    "day": 345,
+    "kind": "SALE",
+    "amount": 328143.95,
+    "cash": 345688.53
+   },
+   {
+    "day": 345,
+    "kind": "BANK_PAYOFF",
+    "amount": -328143.95,
+    "cash": 17544.58
+   },
+   {
+    "day": 356,
+    "kind": "BANK_DRAW",
+    "amount": 53550,
+    "cash": 71094.58
+   },
+   {
+    "day": 356,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 71094.58
+   },
+   {
+    "day": 356,
+    "kind": "PHASE",
+    "amount": -53550,
+    "cash": 17544.58
+   },
+   {
+    "day": 360,
+    "kind": "BANK_INTEREST",
+    "amount": -9309.5,
+    "cash": 8235.08
+   },
+   {
+    "day": 365,
+    "kind": "SALE",
+    "amount": 328143.95,
+    "cash": 336379.03
+   },
+   {
+    "day": 365,
+    "kind": "VEHICLE",
+    "amount": -350,
+    "cash": 336029.03
+   },
+   {
+    "day": 365,
+    "kind": "VEHICLE",
+    "amount": -1200,
+    "cash": 334829.03
+   },
+   {
+    "day": 365,
+    "kind": "BANK_PAYOFF",
+    "amount": -328143.95,
+    "cash": 6685.08
+   },
+   {
+    "day": 370,
+    "kind": "BANK_DRAW",
+    "amount": 10710,
+    "cash": 17395.08
+   },
+   {
+    "day": 370,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 17395.08
+   },
+   {
+    "day": 370,
+    "kind": "PHASE",
+    "amount": -10710,
+    "cash": 6685.08
+   },
+   {
+    "day": 380,
+    "kind": "BANK_DRAW",
+    "amount": 17085,
+    "cash": 23770.08
+   },
+   {
+    "day": 380,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 23770.08
+   },
+   {
+    "day": 380,
+    "kind": "PHASE",
+    "amount": -17085,
+    "cash": 6685.08
+   },
+   {
+    "day": 385,
+    "kind": "SALE",
+    "amount": 269644.75,
+    "cash": 276329.83
+   },
+   {
+    "day": 385,
+    "kind": "BANK_PAYOFF",
+    "amount": -269644.75,
+    "cash": 6685.08
+   },
+   {
+    "day": 390,
+    "kind": "BANK_DRAW",
+    "amount": 10710,
+    "cash": 17395.08
+   },
+   {
+    "day": 390,
+    "kind": "BANK_FEE",
+    "amount": 0,
+    "cash": 17395.08
+   },
+   {
+    "day": 390,
+    "kind": "BANK_INTEREST",
+    "amount": -5121.51,
+    "cash": 12273.57
+   },
+   {
+    "day": 390,
+    "kind": "PHASE",
+    "amount": -10710,
+    "cash": 1563.57
+   },
+   {
+    "day": 405,
+    "kind": "SALE",
+    "amount": 474391.95,
+    "cash": 475955.52
+   },
+   {
+    "day": 405,
+    "kind": "BANK_PAYOFF",
+    "amount": -474391.95,
+    "cash": 1563.57
+   },
+   {
+    "day": 420,
+    "kind": "BANK_INTEREST",
+    "amount": -1563.57,
+    "cash": 0
+   },
+   {
+    "day": 425,
+    "kind": "SALE",
+    "amount": 474391.95,
+    "cash": 474391.95
+   },
+   {
+    "day": 425,
+    "kind": "RETURN",
+    "amount": -265916.55,
+    "cash": 208475.4
+   },
+   {
+    "day": 425,
+    "kind": "BANK_PAYOFF",
+    "amount": -208475.4,
+    "cash": 0
+   },
+   {
+    "day": 465,
+    "kind": "SALE",
+    "amount": 283355.5,
+    "cash": 283355.5
+   },
+   {
+    "day": 465,
+    "kind": "RETURN",
+    "amount": -283355.5,
+    "cash": 0
+   },
+   {
+    "day": 475,
+    "kind": "SALE",
+    "amount": 562140.75,
+    "cash": 562140.75
+   },
+   {
+    "day": 475,
+    "kind": "RETURN",
+    "amount": -562140.75,
+    "cash": 0
+   },
+   {
+    "day": 485,
+    "kind": "SALE",
+    "amount": 283355.5,
+    "cash": 283355.5
+   },
+   {
+    "day": 485,
+    "kind": "RETURN",
+    "amount": -281305.5,
+    "cash": 2050
+   },
+   {
+    "day": 485,
+    "kind": "VEHICLE",
+    "amount": -350,
+    "cash": 1700
+   },
+   {
+    "day": 485,
+    "kind": "VEHICLE",
+    "amount": -500,
+    "cash": 1200
+   },
+   {
+    "day": 485,
+    "kind": "VEHICLE",
+    "amount": -1200,
+    "cash": 0
+   }
+  ]
+ }
+}
