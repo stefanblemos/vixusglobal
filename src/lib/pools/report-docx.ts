@@ -691,7 +691,11 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       children: [
         new TextRun({
           text:
-            "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's delivery history of 450+ homes (Section 2). Expected returns are not guaranteed." +
+            "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's " +
+            (d.trackRecord.sample.n > 0
+              ? "realized performance on closed projects (Section 2)"
+              : "delivery history of 450+ homes (Section 2)") +
+            ". Expected returns are not guaranteed." +
             (stressSized
               ? " The raise is sized to the Stress Case — investors fund the program through its stressed scenario, not its expected outcome."
               : ""),
@@ -781,6 +785,41 @@ export function buildReportDocx(d: ReportData, recipient?: string, prose?: Repor
       "Vertically integrated through Truss Direct, the group’s truss manufacturer supplying 90+ projects per month — insulating the program from a key supply-chain bottleneck.",
     ),
     bullet("BBB accredited; every home delivered with a 2-10 structural warranty and covered by builder’s risk insurance during construction."),
+    // Histórico realizado (Fase 1.5 — 15/07): a evidência que sustenta o Expected Case.
+    // SEMPRE rotulado como TIR estimada sobre datas/lucros reais — nunca "realizada".
+    ...(d.trackRecord.sample.n > 0
+      ? [
+          h2("Historical performance — closed projects"),
+          body([
+            t(
+              `The Builder's operating system records ${d.trackRecord.sample.n} closed projects with realized results and complete milestone dates (closings ${d.trackRecord.sample.periodYears}). On these projects, the realized net return on total project cost — lot plus construction — was a median of `,
+            ),
+            t(`${d.trackRecord.roiPerCyclePct.median}% per cycle`, { bold: true }),
+            t(
+              ` (range ${d.trackRecord.roiPerCyclePct.min}%–${d.trackRecord.roiPerCyclePct.max}%), over a median cycle of ${(d.trackRecord.cycle.medianDays / 30).toFixed(1)} months from contract to sale closing.`,
+            ),
+          ]),
+          bigStatGrid([
+            { value: `${d.trackRecord.roiPerCyclePct.median}%`, label: "Realized ROI / cycle (median)" },
+            { value: `${d.trackRecord.estimatedIrrPct.median}%`, label: "Estimated investor IRR (median)" },
+            { value: `${d.trackRecord.conservativeFloorIrrPct.median}%`, label: "Conservative-floor IRR (median)" },
+            { value: `${(d.trackRecord.cycle.medianDays / 30).toFixed(1)} mo`, label: "Median cycle" },
+          ]),
+          new Paragraph({
+            spacing: { before: 100, after: 200, line: 252 },
+            children: [
+              new TextRun({
+                text:
+                  `Estimated IRR applies the program's actual client payment schedule (${d.trackRecord.paymentPlanPct.join("/")}) to each project's real permit, foundation, completion and closing dates; the conservative floor assumes all capital deployed on day one — under that floor, no project in the sample returned less than ${d.trackRecord.conservativeFloorIrrPct.min}% annualized. These are estimates derived from realized profits and actual dates, not realized IRRs, and prior performance is not indicative of future results. Sample: closed projects with complete records in the current operating system; the Builder's full delivery history exceeds 450 homes.`,
+                font: FONT,
+                size: 16,
+                color: GRAY,
+                italics: true,
+              }),
+            ],
+          }),
+        ]
+      : []),
     // Galeria dos modelos da cesta (só quando há foto cadastrada no catálogo)
     ...(d.modelPhotos.length > 0
       ? [

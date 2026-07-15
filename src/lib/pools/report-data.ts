@@ -8,6 +8,7 @@ import {
   type UnitRef,
 } from "@/lib/pools/build-sim-input";
 import marketStats from "@/data/market-stats.json";
+import trackRecord from "@/data/track-record.json";
 import { phasesOf, type ProjectPhases } from "@/lib/pools/phases";
 import { benchmarkOf, type BenchmarkRow } from "@/lib/pools/benchmark";
 
@@ -90,6 +91,8 @@ export type ReportData = {
   benchmark: BenchmarkRow[];
   // fotos/renders dos modelos DA CESTA (galeria "The homes in this program" no §2)
   modelPhotos: Array<{ name: string; dataUri: string; width: number; height: number }>;
+  // histórico realizado da 4U (scripts/track-record.mjs ← export do 4U Builder) — §2
+  trackRecord: typeof trackRecord;
 };
 
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -333,6 +336,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     closing: closingOf(realResult),
     monthly: monthlyOf(realResult),
     market: marketStats,
+    trackRecord,
     customAssumptions: countOverrides((sim.overrides as SimOverrides | null) ?? null),
     projectPhases: phasesOf(realResult, sim.bankProfile?.termMonths ?? null),
     ...(await (async () => {

@@ -89,6 +89,19 @@ function groundingOf(d: ReportData) {
     },
     expectedCase: kpisOf(expected),
     stressCase: kpisOf(stress),
+    // histórico realizado da 4U (agregados; TIR ESTIMADA sobre datas/lucros reais)
+    builderTrackRecord:
+      d.trackRecord.sample.n > 0
+        ? {
+            closedProjects: d.trackRecord.sample.n,
+            period: d.trackRecord.sample.periodYears,
+            realizedRoiPerCycleMedianPct: d.trackRecord.roiPerCyclePct.median,
+            estimatedIrrMedianPct: d.trackRecord.estimatedIrrPct.median,
+            conservativeFloorIrrMedianPct: d.trackRecord.conservativeFloorIrrPct.median,
+            medianCycleMonths: Math.round((d.trackRecord.cycle.medianDays / 30) * 10) / 10,
+            note: "IRR figures are ESTIMATES applying the actual client payment schedule to real project dates — never call them realized IRRs.",
+          }
+        : null,
     breakevenSalePriceDropPct: d.breakevenPriceDropPct, // null = >60% (vs Expected Case)
     underwritingVsMarket: d.benchmark
       .filter((b) => b.verdict !== "NO_DATA")
