@@ -912,9 +912,9 @@ export function buildReportDocx(
       t(tr("Proven sponsor — ", "Histórico comprovado — ", "Sponsor comprobado — "), { bold: true }),
       t(
         tr(
-          "450+ homes delivered and $100M+ in accumulated sales volume since 2019, across six Florida regions (Section 2).",
-          "Mais de 450 casas entregues e mais de $100M em volume de vendas acumulado desde 2019, em seis regiões da Flórida (Seção 2).",
-          "Más de 450 casas entregadas y más de $100M en volumen de ventas acumulado desde 2019, en seis regiones de Florida (Sección 2).",
+          "500+ homes delivered and $130M+ in accumulated sales volume since 2019, across six Florida regions (Section 2).",
+          "Mais de 500 casas entregues e mais de $130M em volume de vendas acumulado desde 2019, em seis regiões da Flórida (Seção 2).",
+          "Más de 500 casas entregadas y más de $130M en volumen de ventas acumulado desde 2019, en seis regiones de Florida (Sección 2).",
         ),
       ),
     ]),
@@ -1196,9 +1196,9 @@ export function buildReportDocx(
                   "Los supuestos del Escenario Esperado se comparan con transacciones cerradas de mercado (Sección 3) y con el desempeño realizado de la Constructora en proyectos concluidos (Sección 2).",
                 )
               : tr(
-                  "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's delivery history of 450+ homes (Section 2).",
-                  "As premissas do Cenário Esperado são comparadas com transações fechadas de mercado (Seção 3) e com o histórico de mais de 450 casas entregues pela Construtora (Seção 2).",
-                  "Los supuestos del Escenario Esperado se comparan con transacciones cerradas de mercado (Sección 3) y con el historial de más de 450 casas entregadas por la Constructora (Sección 2).",
+                  "Expected Case assumptions are benchmarked against closed market transactions (Section 3) and the Builder's delivery history of 500+ homes (Section 2).",
+                  "As premissas do Cenário Esperado são comparadas com transações fechadas de mercado (Seção 3) e com o histórico de mais de 500 casas entregues pela Construtora (Seção 2).",
+                  "Los supuestos del Escenario Esperado se comparan con transacciones cerradas de mercado (Sección 3) y con el historial de más de 500 casas entregadas por la Constructora (Sección 2).",
                 )) +
             tr(" Expected returns are not guaranteed.", " Retornos esperados não são garantidos.", " Los retornos esperados no están garantizados.") +
             (stressSized
@@ -1345,8 +1345,8 @@ export function buildReportDocx(
     h1(tr("2. Sponsor & Track Record", "2. Sponsor e Histórico", "2. Sponsor e Historial")),
     // Números grandes primeiro (feedback 15/07) — o investidor compra a empresa antes da casa
     bigStatGrid([
-      { value: "450+", label: tr("Homes delivered", "Casas entregues", "Casas entregadas") },
-      { value: "$100M+", label: tr("Sales volume", "Volume de vendas", "Volumen de ventas") },
+      { value: "500+", label: tr("Homes delivered", "Casas entregues", "Casas entregadas") },
+      { value: "$130M+", label: tr("Sales volume", "Volume de vendas", "Volumen de ventas") },
       { value: "6", label: tr("Florida markets", "Mercados na Flórida", "Mercados en Florida") },
       { value: "2019", label: tr("Operating since", "Em operação desde", "Operando desde") },
     ]),
@@ -1360,13 +1360,13 @@ export function buildReportDocx(
           "Fundada en 2019; con sede en Orlando, Florida. Más de ",
         ),
       ),
-      t(tr("450 homes delivered", "450 casas entregues", "450 casas entregadas"), { bold: true }),
+      t(tr("500 homes delivered", "500 casas entregues", "500 casas entregadas"), { bold: true }),
       t(tr(" and more than ", " e mais de ", " y más de ")),
       t(
         tr(
-          "$100 million in accumulated sales volume",
-          "$100 milhões em volume de vendas acumulado",
-          "$100 millones en volumen de ventas acumulado",
+          "$130 million in accumulated sales volume",
+          "$130 milhões em volume de vendas acumulado",
+          "$130 millones en volumen de ventas acumulado",
         ),
         { bold: true },
       ),
@@ -1414,7 +1414,7 @@ export function buildReportDocx(
       ),
     ),
     // Execution at scale (mock aprovado 15/07): n grande de DATAS da planilha TrackRecord
-    // — cria a escada 450+ → 304 → 44 e prova a máquina; financials dela são internos
+    // — cria a escada 500+ → 304 → 44 e prova a máquina; financials dela são internos
     ...(d.trackRecord.execution && d.trackRecord.execution.trackedProjects > 0
       ? [
           h2(tr("Execution at scale", "Execução em escala", "Ejecución a escala")),
