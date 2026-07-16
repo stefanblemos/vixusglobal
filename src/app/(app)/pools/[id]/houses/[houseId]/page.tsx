@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { formatMoney, sum } from "@/lib/money";
 import { PoolHouseFicha } from "@/components/pool-house-ficha";
 import { AddChangeOrderForm } from "@/components/pool-capital-forms";
-import { deleteChangeOrder } from "@/lib/actions/pools";
+import { deleteChangeOrder, deleteHouse } from "@/lib/actions/pools";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +129,28 @@ export default async function PoolHousePage({
             <AddChangeOrderForm houseId={house.id} />
           </div>
         </section>
+
+        {/* apagar casa saiu da lista (mock 4/6) — aqui, em dois passos, longe do clique acidental */}
+        <details className="mt-4 px-1 pb-8">
+          <summary className="cursor-pointer text-xs text-slate-400 hover:text-red-600">
+            Apagar esta casa…
+          </summary>
+          <div className="mt-2 flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3">
+            <p className="flex-1 text-xs text-red-800">
+              Remove a casa e o realizado dela deste pool (change orders e vínculos de draws
+              incluídos). Não tem desfazer.
+            </p>
+            <form action={deleteHouse}>
+              <input type="hidden" name="houseId" value={house.id} />
+              <button
+                type="submit"
+                className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-100"
+              >
+                Apagar casa
+              </button>
+            </form>
+          </div>
+        </details>
       </PoolHouseFicha>
     </div>
   );

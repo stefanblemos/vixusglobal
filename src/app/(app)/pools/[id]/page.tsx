@@ -3,12 +3,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney, sum } from "@/lib/money";
 import { byAddressNumber, capTable, houseEconomics, memberName } from "@/lib/pools/math";
-import {
-  deleteContribution,
-  deleteDistribution,
-  deleteHouse,
-} from "@/lib/actions/pools";
-import { AddHouseForm } from "@/components/pool-house-form";
+import { deleteContribution, deleteDistribution } from "@/lib/actions/pools";
+import { PoolHousesTab } from "@/components/pool-houses-tab";
 import { AddDistributionForm } from "@/components/pool-investor-forms";
 import { PoolInvestorsTab } from "@/components/pool-investors-tab";
 import { PoolStatusStepper } from "@/components/pool-status-stepper";
@@ -98,17 +94,24 @@ export default async function PoolDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string }>;
 }) {
   const { id } = await params;
-  const { tab: rawTab } = await searchParams;
+  const { tab: rawTab, status: rawStatus } = await searchParams;
   const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
       company: true,
       noteLoan: { include: { borrower: true } },
-      houses: { include: { changeOrders: true } },
+      houses: {
+        include: {
+          changeOrders: true,
+          catalogModel: { select: { name: true } },
+          catalogLocation: { select: { name: true } },
+          loan: { include: { bankProfile: { select: { name: true } } } },
+        },
+      },
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
       capitalCalls: { orderBy: { date: "asc" }, include: { lines: true } },
@@ -304,6 +307,31 @@ export default async function PoolDetailPage({
   // denúncia: dinheiro gasto mas status parados em Planned — os status estão atrasados
   const statusLag =
     Number(spentOnHouses) > 0 && pool.houses.length > 0 && pool.houses.every((h) => h.status === "PLANNED");
+
+  // Aba Casas (mock 4/6): linhas com contexto + % do previsto + pendências
+  const houseRows = pool.houses.map((h, hi) => {
+    const eco = houseEcos[hi];
+    const plannedCost =
+      h.plannedLotCost == null && h.plannedBuildCost == null
+        ? null
+        : Number(h.plannedLotCost ?? 0) + Number(h.plannedBuildCost ?? 0) + Number(h.plannedClosingCost ?? 0);
+    return {
+      id: h.id,
+      address: h.address,
+      status: h.status as string,
+      model: h.catalogModel?.name ?? null,
+      location: h.catalogLocation?.name ?? null,
+      bank: h.loan?.bankProfile?.name ?? h.bankName ?? null,
+      plannedProfit: eco.plannedProfit != null ? Number(eco.plannedProfit) : null,
+      ownCapital: h.ownCapital != null ? Number(h.ownCapital) : null,
+      ownNeeded: plannedCost != null ? plannedCost - Number(h.bankLoanAmount ?? 0) : null,
+      soldPrice: h.soldPrice != null ? Number(h.soldPrice) : null,
+      received: eco.cashAtClosing != null ? Number(eco.cashAtClosing) : null,
+      realProfit: eco.realProfit != null ? Number(eco.realProfit) : null,
+      // mesma régua da ficha: reais ainda vazios (lote, obra, venda, recebido)
+      pending: [h.actualLotCost, h.actualBuildCost, h.soldPrice, h.netReceived].filter((v) => v == null).length,
+    };
+  });
 
   // prazos por loan: closing (real ?? previsto) + termMonths do banco → maturity
   const loanTerms = pool.loans.map((l) => {
@@ -543,7 +571,7 @@ export default async function PoolDetailPage({
                 {statusCounts.map(({ status, count }) => (
                   <Link
                     key={status}
-                    href={`/pools/${pool.id}?tab=houses`}
+                    href={`/pools/${pool.id}?tab=houses&status=${status}`}
                     className="grid grid-cols-[120px_1fr_28px] items-center gap-2.5 rounded text-xs hover:bg-slate-50"
                   >
                     <span className="text-slate-500">{HOUSE_STATUS_LABEL[status]}</span>
@@ -739,125 +767,9 @@ export default async function PoolDetailPage({
         </div>
       )}
 
-      {/* Casas */}
+      {/* Casas (mock UX 4/6): filtro por status + busca, contexto na linha, pendencias */}
       {tab === "houses" && (
-      <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-medium text-slate-800">Houses</h2>
-          <p className="text-xs text-slate-400">
-            "Recebido" = o que entrou em conta na venda (caixa, não lucro — o payoff do sweep
-            amortiza o pool). "Lucro (custo)" = venda − closing − custos reais da casa; precisa
-            do lote/obra reais preenchidos na ficha.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className={th}>Address</th>
-                <th className={th}>Status</th>
-                <th className={thRight}>Lucro previsto</th>
-                <th className={thRight}>Capital próprio</th>
-                <th className={thRight}>Venda</th>
-                <th className={thRight}>Recebido</th>
-                <th className={thRight}>Lucro (custo)</th>
-                <th className={thRight}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pool.houses.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="px-5 py-6 text-center text-sm text-slate-400">
-                    No houses yet — add the first one below.
-                  </td>
-                </tr>
-              )}
-              {pool.houses.map((h, hi) => {
-                const eco = houseEcos[hi];
-                return (
-                  <tr key={h.id} className="border-b border-slate-50 hover:bg-slate-50/60">
-                    <td className={td}>
-                      <Link
-                        href={`/pools/${pool.id}/houses/${h.id}`}
-                        className="font-medium text-[#1f3a5f] hover:underline"
-                      >
-                        {h.address}
-                      </Link>
-                    </td>
-                    <td className={td}>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs ${HOUSE_STATUS_STYLE[h.status] ?? ""}`}
-                      >
-                        {HOUSE_STATUS_LABEL[h.status] ?? h.status}
-                      </span>
-                    </td>
-                    <td className={tdRight}>
-                      {eco.plannedProfit ? formatMoney(eco.plannedProfit, pool.currency) : "—"}
-                    </td>
-                    <td className={tdRight}>
-                      {h.ownCapital ? formatMoney(h.ownCapital, pool.currency) : "—"}
-                    </td>
-                    <td className={tdRight}>
-                      {h.soldPrice ? formatMoney(h.soldPrice, pool.currency) : "—"}
-                    </td>
-                    <td className={tdRight}>
-                      {eco.cashAtClosing ? formatMoney(eco.cashAtClosing, pool.currency) : "—"}
-                    </td>
-                    <td
-                      className={`${tdRight} ${eco.realProfit && eco.realProfit.isNegative() ? "text-red-600" : eco.realProfit ? "text-emerald-700" : ""}`}
-                    >
-                      {eco.realProfit ? formatMoney(eco.realProfit, pool.currency) : "—"}
-                    </td>
-                    <td className={tdRight}>
-                      <form action={deleteHouse}>
-                        <input type="hidden" name="houseId" value={h.id} />
-                        <button
-                          type="submit"
-                          className="text-xs text-slate-300 hover:text-red-500"
-                          title="Delete house"
-                        >
-                          ✕
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                );
-              })}
-              {pool.houses.length > 0 && (
-                <tr className="bg-slate-50/60">
-                  <td className={`${td} font-semibold text-slate-800`}>
-                    Total ({pool.houses.length} casas)
-                  </td>
-                  <td className={td}></td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {houseTotals.plannedProfit.isZero()
-                      ? "—"
-                      : formatMoney(houseTotals.plannedProfit, pool.currency)}
-                  </td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {formatMoney(houseTotals.ownCapital, pool.currency)}
-                  </td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {formatMoney(houseTotals.soldPrice, pool.currency)}
-                  </td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {formatMoney(houseTotals.received, pool.currency)}
-                  </td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {houseTotals.realProfit.isZero()
-                      ? "—"
-                      : formatMoney(houseTotals.realProfit, pool.currency)}
-                  </td>
-                  <td></td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-slate-100 px-5 py-4">
-          <AddHouseForm poolId={pool.id} />
-        </div>
-      </section>
+        <PoolHousesTab poolId={pool.id} rows={houseRows} initialStatus={rawStatus ?? null} />
       )}
 
       {/* Investidores (mock UX 2/6): captacao + acoes em painel + cap table visual + calls */}

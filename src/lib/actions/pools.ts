@@ -169,11 +169,14 @@ export async function setHouseStatus(houseId: string, status: PoolHouseStatus): 
   return { ok: Date.now() };
 }
 
+// Apagar casa vive na FICHA (mock 4/6 — saiu da lista p/ evitar clique acidental);
+// depois de apagar, volta para a aba Casas.
 export async function deleteHouse(formData: FormData): Promise<void> {
   const id = String(formData.get("houseId") ?? "");
   if (!id) return;
   const house = await prisma.poolHouse.delete({ where: { id } });
   revalidatePath(`/pools/${house.poolId}`);
+  redirect(`/pools/${house.poolId}?tab=houses`);
 }
 
 // ── Sócios ───────────────────────────────────────────────────
