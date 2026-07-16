@@ -37,65 +37,145 @@ const ENTRY_TYPES = [
   "OTHER",
 ] as const;
 
-// LOI dentro do POOL (pedido do Stefan 15/07): sobe o PDF, a Claude extrai as condições
-// (núcleo compartilhado com o catálogo — cria/atualiza o BankProfile + arquiva o LOI) e o
-// resultado é VINCULADO a um loan deste pool: preenche committed (totalLoanAmount), taxa
-// (interestRatePct) e loanNumber (nº do LOI). Um pool pode ter vários bancos.
-export async function uploadPoolLoi(
+// Documentos do financiamento (mock aprovado 16/07): pasta POR LOAN dentro do pool. O
+// documento é a FONTE — a IA extrai por tipo e propõe; o usuário revisa antes de aplicar.
+// LOI mantém o pipeline direto (banco + loan); os demais tipos geram proposta revisável.
+const DOC_KINDS = ["LOI", "AGREEMENT", "NOTE", "SETTLEMENT", "DRAW", "STATEMENT", "OTHER"] as const;
+
+export async function uploadLoanDocument(
   poolId: string,
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Escolha o PDF do LOI." };
+  if (!(file instanceof File) || file.size === 0) return { error: "Escolha o PDF do documento." };
   if (file.size > 10 * 1024 * 1024) return { error: "PDF acima de 10MB." };
-  const targetBankId = String(formData.get("targetBankId") ?? "").trim() || null;
-  const targetLoanId = String(formData.get("targetLoanId") ?? "").trim() || null;
-
-  const pool = await prisma.investmentPool.findUnique({ where: { id: poolId }, select: { id: true } });
-  if (!pool) return { error: "Pool não encontrado." };
+  const kind = String(formData.get("kind") ?? "");
+  if (!DOC_KINDS.includes(kind as (typeof DOC_KINDS)[number])) return { error: "Escolha o tipo do documento." };
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, include: { bankProfile: true } });
+  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado neste pool." };
 
   const bytes = Buffer.from(await file.arrayBuffer());
-  const { applyLoiToBankProfile } = await import("@/lib/pools/loi-apply");
-  const res = await applyLoiToBankProfile(bytes, file.name, targetBankId);
-  if ("error" in res) return { error: res.error };
-  const { bank, ex } = res;
+  const base = { loanId: loan.id, fileName: file.name, pdf: new Uint8Array(bytes), pdfSize: bytes.length };
 
-  const loiBits = {
-    ...(ex.totalLoanAmount > 0 ? { committed: ex.totalLoanAmount } : {}),
-    ...(ex.interestRatePct > 0 ? { aprPct: ex.interestRatePct } : {}),
-    ...(ex.loiNumber.trim() ? { loanNumber: ex.loiNumber.trim() } : {}),
-  };
-  const noteBits = `LOI ${ex.loiNumber.trim() || file.name}${ex.loiDate.trim() ? ` de ${ex.loiDate.trim()}` : ""} lido por AI — ${ex.summary}`;
-
-  if (targetLoanId) {
-    const loan = await prisma.poolLoan.findUnique({ where: { id: targetLoanId } });
-    if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado neste pool." };
-    await prisma.poolLoan.update({
-      where: { id: loan.id },
-      data: {
-        bankProfileId: bank.id,
-        ...loiBits,
-        notes: [loan.notes, noteBits].filter(Boolean).join(" · "),
-      },
-    });
-  } else {
-    // sem loan alvo: reaproveita um loan deste pool que já seja desse banco, senão cria
-    const existing = await prisma.poolLoan.findFirst({ where: { poolId, bankProfileId: bank.id } });
-    if (existing) {
-      await prisma.poolLoan.update({
-        where: { id: existing.id },
-        data: { ...loiBits, notes: [existing.notes, noteBits].filter(Boolean).join(" · ") },
-      });
-    } else {
-      await prisma.poolLoan.create({
-        data: { poolId, bankProfileId: bank.id, ...loiBits, notes: noteBits },
-      });
-    }
+  if (kind === "OTHER") {
+    await prisma.poolLoanDocument.create({ data: { ...base, kind: "OTHER" } });
+    revalidatePath(`/pools/${poolId}/loan`);
+    return { ok: true };
   }
 
+  if (kind === "LOI") {
+    // pipeline existente: condições → perfil do banco (do loan; sem banco = cria do LOI)
+    const { applyLoiToBankProfile } = await import("@/lib/pools/loi-apply");
+    const res = await applyLoiToBankProfile(bytes, file.name, loan.bankProfileId);
+    if ("error" in res) return { error: res.error };
+    const { bank, ex } = res;
+    const noteBits = `LOI ${ex.loiNumber.trim() || file.name}${ex.loiDate.trim() ? ` de ${ex.loiDate.trim()}` : ""} lido por AI — ${ex.summary}`;
+    await prisma.$transaction([
+      prisma.poolLoan.update({
+        where: { id: loan.id },
+        data: {
+          bankProfileId: bank.id,
+          ...(ex.totalLoanAmount > 0 ? { committed: ex.totalLoanAmount } : {}),
+          ...(ex.interestRatePct > 0 ? { aprPct: ex.interestRatePct } : {}),
+          ...(ex.loiNumber.trim() ? { loanNumber: ex.loiNumber.trim() } : {}),
+          notes: [loan.notes, noteBits].filter(Boolean).join(" · "),
+        },
+      }),
+      prisma.poolLoanDocument.create({
+        data: {
+          ...base,
+          kind: "LOI",
+          summary: ex.summary,
+          extracted: JSON.parse(JSON.stringify(ex)),
+          appliedAt: new Date(),
+          appliedSummary: `condições aplicadas ao banco (${bank.name}) + loan`,
+        },
+      }),
+    ]);
+    revalidatePath(`/pools/${poolId}/loan`);
+    return { ok: true };
+  }
+
+  // demais tipos: extrai e gera PROPOSTA revisável (nada aplicado às cegas)
+  const { analyzeLoanDocPdf } = await import("@/lib/pools/loan-doc-analyze");
+  const { buildLoanDocProposal } = await import("@/lib/pools/loan-doc-apply");
+  let ex;
+  try {
+    ex = await analyzeLoanDocPdf(bytes.toString("base64"), kind as never);
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Falha na extração do documento." };
+  }
+  const proposal = buildLoanDocProposal(ex, kind as never, {
+    fileName: file.name,
+    loan: {
+      closingDate: loan.closingDate ? loan.closingDate.toISOString().slice(0, 10) : null,
+      committed: loan.committed != null ? Number(loan.committed) : null,
+      aprPct: loan.aprPct != null ? Number(loan.aprPct) : null,
+      loanNumber: loan.loanNumber,
+    },
+    bank: loan.bankProfile
+      ? {
+          name: loan.bankProfile.name,
+          termMonths: loan.bankProfile.termMonths,
+          extensionMonths: loan.bankProfile.extensionMonths,
+        }
+      : null,
+  });
+  await prisma.poolLoanDocument.create({
+    data: {
+      ...base,
+      kind: kind as never,
+      summary: ex.summary || null,
+      extracted: JSON.parse(JSON.stringify(ex)),
+      proposal: proposal.length > 0 ? JSON.parse(JSON.stringify(proposal)) : undefined,
+      ...(proposal.length === 0 ? { appliedSummary: "nada a aplicar — só arquivado" } : {}),
+    },
+  });
   revalidatePath(`/pools/${poolId}/loan`);
   return { ok: true };
+}
+
+// Aplica os itens selecionados da proposta de um documento (checkbox por campo).
+export async function applyLoanDoc(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const docId = String(formData.get("docId") ?? "");
+  const keys = formData.getAll("keys").map(String);
+  const { applyLoanDocProposal } = await import("@/lib/pools/loan-doc-apply");
+  const res = await applyLoanDocProposal(docId, keys);
+  if ("error" in res) return { error: res.error };
+  revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath(`/pools/${poolId}`); // prazos/estado na Overview e Juros
+  return { ok: true };
+}
+
+// "Só arquivar": descarta a proposta e guarda o documento como fonte.
+export async function archiveLoanDoc(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const docId = String(formData.get("docId") ?? "");
+  const doc = await prisma.poolLoanDocument.findUnique({ where: { id: docId } });
+  if (!doc) return { error: "Documento não encontrado." };
+  const { Prisma } = await import("@prisma/client");
+  await prisma.poolLoanDocument.update({
+    where: { id: docId },
+    data: { proposal: Prisma.DbNull, appliedSummary: doc.appliedSummary ?? "arquivado sem aplicar" },
+  });
+  revalidatePath(`/pools/${poolId}/loan`);
+  return { ok: true };
+}
+
+export async function deleteLoanDoc(formData: FormData): Promise<void> {
+  const docId = String(formData.get("docId") ?? "");
+  const poolId = String(formData.get("poolId") ?? "");
+  if (docId) await prisma.poolLoanDocument.delete({ where: { id: docId } });
+  if (poolId) revalidatePath(`/pools/${poolId}/loan`);
 }
 
 // Vincula uma casa a um loan/banco deste pool (ou "" = 100% equity). Decide para onde vai

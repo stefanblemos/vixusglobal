@@ -10,7 +10,9 @@ import {
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
 import { AddLoanEntryForm, PoolLoanTermsForm } from "@/components/pool-loan-forms";
-import { HousesByBank, PoolLoiUpload } from "@/components/pool-loan-loi";
+import { HousesByBank } from "@/components/pool-loan-loi";
+import { PoolLoanDocs } from "@/components/pool-loan-docs";
+import type { LoanDocProposalItem } from "@/lib/pools/loan-doc-apply";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { LoanMonthFilter } from "@/components/loan-month-filter";
 
@@ -51,6 +53,21 @@ export default async function PoolLoanPage({
         include: {
           bankProfile: true,
           entries: { include: { house: true }, orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
+          documents: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              kind: true,
+              fileName: true,
+              pdfSize: true,
+              summary: true,
+              extracted: true,
+              proposal: true,
+              appliedSummary: true,
+              appliedAt: true,
+              createdAt: true,
+            },
+          },
         },
       },
     },
@@ -175,12 +192,26 @@ export default async function PoolLoanPage({
         </div>
       )}
 
-      {/* LOI no pool (15/07): AI captura as condições e preenche o loan */}
-      <PoolLoiUpload
-        poolId={pool.id}
-        banks={banks}
-        loans={pool.loans.map((l) => ({ id: l.id, label: loanLabel(l) }))}
-      />
+      {/* Documentos do financiamento (16/07): pasta por loan — o documento é a fonte */}
+      {loan && (
+        <PoolLoanDocs
+          poolId={pool.id}
+          loanId={loan.id}
+          loanLabel={loanLabel(loan)}
+          docs={loan.documents.map((d) => ({
+            id: d.id,
+            kind: d.kind as string,
+            fileName: d.fileName,
+            date: d.createdAt.toISOString().slice(0, 10),
+            sizeKb: Math.max(1, Math.round(d.pdfSize / 1024)),
+            summary: d.summary,
+            appliedSummary: d.appliedSummary,
+            applied: d.appliedAt != null,
+            pending: (d.proposal as unknown as LoanDocProposalItem[] | null) ?? null,
+            extractedJson: d.extracted != null ? JSON.stringify(d.extracted) : null,
+          }))}
+        />
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="mb-3 flex items-center justify-between">

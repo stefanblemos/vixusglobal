@@ -1428,6 +1428,38 @@ model PoolSimulation {
 // negativo; saldo = soma acumulada.
 // ─────────────────────────────────────────────────────────────
 
+// Documentos do financiamento (mock aprovado 16/07): pasta POR LOAN dentro do pool.
+// O documento é a FONTE dos campos — a IA extrai por tipo, o usuário revisa a proposta
+// antes de aplicar, e tudo continua editável nos forms (corrigir erro de leitura).
+enum LoanDocKind {
+  LOI // term sheet — pipeline existente (condições do banco + committed/taxa/nº)
+  AGREEMENT // contrato do loan — closing real, prazo/maturity, extensão
+  NOTE // promissory note
+  SETTLEMENT // closing/settlement statement — fees pagos no fechamento
+  DRAW // aprovação/liberação de draw — valor + data + casa
+  STATEMENT // extrato mensal do banco — juro do mês
+  OTHER // só arquiva, sem leitura
+}
+
+model PoolLoanDocument {
+  id     String   @id @default(cuid())
+  loanId String
+  loan   PoolLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  kind     LoanDocKind
+  fileName String
+  pdf      Bytes
+  pdfSize  Int
+  summary  String? // 1 linha da IA
+  extracted Json? // extração completa (auditável)
+  proposal  Json? // itens propostos aguardando revisão; null após aplicar/arquivar
+  appliedSummary String? // o que foi aplicado (ex.: "closing · prazo · 2 fees")
+  appliedAt      DateTime?
+  createdAt      DateTime @default(now())
+
+  @@index([loanId])
+}
+
 enum PoolLoanEntryType {
   CLOSING_FEE // fees do closing (origination, broker, title, etc.)
   RESERVE // interest reserve financiada (capitaliza)
@@ -1457,8 +1489,9 @@ model PoolLoan {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  entries PoolLoanEntry[]
-  houses  PoolHouse[]
+  entries   PoolLoanEntry[]
+  houses    PoolHouse[]
+  documents PoolLoanDocument[]
 
   @@index([poolId])
 }
