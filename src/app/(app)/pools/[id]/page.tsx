@@ -879,8 +879,9 @@ export default async function PoolDetailPage({
       )}
 
       {/* Juros & reserve (do loan statement) — um bloco por loan */}
+      {/* Juros & reserve (mock UX 5/6): um bloco por banco, estado legível, barras + acumulado */}
       {tab === "interest" && (
-        <div className="space-y-8">
+        <div className="space-y-6">
           {loanStats.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-sm text-slate-500">
               O pool ainda não tem construction loan —{" "}
@@ -890,128 +891,224 @@ export default async function PoolDetailPage({
               para acompanhar juros e reserve.
             </div>
           ) : (
-            loanStats.map(({ loan, label, apr, stmt, reserveFunded, reserveRemaining, reserveRefund }) => (
-            <div key={loan.id} className="space-y-4">
-              {loanStats.length > 1 && (
-                <h2 className="text-base font-semibold text-slate-800">{label}</h2>
-              )}
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs text-slate-400">Reserve financiada</div>
-                  <div className="text-xl font-semibold tabular-nums text-slate-900">
-                    {formatMoney(reserveFunded, pool.currency)}
+            loanStats.map(({ loan, apr, stmt, reserveFunded, reserveRemaining, reserveRefund }) => {
+              const interestRows = stmt.rows.filter((r) => r.type === "INTEREST");
+              const anyActivity = stmt.rows.length > 0;
+              // Aguardando closing → Ativo (saldo) → Quitado — acaba o "loan quitado" pré-closing
+              const state =
+                stmt.balance > 0
+                  ? "live"
+                  : anyActivity
+                    ? "paid"
+                    : loan.closingDate
+                      ? "live"
+                      : "wait";
+              const committedN = loan.committed != null ? Number(loan.committed) : null;
+              const totalReal = interestRows.reduce((s, r) => s + r.amount, 0);
+              const totalExpected = interestRows.reduce((s, r) => s + (r.expectedInterest ?? 0), 0);
+              const maxMonth = Math.max(1, ...interestRows.map((r) => r.amount));
+              return (
+                <section key={loan.id} className="rounded-xl border border-slate-200 bg-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-5 py-3.5">
+                    <h2 className="text-sm font-semibold text-slate-800">
+                      🏦 {loan.bankProfile?.name ?? "Banco a definir"}{" "}
+                      <span className="text-xs font-normal text-slate-400">
+                        {committedN != null && <>· committed {formatMoney(committedN, pool.currency)} </>}
+                        {apr != null && (
+                          <>
+                            · APR {apr}%{loan.bankProfile?.rateType === "FIXED" ? " (fixo)" : ""}{" "}
+                          </>
+                        )}
+                        {loan.loanNumber && <>· loan #{loan.loanNumber}</>}
+                      </span>
+                    </h2>
+                    {state === "wait" && (
+                      <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800">
+                        Aguardando closing
+                      </span>
+                    )}
+                    {state === "live" && (
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700">
+                        Ativo · saldo {formatMoney(stmt.balance, pool.currency)}
+                      </span>
+                    )}
+                    {state === "paid" && (
+                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-bold text-slate-500">
+                        Quitado
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs text-slate-400">capitalizada no loan</div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs text-slate-400">Juros reais cobrados</div>
-                  <div className="text-xl font-semibold tabular-nums text-slate-900">
-                    {formatMoney(stmt.totalInterest, pool.currency)}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    esperado {formatMoney(stmt.totalExpectedInterest, pool.currency)}
-                    {apr != null ? ` (APR ${apr}%)` : ""}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs text-slate-400">Reserve restante</div>
-                  <div className="text-xl font-semibold tabular-nums text-slate-900">
-                    {formatMoney(reserveRemaining, pool.currency)}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {reserveRefund > 0
-                      ? `devolvido na reconciliação: ${formatMoney(reserveRefund, pool.currency)}`
-                      : "não usada volta na reconciliação"}
-                  </div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-4">
-                  <div className="text-xs text-slate-400">Próximo mês (previsto)</div>
-                  <div className="text-xl font-semibold tabular-nums text-slate-900">
-                    {stmt.balance > 0 && apr != null
-                      ? formatMoney((stmt.balance * apr) / 1200, pool.currency)
-                      : "—"}
-                  </div>
-                  <div className="text-xs text-slate-400">
-                    {stmt.balance > 0
-                      ? `sobre o saldo atual de ${formatMoney(stmt.balance, pool.currency)}`
-                      : "loan quitado"}
-                  </div>
-                </div>
-              </div>
 
-              <section className="rounded-xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-100 px-5 py-4">
-                  <h2 className="text-base font-medium text-slate-800">Juros por mês — previsto × realizado</h2>
-                  <p className="text-xs text-slate-400">
-                    "Esperado" = accrual diário (APR/360) sobre o saldo do statement. Desvio
-                    acima de 5% fica em âmbar — confira a cobrança com o banco.
-                  </p>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full max-w-3xl">
-                    <thead>
-                      <tr className="border-b border-slate-100">
-                        <th className={th}>Data</th>
-                        <th className={thRight}>Real (banco)</th>
-                        <th className={thRight}>Esperado</th>
-                        <th className={thRight}>Delta</th>
-                        <th className={th}>Memo</th>
-                        <th className={thRight}>✓</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stmt.rows.filter((r) => r.type === "INTEREST").length === 0 && (
-                        <tr>
-                          <td colSpan={6} className="px-5 py-6 text-center text-sm text-slate-400">
-                            Nenhum juro lançado ainda — use o formulário abaixo a cada extrato mensal.
-                          </td>
-                        </tr>
-                      )}
-                      {stmt.rows
-                        .filter((r) => r.type === "INTEREST")
-                        .map((r) => (
-                          <tr key={r.id} className="border-b border-slate-50">
-                            <td className={td}>{fmtDate(r.date)}</td>
-                            <td className={`${tdRight} font-medium`}>{formatMoney(r.amount, pool.currency)}</td>
-                            <td className={tdRight}>
-                              {r.expectedInterest != null ? formatMoney(r.expectedInterest, pool.currency) : "—"}
-                            </td>
-                            <td
-                              className={`${tdRight} ${
-                                r.interestDelta != null &&
-                                Math.abs(r.interestDelta) > Math.abs(r.expectedInterest ?? 0) * 0.05
-                                  ? "text-amber-600"
-                                  : "text-slate-400"
-                              }`}
-                            >
-                              {r.interestDelta != null ? formatMoney(r.interestDelta, pool.currency) : "—"}
-                            </td>
-                            <td className={`${td} text-slate-400`}>{r.memo ?? ""}</td>
-                            <td className={`${tdRight} ${r.reconciled ? "text-emerald-600" : "text-slate-300"}`}>✓</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="border-t border-slate-100 px-5 py-4">
-                  <AddMonthlyInterestForm
-                    poolId={pool.id}
-                    loanId={loan.id}
-                    hasReserve={reserveRemaining > 0}
-                  />
-                </div>
-              </section>
-            </div>
-            ))
-          )}
-          {loanStats.length > 0 && (
-            <p className="text-xs text-slate-400">
-              O extrato completo de cada loan (draws, fees, payoffs) fica no{" "}
-              <Link href={`/pools/${pool.id}/loan`} className="text-[#1f3a5f] hover:underline">
-                Loan statement
-              </Link>
-              .
-            </p>
+                  <div className="px-5 py-4">
+                    <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Saldo do loan</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-slate-800">
+                          {formatMoney(stmt.balance, pool.currency)}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {state === "wait"
+                            ? "nenhum draw ainda"
+                            : committedN != null && committedN > 0
+                              ? `${Math.round((stmt.balance / committedN) * 100)}% do committed`
+                              : ""}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Reserve financiada</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-slate-800">
+                          {formatMoney(reserveFunded, pool.currency)}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {reserveFunded > 0
+                            ? `restante ${formatMoney(reserveRemaining, pool.currency)}${reserveRefund > 0 ? ` · devolvido ${formatMoney(reserveRefund, pool.currency)}` : ""}`
+                            : "capitalizada no loan"}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Juros cobrados</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-slate-800">
+                          {formatMoney(stmt.totalInterest, pool.currency)}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          esperado {formatMoney(stmt.totalExpectedInterest, pool.currency)}
+                          {stmt.totalExpectedInterest > 0 &&
+                            ` (Δ ${(((stmt.totalInterest - stmt.totalExpectedInterest) / stmt.totalExpectedInterest) * 100).toFixed(1)}%)`}
+                        </div>
+                      </div>
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                        <div className="text-[10px] font-medium uppercase tracking-wider text-slate-400">Próximo mês (previsto)</div>
+                        <div className="mt-0.5 text-lg font-bold tabular-nums text-slate-800">
+                          {stmt.balance > 0 && apr != null
+                            ? formatMoney((stmt.balance * apr) / 1200, pool.currency)
+                            : "—"}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {state === "wait"
+                            ? "começa após o closing"
+                            : stmt.balance > 0
+                              ? "APR/360 sobre o saldo"
+                              : "sem saldo devedor"}
+                        </div>
+                      </div>
+                    </div>
+
+                    {state === "wait" ? (
+                      <div className="mt-4 rounded-lg border border-dashed border-slate-300 px-4 py-4 text-center text-xs text-slate-400">
+                        Sem juros para lançar — o loan ainda não fechou. Depois do closing e do
+                        primeiro draw, o accrual diário (APR/360) aparece aqui automaticamente.
+                        <div className="mt-1">
+                          <Link href={`/pools/${pool.id}/loan`} className="font-semibold text-amber-700 underline hover:no-underline">
+                            Registrar closing do loan →
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* barras de juros/mês — tendência num relance */}
+                        {interestRows.length > 1 && (
+                          <div className="mt-4 flex h-16 max-w-xs items-end gap-2">
+                            {interestRows.map((r) => (
+                              <div key={r.id} className="flex w-10 flex-col justify-end gap-0.5">
+                                <div
+                                  className="rounded-t bg-[#1f3a5f]"
+                                  style={{ height: `${Math.max(6, (r.amount / maxMonth) * 52)}px` }}
+                                />
+                                <div className="text-center text-[9px] text-slate-400">
+                                  {fmtDate(r.date).slice(5, 7)}/{fmtDate(r.date).slice(2, 4)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="mt-3 overflow-x-auto">
+                          <table className="w-full max-w-3xl">
+                            <thead>
+                              <tr className="border-b border-slate-100">
+                                <th className={th}>Data</th>
+                                <th className={thRight}>Real (banco)</th>
+                                <th className={thRight}>Esperado</th>
+                                <th className={thRight}>Δ</th>
+                                <th className={th}>Memo</th>
+                                <th className={thRight}>✓</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {interestRows.length === 0 && (
+                                <tr>
+                                  <td colSpan={6} className="px-3 py-5 text-center text-sm text-slate-400">
+                                    Nenhum juro lançado ainda — lance a cada extrato mensal em “+
+                                    Lançar juro do mês”.
+                                  </td>
+                                </tr>
+                              )}
+                              {interestRows.map((r) => (
+                                <tr key={r.id} className="border-b border-slate-50">
+                                  <td className={td}>{fmtDate(r.date)}</td>
+                                  <td className={`${tdRight} font-medium`}>{formatMoney(r.amount, pool.currency)}</td>
+                                  <td className={tdRight}>
+                                    {r.expectedInterest != null ? formatMoney(r.expectedInterest, pool.currency) : "—"}
+                                  </td>
+                                  <td
+                                    className={`${tdRight} ${
+                                      r.interestDelta != null &&
+                                      Math.abs(r.interestDelta) > Math.abs(r.expectedInterest ?? 0) * 0.05
+                                        ? "font-bold text-amber-600"
+                                        : "text-slate-400"
+                                    }`}
+                                  >
+                                    {r.interestDelta != null ? formatMoney(r.interestDelta, pool.currency) : "—"}
+                                  </td>
+                                  <td className={`${td} text-slate-400`}>{r.memo ?? ""}</td>
+                                  <td className={`${tdRight} ${r.reconciled ? "text-emerald-600" : "text-slate-300"}`}>✓</td>
+                                </tr>
+                              ))}
+                              {interestRows.length > 0 && (
+                                <tr className="bg-slate-50/60 font-semibold">
+                                  <td className={td}>Acumulado</td>
+                                  <td className={tdRight}>{formatMoney(totalReal, pool.currency)}</td>
+                                  <td className={tdRight}>{formatMoney(totalExpected, pool.currency)}</td>
+                                  <td className={tdRight}>
+                                    {totalExpected > 0
+                                      ? `${(((totalReal - totalExpected) / totalExpected) * 100).toFixed(1)}%`
+                                      : "—"}
+                                  </td>
+                                  <td colSpan={2}></td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        {/* lançamento colapsado — um por loan, sem select gigante */}
+                        <details className="mt-3">
+                          <summary className="inline-block cursor-pointer rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                            + Lançar juro do mês
+                          </summary>
+                          <div className="mt-3">
+                            <AddMonthlyInterestForm
+                              poolId={pool.id}
+                              loanId={loan.id}
+                              hasReserve={reserveRemaining > 0}
+                            />
+                          </div>
+                        </details>
+                      </>
+                    )}
+
+                    <p className="mt-4 text-[11px] text-slate-400">
+                      “Esperado” = accrual diário (APR/360) sobre o saldo do statement; desvio acima
+                      de 5% fica em âmbar. Extrato completo (draws, fees, payoffs) →{" "}
+                      <Link href={`/pools/${pool.id}/loan`} className="underline hover:text-slate-600">
+                        Loan statement
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                </section>
+              );
+            })
           )}
         </div>
       )}
