@@ -909,7 +909,7 @@ export function buildReportDocx(
     ),
     // Ordem psicológica (feedback 15/07): primeiro compra-se a EMPRESA, depois a estrutura
     bullet([
-      t(tr("Proven sponsor — ", "Sponsor comprovado — ", "Sponsor comprobado — "), { bold: true }),
+      t(tr("Proven sponsor — ", "Histórico comprovado — ", "Sponsor comprobado — "), { bold: true }),
       t(
         tr(
           "450+ homes delivered and $100M+ in accumulated sales volume since 2019, across six Florida regions (Section 2).",
@@ -2576,11 +2576,14 @@ export function buildReportDocx(
     // ── 8. RISKS ──
     new Paragraph({ children: [new PageBreak()] }),
     h1(tr("8. Risk Factors & Mitigants", "8. Fatores de Risco e Mitigantes", "8. Factores de Riesgo y Mitigantes")),
+    // Introdução reescrita a pedido do Stefan (16/07 — "hoje ela assusta o investidor"):
+    // tom de gestão de risco, não de aviso; a linguagem dura de perda total permanece nos
+    // Important Notices, onde o advogado a validou.
     body(
       tr(
-        "An investment in the Project involves significant risk and is suitable only for investors who can bear the loss of their entire investment. The following summary is not exhaustive; the definitive offering documents will contain a complete statement of risk factors.",
-        "Um investimento no Projeto envolve risco significativo e é adequado apenas a investidores que possam suportar a perda de todo o investimento. O resumo a seguir não é exaustivo; os documentos definitivos da oferta conterão a relação completa de fatores de risco.",
-        "Una inversión en el Proyecto implica un riesgo significativo y es adecuada solo para inversores que puedan soportar la pérdida de toda su inversión. El siguiente resumen no es exhaustivo; los documentos definitivos de la oferta contendrán la relación completa de factores de riesgo.",
+        "As with any real estate development investment, the Project is subject to risks inherent to market conditions, construction execution, regulatory matters and other external factors. The investment strategy has been structured to reduce these risks through rigorous selection criteria, operational controls and governance. The principal risks and their respective mitigants are summarized below; the complete statement of risk factors will be included in the definitive offering documents.",
+        "Como qualquer investimento em desenvolvimento imobiliário, o Projeto está sujeito a riscos inerentes às condições de mercado, execução da obra, aspectos regulatórios e demais fatores externos. A estratégia de investimento foi estruturada para reduzir esses riscos por meio de critérios rigorosos de seleção, controles operacionais e governança. Os principais riscos e respectivas medidas mitigadoras são resumidos a seguir. A relação completa constará da documentação definitiva da oferta.",
+        "Como toda inversión en desarrollo inmobiliario, el Proyecto está sujeto a riesgos inherentes a las condiciones de mercado, la ejecución de la obra, aspectos regulatorios y demás factores externos. La estrategia de inversión fue estructurada para reducir esos riesgos mediante criterios rigurosos de selección, controles operativos y gobernanza. Los principales riesgos y sus respectivas medidas mitigantes se resumen a continuación. La relación completa constará en la documentación definitiva de la oferta.",
       ),
     ),
     h2(tr("Market risk", "Risco de mercado", "Riesgo de mercado")),
@@ -2632,11 +2635,13 @@ export function buildReportDocx(
       ),
     ),
     h2(tr("Projection risk", "Risco de projeção", "Riesgo de proyección")),
+    // Conclusão reescrita a pedido do Stefan (16/07): disclaimer sóbrio de projeções em vez
+    // do "perdas até a totalidade" — que segue coberto pelos Important Notices.
     body(
       tr(
-        "Projections are inherently uncertain and depend on assumptions about prices, costs, schedules and financing that may not materialize. Actual returns may be materially lower than projected, and losses — up to the entire investment — are possible.",
-        "Projeções são inerentemente incertas e dependem de premissas de preços, custos, prazos e financiamento que podem não se materializar. Os retornos reais podem ser materialmente inferiores ao projetado, e perdas — até a totalidade do investimento — são possíveis.",
-        "Las proyecciones son inherentemente inciertas y dependen de supuestos de precios, costos, plazos y financiamiento que pueden no materializarse. Los retornos reales pueden ser materialmente inferiores a lo proyectado, y las pérdidas — hasta la totalidad de la inversión — son posibles.",
+        "The financial projections presented reflect estimates prepared on the basis of the best information available and assumptions considered reasonable as of the date of this document. Changes in market conditions, costs, execution schedule or other operating factors may result in performance that differs from projections. Accordingly, the projections do not constitute a guarantee of future results.",
+        "As projeções financeiras apresentadas refletem estimativas elaboradas com base nas melhores informações disponíveis e em premissas consideradas razoáveis na data deste documento. Alterações nas condições de mercado, custos, cronograma de execução ou demais fatores operacionais poderão resultar em desempenho diferente do projetado. Consequentemente, as projeções não constituem garantia de resultados futuros.",
+        "Las proyecciones financieras presentadas reflejan estimaciones elaboradas con base en la mejor información disponible y en supuestos considerados razonables a la fecha de este documento. Cambios en las condiciones de mercado, los costos, el cronograma de ejecución u otros factores operativos podrán resultar en un desempeño diferente al proyectado. En consecuencia, las proyecciones no constituyen garantía de resultados futuros.",
       ),
     ),
 
