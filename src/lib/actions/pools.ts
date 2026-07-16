@@ -19,18 +19,8 @@ import type { PoolHouseStatus, PoolStatus } from "@prisma/client";
 export type FormState = { error?: string; ok?: number } | undefined;
 
 // ── Pool ─────────────────────────────────────────────────────
-
-// Stepper da Overview: muda só o status (Funding → Active → Closing → Closed)
-export async function setPoolStatus(poolId: string, status: string): Promise<FormState> {
-  const parsed = poolStatusSchema.safeParse(status);
-  if (!parsed.success) return { error: "Invalid status." };
-  await prisma.investmentPool.update({
-    where: { id: poolId },
-    data: { status: parsed.data as PoolStatus },
-  });
-  revalidatePath(`/pools/${poolId}`);
-  return { ok: Date.now() };
-}
+// Status do pool é DERIVADO dos fatos (16/07) — o stepper virou indicador; a derivação
+// vive em lib/pools/status-derive + status-recompute, chamada nos write-paths.
 
 export async function createPool(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = poolSchema.safeParse(Object.fromEntries(formData));
@@ -132,23 +122,24 @@ export async function updateHouse(
 ): Promise<FormState> {
   const parsed = houseSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid data." };
-  const d = parsed.data;
+  // status é DERIVADO dos fatos (16/07) — o form não manda mais; a derivação decide
+  const { status: _ignored, ...d } = parsed.data;
   // "O que entrou em conta" preenchido → closing cost é a diferença (venda − payoff − recebido)
   if (d.closingCost == null && d.soldPrice != null && d.payoffAmount != null && d.netReceived != null) {
     d.closingCost = Math.round((d.soldPrice - d.payoffAmount - d.netReceived) * 100) / 100;
   }
-  const house = await prisma.poolHouse.update({
-    where: { id: houseId },
-    data: { ...d, status: d.status as PoolHouseStatus },
-  });
+  const house = await prisma.poolHouse.update({ where: { id: houseId }, data: d });
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(house.poolId);
   revalidatePath(`/pools/${house.poolId}`);
   revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
   // fica na ficha (save bar fixa) — ok muda a cada save p/ o client mostrar "Salvo ✓"
   return { ok: Date.now() };
 }
 
-// Stepper da ficha: muda o status e carimba a data do passo (só se ainda vazia — editável
-// depois na Linha do tempo). Datas por passo alimentam o simulado × realizado.
+// Stepper da ficha (16/07): clicar num passo carimba o FATO (a data do passo, se vazia) —
+// o status é derivado dos fatos pelo recompute. Para "voltar", apaga-se a data na Linha
+// do tempo (corrige-se o fato, não o rótulo).
 const STATUS_DATE: Partial<Record<PoolHouseStatus, "lotPaidDate" | "buildStartDate" | "coDate" | "contractDate" | "saleDate">> = {
   LOT_PURCHASED: "lotPaidDate",
   UNDER_CONSTRUCTION: "buildStartDate",
@@ -161,9 +152,10 @@ export async function setHouseStatus(houseId: string, status: PoolHouseStatus): 
   const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
   if (!house) return { error: "House not found." };
   const dateField = STATUS_DATE[status];
-  const data: Record<string, unknown> = { status };
-  if (dateField && house[dateField] == null) data[dateField] = new Date();
-  await prisma.poolHouse.update({ where: { id: houseId }, data });
+  if (dateField && house[dateField] == null)
+    await prisma.poolHouse.update({ where: { id: houseId }, data: { [dateField]: new Date() } });
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(house.poolId);
   revalidatePath(`/pools/${house.poolId}`);
   revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
   return { ok: Date.now() };
@@ -191,6 +183,15 @@ export async function addMember(
   const [kind, id] = owner.split(":");
   if (!id || (kind !== "party" && kind !== "company")) return { error: "Pick the investor." };
   const role = String(formData.get("role") ?? "INVESTOR") === "MANAGER" ? "MANAGER" : "INVESTOR";
+
+  // regra do Stefan (16/07): com o pool ATIVO, aportes de quem já participa continuam
+  // liberados — o que fecha é a ENTRADA de sócio novo (cap table congelado)
+  const poolRow = await prisma.investmentPool.findUnique({ where: { id: poolId }, select: { status: true } });
+  if (poolRow && poolRow.status !== "FUNDING")
+    return {
+      error:
+        "Cap table fechado — o pool já saiu da captação. Entrada de novos sócios só na janela de Funding; aportes dos sócios atuais e transferências continuam liberados.",
+    };
 
   const dup = await prisma.poolMember.findFirst({
     where: { poolId, ...(kind === "party" ? { partyId: id } : { companyId: id }) },
@@ -529,6 +530,11 @@ export async function addDistribution(
       lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
     },
   });
+  // distribuição é gatilho de CLOSED (lucro distribuído + caixa devolvido)
+  {
+    const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+    await recomputePoolStatuses(poolId);
+  }
   revalidatePath(`/pools/${poolId}`);
   return undefined;
 }
@@ -537,5 +543,7 @@ export async function deleteDistribution(formData: FormData): Promise<void> {
   const id = String(formData.get("distributionId") ?? "");
   if (!id) return;
   const dist = await prisma.poolDistribution.delete({ where: { id } });
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(dist.poolId);
   revalidatePath(`/pools/${dist.poolId}`);
 }

@@ -15,6 +15,7 @@ export type HouseRow = {
   id: string;
   address: string;
   status: string;
+  buildPct: number | null; // % de obra pelos draws creditados (CO = 100%)
   model: string | null;
   location: string | null;
   bank: string | null;
@@ -196,6 +197,9 @@ export function PoolHousesTab({
                   <td className="px-3 py-2.5">
                     <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[r.status] ?? ""}`}>
                       {STATUS_LABEL[r.status] ?? r.status}
+                      {r.status === "UNDER_CONSTRUCTION" && r.buildPct != null && (
+                        <b> · {r.buildPct}%</b>
+                      )}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-right text-sm tabular-nums text-slate-700">

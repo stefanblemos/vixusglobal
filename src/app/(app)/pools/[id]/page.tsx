@@ -99,6 +99,10 @@ export default async function PoolDetailPage({
   const { id } = await params;
   const { tab: rawTab, status: rawStatus } = await searchParams;
   const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
+  // self-healing (16/07): status são derivados dos fatos — recomputa antes de carregar,
+  // então qualquer status defasado (ex.: clique manual antigo) se corrige sozinho aqui
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(id);
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
@@ -110,6 +114,8 @@ export default async function PoolDetailPage({
           catalogModel: { select: { name: true } },
           catalogLocation: { select: { name: true } },
           loan: { include: { bankProfile: { select: { name: true } } } },
+          // draws creditados → % de conclusão da obra (pedido A)
+          loanEntries: { where: { type: "DRAW", pending: false }, select: { amount: true } },
         },
       },
       members: { include: { entries: true, party: true, company: true } },
@@ -278,10 +284,12 @@ export default async function PoolDetailPage({
   // régua do alerta: caixa abaixo de 2% do captado com provisão ainda descoberta
   const lowCash = raisedN > 0 && availableN / raisedN < 0.02 && (shortfall ?? 0) > 0;
 
+  // contadores x/x nas fases (pedido B): as fases derivam das casas — o subtítulo mostra
+  const housesStarted = pool.houses.filter((h) => h.status !== "PLANNED").length;
   const stepSubtitles: Record<string, string> = {
     FUNDING: `desde ${fmtDate(pool.startDate)}${pctRaised != null ? ` · ${pctRaised}% captado` : ""}`,
-    ACTIVE: "obras em curso",
-    CLOSING: "vendas finais",
+    ACTIVE: pool.houses.length > 0 ? `obras: ${housesStarted}/${pool.houses.length} casas` : "obras em curso",
+    CLOSING: pool.houses.length > 0 ? `vendidas: ${sold}/${pool.houses.length}` : "vendas finais",
     CLOSED: pool.effectiveEndDate
       ? `encerrado ${fmtDate(pool.effectiveEndDate)}`
       : `término prev. ${fmtDate(pool.plannedEndDate)}`,
@@ -380,10 +388,18 @@ export default async function PoolDetailPage({
       h.plannedLotCost == null && h.plannedBuildCost == null
         ? null
         : Number(h.plannedLotCost ?? 0) + Number(h.plannedBuildCost ?? 0) + Number(h.plannedClosingCost ?? 0);
+    const drawsCredited = h.loanEntries.reduce((s, e) => s + Number(e.amount), 0);
     return {
       id: h.id,
       address: h.address,
       status: h.status as string,
+      // % de obra pelos draws (pedido A): CO = 100%; sem loan = sem régua
+      buildPct:
+        h.coDate != null
+          ? 100
+          : h.bankLoanAmount != null && Number(h.bankLoanAmount) > 0
+            ? Math.min(100, Math.round((drawsCredited / Number(h.bankLoanAmount)) * 100))
+            : null,
       model: h.catalogModel?.name ?? null,
       location: h.catalogLocation?.name ?? null,
       bank: h.loan?.bankProfile?.name ?? h.bankName ?? null,
@@ -487,7 +503,7 @@ export default async function PoolDetailPage({
             <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
               Vida do pool
             </h2>
-            <PoolStatusStepper poolId={pool.id} status={pool.status} subtitles={stepSubtitles} />
+            <PoolStatusStepper status={pool.status} subtitles={stepSubtitles} />
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               {pendencias.map((p) => (
                 <Link
@@ -841,6 +857,7 @@ export default async function PoolDetailPage({
       {tab === "investors" && (
         <PoolInvestorsTab
           poolId={pool.id}
+          poolStatus={pool.status}
           raised={Number(raised)}
           target={pool.targetAmount != null ? Number(pool.targetAmount) : null}
           totalUnits={Number(table.totalUnits)}

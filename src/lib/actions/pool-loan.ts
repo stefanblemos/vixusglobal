@@ -21,6 +21,12 @@ const optDate = (v: FormDataEntryValue | null) => {
   return s ? new Date(s) : null;
 };
 
+// status derivado: draws/payoffs mudam a fase da casa e do pool — recomputa nos writes
+async function recompute(poolId: string) {
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(poolId);
+}
+
 // Tipos cujo valor REDUZ a dívida — o usuário digita positivo, o app aplica o sinal.
 const NEGATIVE_TYPES = new Set(["INTEREST_PAYMENT", "PAYOFF", "CREDIT"]);
 
@@ -148,6 +154,7 @@ export async function applyLoanDoc(
   const { applyLoanDocProposal } = await import("@/lib/pools/loan-doc-apply");
   const res = await applyLoanDocProposal(docId, keys);
   if ("error" in res) return { error: res.error };
+  await recompute(poolId);
   revalidatePath(`/pools/${poolId}/loan`);
   revalidatePath(`/pools/${poolId}`); // prazos/estado na Overview e Juros
   return { ok: true };
@@ -292,6 +299,7 @@ export async function deleteLoanEntry(formData: FormData): Promise<void> {
   const id = String(formData.get("entryId") ?? "");
   const poolId = String(formData.get("poolId") ?? "");
   if (id) await prisma.poolLoanEntry.delete({ where: { id } });
+  if (poolId) await recompute(poolId);
   if (poolId) revalidatePath(`/pools/${poolId}/loan`);
 }
 
@@ -416,6 +424,7 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
       ),
     ]);
   }
+  await recompute(poolId);
   revalidatePath(`/pools/${poolId}/loan`);
   revalidatePath("/pools/draws");
   return { ok: true };
@@ -475,6 +484,7 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
       }),
     ),
   ]);
+  await recompute(entry.loan.poolId);
   revalidatePath(`/pools/${entry.loan.poolId}/loan`);
   revalidatePath("/pools/draws");
   return { ok: true };
@@ -568,5 +578,6 @@ export async function generatePayoffFromHouse(formData: FormData): Promise<void>
       },
     }),
   ]);
+  await recompute(poolId);
   revalidatePath(`/pools/${poolId}/loan`);
 }

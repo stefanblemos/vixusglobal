@@ -211,14 +211,22 @@ export function PoolHouseFicha({
 
   const statusIdx = STATUSES.findIndex(([v]) => v === form.status);
 
+  // clicar num passo carimba o FATO (data) — o status volta DERIVADO do server (16/07);
+  // sem otimismo local: se faltar o dado (ex.: Sold sem preço), o status honesto não sobe
   const stepTo = (status: string) => {
-    setForm((f) => ({ ...f, status }));
-    setBaseline((b) => ({ ...b, status })); // status salva na hora (não conta como pendência)
     startStatus(async () => {
       await setHouseStatus(values.id, status as never);
       router.refresh();
     });
   };
+
+  // % de conclusão da obra pelos RECEBIMENTOS do banco (pedido A): CO emitido = 100%
+  const buildPct =
+    form.coDate !== ""
+      ? 100
+      : loanAmount != null && loanAmount > 0
+        ? Math.min(100, Math.round((drawsTotal / loanAmount) * 100))
+        : null;
 
   const subtab = (key: typeof pane, label: string, badge?: number) => (
     <button
@@ -339,8 +347,8 @@ export function PoolHouseFicha({
               </div>
             </div>
           </div>
-          {/* stepper — clicar muda o status e carimba a data do passo (editável na Linha do tempo) */}
-          <input type="hidden" name="status" value={form.status} />
+          {/* stepper — clicar CARIMBA O FATO (data do passo); o status é derivado dos fatos.
+              Voltar = apagar a data na Linha do tempo (corrige-se o fato, não o rótulo). */}
           <div className="mt-3 flex gap-1">
             {STATUSES.map(([v, l], i) => (
               <button
@@ -348,6 +356,13 @@ export function PoolHouseFicha({
                 type="button"
                 onClick={() => stepTo(v)}
                 disabled={statusPending}
+                title={
+                  i < statusIdx
+                    ? "Fase concluída — para voltar, apague a data correspondente na Linha do tempo"
+                    : i === statusIdx
+                      ? "Fase atual (derivada das atividades: lote, draws, CO, contrato, venda)"
+                      : "Clique para registrar o fato — a data do passo é carimbada e a fase avança"
+                }
                 className={`flex-1 rounded-md px-1 py-1.5 text-[10.5px] transition ${
                   i === statusIdx
                     ? "bg-[#1f3a5f] font-bold text-white"
@@ -357,6 +372,9 @@ export function PoolHouseFicha({
                 }`}
               >
                 {l}
+                {v === "UNDER_CONSTRUCTION" && statusIdx === i && buildPct != null && (
+                  <b> · {buildPct}%</b>
+                )}
               </button>
             ))}
           </div>

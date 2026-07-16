@@ -1,11 +1,6 @@
-"use client";
-
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { setPoolStatus } from "@/lib/actions/pools";
-
-// Stepper da vida do pool (mock UX 3/6): Funding → Active → Closing → Closed.
-// Clicar muda o status na hora — mesmo padrão do stepper da ficha da casa.
+// Stepper da vida do pool (16/07): INDICADOR derivado dos fatos — não é mais clicável.
+// Gatilhos: Active = 1ª casa com lote; Closing = todas vendidas; Closed = loans quitados +
+// lucro distribuído + caixa devolvido. Subtítulos trazem o x/x das casas (pedido B).
 
 const STEPS: Array<{ value: string; label: string }> = [
   { value: "FUNDING", label: "Funding" },
@@ -15,41 +10,24 @@ const STEPS: Array<{ value: string; label: string }> = [
 ];
 
 export function PoolStatusStepper({
-  poolId,
   status,
   subtitles,
 }: {
-  poolId: string;
   status: string;
-  subtitles: Record<string, string>; // por passo: "desde 27/10/2025 · 74% captado" etc.
+  subtitles: Record<string, string>;
 }) {
-  const [local, setLocal] = useState(status);
-  const [pending, startTransition] = useTransition();
-  const router = useRouter();
-  const idx = STEPS.findIndex((s) => s.value === local);
-
-  const stepTo = (value: string) => {
-    setLocal(value);
-    startTransition(async () => {
-      await setPoolStatus(poolId, value);
-      router.refresh();
-    });
-  };
-
+  const idx = STEPS.findIndex((s) => s.value === status);
   return (
-    <div className="flex gap-1">
+    <div className="flex gap-1" title="Fases derivadas automaticamente das atividades — lote pago, vendas, quitação e distribuições">
       {STEPS.map((s, i) => (
-        <button
+        <div
           key={s.value}
-          type="button"
-          onClick={() => stepTo(s.value)}
-          disabled={pending}
-          className={`flex-1 rounded-md px-2 py-2 text-[11px] transition ${
+          className={`flex-1 rounded-md px-2 py-2 text-center text-[11px] ${
             i === idx
               ? "bg-[#1f3a5f] font-bold text-white"
               : i < idx
-                ? "bg-emerald-100 font-semibold text-emerald-700 hover:bg-emerald-200"
-                : "bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                ? "bg-emerald-100 font-semibold text-emerald-700"
+                : "bg-slate-100 text-slate-400"
           }`}
         >
           {s.label}
@@ -58,7 +36,7 @@ export function PoolStatusStepper({
               {subtitles[s.value]}
             </span>
           )}
-        </button>
+        </div>
       ))}
     </div>
   );

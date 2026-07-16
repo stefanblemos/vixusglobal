@@ -43,6 +43,7 @@ type Panel = "aporte" | "socio" | "transfer" | "call" | null;
 
 export function PoolInvestorsTab({
   poolId,
+  poolStatus,
   raised,
   target,
   totalUnits,
@@ -55,6 +56,7 @@ export function PoolInvestorsTab({
   suggestedCallAmount,
 }: {
   poolId: string;
+  poolStatus: string; // fora de FUNDING, entrada de sócio NOVO é travada (aportes seguem)
   raised: number;
   target: number | null; // snapshot da provisão na conversão (targetAmount)
   totalUnits: number;
@@ -84,19 +86,31 @@ export function PoolInvestorsTab({
     document.getElementById("investors-actions")?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  const abtn = (p: Panel, label: string, primary = false) => (
+  // fora da captação (Active+), o cap table fecha p/ SÓCIOS NOVOS — aportes de quem já
+  // participa e transferências continuam liberados (regra do Stefan, 16/07)
+  const newMemberLocked = poolStatus !== "FUNDING";
+
+  const abtn = (p: Panel, label: string, primary = false, locked = false) => (
     <button
       type="button"
-      onClick={() => toggle(p)}
+      onClick={() => !locked && toggle(p)}
+      disabled={locked}
+      title={
+        locked
+          ? "Cap table fechado — o pool saiu da captação. Sócio novo só na janela de Funding; aportes dos sócios atuais e transferências continuam liberados."
+          : undefined
+      }
       className={`rounded-lg border px-3.5 py-2 text-xs font-semibold transition ${
-        panel === p
-          ? "border-[#1f3a5f] bg-blue-50 text-[#1f3a5f]"
-          : primary
-            ? "border-[#1f3a5f] bg-[#1f3a5f] text-white hover:bg-[#16304f]"
-            : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
+        locked
+          ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-300"
+          : panel === p
+            ? "border-[#1f3a5f] bg-blue-50 text-[#1f3a5f]"
+            : primary
+              ? "border-[#1f3a5f] bg-[#1f3a5f] text-white hover:bg-[#16304f]"
+              : "border-slate-300 bg-white text-slate-600 hover:bg-slate-50"
       }`}
     >
-      {label}
+      {locked ? `🔒 ${label}` : label}
     </button>
   );
 
@@ -152,7 +166,7 @@ export function PoolInvestorsTab({
         {/* 2. ações — uma por vez, painel abre embaixo */}
         <div id="investors-actions" className="mt-3.5 flex flex-wrap gap-2">
           {abtn("aporte", "+ Aporte", true)}
-          {abtn("socio", "+ Sócio")}
+          {abtn("socio", "+ Sócio", false, newMemberLocked)}
           {abtn("transfer", "⇄ Transferência")}
           {abtn("call", "📣 Capital call")}
         </div>
