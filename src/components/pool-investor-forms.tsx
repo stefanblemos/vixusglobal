@@ -60,12 +60,15 @@ export function AddMemberForm({ poolId, owners }: { poolId: string; owners: Owne
 }
 
 // Aporte (só na janela de captação): valor → units pelo preço da unit.
+// defaultMemberId: atalho "+ aporte" da linha do cap table pré-seleciona o sócio.
 export function AddContributionForm({
   poolId,
   members,
+  defaultMemberId,
 }: {
   poolId: string;
   members: MemberOption[];
+  defaultMemberId?: string;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     addContribution.bind(null, poolId),
@@ -77,7 +80,13 @@ export function AddContributionForm({
         <label htmlFor="contrib-member" className={labelClass}>
           Member
         </label>
-        <select id="contrib-member" name="memberId" required defaultValue="" className={inputClass}>
+        <select
+          id="contrib-member"
+          name="memberId"
+          required
+          defaultValue={defaultMemberId ?? ""}
+          className={inputClass}
+        >
           <option value="" disabled>
             Select…
           </option>

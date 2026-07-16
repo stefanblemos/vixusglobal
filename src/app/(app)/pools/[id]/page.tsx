@@ -7,16 +7,11 @@ import {
   deleteContribution,
   deleteDistribution,
   deleteHouse,
-  deleteMember,
 } from "@/lib/actions/pools";
 import { AddHouseForm } from "@/components/pool-house-form";
-import {
-  AddContributionForm,
-  AddDistributionForm,
-  AddMemberForm,
-  TransferUnitsForm,
-} from "@/components/pool-investor-forms";
-import { AddPoolExpenseForm, CreateCapitalCallForm } from "@/components/pool-capital-forms";
+import { AddDistributionForm } from "@/components/pool-investor-forms";
+import { PoolInvestorsTab } from "@/components/pool-investors-tab";
+import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { AddMonthlyInterestForm } from "@/components/pool-interest-form";
@@ -198,6 +193,45 @@ export default async function PoolDetailPage({
     ...companies.map((c) => ({ value: `company:${c.id}`, label: c.legalName })),
     ...parties.map((p) => ({ value: `party:${p.id}`, label: `${p.name} (person)` })),
   ].filter((o) => !taken.has(o.value));
+
+  // Aba Investidores (mock 2/6): linhas com saída legível — sócio que zerou via transferência
+  // mostra a data e, quando o par TRANSFER_IN (mesma data e valor) é único, quem comprou.
+  const investorRows = table.rows.map((r) => {
+    const m = pool.members.find((mm) => mm.id === r.memberId)!;
+    const hasEntries = m.entries.length > 0;
+    let exited: { date: string; toName: string | null } | null = null;
+    if (r.units.isZero() && hasEntries) {
+      const outs = m.entries
+        .filter((e) => e.kind === "TRANSFER_OUT")
+        .sort((a, b) => a.date.getTime() - b.date.getTime());
+      const last = outs[outs.length - 1];
+      if (last) {
+        const buyers = pool.members.filter(
+          (mm) =>
+            mm.id !== m.id &&
+            mm.entries.some(
+              (e) =>
+                e.kind === "TRANSFER_IN" &&
+                e.date.getTime() === last.date.getTime() &&
+                Number(e.amount) === Number(last.amount),
+            ),
+        );
+        exited = { date: fmtDate(last.date), toName: buyers.length === 1 ? memberName(buyers[0]) : null };
+      }
+    }
+    return {
+      memberId: r.memberId,
+      name: r.name,
+      role: r.role,
+      invested: Number(r.invested),
+      units: Number(r.units),
+      pct: Number(r.pct),
+      exited,
+      hasEntries,
+    };
+  });
+  const contribs = entries.filter((e) => e.kind === "CONTRIBUTION" || e.kind === "CAPITAL_CALL");
+  const lastContrib = contribs[contribs.length - 1] ?? null;
 
   return (
     <div className="space-y-8">
@@ -584,135 +618,36 @@ export default async function PoolDetailPage({
       </section>
       )}
 
-      {/* Cap table */}
+      {/* Investidores (mock UX 2/6): captacao + acoes em painel + cap table visual + calls */}
       {tab === "investors" && (
-      <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-medium text-slate-800">Cap table</h2>
-          <p className="text-xs text-slate-400">
-            Percentages are derived from units — never typed. Transfers move units without
-            diluting anyone.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className={th}>Member</th>
-                <th className={th}>Role</th>
-                <th className={thRight}>Invested</th>
-                <th className={thRight}>Units</th>
-                <th className={thRight}>%</th>
-                <th className={thRight}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {table.rows.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-5 py-6 text-center text-sm text-slate-400">
-                    No members yet — add the manager (Vixus) and the investor companies below.
-                  </td>
-                </tr>
-              )}
-              {table.rows.map((r) => (
-                <tr key={r.memberId} className="border-b border-slate-50">
-                  <td className={`${td} font-medium text-slate-800`}>{r.name}</td>
-                  <td className={td}>
-                    {r.role === "MANAGER" ? (
-                      <span className="rounded-full bg-[#1f3a5f]/10 px-2 py-0.5 text-xs text-[#1f3a5f]">
-                        Manager
-                      </span>
-                    ) : (
-                      <span className="text-xs text-slate-400">Investor</span>
-                    )}
-                  </td>
-                  <td className={tdRight}>{formatMoney(r.invested, pool.currency)}</td>
-                  <td className={tdRight}>{r.units.toFixed(2)}</td>
-                  <td className={`${tdRight} font-medium`}>{r.pct.toFixed(2)}%</td>
-                  <td className={tdRight}>
-                    {r.units.isZero() && (
-                      <form action={deleteMember}>
-                        <input type="hidden" name="memberId" value={r.memberId} />
-                        <button
-                          type="submit"
-                          className="text-xs text-slate-300 hover:text-red-500"
-                          title="Remove member"
-                        >
-                          ✕
-                        </button>
-                      </form>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {table.rows.length > 0 && (
-                <tr className="bg-slate-50/60">
-                  <td className={`${td} font-semibold text-slate-800`}>Total</td>
-                  <td className={td}></td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {formatMoney(table.totalInvested, pool.currency)}
-                  </td>
-                  <td className={`${tdRight} font-semibold`}>{table.totalUnits.toFixed(2)}</td>
-                  <td className={`${tdRight} font-semibold`}>
-                    {table.totalUnits.isZero() ? "—" : "100.00%"}
-                  </td>
-                  <td></td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="space-y-4 border-t border-slate-100 px-5 py-4">
-          <AddMemberForm poolId={pool.id} owners={ownerOptions} />
-          <AddContributionForm poolId={pool.id} members={memberOptions} />
-          <TransferUnitsForm poolId={pool.id} members={memberOptions} />
-        </div>
-      </section>
-      )}
-
-      {/* Capital calls (dentro da aba Investidores) */}
-      {tab === "investors" && (
-        <section className="rounded-xl border border-slate-200 bg-white">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="text-base font-medium text-slate-800">Capital calls</h2>
-            <p className="text-xs text-slate-400">
-              Quando custos e change orders passam do captado, a chamada rateia o valor pro rata
-              às units e gera o relatório para os sócios.
-            </p>
-          </div>
-          {pool.capitalCalls.length > 0 && (
-            <div className="divide-y divide-slate-50">
-              {pool.capitalCalls.map((c) => {
-                const paidCount = c.lines.filter((l) => l.paid).length;
-                return (
-                  <Link
-                    key={c.id}
-                    href={`/pools/${pool.id}/calls/${c.id}`}
-                    className="flex items-center justify-between px-5 py-2.5 text-sm hover:bg-slate-50/70"
-                  >
-                    <span className="text-slate-500">{fmtDate(c.date)}</span>
-                    <span className="flex-1 px-4 font-medium text-slate-700">{c.reason}</span>
-                    <span className="tabular-nums font-medium text-slate-800">
-                      {formatMoney(c.totalAmount, pool.currency)}
-                    </span>
-                    <span
-                      className={`ml-4 rounded-full px-2 py-0.5 text-xs ${
-                        paidCount === c.lines.length
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-amber-50 text-amber-700"
-                      }`}
-                    >
-                      {paidCount}/{c.lines.length} recebidos
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-          <div className="border-t border-slate-100 px-5 py-4">
-            <CreateCapitalCallForm poolId={pool.id} suggestedAmount={null} />
-          </div>
-        </section>
+        <PoolInvestorsTab
+          poolId={pool.id}
+          raised={Number(raised)}
+          target={pool.targetAmount != null ? Number(pool.targetAmount) : null}
+          totalUnits={Number(table.totalUnits)}
+          unitPrice={Number(pool.unitPrice)}
+          rows={investorRows}
+          lastContribution={
+            lastContrib
+              ? {
+                  name: memberById.get(lastContrib.memberId) ?? "",
+                  amount: Number(lastContrib.amount),
+                  date: fmtDate(lastContrib.date),
+                }
+              : null
+          }
+          capitalCalls={pool.capitalCalls.map((c) => ({
+            id: c.id,
+            date: fmtDate(c.date),
+            reason: c.reason,
+            total: Number(c.totalAmount),
+            paidCount: c.lines.filter((l) => l.paid).length,
+            lineCount: c.lines.length,
+          }))}
+          memberOptions={memberOptions}
+          ownerOptions={ownerOptions}
+          suggestedCallAmount={null}
+        />
       )}
 
       {/* Extrato de capital */}
