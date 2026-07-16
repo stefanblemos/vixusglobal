@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { formatMoney, sum } from "@/lib/money";
 import { byAddressNumber, capTable, houseEconomics, memberName } from "@/lib/pools/math";
-import { deleteContribution, deleteDistribution } from "@/lib/actions/pools";
 import { PoolHousesTab } from "@/components/pool-houses-tab";
-import { AddDistributionForm } from "@/components/pool-investor-forms";
+import { PoolLedgerTab } from "@/components/pool-ledger-tab";
+import { PoolDistributionsTab } from "@/components/pool-distributions-tab";
 import { PoolInvestorsTab } from "@/components/pool-investors-tab";
 import { PoolStatusStepper } from "@/components/pool-status-stepper";
 import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
@@ -307,6 +307,71 @@ export default async function PoolDetailPage({
   // denúncia: dinheiro gasto mas status parados em Planned — os status estão atrasados
   const statusLag =
     Number(spentOnHouses) > 0 && pool.houses.length > 0 && pool.houses.every((h) => h.status === "PLANNED");
+
+  // Capital ledger (mock 6/6): transferência pareada (transferGroupId) + captado acumulado
+  type LedgerRowKind = "CONTRIBUTION" | "CAPITAL_CALL" | "TRANSFER" | "TRANSFER_IN" | "TRANSFER_OUT";
+  const ledgerRows: Array<{
+    id: string;
+    date: string;
+    kind: LedgerRowKind;
+    memberName: string;
+    amount: number;
+    units: number;
+    cumulative: number;
+    memo: string | null;
+    memberIds: string[];
+  }> = [];
+  {
+    const seen = new Set<string>();
+    let cum = 0;
+    for (const e of entries) {
+      if (e.transferGroupId) {
+        if (seen.has(e.transferGroupId)) continue;
+        seen.add(e.transferGroupId);
+        const pair = entries.filter((x) => x.transferGroupId === e.transferGroupId);
+        const out = pair.find((x) => x.kind === "TRANSFER_OUT") ?? pair[0];
+        const inn = pair.find((x) => x.kind === "TRANSFER_IN");
+        ledgerRows.push({
+          id: out.id,
+          date: fmtDate(out.date),
+          kind: "TRANSFER",
+          memberName: `${memberById.get(out.memberId) ?? "?"} → ${inn ? (memberById.get(inn.memberId) ?? "?") : "?"}`,
+          amount: Number(out.amount),
+          units: Number(out.units),
+          cumulative: cum, // transferência não muda o captado
+          memo: out.memo ?? inn?.memo ?? null,
+          memberIds: pair.map((x) => x.memberId),
+        });
+      } else {
+        cum += (e.kind === "TRANSFER_OUT" ? -1 : 1) * Number(e.amount);
+        ledgerRows.push({
+          id: e.id,
+          date: fmtDate(e.date),
+          kind: e.kind as LedgerRowKind,
+          memberName: memberById.get(e.memberId) ?? "",
+          amount: Number(e.amount),
+          units: Number(e.units),
+          cumulative: cum,
+          memo: e.memo,
+          memberIds: [e.memberId],
+        });
+      }
+    }
+  }
+
+  // Distribuições (mock 6/6): linhas com rateio expandível + membros p/ preview pro rata
+  const distRows = pool.distributions.map((d) => ({
+    id: d.id,
+    date: fmtDate(d.date),
+    kind: d.kind as "RETURN_OF_CAPITAL" | "PROFIT",
+    total: Number(d.totalAmount),
+    house: d.house ? { id: d.house.id, address: d.house.address } : null,
+    memo: d.memo,
+    lines: d.lines.map((l) => ({ name: memberById.get(l.memberId) ?? "", amount: Number(l.amount) })),
+  }));
+  const distMembers = table.rows
+    .filter((r) => r.units.gt(0))
+    .map((r) => ({ name: r.name, units: Number(r.units) }));
 
   // Aba Casas (mock 4/6): linhas com contexto + % do previsto + pendências
   const houseRows = pool.houses.map((h, hi) => {
@@ -804,78 +869,15 @@ export default async function PoolDetailPage({
         />
       )}
 
-      {/* Extrato de capital */}
+      {/* Capital ledger (mock UX 6/6): filtros, acumulado, transfer pareada, CSV */}
       {tab === "ledger" && (
-      <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-medium text-slate-800">Capital ledger</h2>
-          <p className="text-xs text-slate-400">
-            Every contribution and unit transfer, in order — the source of the investor statements.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className={th}>Date</th>
-                <th className={th}>Member</th>
-                <th className={th}>Kind</th>
-                <th className={thRight}>Amount</th>
-                <th className={thRight}>Units</th>
-                <th className={th}>Memo</th>
-                <th className={thRight}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-6 text-center text-sm text-slate-400">
-                    No capital entries yet.
-                  </td>
-                </tr>
-              )}
-              {entries.map((e) => (
-                <tr key={e.id} className="border-b border-slate-50">
-                  <td className={td}>{fmtDate(e.date)}</td>
-                  <td className={`${td} font-medium text-slate-800`}>
-                    {memberById.get(e.memberId)}
-                  </td>
-                  <td className={td}>
-                    {e.kind === "CONTRIBUTION" ? (
-                      <span className="text-xs text-slate-500">Contribution</span>
-                    ) : e.kind === "CAPITAL_CALL" ? (
-                      <span className="text-xs text-blue-700">Capital call</span>
-                    ) : e.kind === "TRANSFER_IN" ? (
-                      <span className="text-xs text-emerald-700">Transfer in</span>
-                    ) : (
-                      <span className="text-xs text-amber-700">Transfer out</span>
-                    )}
-                  </td>
-                  <td className={`${tdRight} ${e.kind === "TRANSFER_OUT" ? "text-amber-700" : ""}`}>
-                    {e.kind === "TRANSFER_OUT" ? "−" : ""}
-                    {formatMoney(e.amount, pool.currency)}
-                  </td>
-                  <td className={tdRight}>{Number(e.units).toFixed(2)}</td>
-                  <td className={`${td} text-slate-400`}>{e.memo ?? ""}</td>
-                  <td className={tdRight}>
-                    <form action={deleteContribution}>
-                      <input type="hidden" name="entryId" value={e.id} />
-                      <input type="hidden" name="poolId" value={pool.id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-slate-300 hover:text-red-500"
-                        title={e.transferGroupId ? "Delete transfer (both sides)" : "Delete entry"}
-                      >
-                        ✕
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+        <PoolLedgerTab
+          poolId={pool.id}
+          rows={ledgerRows}
+          members={memberOptions}
+          raised={Number(raised)}
+          totalUnits={Number(table.totalUnits)}
+        />
       )}
 
       {/* Juros & reserve (do loan statement) — um bloco por loan */}
@@ -1113,76 +1115,14 @@ export default async function PoolDetailPage({
         </div>
       )}
 
-      {/* Distribuições */}
+      {/* Distribuicoes (mock UX 6/6): resumo, preview do rateio, linha expansivel */}
       {tab === "distributions" && (
-      <section className="rounded-xl border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-5 py-4">
-          <h2 className="text-base font-medium text-slate-800">Distributions</h2>
-          <p className="text-xs text-slate-400">
-            Return of capital and profit, split pro rata by units at the distribution date.
-          </p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-slate-100">
-                <th className={th}>Date</th>
-                <th className={th}>Kind</th>
-                <th className={thRight}>Total</th>
-                <th className={th}>From sale of</th>
-                <th className={th}>Memo</th>
-                <th className={thRight}>Members</th>
-                <th className={thRight}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {pool.distributions.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-6 text-center text-sm text-slate-400">
-                    No distributions yet.
-                  </td>
-                </tr>
-              )}
-              {pool.distributions.map((d) => (
-                <tr key={d.id} className="border-b border-slate-50">
-                  <td className={td}>{fmtDate(d.date)}</td>
-                  <td className={td}>
-                    {d.kind === "RETURN_OF_CAPITAL" ? (
-                      <span className="text-xs text-slate-500">Return of capital</span>
-                    ) : (
-                      <span className="text-xs text-emerald-700">Profit</span>
-                    )}
-                  </td>
-                  <td className={`${tdRight} font-medium`}>
-                    {formatMoney(d.totalAmount, pool.currency)}
-                  </td>
-                  <td className={`${td} text-slate-400`}>{d.house?.address ?? "—"}</td>
-                  <td className={`${td} text-slate-400`}>{d.memo ?? ""}</td>
-                  <td className={tdRight}>{d.lines.length}</td>
-                  <td className={tdRight}>
-                    <form action={deleteDistribution}>
-                      <input type="hidden" name="distributionId" value={d.id} />
-                      <button
-                        type="submit"
-                        className="text-xs text-slate-300 hover:text-red-500"
-                        title="Delete distribution"
-                      >
-                        ✕
-                      </button>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="border-t border-slate-100 px-5 py-4">
-          <AddDistributionForm
-            poolId={pool.id}
-            houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
-          />
-        </div>
-      </section>
+        <PoolDistributionsTab
+          poolId={pool.id}
+          rows={distRows}
+          houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
+          members={distMembers}
+        />
       )}
     </div>
   );
