@@ -20,6 +20,18 @@ export type FormState = { error?: string; ok?: number } | undefined;
 
 // ── Pool ─────────────────────────────────────────────────────
 
+// Stepper da Overview: muda só o status (Funding → Active → Closing → Closed)
+export async function setPoolStatus(poolId: string, status: string): Promise<FormState> {
+  const parsed = poolStatusSchema.safeParse(status);
+  if (!parsed.success) return { error: "Invalid status." };
+  await prisma.investmentPool.update({
+    where: { id: poolId },
+    data: { status: parsed.data as PoolStatus },
+  });
+  revalidatePath(`/pools/${poolId}`);
+  return { ok: Date.now() };
+}
+
 export async function createPool(_prev: FormState, formData: FormData): Promise<FormState> {
   const parsed = poolSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid data." };
