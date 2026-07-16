@@ -437,7 +437,14 @@ export default async function SimulationPage({
           <Link href="/pools/simulator" className="text-sm text-slate-500 hover:text-slate-700">
             ← Simulator
           </Link>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-800">{sim.name}</h1>
+          <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold text-slate-800">
+            {sim.name}
+            {sim.pool && (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-emerald-700">
+                Convertida · {sim.pool.code}
+              </span>
+            )}
+          </h1>
           <p className="text-sm text-slate-500">
             {sim.scenario.name} · {sim.fundingMode === "BANK" ? `bank: ${sim.bankProfile?.name}` : "equity"} ·{" "}
             {sim.compMode === "PERFORMANCE"
