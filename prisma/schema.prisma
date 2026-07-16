@@ -817,6 +817,10 @@ model InvestmentPool {
   status   PoolStatus @default(FUNDING)
   currency String     @default("USD")
 
+  // Cronograma PREVISTO congelado (16/07): snapshot dos marcos da simulação apresentada
+  // aos sócios — os deltas do report mensal nunca mudam retroativamente
+  scheduleBaseline Json?
+
   unitPrice      Decimal  @default(1000) @db.Decimal(20, 4) // 1 unit = $1.000
   targetAmount   Decimal? @db.Decimal(20, 2) // orçamento de captação (own capital do pool)
   profitSharePct Decimal? @db.Decimal(9, 6) // fração do lucro que vai aos investidores (0.35 = 35%)
@@ -894,6 +898,9 @@ model PoolHouse {
   lotPaidDate     DateTime? @db.Date
   buildStartDate  DateTime? @db.Date
   coDate          DateTime? @db.Date
+  // Permit (16/07): a premissa existe no simulador; aqui o REALIZADO p/ o Cronograma
+  permitAppliedDate DateTime? @db.Date
+  permitIssuedDate  DateTime? @db.Date
 
   notes     String?
   createdAt DateTime @default(now())

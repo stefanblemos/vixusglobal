@@ -87,6 +87,8 @@ export default async function PoolHousePage({
           saleDate: d(house.saleDate),
           lotContractDate: d(house.lotContractDate),
           lotPaidDate: d(house.lotPaidDate),
+          permitAppliedDate: d(house.permitAppliedDate),
+          permitIssuedDate: d(house.permitIssuedDate),
           buildStartDate: d(house.buildStartDate),
           coDate: d(house.coDate),
           notes: house.notes ?? "",

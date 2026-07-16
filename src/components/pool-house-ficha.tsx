@@ -52,6 +52,8 @@ export type FichaValues = {
   saleDate: string;
   lotContractDate: string;
   lotPaidDate: string;
+  permitAppliedDate: string;
+  permitIssuedDate: string;
   buildStartDate: string;
   coDate: string;
   notes: string;
@@ -576,6 +578,8 @@ export function PoolHouseFicha({
                 [
                   ["lotContractDate", "Contrato do lote"],
                   ["lotPaidDate", "Lote pago"],
+                  ["permitAppliedDate", "Permit aplicado"],
+                  ["permitIssuedDate", "Permit emitido"],
                   ["buildStartDate", "Início da obra"],
                   ["coDate", "CO"],
                   ["contractDate", "Contrato de venda"],
