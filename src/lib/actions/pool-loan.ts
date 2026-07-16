@@ -37,6 +37,94 @@ const ENTRY_TYPES = [
   "OTHER",
 ] as const;
 
+// LOI dentro do POOL (pedido do Stefan 15/07): sobe o PDF, a Claude extrai as condições
+// (núcleo compartilhado com o catálogo — cria/atualiza o BankProfile + arquiva o LOI) e o
+// resultado é VINCULADO a um loan deste pool: preenche committed (totalLoanAmount), taxa
+// (interestRatePct) e loanNumber (nº do LOI). Um pool pode ter vários bancos.
+export async function uploadPoolLoi(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Escolha o PDF do LOI." };
+  if (file.size > 10 * 1024 * 1024) return { error: "PDF acima de 10MB." };
+  const targetBankId = String(formData.get("targetBankId") ?? "").trim() || null;
+  const targetLoanId = String(formData.get("targetLoanId") ?? "").trim() || null;
+
+  const pool = await prisma.investmentPool.findUnique({ where: { id: poolId }, select: { id: true } });
+  if (!pool) return { error: "Pool não encontrado." };
+
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { applyLoiToBankProfile } = await import("@/lib/pools/loi-apply");
+  const res = await applyLoiToBankProfile(bytes, file.name, targetBankId);
+  if ("error" in res) return { error: res.error };
+  const { bank, ex } = res;
+
+  const loiBits = {
+    ...(ex.totalLoanAmount > 0 ? { committed: ex.totalLoanAmount } : {}),
+    ...(ex.interestRatePct > 0 ? { aprPct: ex.interestRatePct } : {}),
+    ...(ex.loiNumber.trim() ? { loanNumber: ex.loiNumber.trim() } : {}),
+  };
+  const noteBits = `LOI ${ex.loiNumber.trim() || file.name}${ex.loiDate.trim() ? ` de ${ex.loiDate.trim()}` : ""} lido por AI — ${ex.summary}`;
+
+  if (targetLoanId) {
+    const loan = await prisma.poolLoan.findUnique({ where: { id: targetLoanId } });
+    if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado neste pool." };
+    await prisma.poolLoan.update({
+      where: { id: loan.id },
+      data: {
+        bankProfileId: bank.id,
+        ...loiBits,
+        notes: [loan.notes, noteBits].filter(Boolean).join(" · "),
+      },
+    });
+  } else {
+    // sem loan alvo: reaproveita um loan deste pool que já seja desse banco, senão cria
+    const existing = await prisma.poolLoan.findFirst({ where: { poolId, bankProfileId: bank.id } });
+    if (existing) {
+      await prisma.poolLoan.update({
+        where: { id: existing.id },
+        data: { ...loiBits, notes: [existing.notes, noteBits].filter(Boolean).join(" · ") },
+      });
+    } else {
+      await prisma.poolLoan.create({
+        data: { poolId, bankProfileId: bank.id, ...loiBits, notes: noteBits },
+      });
+    }
+  }
+
+  revalidatePath(`/pools/${poolId}/loan`);
+  return { ok: true };
+}
+
+// Vincula uma casa a um loan/banco deste pool (ou "" = 100% equity). Decide para onde vai
+// o draw, qual contrato de fees se aplica e onde entra o payoff. bankName da casa (usado
+// nas fichas/relatórios) acompanha o banco do loan.
+export async function assignHouseLoan(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const houseId = String(formData.get("houseId") ?? "");
+  const loanId = String(formData.get("loanId") ?? "").trim() || null;
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house || house.poolId !== poolId) return { error: "Casa não encontrada neste pool." };
+  let bankName: string | null = null;
+  if (loanId) {
+    const loan = await prisma.poolLoan.findUnique({
+      where: { id: loanId },
+      include: { bankProfile: { select: { name: true } } },
+    });
+    if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado neste pool." };
+    bankName = loan.bankProfile?.name ?? null;
+  }
+  await prisma.poolHouse.update({ where: { id: houseId }, data: { loanId, bankName } });
+  revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath(`/pools/${poolId}`);
+  return { ok: true };
+}
+
 // Resolve um loan do pool: id explícito > único loan existente. Null se ambíguo.
 async function resolveLoan(poolId: string, loanId: string | null) {
   if (loanId) {

@@ -10,6 +10,7 @@ import {
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
 import { AddLoanEntryForm, PoolLoanTermsForm } from "@/components/pool-loan-forms";
+import { HousesByBank, PoolLoiUpload } from "@/components/pool-loan-loi";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { LoanMonthFilter } from "@/components/loan-month-filter";
 
@@ -174,6 +175,13 @@ export default async function PoolLoanPage({
         </div>
       )}
 
+      {/* LOI no pool (15/07): AI captura as condições e preenche o loan */}
+      <PoolLoiUpload
+        poolId={pool.id}
+        banks={banks}
+        loans={pool.loans.map((l) => ({ id: l.id, label: loanLabel(l) }))}
+      />
+
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-medium text-slate-800">
@@ -213,6 +221,20 @@ export default async function PoolLoanPage({
           }
         />
       </section>
+
+      {/* Casas por banco (15/07): o VHP-II tem 3 bancos — cada casa aponta p/ seu loan */}
+      {pool.loans.length > 0 && pool.houses.length > 0 && (
+        <HousesByBank
+          poolId={pool.id}
+          houses={pool.houses.map((h) => ({
+            id: h.id,
+            address: h.address,
+            status: h.status,
+            loanId: h.loanId,
+          }))}
+          loans={pool.loans.map((l) => ({ id: l.id, label: loanLabel(l) }))}
+        />
+      )}
 
       {loan && stmt && (
         <>
