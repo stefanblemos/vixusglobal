@@ -8,6 +8,7 @@ const TABS: Array<{ key: string; label: string; href: (poolId: string) => string
   { key: "investors", label: "Investidores", href: (id) => `/pools/${id}?tab=investors` },
   { key: "interest", label: "Juros & reserve", href: (id) => `/pools/${id}?tab=interest` },
   { key: "ledger", label: "Capital ledger", href: (id) => `/pools/${id}?tab=ledger` },
+  { key: "provision", label: "Provisão", href: (id) => `/pools/${id}/provision` },
   { key: "loan", label: "Loan statement", href: (id) => `/pools/${id}/loan` },
   { key: "distributions", label: "Distribuições", href: (id) => `/pools/${id}?tab=distributions` },
 ];
