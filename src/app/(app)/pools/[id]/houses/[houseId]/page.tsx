@@ -91,9 +91,8 @@ export default async function PoolHousePage({
           coDate: d(house.coDate),
           notes: house.notes ?? "",
         }}
-      >
-        {/* change orders em contexto — total reflete no Δ da tabela acima */}
-        <section className="mt-4 rounded-xl border border-slate-200 bg-white">
+        changeOrders={
+          <section className="mt-4 rounded-xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
               Change orders{" "}
@@ -129,9 +128,9 @@ export default async function PoolHousePage({
             <AddChangeOrderForm houseId={house.id} />
           </div>
         </section>
-
-        {/* apagar casa saiu da lista (mock 4/6) — aqui, em dois passos, longe do clique acidental */}
-        <details className="mt-4 px-1 pb-8">
+        }
+        dangerZone={
+          <details className="mt-4 px-1 pb-8">
           <summary className="cursor-pointer text-xs text-slate-400 hover:text-red-600">
             Apagar esta casa…
           </summary>
@@ -151,7 +150,8 @@ export default async function PoolHousePage({
             </form>
           </div>
         </details>
-      </PoolHouseFicha>
+        }
+      />
     </div>
   );
 }

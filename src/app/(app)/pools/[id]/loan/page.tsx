@@ -40,10 +40,10 @@ export default async function PoolLoanPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ month?: string; loan?: string }>;
+  searchParams: Promise<{ month?: string; loan?: string; stab?: string }>;
 }) {
   const { id } = await params;
-  const { month: rawMonth, loan: rawLoan } = await searchParams;
+  const { month: rawMonth, loan: rawLoan, stab: rawStab } = await searchParams;
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
@@ -76,6 +76,8 @@ export default async function PoolLoanPage({
   // seletor: ?loan=<id> | "new" (formulário vazio p/ criar) | default = primeiro loan
   const creatingNew = rawLoan === "new" || pool.loans.length === 0;
   const loan = creatingNew ? null : (pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0]);
+  // sub-aba interna (aprovado 16/07): Statement (default) | Documentos | Termos & casas
+  const stab = rawStab === "docs" || rawStab === "terms" ? rawStab : "statement";
   const banks = await prisma.bankProfile.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
@@ -192,8 +194,80 @@ export default async function PoolLoanPage({
         </div>
       )}
 
-      {/* Documentos do financiamento (16/07): pasta por loan — o documento é a fonte */}
+      {/* KPIs sempre visíveis + sub-abas internas (aprovado 16/07) */}
+      {loan && stmt && (
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Card
+            label={
+              stmt.totalPayoffs > 0 && stmt.balance <= 0.01 ? "Saldo devido — QUITADO" : "Saldo devido"
+            }
+            value={formatMoney(stmt.balance, pool.currency)}
+            hint={
+              stmt.totalPayoffs > 0 && stmt.balance <= 0.01
+                ? `quitado em ${stmt.rows[stmt.rows.length - 1]?.date.toISOString().slice(0, 10)}${stmt.balance < -0.01 ? ` · crédito ${formatMoney(-stmt.balance, pool.currency)} volta ao caixa do pool` : ""}`
+                : loan.committed
+                  ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do comprometido sacado`
+                  : undefined
+            }
+          />
+          <Card
+            label="Juros reais lançados"
+            value={formatMoney(stmt.totalInterest, pool.currency)}
+            hint={
+              apr != null
+                ? `esperado ${formatMoney(stmt.totalExpectedInterest, pool.currency)} (APR ${apr}%)`
+                : "defina o APR para conferência"
+            }
+          />
+          <Card
+            label="Draws + fees"
+            value={formatMoney(stmt.totalDraws, pool.currency)}
+            hint={`fees ${formatMoney(stmt.totalFees, pool.currency)}`}
+          />
+          <Card
+            label="Payoffs / créditos"
+            value={formatMoney(stmt.totalPayoffs, pool.currency)}
+            hint={`créditos ${formatMoney(stmt.totalCredits, pool.currency)} · conciliado ${stmt.reconciledCount}/${stmt.rows.length}`}
+          />
+        </div>
+      )}
       {loan && (
+        <div className="flex gap-1 border-b-2 border-slate-200">
+          {(
+            [
+              ["statement", "📑 Statement", null],
+              ["docs", "📁 Documentos", loan.documents.length],
+              ["terms", "⚙ Termos & casas", null],
+            ] as Array<[string, string, number | null]>
+          ).map(([key, label, badge]) => (
+            <Link
+              key={key}
+              href={`/pools/${pool.id}/loan?loan=${loan.id}&stab=${key}`}
+              className={`-mb-0.5 rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
+                stab === key
+                  ? "border-[#1f3a5f] font-semibold text-[#1f3a5f]"
+                  : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+              }`}
+            >
+              {label}
+              {badge != null && badge > 0 && (
+                <span
+                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    loan.documents.some((d) => d.proposal != null)
+                      ? "bg-amber-100 text-amber-800"
+                      : "bg-slate-100 text-slate-500"
+                  }`}
+                >
+                  {badge}
+                </span>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      {/* Documentos do financiamento (16/07): pasta por loan — o documento é a fonte */}
+      {loan && stab === "docs" && (
         <PoolLoanDocs
           poolId={pool.id}
           loanId={loan.id}
@@ -213,6 +287,7 @@ export default async function PoolLoanPage({
         />
       )}
 
+      {(creatingNew || stab === "terms") && (
       <section className="rounded-xl border border-slate-200 bg-white p-5">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-base font-medium text-slate-800">
@@ -252,9 +327,10 @@ export default async function PoolLoanPage({
           }
         />
       </section>
+      )}
 
       {/* Casas por banco (15/07): o VHP-II tem 3 bancos — cada casa aponta p/ seu loan */}
-      {pool.loans.length > 0 && pool.houses.length > 0 && (
+      {loan && stab === "terms" && pool.houses.length > 0 && (
         <HousesByBank
           poolId={pool.id}
           houses={pool.houses.map((h) => ({
@@ -267,43 +343,8 @@ export default async function PoolLoanPage({
         />
       )}
 
-      {loan && stmt && (
+      {loan && stmt && stab === "statement" && (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Card
-              label={
-                stmt.totalPayoffs > 0 && stmt.balance <= 0.01 ? "Saldo devido — QUITADO" : "Saldo devido"
-              }
-              value={formatMoney(stmt.balance, pool.currency)}
-              hint={
-                stmt.totalPayoffs > 0 && stmt.balance <= 0.01
-                  ? `quitado em ${stmt.rows[stmt.rows.length - 1]?.date.toISOString().slice(0, 10)}${stmt.balance < -0.01 ? ` · crédito ${formatMoney(-stmt.balance, pool.currency)} volta ao caixa do pool` : ""}`
-                  : loan.committed
-                    ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do comprometido sacado`
-                    : undefined
-              }
-            />
-            <Card
-              label="Juros reais lançados"
-              value={formatMoney(stmt.totalInterest, pool.currency)}
-              hint={
-                apr != null
-                  ? `esperado ${formatMoney(stmt.totalExpectedInterest, pool.currency)} (APR ${apr}%)`
-                  : "defina o APR para conferência"
-              }
-            />
-            <Card
-              label="Draws + fees"
-              value={formatMoney(stmt.totalDraws, pool.currency)}
-              hint={`fees ${formatMoney(stmt.totalFees, pool.currency)}`}
-            />
-            <Card
-              label="Payoffs / créditos"
-              value={formatMoney(stmt.totalPayoffs, pool.currency)}
-              hint={`créditos ${formatMoney(stmt.totalCredits, pool.currency)} · conciliado ${stmt.reconciledCount}/${stmt.rows.length}`}
-            />
-          </div>
-
           {pendingPayoffs.length > 0 && (
             <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
               <p className="mb-2 text-sm text-amber-800">

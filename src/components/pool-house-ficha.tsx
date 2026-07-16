@@ -103,7 +103,8 @@ export function PoolHouseFicha({
   drawsTotal,
   coTotal,
   coCount,
-  children,
+  changeOrders,
+  dangerZone,
 }: {
   values: FichaValues;
   catalog: FichaCatalog;
@@ -113,7 +114,9 @@ export function PoolHouseFicha({
   drawsTotal: number;
   coTotal: number;
   coCount: number;
-  children?: React.ReactNode; // change orders (server-rendered, forms próprias — fora do <form>)
+  // server-rendered, com forms próprias — ficam FORA do <form> principal (abas via CSS)
+  changeOrders?: React.ReactNode;
+  dangerZone?: React.ReactNode;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateHouse.bind(null, values.id),
@@ -123,6 +126,10 @@ export function PoolHouseFicha({
   const [form, setForm] = useState(values);
   const [baseline, setBaseline] = useState(values);
   const [savedFlash, setSavedFlash] = useState(false);
+  // sub-abas (aprovado 16/07): cabeçalho + KPIs sempre visíveis; o miolo troca sem rolagem.
+  // Painéis ficam MONTADOS (CSS hidden) — edições não salvas sobrevivem à troca de aba e
+  // inputs escondidos continuam entrando no submit.
+  const [pane, setPane] = useState<"num" | "banco" | "co" | "notas">("num");
   const [statusPending, startStatus] = useTransition();
   const lastOk = useRef<number | undefined>(undefined);
 
@@ -213,9 +220,33 @@ export function PoolHouseFicha({
     });
   };
 
+  const subtab = (key: typeof pane, label: string, badge?: number) => (
+    <button
+      key={key}
+      type="button"
+      onClick={() => setPane(key)}
+      className={`-mb-0.5 rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
+        pane === key
+          ? "border-[#1f3a5f] font-semibold text-[#1f3a5f]"
+          : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+      }`}
+    >
+      {label}
+      {badge != null && badge > 0 && (
+        <span
+          className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+            pane === key ? "bg-blue-50 text-[#1f3a5f]" : "bg-slate-100 text-slate-500"
+          }`}
+        >
+          {badge}
+        </span>
+      )}
+    </button>
+  );
+
   return (
     <>
-      <form action={formAction} className="space-y-4">
+      <form id="ficha-form" action={formAction} className="space-y-4">
         {/* 1. identidade + status */}
         <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
           <Link href={`/pools/${values.poolId}?tab=houses`} className="text-xs text-slate-500 hover:text-slate-700">
@@ -365,8 +396,16 @@ export function PoolHouseFicha({
           <Kpi label="Change orders" value={(coTotal >= 0 ? "+" : "−") + fmt(Math.abs(coTotal))} sub={`${coCount} lançados`} />
         </section>
 
+        {/* sub-abas (aprovado 16/07): zero rolagem — o miolo troca, cabeçalho e KPIs ficam */}
+        <div className="flex gap-1 border-b-2 border-slate-200">
+          {subtab("num", "📊 Números")}
+          {subtab("banco", "🏦 Banco & prazos")}
+          {subtab("co", "📝 Change orders", coCount)}
+          {subtab("notas", "⋯ Notas & ações")}
+        </div>
+
         {/* 3. planejado × real × Δ — o coração da ficha */}
-        <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+        <section className={`rounded-xl border border-slate-200 bg-white px-5 py-4 ${pane === "num" ? "" : "hidden"}`}>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">Números — planejado × real</h2>
           <table className="mt-2 w-full">
             <thead>
@@ -489,7 +528,7 @@ export function PoolHouseFicha({
         </section>
 
         {/* 4/5. banco & loan + linha do tempo */}
-        <section className="grid gap-4 md:grid-cols-2">
+        <section className={`grid gap-4 md:grid-cols-2 ${pane === "banco" ? "" : "hidden"}`}>
           <div className="rounded-xl border border-slate-200 bg-white px-5 py-4">
             <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">Banco &amp; loan</h2>
             <div className="mt-3">
@@ -555,48 +594,50 @@ export function PoolHouseFicha({
         </section>
 
         {/* notas */}
-        <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+        <section className={`rounded-xl border border-slate-200 bg-white px-5 py-4 ${pane === "notas" ? "" : "hidden"}`}>
           <label htmlFor="ficha-notes" className={labelClass}>
             Notas
           </label>
           <textarea id="ficha-notes" name="notes" rows={2} value={form.notes} onChange={set("notes")} className={inputClass} />
         </section>
-
-        {/* save fixa */}
-        <div className="sticky bottom-3 z-10 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 px-5 py-3 shadow-lg backdrop-blur">
-          <span className="text-xs text-slate-400">
-            {state?.error ? (
-              <span className="text-red-600">{state.error}</span>
-            ) : savedFlash ? (
-              <span className="font-medium text-emerald-700">Salvo ✓</span>
-            ) : dirty > 0 ? (
-              `${dirty} ${dirty === 1 ? "alteração não salva" : "alterações não salvas"}`
-            ) : (
-              "tudo salvo"
-            )}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setForm(baseline)}
-              disabled={dirty === 0}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-40"
-            >
-              Descartar
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-lg bg-[#1f3a5f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#16304f] disabled:opacity-60"
-            >
-              {pending ? "Salvando…" : "Salvar casa"}
-            </button>
-          </div>
-        </div>
       </form>
 
-      {/* change orders — forms próprias do server, fora do <form> principal */}
-      {children}
+      {/* server-rendered com forms próprias — fora do <form> principal, toggle por aba */}
+      <div className={pane === "co" ? "" : "hidden"}>{changeOrders}</div>
+      <div className={pane === "notas" ? "" : "hidden"}>{dangerZone}</div>
+
+      {/* save fixa — fora do form (fim do layout); o submit aponta via form="ficha-form" */}
+      <div className="sticky bottom-3 z-10 mt-4 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 px-5 py-3 shadow-lg backdrop-blur">
+        <span className="text-xs text-slate-400">
+          {state?.error ? (
+            <span className="text-red-600">{state.error}</span>
+          ) : savedFlash ? (
+            <span className="font-medium text-emerald-700">Salvo ✓</span>
+          ) : dirty > 0 ? (
+            `${dirty} ${dirty === 1 ? "alteração não salva" : "alterações não salvas"}`
+          ) : (
+            "tudo salvo"
+          )}
+        </span>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setForm(baseline)}
+            disabled={dirty === 0}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 disabled:opacity-40"
+          >
+            Descartar
+          </button>
+          <button
+            type="submit"
+            form="ficha-form"
+            disabled={pending}
+            className="rounded-lg bg-[#1f3a5f] px-5 py-2 text-sm font-semibold text-white hover:bg-[#16304f] disabled:opacity-60"
+          >
+            {pending ? "Salvando…" : "Salvar casa"}
+          </button>
+        </div>
+      </div>
     </>
   );
 }
