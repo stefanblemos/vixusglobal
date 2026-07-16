@@ -28,9 +28,12 @@ if (process.env.VERCEL_ENV === "production") {
   // Funde a duplicada Vixus International → Vixus America ANTES do seed da PH3
   // (o seed antigo criou uma casca por não olhar aliases; no-op depois de aplicado)
   run("node scripts/fix-vai-dupe.mjs");
-  // Pool real VHP-I (PH3): investidores, aportes, casas e statement do loan 77959 —
+  // Renames 16/07: fase Vixus → "Phase - X" (PH-3/PH-4); VHP-* reservado p/ PH7+.
+  // Roda ANTES do seed-ph3 (que agora usa a chave PH-3) p/ não criar casca.
+  run("node scripts/fix-phase-renames.mjs");
+  // Pool real PH-3 (Phase - 3): investidores, aportes, casas e statement do loan 77959 —
   // create-only (nunca sobrescreve o que já foi lançado/ajustado pela tela).
-  console.log("▲ Seeding VHP-I / PH3 pool (idempotent)");
+  console.log("▲ Seeding Phase-3 pool (idempotent)");
   run("node scripts/seed-ph3.mjs");
   // Data-fixes condicionados (no-op depois de aplicados / se o usuário editou)
   run("node scripts/fix-ph3-sales-panel.mjs");

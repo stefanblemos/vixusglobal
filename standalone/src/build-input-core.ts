@@ -177,8 +177,10 @@ export type SimFields = {
   units: UnitRef[];
   overrides?: SimOverrides | null;
   vehicleStructure?: string; // VIXUS_MANAGED (default) | CLIENT_ENTITY — só rótulo/estrutura
-  // custos do veículo valem INDEPENDENTEMENTE da estrutura (16/07); true = cliente já tem
-  // entidade e não abrirá nova → custos de ABERTURA (timing FORMATION) isentos
+  // custos do veículo valem INDEPENDENTEMENTE da estrutura (16/07); true = SEM empresa
+  // nova (ex.: própria Vixus como veículo, ou entidade existente do cliente) → NENHUM
+  // custo de entidade entra na projeção — abertura, anuais, contador e encerramento são
+  // absorvidos pela estrutura existente (correção do Stefan 16/07)
   waiveFormationCost?: boolean;
 };
 
@@ -244,16 +246,16 @@ export function buildSimInputCore(
   }
   if (units.length === 0) return { error: "Add at least one house to simulate." };
 
-  // Custos do veículo: existem independentemente da estrutura (16/07) — mesmo a entidade
-  // do cliente custa para abrir/manter. Isenção só do custo de ABERTURA, e só quando o
-  // waiver está marcado (cliente já tem entidade e não abrirá nova).
-  const vehicleCostList = catalog.vehicleCosts
-    .filter((c) => !(sim.waiveFormationCost && c.timing === "FORMATION"))
-    .map((c) => ({
-      name: c.name,
-      amount: sim.overrides?.vehicleCosts?.[c.id] ?? c.amount,
-      timing: c.timing,
-    }));
+  // Custos do veículo: existem independentemente da estrutura (16/07) — abrir/manter
+  // entidade custa. Waiver marcado = SEM empresa nova → NENHUM custo de entidade na
+  // projeção (abertura, anuais, contador, encerramento absorvidos pela estrutura existente).
+  const vehicleCostList = sim.waiveFormationCost
+    ? []
+    : catalog.vehicleCosts.map((c) => ({
+        name: c.name,
+        amount: sim.overrides?.vehicleCosts?.[c.id] ?? c.amount,
+        timing: c.timing,
+      }));
   const vehicleCosts = vehicleCostList.length > 0 ? vehicleCostList : null;
 
   return {

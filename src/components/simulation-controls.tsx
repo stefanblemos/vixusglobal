@@ -345,7 +345,7 @@ export function SimulationControls({
           </div>
           <label
             className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500"
-            title="Os custos do veículo entram na projeção independentemente da estrutura. Se o veículo JÁ existe (ex.: a própria Vixus, ou entidade do cliente) e nenhuma LLC nova será aberta, o custo de abertura é isento aqui."
+            title="Sem empresa nova (ex.: a própria Vixus como veículo, ou entidade existente do cliente): NENHUM custo de entidade entra na projeção — abertura, anuais, contador e encerramento são absorvidos pela estrutura existente."
           >
             <input
               type="checkbox"
@@ -355,7 +355,7 @@ export function SimulationControls({
                 submit();
               }}
             />
-            veículo já existe (ex.: própria Vixus) — isentar custo de abertura
+            sem empresa nova — custos de entidade absorvidos pela estrutura existente
           </label>
         </div>
 

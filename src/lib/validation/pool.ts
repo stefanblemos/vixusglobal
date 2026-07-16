@@ -84,6 +84,7 @@ export const houseSchema = z.object({
   permitIssuedDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   buildStartDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   coDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
+  listedDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
 });
 

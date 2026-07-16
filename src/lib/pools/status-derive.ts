@@ -14,6 +14,7 @@ export type HouseFacts = {
   actualLotCost: unknown | null;
   buildStartDate: Date | null;
   coDate: Date | null;
+  listedDate: Date | null; // anunciada no mercado — também dispara FOR_SALE
   contractDate: Date | null;
   saleDate: Date | null;
   soldPrice: unknown | null;
@@ -37,7 +38,7 @@ export function deriveHouseStatus(
   const sold = (h.saleDate != null && (h.soldPrice != null || h.netReceived != null)) || hasPayoff;
   if (sold) return "SOLD";
   if (h.contractDate != null) return "UNDER_CONTRACT";
-  if (h.coDate != null) return "FOR_SALE";
+  if (h.coDate != null || h.listedDate != null) return "FOR_SALE";
   if (h.buildStartDate != null || drawsCredited > 0) return "UNDER_CONSTRUCTION";
   if (h.lotPaidDate != null || h.actualLotCost != null) return "LOT_PURCHASED";
   return "PLANNED";

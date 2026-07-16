@@ -321,7 +321,14 @@ export function SimulationPremissas({
 
           {vehicleCosts.length > 0 && (
             <div>
-              <h3 className="mb-1 text-sm font-semibold text-slate-700">Custos do veículo</h3>
+              <h3 className="mb-1 text-sm font-semibold text-slate-700">
+                Custos do veículo
+                {waiveFormationCost && (
+                  <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                    isentos — sem empresa nova (absorvidos pela estrutura existente)
+                  </span>
+                )}
+              </h3>
               <p className="mb-2 text-xs text-slate-400">
                 Abertura, encerramento e recorrentes da LLC do programa — fluxos datados, pagos
                 antes do waterfall. Cópia do catálogo; ajuste vale só para esta simulação.
@@ -339,11 +346,6 @@ export function SimulationPremissas({
                             : c.timing === "ANNUAL"
                               ? "anual (parcial cobra inteiro)"
                               : "mensal"}
-                        {c.timing === "FORMATION" && waiveFormationCost && (
-                          <span className="ml-1 rounded-full bg-amber-100 px-1.5 font-semibold text-amber-800">
-                            isenta (waiver)
-                          </span>
-                        )}
                       </span>
                     </label>
                     <Cell

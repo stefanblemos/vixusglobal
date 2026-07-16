@@ -56,6 +56,7 @@ export type FichaValues = {
   permitIssuedDate: string;
   buildStartDate: string;
   coDate: string;
+  listedDate: string;
   notes: string;
 };
 
@@ -582,6 +583,7 @@ export function PoolHouseFicha({
                   ["permitIssuedDate", "Permit emitido"],
                   ["buildStartDate", "Início da obra"],
                   ["coDate", "CO"],
+                  ["listedDate", "Anunciada (mercado)"],
                   ["contractDate", "Contrato de venda"],
                   ["saleDate", "Venda (closing)"],
                 ] as Array<[keyof FichaValues, string]>

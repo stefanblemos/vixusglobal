@@ -480,7 +480,9 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
   } | null;
   if (!result?.units?.length) return; // rode a simulação antes
 
-  const count = await prisma.investmentPool.count();
+  // numeração VHP conta só pools VHP-* (16/07): PH-3/PH-4 são da fase Vixus (sem empresa
+  // nova); a primeira conversão com entidade dedicada (PH7) nasce VHP-I
+  const count = await prisma.investmentPool.count({ where: { code: { startsWith: "VHP-" } } });
   const { roman } = await import("@/lib/pools/math");
   const code = `VHP-${roman(count + 1)}`;
 
@@ -525,22 +527,9 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
 
   await prisma.poolSimulation.update({ where: { id }, data: { poolId: pool.id } });
 
-  // regra do Stefan (16/07): o pool é SEMPRE iniciado pela própria Vixus — nasce com ela
-  // como MANAGER no cap table; os demais sócios entram depois, na janela de Funding
-  const vixus = await prisma.company.findFirst({
-    where: {
-      OR: [
-        { legalName: { startsWith: "Vixus America Investments" } },
-        { aliases: { has: "Vixus America Investments" } },
-      ],
-    },
-    select: { id: true },
-  });
-  if (vixus) {
-    await prisma.poolMember.create({
-      data: { poolId: pool.id, role: "MANAGER", companyId: vixus.id },
-    });
-  }
+  // Membros NÃO são semeados na conversão (correção 16/07): projetos antigos são da
+  // própria Vixus; os novos nascem com a entidade do cliente ou a aberta pelo pool —
+  // o manager certo varia por fase e é adicionado na aba Investidores.
 
   if (sim.fundingMode === "BANK" && sim.bankProfileId) {
     const loan = await prisma.poolLoan.create({

@@ -2431,9 +2431,9 @@ export function buildReportDocx(
               tr("Vehicle costs", "Custos do veículo", "Costos del vehículo"),
               d.waiveFormationCost
                 ? tr(
-                    "Annual accounting, state filings and dissolution costs of the entity are modeled explicitly as dated cash flows in the projections (Appendix A). Formation cost is waived: the group uses an existing entity — no new entity is formed for this program.",
-                    "Contabilidade anual, registros estaduais e encerramento da entidade são modelados explicitamente como fluxos datados nas projeções (Apêndice A). O custo de abertura está isento: o grupo usa entidade já existente — nenhuma entidade nova é constituída para este programa.",
-                    "La contabilidad anual, los registros estatales y la disolución de la entidad se modelan explícitamente como flujos fechados en las proyecciones (Apéndice A). El costo de constitución está exento: el grupo usa una entidad existente — no se constituye entidad nueva para este programa.",
+                    "No new entity is formed for this program — it operates through an existing structure, whose formation, accounting and administration costs are absorbed by that structure and therefore do not appear in the program projections.",
+                    "Nenhuma entidade nova é constituída para este programa — ele opera por uma estrutura já existente, cujos custos de constituição, contabilidade e administração são absorvidos por essa estrutura e, portanto, não aparecem nas projeções do programa.",
+                    "No se constituye entidad nueva para este programa — opera a través de una estructura existente, cuyos costos de constitución, contabilidad y administración son absorbidos por esa estructura y, por lo tanto, no aparecen en las proyecciones del programa.",
                   )
                 : tr(
                     "Formation, annual accounting and state filings, and dissolution costs of the vehicle are modeled explicitly as dated cash flows in the projections (Appendix A) — not omitted or footnoted. These costs apply regardless of the vehicle structure chosen.",
@@ -2447,11 +2447,17 @@ export function buildReportDocx(
         ? ([
             [
               tr("Offering / tax", "Oferta / tributação", "Oferta / impuestos"),
-              tr(
-                "No securities are offered by Vixus or 4U; interests, governance and tax elections (including K-1s) are matters of the investor entity and its advisors. Entity formation and administration costs are provisioned as dated cash flows in the program projections (see Vehicle costs above).",
-                "Nenhum valor mobiliário é ofertado pela Vixus ou pela 4U; participações, governança e eleições tributárias (incluindo K-1s) são matérias da entidade investidora e seus assessores. Custos de constituição e administração da entidade estão provisionados como fluxos datados nas projeções do programa (ver Custos do veículo acima).",
-                "Vixus y 4U no ofrecen valores; las participaciones, la gobernanza y las elecciones fiscales (incluidos los K-1) son asuntos de la entidad inversora y sus asesores. Los costos de constitución y administración de la entidad están provisionados como flujos fechados en las proyecciones del programa (ver Costos del vehículo arriba).",
-              ),
+              d.waiveFormationCost
+                ? tr(
+                    "No securities are offered by Vixus or 4U; interests, governance and tax elections (including K-1s) are matters of the investor entity and its advisors. Entity costs are absorbed by the existing structure (see Vehicle costs above).",
+                    "Nenhum valor mobiliário é ofertado pela Vixus ou pela 4U; participações, governança e eleições tributárias (incluindo K-1s) são matérias da entidade investidora e seus assessores. Os custos da entidade são absorvidos pela estrutura existente (ver Custos do veículo acima).",
+                    "Vixus y 4U no ofrecen valores; las participaciones, la gobernanza y las elecciones fiscales (incluidos los K-1) son asuntos de la entidad inversora y sus asesores. Los costos de la entidad son absorbidos por la estructura existente (ver Costos del vehículo arriba).",
+                  )
+                : tr(
+                    "No securities are offered by Vixus or 4U; interests, governance and tax elections (including K-1s) are matters of the investor entity and its advisors. Entity formation and administration costs are provisioned as dated cash flows in the program projections (see Vehicle costs above).",
+                    "Nenhum valor mobiliário é ofertado pela Vixus ou pela 4U; participações, governança e eleições tributárias (incluindo K-1s) são matérias da entidade investidora e seus assessores. Custos de constituição e administração da entidade estão provisionados como fluxos datados nas projeções do programa (ver Custos do veículo acima).",
+                    "Vixus y 4U no ofrecen valores; las participaciones, la gobernanza y las elecciones fiscales (incluidos los K-1) son asuntos de la entidad inversora y sus asesores. Los costos de constitución y administración de la entidad están provisionados como flujos fechados en las proyecciones del programa (ver Costos del vehículo arriba).",
+                  ),
             ],
             [
               tr("Reporting", "Relatórios", "Informes"),

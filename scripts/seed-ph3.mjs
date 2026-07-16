@@ -91,11 +91,14 @@ async function findOrCreateCompany(inv) {
 
 async function main() {
   // 1. Pool
+  // 16/07: fase Vixus (sem empresa nova) → code PH-3 / nome "Phase - 3"; VHP-* fica
+  // reservado p/ as entidades dedicadas a partir da PH7. O fix-phase-renames roda ANTES
+  // deste seed no build. Status NÃO é gerenciado aqui — é derivado dos fatos.
   const pool = await prisma.investmentPool.upsert({
-    where: { code: "VHP-I" },
+    where: { code: "PH-3" },
     create: {
-      code: "VHP-I",
-      name: "Vixus Home Partners I LLC",
+      code: "PH-3",
+      name: "Phase - 3",
       alias: "PH3",
       status: "CLOSING",
       targetAmount: 578157.57,
@@ -105,7 +108,7 @@ async function main() {
       plannedEndDate: new Date("2026-05-01"),
       notes: "Pool real (loan 77959 Builders Capital). Populado do Airtable/extrato em jul/2026.",
     },
-    update: { status: "CLOSING" },
+    update: {},
   });
 
   // limpeza de artefatos de teste (só se existirem): aporte de teste e manager de teste

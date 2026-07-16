@@ -91,6 +91,7 @@ export default async function PoolHousePage({
           permitIssuedDate: d(house.permitIssuedDate),
           buildStartDate: d(house.buildStartDate),
           coDate: d(house.coDate),
+          listedDate: d(house.listedDate),
           notes: house.notes ?? "",
         }}
         changeOrders={

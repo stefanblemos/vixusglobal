@@ -901,6 +901,8 @@ model PoolHouse {
   // Permit (16/07): a premissa existe no simulador; aqui o REALIZADO p/ o Cronograma
   permitAppliedDate DateTime? @db.Date
   permitIssuedDate  DateTime? @db.Date
+  // Anunciada no mercado (16/07): abre a fase Venda no gantt (listed → closing)
+  listedDate DateTime? @db.Date
 
   notes     String?
   createdAt DateTime @default(now())
