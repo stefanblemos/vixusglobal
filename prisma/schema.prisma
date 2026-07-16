@@ -889,6 +889,12 @@ model PoolHouse {
   contractDate    DateTime? @db.Date
   saleDate        DateTime? @db.Date
 
+  // Linha do tempo (ficha da casa): datas por passo do status — alimentam o simulado × realizado
+  lotContractDate DateTime? @db.Date
+  lotPaidDate     DateTime? @db.Date
+  buildStartDate  DateTime? @db.Date
+  coDate          DateTime? @db.Date
+
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

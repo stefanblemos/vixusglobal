@@ -16,7 +16,7 @@ import {
 } from "@/lib/validation/pool";
 import type { PoolHouseStatus, PoolStatus } from "@prisma/client";
 
-export type FormState = { error?: string } | undefined;
+export type FormState = { error?: string; ok?: number } | undefined;
 
 // ── Pool ─────────────────────────────────────────────────────
 
@@ -130,7 +130,31 @@ export async function updateHouse(
     data: { ...d, status: d.status as PoolHouseStatus },
   });
   revalidatePath(`/pools/${house.poolId}`);
-  redirect(`/pools/${house.poolId}`);
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+  // fica na ficha (save bar fixa) — ok muda a cada save p/ o client mostrar "Salvo ✓"
+  return { ok: Date.now() };
+}
+
+// Stepper da ficha: muda o status e carimba a data do passo (só se ainda vazia — editável
+// depois na Linha do tempo). Datas por passo alimentam o simulado × realizado.
+const STATUS_DATE: Partial<Record<PoolHouseStatus, "lotPaidDate" | "buildStartDate" | "coDate" | "contractDate" | "saleDate">> = {
+  LOT_PURCHASED: "lotPaidDate",
+  UNDER_CONSTRUCTION: "buildStartDate",
+  FOR_SALE: "coDate",
+  UNDER_CONTRACT: "contractDate",
+  SOLD: "saleDate",
+};
+
+export async function setHouseStatus(houseId: string, status: PoolHouseStatus): Promise<FormState> {
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house) return { error: "House not found." };
+  const dateField = STATUS_DATE[status];
+  const data: Record<string, unknown> = { status };
+  if (dateField && house[dateField] == null) data[dateField] = new Date();
+  await prisma.poolHouse.update({ where: { id: houseId }, data });
+  revalidatePath(`/pools/${house.poolId}`);
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+  return { ok: Date.now() };
 }
 
 export async function deleteHouse(formData: FormData): Promise<void> {

@@ -78,6 +78,10 @@ export const houseSchema = z.object({
   closingCost: optMoney,
   contractDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   saleDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
+  lotContractDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
+  lotPaidDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
+  buildStartDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
+  coDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   notes: z.preprocess(emptyToNull, z.string().trim().nullable()),
 });
 
