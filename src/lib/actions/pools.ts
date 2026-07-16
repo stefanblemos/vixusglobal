@@ -137,29 +137,8 @@ export async function updateHouse(
   return { ok: Date.now() };
 }
 
-// Stepper da ficha (16/07): clicar num passo carimba o FATO (a data do passo, se vazia) —
-// o status é derivado dos fatos pelo recompute. Para "voltar", apaga-se a data na Linha
-// do tempo (corrige-se o fato, não o rótulo).
-const STATUS_DATE: Partial<Record<PoolHouseStatus, "lotPaidDate" | "buildStartDate" | "coDate" | "contractDate" | "saleDate">> = {
-  LOT_PURCHASED: "lotPaidDate",
-  UNDER_CONSTRUCTION: "buildStartDate",
-  FOR_SALE: "coDate",
-  UNDER_CONTRACT: "contractDate",
-  SOLD: "saleDate",
-};
-
-export async function setHouseStatus(houseId: string, status: PoolHouseStatus): Promise<FormState> {
-  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
-  if (!house) return { error: "House not found." };
-  const dateField = STATUS_DATE[status];
-  if (dateField && house[dateField] == null)
-    await prisma.poolHouse.update({ where: { id: houseId }, data: { [dateField]: new Date() } });
-  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
-  await recomputePoolStatuses(house.poolId);
-  revalidatePath(`/pools/${house.poolId}`);
-  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
-  return { ok: Date.now() };
-}
+// Status da casa NÃO tem caminho manual (16/07): o stepper é indicador — as fases derivam
+// dos fatos (datas na Linha do tempo, draws, payoff) via recomputePoolStatuses.
 
 // Apagar casa vive na FICHA (mock 4/6 — saiu da lista p/ evitar clique acidental);
 // depois de apagar, volta para a aba Casas.

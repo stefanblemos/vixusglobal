@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { setHouseStatus, updateHouse, type FormState } from "@/lib/actions/pools";
+import { updateHouse, type FormState } from "@/lib/actions/pools";
 
 // Ficha da casa (mock UX 1/6 aprovado 16/07): identidade + stepper de status no topo,
 // KPIs, Planejado × Real × Δ lado a lado, banco e linha do tempo em cards, save fixa.
@@ -130,7 +130,6 @@ export function PoolHouseFicha({
   // Painéis ficam MONTADOS (CSS hidden) — edições não salvas sobrevivem à troca de aba e
   // inputs escondidos continuam entrando no submit.
   const [pane, setPane] = useState<"num" | "banco" | "co" | "notas">("num");
-  const [statusPending, startStatus] = useTransition();
   const lastOk = useRef<number | undefined>(undefined);
 
   // salvou → baseline vira o estado atual e mostra "Salvo ✓" por alguns segundos
@@ -210,15 +209,6 @@ export function PoolHouseFicha({
   const soldish = form.status === "UNDER_CONTRACT" || form.status === "SOLD";
 
   const statusIdx = STATUSES.findIndex(([v]) => v === form.status);
-
-  // clicar num passo carimba o FATO (data) — o status volta DERIVADO do server (16/07);
-  // sem otimismo local: se faltar o dado (ex.: Sold sem preço), o status honesto não sobe
-  const stepTo = (status: string) => {
-    startStatus(async () => {
-      await setHouseStatus(values.id, status as never);
-      router.refresh();
-    });
-  };
 
   // % de conclusão da obra pelos RECEBIMENTOS do banco (pedido A): CO emitido = 100%
   const buildPct =
@@ -347,35 +337,28 @@ export function PoolHouseFicha({
               </div>
             </div>
           </div>
-          {/* stepper — clicar CARIMBA O FATO (data do passo); o status é derivado dos fatos.
-              Voltar = apagar a data na Linha do tempo (corrige-se o fato, não o rótulo). */}
-          <div className="mt-3 flex gap-1">
+          {/* stepper — INDICADOR derivado das atividades (16/07: não é clicável). As fases
+              avançam pelos fatos: lote pago, draws, CO, contrato e venda na Linha do tempo. */}
+          <div
+            className="mt-3 flex gap-1"
+            title="Fases derivadas automaticamente: lote pago, 1º draw/início da obra, CO, contrato de venda, venda. Ajuste as datas na aba Banco & prazos (Linha do tempo)."
+          >
             {STATUSES.map(([v, l], i) => (
-              <button
+              <div
                 key={v}
-                type="button"
-                onClick={() => stepTo(v)}
-                disabled={statusPending}
-                title={
-                  i < statusIdx
-                    ? "Fase concluída — para voltar, apague a data correspondente na Linha do tempo"
-                    : i === statusIdx
-                      ? "Fase atual (derivada das atividades: lote, draws, CO, contrato, venda)"
-                      : "Clique para registrar o fato — a data do passo é carimbada e a fase avança"
-                }
-                className={`flex-1 rounded-md px-1 py-1.5 text-[10.5px] transition ${
+                className={`flex-1 rounded-md px-1 py-1.5 text-center text-[10.5px] ${
                   i === statusIdx
                     ? "bg-[#1f3a5f] font-bold text-white"
                     : i < statusIdx
-                      ? "bg-emerald-100 font-semibold text-emerald-700 hover:bg-emerald-200"
-                      : "bg-slate-100 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                      ? "bg-emerald-100 font-semibold text-emerald-700"
+                      : "bg-slate-100 text-slate-400"
                 }`}
               >
                 {l}
                 {v === "UNDER_CONSTRUCTION" && statusIdx === i && buildPct != null && (
                   <b> · {buildPct}%</b>
                 )}
-              </button>
+              </div>
             ))}
           </div>
         </section>
