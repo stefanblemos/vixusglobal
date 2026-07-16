@@ -30,6 +30,7 @@ const data = assembleReportData(
     vehicleStructure: "VIXUS_MANAGED",
     clientEntityName: null,
     vehicleEntityName: "VHP VII LLC",
+    waiveFormationCost: false,
     compMode: runs[0].input.compMode,
     perfPct: runs[0].input.perfPct * 100,
     perfTiming: runs[0].input.perfTiming,
