@@ -1400,6 +1400,9 @@ model PoolSimulation {
   // 506(b)); CLIENT_ENTITY = entidade própria do grupo (Vixus = Development Manager)
   vehicleStructure SimVehicleStructure @default(VIXUS_MANAGED)
   clientEntityName String? // nome/tipo da entidade do cliente (caso CLIENT_ENTITY)
+  // Waiver do custo de abertura (16/07): custos do veículo valem independentemente da
+  // estrutura; se o cliente JÁ tem entidade e não abrirá nova, a isenção é explícita aqui
+  waiveFormationCost Boolean @default(false)
 
   units  Json // [{ locationId, modelId }]
   result Json? // snapshot: { kpis, events[], monthly[], units[] }

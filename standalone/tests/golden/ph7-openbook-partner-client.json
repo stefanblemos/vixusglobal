@@ -40,8 +40,8 @@
   "unitGapDays": 20,
   "scenario": {
    "salePriceBufferPct": 0,
-   "constructionCostBufferPct": 2,
-   "lotCostBufferPct": 0,
+   "constructionCostBufferPct": 0,
+   "lotCostBufferPct": 1,
    "closingFeePct": 9.5,
    "contingencyReservePct": 0,
    "landAcquisitionDays": 15,
@@ -58,31 +58,52 @@
     "locationName": "Rolling Hills",
     "modelName": "Stonegate Ranch - G3",
     "permitDays": 45,
-    "lotLeadDays": 60,
-    "saleDays": 60,
+    "lotLeadDays": 40,
+    "saleDays": 35,
     "buildMonths": 5,
     "costPerformance": 395000,
-    "costContractor": 335000,
+    "costContractor": 350000,
     "costOpenBook": 315000,
-    "contractorFee": 50000,
-    "lotCost": 75000,
+    "contractorFee": 45000,
+    "lotCost": 72000,
     "salePrice": 615000
    }
   ],
-  "vehicleCosts": null
+  "vehicleCosts": [
+   {
+    "name": "Abertura da LLC",
+    "amount": 650,
+    "timing": "FORMATION"
+   },
+   {
+    "name": "Encerramento da LLC",
+    "amount": 500,
+    "timing": "DISSOLUTION"
+   },
+   {
+    "name": "Contador — IR anual",
+    "amount": 1200,
+    "timing": "ANNUAL"
+   },
+   {
+    "name": "Annual report (FL)",
+    "amount": 350,
+    "timing": "ANNUAL"
+   }
+  ]
  },
  "expected": {
   "kpis": {
-   "totalInvested": 426900,
-   "totalReturned": 550597.56,
-   "profit": 123697.56,
-   "irrAnnual": 0.5656832608462046,
-   "irrMonthly": 0.03806685801959708,
-   "equityMultiple": 1.29,
-   "peakCapital": 426900,
-   "durationDays": 375,
+   "totalInvested": 418370,
+   "totalReturned": 549382.02,
+   "profit": 131012.02,
+   "irrAnnual": 0.7227436991760037,
+   "irrMonthly": 0.04636946066667158,
+   "equityMultiple": 1.31,
+   "peakCapital": 418370,
+   "durationDays": 330,
    "perfFeeTotal": 0,
-   "promoteTotal": 5977.44,
+   "promoteTotal": 5142.98,
    "contractorFeeTotal": 30000,
    "bankCommitted": 0,
    "bankUpfrontFees": 0,
@@ -92,123 +113,153 @@
    "bankReserveUnused": 0,
    "bankExtensionFee": 0,
    "cashToClosing": 0,
-   "equityGateAmount": 42690,
+   "equityGateAmount": 41772,
    "loanClosingDay": null,
-   "vehicleCostTotal": 0
+   "vehicleCostTotal": 2700
   },
   "events": [
    {
-    "day": 60,
+    "day": 0,
     "kind": "INJECTION",
-    "amount": 3750,
-    "cash": 3750
+    "amount": 650,
+    "cash": 650
    },
    {
-    "day": 60,
+    "day": 0,
+    "kind": "VEHICLE",
+    "amount": -650,
+    "cash": 0
+   },
+   {
+    "day": 40,
+    "kind": "INJECTION",
+    "amount": 3636,
+    "cash": 3636
+   },
+   {
+    "day": 40,
     "kind": "LOT",
-    "amount": -3750,
+    "amount": -3636,
     "cash": 0
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "INJECTION",
-    "amount": 35190,
-    "cash": 35190
+    "amount": 34500,
+    "cash": 34500
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "PHASE",
-    "amount": -35190,
+    "amount": -34500,
     "cash": 0
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "INJECTION",
-    "amount": 71250,
-    "cash": 71250
+    "amount": 69084,
+    "cash": 69084
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "LOT",
-    "amount": -71250,
+    "amount": -69084,
     "cash": 0
    },
    {
-    "day": 121,
+    "day": 101,
     "kind": "INJECTION",
-    "amount": 35190,
-    "cash": 35190
+    "amount": 34500,
+    "cash": 34500
    },
    {
-    "day": 121,
+    "day": 101,
     "kind": "PHASE",
-    "amount": -35190,
+    "amount": -34500,
     "cash": 0
    },
    {
-    "day": 180,
+    "day": 160,
     "kind": "INJECTION",
-    "amount": 87975,
-    "cash": 87975
+    "amount": 86250,
+    "cash": 86250
    },
    {
-    "day": 180,
+    "day": 160,
     "kind": "PHASE",
-    "amount": -87975,
+    "amount": -86250,
     "cash": 0
    },
    {
-    "day": 210,
+    "day": 190,
     "kind": "INJECTION",
-    "amount": 87975,
-    "cash": 87975
+    "amount": 86250,
+    "cash": 86250
    },
    {
-    "day": 210,
+    "day": 190,
     "kind": "PHASE",
-    "amount": -87975,
+    "amount": -86250,
     "cash": 0
    },
    {
-    "day": 240,
+    "day": 220,
     "kind": "INJECTION",
-    "amount": 87975,
-    "cash": 87975
+    "amount": 86250,
+    "cash": 86250
    },
    {
-    "day": 240,
+    "day": 220,
     "kind": "PHASE",
-    "amount": -87975,
+    "amount": -86250,
     "cash": 0
    },
    {
-    "day": 280,
+    "day": 260,
     "kind": "INJECTION",
-    "amount": 17595,
-    "cash": 17595
+    "amount": 17250,
+    "cash": 17250
    },
    {
-    "day": 280,
+    "day": 260,
     "kind": "PHASE",
-    "amount": -17595,
+    "amount": -17250,
     "cash": 0
    },
    {
-    "day": 375,
+    "day": 330,
     "kind": "SALE",
     "amount": 556575,
     "cash": 556575
    },
    {
-    "day": 375,
+    "day": 330,
     "kind": "RETURN",
-    "amount": -550597.56,
+    "amount": -549382.02,
+    "cash": 2050
+   },
+   {
+    "day": 330,
+    "kind": "VEHICLE",
+    "amount": -350,
+    "cash": 1700
+   },
+   {
+    "day": 330,
+    "kind": "VEHICLE",
+    "amount": -500,
+    "cash": 1200
+   },
+   {
+    "day": 330,
+    "kind": "VEHICLE",
+    "amount": -1200,
     "cash": 0
    },
    {
-    "day": 375,
+    "day": 330,
     "kind": "PERF_FEE",
-    "amount": -5977.44,
+    "amount": -5142.98,
     "cash": 0
    }
   ]

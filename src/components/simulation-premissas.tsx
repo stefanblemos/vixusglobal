@@ -129,6 +129,7 @@ export function SimulationPremissas({
   scenarios,
   vehicleCosts,
   overrides,
+  waiveFormationCost = false,
 }: {
   simulationId: string;
   scenarioName: string;
@@ -138,6 +139,7 @@ export function SimulationPremissas({
   scenarios: PremissasScenario[];
   vehicleCosts: PremissasVehicleCost[];
   overrides: Overrides | null;
+  waiveFormationCost?: boolean; // abertura isenta (setting da simulação — cliente já tem entidade)
 }) {
   // estado inicial: override ?? catálogo (cópia editável)
   const initial = useMemo(() => {
@@ -337,6 +339,11 @@ export function SimulationPremissas({
                             : c.timing === "ANNUAL"
                               ? "anual (parcial cobra inteiro)"
                               : "mensal"}
+                        {c.timing === "FORMATION" && waiveFormationCost && (
+                          <span className="ml-1 rounded-full bg-amber-100 px-1.5 font-semibold text-amber-800">
+                            isenta (waiver)
+                          </span>
+                        )}
                       </span>
                     </label>
                     <Cell

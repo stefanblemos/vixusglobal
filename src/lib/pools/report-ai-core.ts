@@ -104,7 +104,7 @@ export function groundingOf(d: ReportData) {
                   homesInProduction: d.trackRecord.execution.inProductionNow,
                 }
               : null,
-            note: "IRR figures are ESTIMATES applying the actual client payment schedule to real project dates — never call them realized IRRs. The return sample is a REPRESENTATIVE SAMPLE drawn from the Builder's complete project records (recent window by design) — never imply older projects lack records.",
+            note: "IRR figures are ESTIMATES applying the actual client payment schedule to real project dates — never call them realized IRRs. The return sample is a REPRESENTATIVE SAMPLE drawn from the Builder's complete project records (recent window by design) — never imply older projects lack records. This track record belongs to 4U Custom Homes (the Builder) — NEVER attribute the delivery history to the investment vehicle, the client's entity, or the project itself.",
           }
         : null,
     breakevenSalePriceDropPct: d.breakevenPriceDropPct, // null = >60% (vs Expected Case)

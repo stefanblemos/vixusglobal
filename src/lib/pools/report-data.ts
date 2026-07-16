@@ -31,6 +31,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
     vehicleStructure: sim.vehicleStructure,
+    waiveFormationCost: sim.waiveFormationCost,
   };
 
   const allScenarios = await prisma.bufferScenario.findMany({
@@ -71,6 +72,7 @@ export async function buildReportData(simulationId: string): Promise<ReportData 
       vehicleStructure: sim.vehicleStructure,
       clientEntityName: sim.clientEntityName ?? null,
       vehicleEntityName: sim.vehicleEntityName ?? null,
+      waiveFormationCost: sim.waiveFormationCost,
       compMode: sim.compMode,
       perfPct: Number(sim.perfPct ?? 0),
       perfTiming: sim.perfTiming,

@@ -70,10 +70,9 @@ export async function buildSimInput(sim: SimFields): Promise<SimInput | { error:
     });
   }
 
-  const vehicleCostRows =
-    (sim.vehicleStructure ?? "VIXUS_MANAGED") === "VIXUS_MANAGED"
-      ? await prisma.catalogVehicleCost.findMany({ orderBy: { sortOrder: "asc" } })
-      : [];
+  // custos do veículo valem independentemente da estrutura (16/07) — o core filtra a
+  // abertura quando o waiver está marcado (cliente já tem entidade)
+  const vehicleCostRows = await prisma.catalogVehicleCost.findMany({ orderBy: { sortOrder: "asc" } });
 
   const bank: CatalogBankData | null = bankRow
     ? {

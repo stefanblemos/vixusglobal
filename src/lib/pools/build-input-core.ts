@@ -176,7 +176,10 @@ export type SimFields = {
   bankProfileId: string | null;
   units: UnitRef[];
   overrides?: SimOverrides | null;
-  vehicleStructure?: string; // VIXUS_MANAGED (default) carrega os custos do veículo
+  vehicleStructure?: string; // VIXUS_MANAGED (default) | CLIENT_ENTITY — só rótulo/estrutura
+  // custos do veículo valem INDEPENDENTEMENTE da estrutura (16/07); true = cliente já tem
+  // entidade e não abrirá nova → custos de ABERTURA (timing FORMATION) isentos
+  waiveFormationCost?: boolean;
 };
 
 // Monta o SimInput a partir dos dados de catálogo fornecidos. Mesmas regras e mensagens
@@ -241,15 +244,17 @@ export function buildSimInputCore(
   }
   if (units.length === 0) return { error: "Add at least one house to simulate." };
 
-  // Custos do veículo: só quando a LLC é da Vixus; entidade do cliente arca fora do programa
-  const vehicleCosts =
-    (sim.vehicleStructure ?? "VIXUS_MANAGED") === "VIXUS_MANAGED"
-      ? catalog.vehicleCosts.map((c) => ({
-          name: c.name,
-          amount: sim.overrides?.vehicleCosts?.[c.id] ?? c.amount,
-          timing: c.timing,
-        }))
-      : null;
+  // Custos do veículo: existem independentemente da estrutura (16/07) — mesmo a entidade
+  // do cliente custa para abrir/manter. Isenção só do custo de ABERTURA, e só quando o
+  // waiver está marcado (cliente já tem entidade e não abrirá nova).
+  const vehicleCostList = catalog.vehicleCosts
+    .filter((c) => !(sim.waiveFormationCost && c.timing === "FORMATION"))
+    .map((c) => ({
+      name: c.name,
+      amount: sim.overrides?.vehicleCosts?.[c.id] ?? c.amount,
+      timing: c.timing,
+    }));
+  const vehicleCosts = vehicleCostList.length > 0 ? vehicleCostList : null;
 
   return {
     fundingMode: sim.fundingMode as "EQUITY" | "BANK",

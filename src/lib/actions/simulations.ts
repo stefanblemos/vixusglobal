@@ -141,6 +141,10 @@ export async function updateSimulationSettings(
     formData.get("clientEntityName") != null
       ? String(formData.get("clientEntityName")).trim() || null
       : sim.clientEntityName;
+  // waiver do custo de abertura: checkbox só existe no form quando CLIENT_ENTITY —
+  // ausente = false (voltar p/ VIXUS_MANAGED limpa o waiver, que perde o sentido)
+  const waiveFormationCost =
+    vehicleStructure === "CLIENT_ENTITY" && String(formData.get("waiveFormationCost") ?? "") === "on";
   // nome do projeto (renomeável — 15/07) e nome da LLC dedicada (capa do report)
   const newName =
     formData.get("name") != null ? String(formData.get("name")).trim() || sim.name : sim.name;
@@ -174,6 +178,7 @@ export async function updateSimulationSettings(
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
     vehicleStructure,
+    waiveFormationCost,
   };
   const input = await buildSimInput(fields);
   if ("error" in input) return { error: input.error };
@@ -194,6 +199,7 @@ export async function updateSimulationSettings(
       vehicleStructure,
       clientEntityName: vehicleStructure === "CLIENT_ENTITY" ? clientEntityName : null,
       vehicleEntityName: vehicleStructure === "VIXUS_MANAGED" ? vehicleEntityName : null,
+      waiveFormationCost,
       promoteTiers: promoteTiers ?? Prisma.DbNull,
       result: JSON.parse(JSON.stringify(result)),
     },
@@ -232,6 +238,7 @@ export async function updateSimulationUnits(
     units,
     overrides: (sim.overrides as SimOverrides | null) ?? null,
     vehicleStructure: sim.vehicleStructure,
+    waiveFormationCost: sim.waiveFormationCost,
   });
   if ("error" in input) return { error: input.error };
   const result = simulate(input);
@@ -413,6 +420,7 @@ export async function duplicateSimulation(formData: FormData): Promise<void> {
       scenarioCode: sim.scenarioCode,
       bankProfileId: sim.bankProfileId,
       vehicleStructure: sim.vehicleStructure,
+      waiveFormationCost: sim.waiveFormationCost,
       clientEntityName: sim.clientEntityName,
       units: (sim.units as object[]) ?? [],
       overrides: sim.overrides ?? undefined,
@@ -445,6 +453,7 @@ export async function rerunSimulation(formData: FormData): Promise<void> {
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
     vehicleStructure: sim.vehicleStructure,
+    waiveFormationCost: sim.waiveFormationCost,
   });
   if ("error" in input) return;
   const result = simulate(input);
@@ -569,6 +578,7 @@ function simFields(sim: {
   units: unknown;
   overrides?: unknown;
   vehicleStructure: string;
+  waiveFormationCost: boolean;
 }) {
   return {
     upfrontFunding: sim.upfrontFunding,
@@ -584,6 +594,7 @@ function simFields(sim: {
     units: (sim.units as UnitRef[]) ?? [],
     overrides: (sim.overrides as SimOverrides | null) ?? null,
     vehicleStructure: sim.vehicleStructure,
+    waiveFormationCost: sim.waiveFormationCost,
   };
 }
 

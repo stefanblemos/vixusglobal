@@ -594,16 +594,16 @@ export default async function SimulationPage({
           combos={premissasCombos}
           scenarios={premissasScenarios}
           vehicleCosts={
-            sim.vehicleStructure === "VIXUS_MANAGED"
-              ? catalogVehicleCosts.map((c) => ({
-                  id: c.id,
-                  name: c.name,
-                  timing: c.timing,
-                  catalogAmount: Number(c.amount),
-                }))
-              : []
+            // custos do veículo valem independentemente da estrutura (16/07)
+            catalogVehicleCosts.map((c) => ({
+              id: c.id,
+              name: c.name,
+              timing: c.timing,
+              catalogAmount: Number(c.amount),
+            }))
           }
           overrides={simOverrides}
+          waiveFormationCost={sim.waiveFormationCost}
         />
       )}
 
@@ -638,6 +638,7 @@ export default async function SimulationPage({
           upfrontFunding: sim.upfrontFunding,
           vehicleStructure: sim.vehicleStructure,
           clientEntityName: sim.clientEntityName,
+          waiveFormationCost: sim.waiveFormationCost,
           promoteTiers:
             (sim.promoteTiers as Array<{ hurdlePct: number | null; promotePct: number }> | null) ??
             null,

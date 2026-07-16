@@ -58,14 +58,14 @@
     "locationName": "Rolling Hills",
     "modelName": "Stonegate Ranch - G3",
     "permitDays": 45,
-    "lotLeadDays": 60,
-    "saleDays": 60,
+    "lotLeadDays": 40,
+    "saleDays": 35,
     "buildMonths": 5,
     "costPerformance": 395000,
-    "costContractor": 335000,
+    "costContractor": 350000,
     "costOpenBook": 315000,
-    "contractorFee": 50000,
-    "lotCost": 75000,
+    "contractorFee": 45000,
+    "lotCost": 72000,
     "salePrice": 615000
    }
   ],
@@ -94,17 +94,17 @@
  },
  "expected": {
   "kpis": {
-   "totalInvested": 456050,
-   "totalReturned": 589209.98,
-   "profit": 133159.98,
-   "irrAnnual": 0.6104083421092574,
-   "irrMonthly": 0.04050618867471356,
-   "equityMultiple": 1.29,
-   "peakCapital": 456050,
-   "durationDays": 345,
+   "totalInvested": 462980,
+   "totalReturned": 589937.52,
+   "profit": 126957.52,
+   "irrAnnual": 0.6796165424205466,
+   "irrMonthly": 0.044161105568459647,
+   "equityMultiple": 1.27,
+   "peakCapital": 462980,
+   "durationDays": 300,
    "perfFeeTotal": 0,
-   "promoteTotal": 6058.77,
-   "contractorFeeTotal": 50000,
+   "promoteTotal": 5331.23,
+   "contractorFeeTotal": 45000,
    "bankCommitted": 0,
    "bankUpfrontFees": 0,
    "bankInterestTotal": 0,
@@ -113,7 +113,7 @@
    "bankReserveUnused": 0,
    "bankExtensionFee": 0,
    "cashToClosing": 0,
-   "equityGateAmount": 45540,
+   "equityGateAmount": 46233,
    "loanClosingDay": null,
    "vehicleCostTotal": 2700
   },
@@ -131,135 +131,135 @@
     "cash": 0
    },
    {
-    "day": 60,
+    "day": 40,
     "kind": "INJECTION",
-    "amount": 3712.5,
-    "cash": 3712.5
+    "amount": 3564,
+    "cash": 3564
    },
    {
-    "day": 60,
+    "day": 40,
     "kind": "LOT",
-    "amount": -3712.5,
+    "amount": -3564,
     "cash": 0
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "INJECTION",
-    "amount": 38115,
-    "cash": 38115
+    "amount": 39105,
+    "cash": 39105
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "PHASE",
-    "amount": -38115,
+    "amount": -39105,
     "cash": 0
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "INJECTION",
-    "amount": 70537.5,
-    "cash": 70537.5
+    "amount": 67716,
+    "cash": 67716
    },
    {
-    "day": 75,
+    "day": 55,
     "kind": "LOT",
-    "amount": -70537.5,
+    "amount": -67716,
     "cash": 0
    },
    {
-    "day": 121,
+    "day": 101,
     "kind": "INJECTION",
-    "amount": 114345,
-    "cash": 114345
+    "amount": 117315,
+    "cash": 117315
    },
    {
-    "day": 121,
+    "day": 101,
     "kind": "PHASE",
-    "amount": -114345,
+    "amount": -117315,
     "cash": 0
    },
    {
-    "day": 174,
+    "day": 154,
     "kind": "INJECTION",
-    "amount": 76230,
-    "cash": 76230
+    "amount": 78210,
+    "cash": 78210
    },
    {
-    "day": 174,
+    "day": 154,
     "kind": "PHASE",
-    "amount": -76230,
+    "amount": -78210,
     "cash": 0
    },
    {
-    "day": 201,
+    "day": 181,
     "kind": "INJECTION",
-    "amount": 76230,
-    "cash": 76230
+    "amount": 78210,
+    "cash": 78210
    },
    {
-    "day": 201,
+    "day": 181,
     "kind": "PHASE",
-    "amount": -76230,
+    "amount": -78210,
     "cash": 0
    },
    {
-    "day": 228,
+    "day": 208,
     "kind": "INJECTION",
-    "amount": 57172.5,
-    "cash": 57172.5
+    "amount": 58657.5,
+    "cash": 58657.5
    },
    {
-    "day": 228,
+    "day": 208,
     "kind": "PHASE",
-    "amount": -57172.5,
+    "amount": -58657.5,
     "cash": 0
    },
    {
-    "day": 265,
+    "day": 245,
     "kind": "INJECTION",
-    "amount": 19057.5,
-    "cash": 19057.5
+    "amount": 19552.5,
+    "cash": 19552.5
    },
    {
-    "day": 265,
+    "day": 245,
     "kind": "PHASE",
-    "amount": -19057.5,
+    "amount": -19552.5,
     "cash": 0
    },
    {
-    "day": 345,
+    "day": 300,
     "kind": "SALE",
     "amount": 597318.75,
     "cash": 597318.75
    },
    {
-    "day": 345,
+    "day": 300,
     "kind": "RETURN",
-    "amount": -589209.98,
+    "amount": -589937.52,
     "cash": 2050
    },
    {
-    "day": 345,
+    "day": 300,
     "kind": "VEHICLE",
     "amount": -350,
     "cash": 1700
    },
    {
-    "day": 345,
+    "day": 300,
     "kind": "VEHICLE",
     "amount": -500,
     "cash": 1200
    },
    {
-    "day": 345,
+    "day": 300,
     "kind": "VEHICLE",
     "amount": -1200,
     "cash": 0
    },
    {
-    "day": 345,
+    "day": 300,
     "kind": "PERF_FEE",
-    "amount": -6058.77,
+    "amount": -5331.23,
     "cash": 0
    }
   ]

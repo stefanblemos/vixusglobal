@@ -70,6 +70,7 @@ export function SimulationControls({
     upfrontFunding: boolean;
     vehicleStructure: string;
     clientEntityName: string | null;
+    waiveFormationCost: boolean;
     promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
   };
   scenarios: Array<{ code: string; name: string }>;
@@ -91,6 +92,8 @@ export function SimulationControls({
   const [paymentPlan, setPaymentPlan] = useState(sim.paymentPlan);
   const [vehicle, setVehicle] = useState(sim.vehicleStructure ?? "VIXUS_MANAGED");
   const [entityName, setEntityName] = useState(sim.clientEntityName ?? "");
+  // waiver do custo de abertura — só faz sentido quando o cliente JÁ tem a entidade
+  const [waive, setWaive] = useState(sim.waiveFormationCost);
   // nome do projeto (renomeável) + LLC dedicada (capa do report) — 15/07
   const [projName, setProjName] = useState(sim.name);
   const [vehEntity, setVehEntity] = useState(sim.vehicleEntityName ?? "");
@@ -154,6 +157,7 @@ export function SimulationControls({
         <input type="hidden" name="vehicleStructure" value={vehicle} />
         <input type="hidden" name="clientEntityName" value={entityName} />
         <input type="hidden" name="vehicleEntityName" value={vehEntity} />
+        <input type="hidden" name="waiveFormationCost" value={waive ? "on" : ""} />
 
         <div>
           <span className={labelClass}>Nome do projeto</span>
@@ -339,6 +343,22 @@ export function SimulationControls({
               />
             )}
           </div>
+          {vehicle === "CLIENT_ENTITY" && (
+            <label
+              className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500"
+              title="Os custos do veículo entram na projeção independentemente da estrutura. Se o grupo usar uma entidade que JÁ existe (não abrirá nova), o custo de abertura é isento aqui."
+            >
+              <input
+                type="checkbox"
+                checked={waive}
+                onChange={(e) => {
+                  setWaive(e.target.checked);
+                  submit();
+                }}
+              />
+              entidade já existe — isentar custo de abertura (waiver)
+            </label>
+          )}
         </div>
 
         <div>

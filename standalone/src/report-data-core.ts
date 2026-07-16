@@ -41,6 +41,7 @@ export type ReportData = {
   vehicleStructure: "VIXUS_MANAGED" | "CLIENT_ENTITY";
   clientEntityName: string | null;
   vehicleEntityName: string | null; // LLC dedicada (capa); null = "to be formed"
+  waiveFormationCost: boolean; // custo de abertura isento (entidade do cliente já existe)
   compMode: "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK";
   hasPromote: boolean; // promote/waterfall ativo (PROMOTE, ou qualquer modalidade com tiers)
   promoteTiers: Array<{ hurdlePct: number | null; promotePct: number }> | null;
@@ -235,6 +236,7 @@ export type ReportSimMeta = {
   vehicleStructure: string;
   clientEntityName: string | null;
   vehicleEntityName: string | null;
+  waiveFormationCost: boolean;
   compMode: string;
   perfPct: number;
   perfTiming: string;
@@ -354,6 +356,7 @@ export function assembleReportData(
     vehicleStructure: meta.vehicleStructure as "VIXUS_MANAGED" | "CLIENT_ENTITY",
     clientEntityName: meta.clientEntityName,
     vehicleEntityName: meta.vehicleEntityName,
+    waiveFormationCost: meta.waiveFormationCost,
     compMode: meta.compMode as "CONTRACTOR_FEE" | "PERFORMANCE" | "PROMOTE" | "OPEN_BOOK",
     // waterfall da Vixus: opt-in em QUALQUER modalidade (14/07) — basta ter tiers
     hasPromote: meta.compMode === "PROMOTE" || !!meta.promoteTiers?.length,

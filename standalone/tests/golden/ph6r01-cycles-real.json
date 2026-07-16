@@ -412,17 +412,38 @@
     "salePrice": 610000
    }
   ],
-  "vehicleCosts": null
+  "vehicleCosts": [
+   {
+    "name": "Abertura da LLC",
+    "amount": 650,
+    "timing": "FORMATION"
+   },
+   {
+    "name": "Encerramento da LLC",
+    "amount": 500,
+    "timing": "DISSOLUTION"
+   },
+   {
+    "name": "Contador — IR anual",
+    "amount": 1200,
+    "timing": "ANNUAL"
+   },
+   {
+    "name": "Annual report (FL)",
+    "amount": 350,
+    "timing": "ANNUAL"
+   }
+  ]
  },
  "expected": {
   "kpis": {
-   "totalInvested": 2032685,
-   "totalReturned": 2993855,
-   "profit": 961170,
-   "irrAnnual": 0.22691914460349566,
-   "irrMonthly": 0.017188235467566537,
+   "totalInvested": 2033335,
+   "totalReturned": 2988705,
+   "profit": 955370,
+   "irrAnnual": 0.22542259056750158,
+   "irrMonthly": 0.017084783332129483,
    "equityMultiple": 1.47,
-   "peakCapital": 2032685,
+   "peakCapital": 2033335,
    "durationDays": 1093,
    "perfFeeTotal": 320390,
    "promoteTotal": 0,
@@ -437,9 +458,21 @@
    "cashToClosing": 0,
    "equityGateAmount": 784480,
    "loanClosingDay": null,
-   "vehicleCostTotal": 0
+   "vehicleCostTotal": 5800
   },
   "events": [
+   {
+    "day": 0,
+    "kind": "INJECTION",
+    "amount": 650,
+    "cash": 650
+   },
+   {
+    "day": 0,
+    "kind": "VEHICLE",
+    "amount": -650,
+    "cash": 0
+   },
    {
     "day": 30,
     "kind": "INJECTION",
@@ -1151,103 +1184,115 @@
    {
     "day": 310,
     "kind": "RETURN",
-    "amount": -136251.25,
-    "cash": 177353.75
+    "amount": -134701.25,
+    "cash": 178903.75
    },
    {
     "day": 311,
     "kind": "PHASE",
     "amount": -65790,
-    "cash": 111563.75
+    "cash": 113113.75
    },
    {
     "day": 315,
     "kind": "PERF_FEE",
     "amount": -9026.25,
-    "cash": 102537.5
+    "cash": 104087.5
    },
    {
     "day": 320,
     "kind": "SALE",
     "amount": 286335,
-    "cash": 388872.5
+    "cash": 390422.5
    },
    {
     "day": 321,
     "kind": "PHASE",
     "amount": -65790,
-    "cash": 323082.5
+    "cash": 324632.5
    },
    {
     "day": 325,
     "kind": "PERF_FEE",
     "amount": -9758.75,
-    "cash": 313323.75
+    "cash": 314873.75
    },
    {
     "day": 325,
     "kind": "PHASE",
     "amount": -20145,
-    "cash": 293178.75
+    "cash": 294728.75
    },
    {
     "day": 336,
     "kind": "LOT",
     "amount": -3400,
-    "cash": 289778.75
+    "cash": 291328.75
    },
    {
     "day": 340,
     "kind": "SALE",
     "amount": 286335,
-    "cash": 576113.75
+    "cash": 577663.75
    },
    {
     "day": 341,
     "kind": "PHASE",
     "amount": -65790,
-    "cash": 510323.75
+    "cash": 511873.75
    },
    {
     "day": 345,
     "kind": "PERF_FEE",
     "amount": -9758.75,
-    "cash": 500565
+    "cash": 502115
    },
    {
     "day": 345,
     "kind": "PHASE",
     "amount": -20145,
-    "cash": 480420
+    "cash": 481970
    },
    {
     "day": 349,
     "kind": "PHASE",
     "amount": -45900,
-    "cash": 434520
+    "cash": 436070
    },
    {
     "day": 351,
     "kind": "PHASE",
     "amount": -40290,
-    "cash": 394230
+    "cash": 395780
    },
    {
     "day": 351,
     "kind": "LOT",
     "amount": -64600,
-    "cash": 329630
+    "cash": 331180
    },
    {
     "day": 356,
     "kind": "LOT",
     "amount": -3400,
-    "cash": 326230
+    "cash": 327780
    },
    {
     "day": 359,
     "kind": "PHASE",
     "amount": -43860,
+    "cash": 283920
+   },
+   {
+    "day": 365,
+    "kind": "VEHICLE",
+    "amount": -350,
+    "cash": 283570
+   },
+   {
+    "day": 365,
+    "kind": "VEHICLE",
+    "amount": -1200,
     "cash": 282370
    },
    {
@@ -1691,205 +1736,217 @@
    {
     "day": 616,
     "kind": "RETURN",
-    "amount": -174502.5,
-    "cash": 379987.5
+    "amount": -172952.5,
+    "cash": 381537.5
    },
    {
     "day": 617,
     "kind": "PHASE",
     "amount": -120870,
-    "cash": 259117.5
+    "cash": 260667.5
    },
    {
     "day": 621,
     "kind": "PERF_FEE",
     "amount": -20897.5,
-    "cash": 238220
+    "cash": 239770
    },
    {
     "day": 623,
     "kind": "PHASE",
     "amount": -32895,
-    "cash": 205325
+    "cash": 206875
    },
    {
     "day": 633,
     "kind": "PHASE",
     "amount": -32895,
-    "cash": 172430
+    "cash": 173980
    },
    {
     "day": 636,
     "kind": "SALE",
     "amount": 554490,
-    "cash": 726920
+    "cash": 728470
    },
    {
     "day": 637,
     "kind": "PHASE",
     "amount": -11475,
-    "cash": 715445
+    "cash": 716995
    },
    {
     "day": 637,
     "kind": "PHASE",
     "amount": -120870,
-    "cash": 594575
+    "cash": 596125
    },
    {
     "day": 641,
     "kind": "PERF_FEE",
     "amount": -20897.5,
-    "cash": 573677.5
+    "cash": 575227.5
    },
    {
     "day": 647,
     "kind": "PHASE",
     "amount": -10965,
-    "cash": 562712.5
+    "cash": 564262.5
    },
    {
     "day": 657,
     "kind": "PHASE",
     "amount": -10965,
-    "cash": 551747.5
+    "cash": 553297.5
    },
    {
     "day": 658,
     "kind": "LOT",
     "amount": -2400,
-    "cash": 549347.5
+    "cash": 550897.5
    },
    {
     "day": 667,
     "kind": "PHASE",
     "amount": -10965,
-    "cash": 538382.5
+    "cash": 539932.5
    },
    {
     "day": 668,
     "kind": "LOT",
     "amount": -1400,
-    "cash": 536982.5
+    "cash": 538532.5
    },
    {
     "day": 673,
     "kind": "PHASE",
     "amount": -22950,
-    "cash": 514032.5
+    "cash": 515582.5
    },
    {
     "day": 673,
     "kind": "LOT",
     "amount": -45600,
-    "cash": 468432.5
+    "cash": 469982.5
    },
    {
     "day": 677,
     "kind": "PHASE",
     "amount": -80580,
-    "cash": 387852.5
+    "cash": 389402.5
    },
    {
     "day": 678,
     "kind": "LOT",
     "amount": -1400,
-    "cash": 386452.5
+    "cash": 388002.5
    },
    {
     "day": 678,
     "kind": "LOT",
     "amount": -1400,
-    "cash": 385052.5
+    "cash": 386602.5
    },
    {
     "day": 683,
     "kind": "PHASE",
     "amount": -21930,
-    "cash": 363122.5
+    "cash": 364672.5
    },
    {
     "day": 683,
     "kind": "LOT",
     "amount": -26600,
-    "cash": 336522.5
+    "cash": 338072.5
    },
    {
     "day": 693,
     "kind": "PHASE",
     "amount": -21930,
-    "cash": 314592.5
+    "cash": 316142.5
    },
    {
     "day": 693,
     "kind": "PHASE",
     "amount": -21930,
-    "cash": 292662.5
+    "cash": 294212.5
    },
    {
     "day": 693,
     "kind": "LOT",
     "amount": -26600,
-    "cash": 266062.5
+    "cash": 267612.5
    },
    {
     "day": 693,
     "kind": "LOT",
     "amount": -26600,
-    "cash": 239462.5
+    "cash": 241012.5
    },
    {
     "day": 697,
     "kind": "PHASE",
     "amount": -80580,
-    "cash": 158882.5
+    "cash": 160432.5
    },
    {
     "day": 707,
     "kind": "PHASE",
     "amount": -80580,
-    "cash": 78302.5
+    "cash": 79852.5
    },
    {
     "day": 712,
     "kind": "SALE",
     "amount": 286335,
-    "cash": 364637.5
+    "cash": 366187.5
    },
    {
     "day": 713,
     "kind": "PHASE",
     "amount": -68850,
-    "cash": 295787.5
+    "cash": 297337.5
    },
    {
     "day": 717,
     "kind": "PERF_FEE",
     "amount": -9758.75,
-    "cash": 286028.75
+    "cash": 287578.75
    },
    {
     "day": 722,
     "kind": "SALE",
     "amount": 286335,
-    "cash": 572363.75
+    "cash": 573913.75
    },
    {
     "day": 723,
     "kind": "PHASE",
     "amount": -65790,
-    "cash": 506573.75
+    "cash": 508123.75
    },
    {
     "day": 727,
     "kind": "PERF_FEE",
     "amount": -9758.75,
-    "cash": 496815
+    "cash": 498365
    },
    {
     "day": 727,
     "kind": "PHASE",
     "amount": -80580,
+    "cash": 417785
+   },
+   {
+    "day": 730,
+    "kind": "VEHICLE",
+    "amount": -350,
+    "cash": 417435
+   },
+   {
+    "day": 730,
+    "kind": "VEHICLE",
+    "amount": -1200,
     "cash": 416235
    },
    {
@@ -2279,7 +2336,25 @@
    {
     "day": 1088,
     "kind": "RETURN",
-    "amount": -533592.5,
+    "amount": -531542.5,
+    "cash": 22947.5
+   },
+   {
+    "day": 1093,
+    "kind": "VEHICLE",
+    "amount": -350,
+    "cash": 22597.5
+   },
+   {
+    "day": 1093,
+    "kind": "VEHICLE",
+    "amount": -500,
+    "cash": 22097.5
+   },
+   {
+    "day": 1093,
+    "kind": "VEHICLE",
+    "amount": -1200,
     "cash": 20897.5
    },
    {
