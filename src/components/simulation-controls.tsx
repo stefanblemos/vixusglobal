@@ -343,22 +343,20 @@ export function SimulationControls({
               />
             )}
           </div>
-          {vehicle === "CLIENT_ENTITY" && (
-            <label
-              className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500"
-              title="Os custos do veículo entram na projeção independentemente da estrutura. Se o grupo usar uma entidade que JÁ existe (não abrirá nova), o custo de abertura é isento aqui."
-            >
-              <input
-                type="checkbox"
-                checked={waive}
-                onChange={(e) => {
-                  setWaive(e.target.checked);
-                  submit();
-                }}
-              />
-              entidade já existe — isentar custo de abertura (waiver)
-            </label>
-          )}
+          <label
+            className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-500"
+            title="Os custos do veículo entram na projeção independentemente da estrutura. Se o veículo JÁ existe (ex.: a própria Vixus, ou entidade do cliente) e nenhuma LLC nova será aberta, o custo de abertura é isento aqui."
+          >
+            <input
+              type="checkbox"
+              checked={waive}
+              onChange={(e) => {
+                setWaive(e.target.checked);
+                submit();
+              }}
+            />
+            veículo já existe (ex.: própria Vixus) — isentar custo de abertura
+          </label>
         </div>
 
         <div>

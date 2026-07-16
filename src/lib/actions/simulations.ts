@@ -141,10 +141,9 @@ export async function updateSimulationSettings(
     formData.get("clientEntityName") != null
       ? String(formData.get("clientEntityName")).trim() || null
       : sim.clientEntityName;
-  // waiver do custo de abertura: checkbox só existe no form quando CLIENT_ENTITY —
-  // ausente = false (voltar p/ VIXUS_MANAGED limpa o waiver, que perde o sentido)
-  const waiveFormationCost =
-    vehicleStructure === "CLIENT_ENTITY" && String(formData.get("waiveFormationCost") ?? "") === "on";
+  // waiver do custo de abertura — QUALQUER estrutura (16/07: até a PH6 o veículo é a
+  // própria Vixus, sem LLC nova; a regra da entidade dedicada só começa na PH7)
+  const waiveFormationCost = String(formData.get("waiveFormationCost") ?? "") === "on";
   // nome do projeto (renomeável — 15/07) e nome da LLC dedicada (capa do report)
   const newName =
     formData.get("name") != null ? String(formData.get("name")).trim() || sim.name : sim.name;
@@ -525,6 +524,23 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
   });
 
   await prisma.poolSimulation.update({ where: { id }, data: { poolId: pool.id } });
+
+  // regra do Stefan (16/07): o pool é SEMPRE iniciado pela própria Vixus — nasce com ela
+  // como MANAGER no cap table; os demais sócios entram depois, na janela de Funding
+  const vixus = await prisma.company.findFirst({
+    where: {
+      OR: [
+        { legalName: { startsWith: "Vixus America Investments" } },
+        { aliases: { has: "Vixus America Investments" } },
+      ],
+    },
+    select: { id: true },
+  });
+  if (vixus) {
+    await prisma.poolMember.create({
+      data: { poolId: pool.id, role: "MANAGER", companyId: vixus.id },
+    });
+  }
 
   if (sim.fundingMode === "BANK" && sim.bankProfileId) {
     const loan = await prisma.poolLoan.create({
