@@ -215,6 +215,38 @@ export default async function PoolLoanPage({
   const entriesOfHouse = (houseId: string) =>
     loan?.entries.filter((e) => e.houseId === houseId) ?? [];
   const linkedHouses = loan ? pool.houses.filter((h) => h.loanId === loan.id) : [];
+  // Suficiência do financiamento (17/07, fórmula do Stefan): o closing consome parte do
+  // financiado → disponível p/ obra = drawable − closing rateado. Necessário do banco =
+  // obra estimada − aporte próprio além do lote. Falta > 0 = aporte dos sócios.
+  const loanConsumed = loan
+    ? loan.entries
+        .filter((e) => !e.pending && ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(e.type))
+        .reduce((s, e) => s + Number(e.amount), 0)
+    : 0;
+  const loanDrawableTotal = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
+  const suffOf = (h: (typeof pool.houses)[number]) => {
+    const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
+    const obra = h.plannedBuildCost != null ? Number(h.plannedBuildCost) : null;
+    if (drawable == null || obra == null) return null;
+    const lote = Number(h.actualLotCost ?? h.plannedLotCost ?? 0);
+    const aporte = Number(h.ownCapital ?? 0);
+    const equityObra = Math.max(0, aporte - lote); // aporte próprio além do lote
+    const necessario = Math.max(0, obra - equityObra);
+    const consumido = loanDrawableTotal > 0 ? loanConsumed * (drawable / loanDrawableTotal) : 0;
+    const disponivel = drawable - consumido;
+    const falta = necessario - disponivel;
+    const f = (v: number) => formatMoney(v, pool.currency);
+    return {
+      obraFmt: f(obra),
+      equityObraFmt: equityObra > 0 ? f(equityObra) : null,
+      necessarioFmt: f(necessario),
+      consumidoFmt: consumido > 0.01 ? f(consumido) : null,
+      disponivelFmt: f(disponivel),
+      faltaFmt: f(Math.abs(falta)),
+      falta: falta > 0.01,
+      folgaOk: falta <= 0.01,
+    };
+  };
   const houseRows: LoanHouseRow[] = linkedHouses.map((h) => {
     const es = entriesOfHouse(h.id);
     const solid = es.filter((e) => !e.pending);
@@ -230,6 +262,8 @@ export default async function PoolLoanPage({
       address: parts[0],
       sub: parts.slice(1).join(",").trim() || null,
       statusLabel: h.status.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()),
+      drawableRaw: drawable != null ? String(drawable) : "",
+      suff: suffOf(h),
       drawableFmt: drawable != null ? formatMoney(drawable, pool.currency) : null,
       drawnFmt: drawn > 0 ? formatMoney(drawn, pool.currency) : null,
       availableFmt: drawable != null ? formatMoney(Math.max(0, drawable - drawn), pool.currency) : null,

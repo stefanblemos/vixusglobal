@@ -870,3 +870,23 @@ export async function payLoanInterest(
   revalidatePath(`/pools/interest`);
   return { ok: true };
 }
+
+// Drawable da casa editável no contexto do loan (17/07): o valor pode diferir do
+// calculado (LOI/sim) — é a base do % de obra, da disponibilidade de draws e do
+// check de suficiência do financiamento.
+export async function saveHouseDrawable(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const houseId = String(formData.get("houseId") ?? "").trim();
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house || house.poolId !== poolId) return { error: "Casa não encontrada." };
+  const amount = optNum(formData.get("amount"));
+  if (amount != null && amount < 0) return { error: "Valor inválido." };
+  await prisma.poolHouse.update({ where: { id: houseId }, data: { bankLoanAmount: amount } });
+  await recompute(poolId);
+  revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath(`/pools/${poolId}`);
+  return { ok: true };
+}

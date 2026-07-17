@@ -2,7 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useActionState } from "react";
-import { linkHousesToLoan, unlinkHouseFromLoan, type FormState } from "@/lib/actions/pool-loan";
+import {
+  linkHousesToLoan,
+  saveHouseDrawable,
+  unlinkHouseFromLoan,
+  type FormState,
+} from "@/lib/actions/pool-loan";
 
 /**
  * Aba CASAS do loan (mock aprovado 17/07 + ajuste: vínculo via BOTÃO que abre modal):
@@ -20,11 +25,26 @@ export type LoanHouseEntry = {
   pending: boolean;
 };
 
+// Suficiência do financiamento (17/07): o closing consome parte do financiado — a conta
+// mostra se o que sobra p/ obra cobre o custo estimado ou se faltará aporte dos sócios.
+export type HouseSufficiency = {
+  obraFmt: string;
+  equityObraFmt: string | null;
+  necessarioFmt: string;
+  consumidoFmt: string | null;
+  disponivelFmt: string;
+  faltaFmt: string;
+  falta: boolean;
+  folgaOk: boolean;
+};
+
 export type LoanHouseRow = {
   id: string;
   address: string;
   sub: string | null;
   statusLabel: string;
+  drawableRaw: string; // valor cru p/ o input de edição
+  suff: HouseSufficiency | null;
   drawableFmt: string | null;
   drawnFmt: string | null;
   availableFmt: string | null;
@@ -231,6 +251,92 @@ export function PoolLoanHousesTab({
   );
 }
 
+// Drawable EDITÁVEL no contexto do loan (17/07): pode diferir do calculado (LOI/sim) —
+// é a base do % de obra, da disponibilidade de draws e da suficiência.
+function DrawableEditor({ poolId, h }: { poolId: string; h: LoanHouseRow }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    saveHouseDrawable.bind(null, poolId),
+    undefined,
+  );
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-4 py-3">
+      <div className="mb-1 text-[10.5px] font-bold uppercase tracking-widest text-slate-400">
+        Loan da casa (drawable)
+      </div>
+      <form action={action} className="flex items-center gap-2">
+        <input type="hidden" name="houseId" value={h.id} />
+        <input
+          name="amount"
+          defaultValue={h.drawableRaw}
+          placeholder="ex.: 170000"
+          className="w-36 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm tabular-nums outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20"
+        />
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#16304f] disabled:opacity-50"
+        >
+          {pending ? "Salvando…" : "Salvar"}
+        </button>
+        {state?.ok && <span className="text-[10.5px] text-emerald-600">salvo ✓</span>}
+        {state?.error && <span className="text-[10.5px] text-red-600">{state.error}</span>}
+      </form>
+      <p className="mt-1.5 text-[10.5px] text-slate-400">
+        Editável — pode diferir do calculado. Recalcula % de obra, disponível p/ draws e a
+        suficiência ao lado.
+      </p>
+    </div>
+  );
+}
+
+// A conta da suficiência, linha a linha (fórmula do Stefan, 17/07)
+function SufficiencyBox({ suff, drawableFmt }: { suff: LoanHouseRow["suff"]; drawableFmt: string | null }) {
+  if (!suff)
+    return (
+      <div className="rounded-lg border border-dashed border-slate-300 px-4 py-3 text-xs text-slate-400">
+        Suficiência: defina a obra planejada (ficha da casa) e o drawable para calcular.
+      </div>
+    );
+  const row = (l: string, v: string | null, strong?: boolean) =>
+    v == null ? null : (
+      <div className={`flex justify-between ${strong ? "font-bold text-slate-800" : "text-slate-600"}`}>
+        <span>{l}</span>
+        <span className="tabular-nums">{v}</span>
+      </div>
+    );
+  return (
+    <div
+      className={`rounded-lg border px-4 py-3 text-xs ${
+        suff.falta ? "border-red-200 bg-red-50/50" : "border-emerald-200 bg-emerald-50/40"
+      }`}
+    >
+      <div className="mb-1 text-[10.5px] font-bold uppercase tracking-widest text-slate-400">
+        Suficiência do financiamento
+      </div>
+      <div className="space-y-0.5">
+        {row("Obra estimada", suff.obraFmt)}
+        {row("− aporte próprio além do lote", suff.equityObraFmt ? `− ${suff.equityObraFmt}` : null)}
+        {row("= necessário do banco", suff.necessarioFmt, true)}
+      </div>
+      <div className="my-1 border-t border-dashed border-slate-300" />
+      <div className="space-y-0.5">
+        {row("Financiado (drawable)", drawableFmt)}
+        {suff.consumidoFmt && row("− closing consumido do loan (rateio)", `− ${suff.consumidoFmt}`)}
+        {row("= disponível p/ obra", suff.disponivelFmt, true)}
+      </div>
+      <div
+        className={`mt-2 rounded-md px-2 py-1 text-[11.5px] font-bold ${
+          suff.falta ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+        }`}
+      >
+        {suff.falta
+          ? `⚠ Faltará ${suff.faltaFmt} — aporte dos sócios necessário`
+          : `✓ Financiamento cobre a obra (folga ${suff.faltaFmt})`}
+      </div>
+    </div>
+  );
+}
+
 function HouseRowPair({
   poolId,
   h,
@@ -260,6 +366,11 @@ function HouseRowPair({
           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">
             {h.statusLabel}
           </span>
+          {h.suff?.falta && (
+            <span className="ml-1 whitespace-nowrap rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700" title={`Financiamento insuficiente — aporte estimado ${h.suff.faltaFmt}`}>
+              ⚠ aporte {h.suff.faltaFmt}
+            </span>
+          )}
         </td>
       </tr>
       {isOpen && (
@@ -276,6 +387,10 @@ function HouseRowPair({
               <Kpi label="Disponível" value={h.availableFmt ?? "—"} />
               <Kpi label="Juros pagos (casa)" value={h.interestFmt ?? "$0"} />
               <Kpi label="Payoff" value={h.payoffFmt ?? "—"} hint={h.payoffFmt ? undefined : "em aberto"} />
+            </div>
+            <div className="mb-3 grid gap-3 md:grid-cols-2">
+              <DrawableEditor poolId={poolId} h={h} />
+              <SufficiencyBox suff={h.suff} drawableFmt={h.drawableFmt} />
             </div>
             {h.entries.length === 0 ? (
               <p className="text-xs text-slate-400">
