@@ -42,6 +42,8 @@ if (process.env.VERCEL_ENV === "production") {
   // PH-4: desfaz os LOIs aplicados por cima do loan/perfil FCI (RBI e 2BTrust viram
   // loans próprios com os termos dos PDFs arquivados)
   run("node scripts/fix-ph4-loans.mjs");
+  // Baselines congelados: fase Obra re-extraída do cronograma físico da sim (units)
+  run("node scripts/fix-baseline-build-phase.mjs");
 }
 
 run("next build");

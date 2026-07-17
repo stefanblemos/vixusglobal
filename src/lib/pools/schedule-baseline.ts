@@ -34,7 +34,8 @@ export type ScheduleBaseline = {
 };
 
 type SimEvent = { day: number; kind: string; label: string; amount: number };
-type SimResultLike = { events: SimEvent[]; units: Array<{ label: string }> };
+type SimUnit = { label: string; tEmd?: number; tBuildStart?: number; tCO?: number };
+type SimResultLike = { events: SimEvent[]; units: SimUnit[] };
 
 // extração pura: marcos por label de unidade, instâncias ordenadas por dia (casas idênticas
 // compartilham o label do motor — a n-ésima ocorrência é a n-ésima casa daquele combo)
@@ -51,6 +52,17 @@ export function extractScheduleBaseline(
   };
   const unitLabels = [...new Set(result.units.map((u) => u.label))].sort((a, b) => b.length - a.length);
   const houseOf = (lbl: string) => unitLabels.find((u) => lbl.includes(u)) ?? null;
+
+  // OBRA vem do cronograma FÍSICO das units (tBuildStart → tCO) — os eventos de caixa não
+  // servem: o motor represa draws/pagamentos até o closing do loan (bug 17/07: Maragogi
+  // com obra pronta antes do loan → todos os pagamentos no mesmo dia → início = fim)
+  const unitsByLabel = new Map<string, SimUnit[]>();
+  for (const u of result.units) {
+    const arr = unitsByLabel.get(u.label) ?? [];
+    arr.push(u);
+    unitsByLabel.set(u.label, arr);
+  }
+  for (const arr of unitsByLabel.values()) arr.sort((a, b) => (a.tEmd ?? 0) - (b.tEmd ?? 0));
 
   const marks = new Map<string, Record<string, number[]>>();
   const push = (label: string, key: string, day: number) => {
@@ -90,7 +102,9 @@ export function extractScheduleBaseline(
     const at = (arr: number[] | undefined, i: number) => (arr && arr[i] != null ? dt(arr[i]) : null);
     const builds = (m.build ?? []).sort((a, b) => a - b);
     const per = n > 0 ? builds.length / n : 0;
+    const us = unitsByLabel.get(label) ?? [];
     hs.forEach((h, i) => {
+      const u = us[i];
       out.push({
         houseId: h.id,
         label,
@@ -98,8 +112,9 @@ export function extractScheduleBaseline(
         lotClose: at(m.lotClose, i),
         permitApp: at(m.permitApp, i),
         permitIssued: at(m.permitIssued, i),
-        buildStart: per > 0 ? dt(builds[Math.floor(i * per)]) : null,
-        buildEnd: per > 0 ? dt(builds[Math.ceil((i + 1) * per) - 1]) : null,
+        // units primeiro; fallback nos eventos de caixa só p/ resultados antigos sem os campos
+        buildStart: u?.tBuildStart != null ? dt(u.tBuildStart) : per > 0 ? dt(builds[Math.floor(i * per)]) : null,
+        buildEnd: u?.tCO != null ? dt(u.tCO) : per > 0 ? dt(builds[Math.ceil((i + 1) * per) - 1]) : null,
         sale: at(m.sale?.slice().sort((a, b) => a - b), i),
       });
     });
