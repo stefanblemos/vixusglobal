@@ -28,6 +28,9 @@ export type DrawRow = {
   memo: string | null;
 };
 
+const usDate = (iso: string | null) =>
+  iso ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}` : "-";
+
 const money = (v: string | number | null) =>
   v == null ? "—" : `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 2 })}`;
 
@@ -187,9 +190,9 @@ export function DrawList({
                       </span>
                     )}
                   </td>
-                  <td className={td}>{d.requestDate ?? "—"}</td>
+                  <td className={td}>{usDate(d.requestDate)}</td>
                   <td className={tdRight}>{d.requestedAmount != null ? money(d.requestedAmount) : "—"}</td>
-                  <td className={td}>{d.pending ? "—" : d.date}</td>
+                  <td className={td}>{d.pending ? "—" : usDate(d.date)}</td>
                   <td className={`${tdRight} font-medium`}>{d.pending ? "—" : money(d.amount)}</td>
                   <td className={`${tdRight} ${delta != null && delta !== 0 ? "text-amber-600" : "text-slate-400"}`}>
                     {delta != null ? money(delta) : "—"}

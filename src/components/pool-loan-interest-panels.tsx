@@ -27,10 +27,11 @@ export type InterestRow = {
   baseFmt: string | null;
   expectedFmt: string;
   chargedFmt: string | null;
-  dueDate: string; // dd/mm/aa
+  paidFmt: string | null; // pagamentos alocados a este período
+  dueDate: string; // MM/DD/YYYY
   dDays: number | null; // dias até o vencimento (negativo = passou)
   status: "pago" | "devido" | "vencido" | "corrente" | "previsto";
-  owed: number;
+  owed: number; // o que FALTA pagar do período (owed − paid)
 };
 
 const th = "px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400";
@@ -49,7 +50,7 @@ function ChargeRow({ poolId, loanId, c }: { poolId: string; loanId: string; c: C
       <td className="px-3 py-2 text-sm text-slate-700">
         {c.name} <span className="text-[10.5px] text-slate-400">· {c.source}</span>
       </td>
-      <td className="px-3 py-2 text-xs text-slate-500">{c.date.slice(8, 10)}/{c.date.slice(5, 7)}/{c.date.slice(2, 4)}</td>
+      <td className="px-3 py-2 text-xs text-slate-500">{c.date.slice(5, 7)}/{c.date.slice(8, 10)}/{c.date.slice(0, 4)}</td>
       <td className={tdRight}>{c.amountFmt}</td>
       <td className="px-3 py-2">
         <span
@@ -146,9 +147,10 @@ function PayButton({ poolId, loanId, amount, memo }: { poolId: string; loanId: s
       <button
         type="submit"
         disabled={pending}
-        className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs text-slate-600 hover:border-slate-400 disabled:opacity-50"
+        className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-[#1f3a5f] hover:border-slate-400 disabled:opacity-50"
+        title="Cria o INTEREST_PAYMENT no statement (sai do caixa do pool)"
       >
-        {pending ? "registrando…" : "registrar pagamento"}
+        {pending ? "pagando…" : `pagar $${amount.toLocaleString("en-US")}`}
       </button>
       {state?.error && <span className="ml-1 text-[10px] text-red-600">{state.error}</span>}
     </form>
@@ -195,6 +197,7 @@ export function LoanInterestPanel({
               <th className={thRight}>Saldo base</th>
               <th className={thRight}>Esperado</th>
               <th className={thRight}>Cobrado</th>
+              <th className={thRight}>Pago</th>
               <th className={th}>Vencimento</th>
               <th className={th}>Status</th>
               <th className={th}></th>
@@ -207,6 +210,7 @@ export function LoanInterestPanel({
                 <td className={tdRight}>{r.baseFmt ?? "—"}</td>
                 <td className={tdRight}>{r.expectedFmt}</td>
                 <td className={tdRight}>{r.chargedFmt ?? "—"}</td>
+                <td className={`${tdRight} text-emerald-700`}>{r.paidFmt ?? "—"}</td>
                 <td className="px-3 py-2 text-sm tabular-nums text-slate-700">
                   {r.status === "devido" || r.status === "vencido" ? <b>{r.dueDate}</b> : r.dueDate}
                   {r.dDays != null && (r.status === "devido" || r.status === "vencido") && (

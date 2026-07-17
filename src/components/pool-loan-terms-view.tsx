@@ -118,7 +118,7 @@ export function PoolLoanTermsView({
         : "bg-slate-100 text-slate-500";
 
   const fmtBr = (iso: string | null) =>
-    iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : null;
+    iso ? `${iso.slice(5, 7)}/${iso.slice(8, 10)}/${iso.slice(0, 4)}` : null;
 
   if (editing) {
     return (

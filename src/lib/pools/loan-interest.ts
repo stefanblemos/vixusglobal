@@ -16,6 +16,7 @@ export type InterestPeriod = {
   expected: number;
   charged: number; // Σ INTEREST no período
   owed: number; // cobrado quando existe, senão esperado
+  paid: number; // pagamentos ALOCADOS a este período (na ordem cronológica)
   dueDate: string; // vencimento do pagamento
   status: "pago" | "devido" | "vencido" | "corrente" | "previsto";
 };
@@ -125,8 +126,7 @@ export function computeLoanInterest(opts: {
     else if (isCurrent) status = "corrente";
     else {
       cumOwed = round2(cumOwed + owed);
-      if (paidTotal >= cumOwed - 0.01) status = "pago";
-      else status = today.getTime() > due.getTime() + grace * DAY_MS ? "vencido" : "devido";
+      status = "devido"; // resolvido abaixo, após alocar os pagamentos na ordem
     }
     periods.push({
       start: iso(mStart),
@@ -136,11 +136,28 @@ export function computeLoanInterest(opts: {
       expected,
       charged,
       owed: round2(owed),
+      paid: 0,
       dueDate: iso(due),
       status,
     });
     first = false;
     cur.setUTCMonth(cur.getUTCMonth() + 1);
+  }
+
+  // pagamentos ALOCADOS na ordem cronológica: fecham os períodos antigos primeiro; o que
+  // sobrar antecipa o período corrente
+  let paidRemaining = paidTotal;
+  for (const p of periods) {
+    if (p.status === "previsto") continue;
+    const alloc = Math.min(p.owed, paidRemaining);
+    p.paid = round2(alloc);
+    paidRemaining = round2(paidRemaining - alloc);
+    if (p.status !== "corrente") {
+      if (p.paid >= p.owed - 0.01) p.status = "pago";
+      else
+        p.status =
+          today.getTime() > new Date(p.dueDate).getTime() + grace * DAY_MS ? "vencido" : "devido";
+    }
   }
 
   const dueNow = round2(Math.max(0, cumOwed - paidTotal));

@@ -9,7 +9,9 @@ import {
   generatePayoffFromHouse,
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
-import { AddLoanEntryForm, PoolLoanTermsForm } from "@/components/pool-loan-forms";
+import { Fragment } from "react";
+import { PoolLoanTermsForm } from "@/components/pool-loan-forms";
+import { LaunchEntryButton, LaunchInterestButton } from "@/components/pool-loan-modals";
 import { PoolLoanTermsView } from "@/components/pool-loan-terms-view";
 import { PoolLoanHousesTab, type LoanHouseRow } from "@/components/pool-loan-houses";
 import {
@@ -91,8 +93,10 @@ export default async function PoolLoanPage({
   // seletor: ?loan=<id> | "new" (formulário vazio p/ criar) | default = primeiro loan
   const creatingNew = rawLoan === "new" || pool.loans.length === 0;
   const loan = creatingNew ? null : (pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0]);
-  // sub-abas internas (17/07): Statement (default) | Documentos | Termos | Casas | Draws
-  const stab = ["docs", "terms", "houses", "draws"].includes(rawStab ?? "") ? rawStab! : "statement";
+  // sub-abas internas (17/07): Statement | Juros | Documentos | Termos | Casas | Draws
+  const stab = ["interest", "docs", "terms", "houses", "draws"].includes(rawStab ?? "")
+    ? rawStab!
+    : "statement";
   const banks = await prisma.bankProfile.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
@@ -160,8 +164,6 @@ export default async function PoolLoanPage({
     : [];
 
   // ── aba TERMOS (travada) — dados do loan + condições do perfil do banco + LOI ──
-  const fmtBr = (iso: string | null) =>
-    iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : null;
   const num = (v: unknown) => String(Number(v ?? 0));
   const paidOff = stmt != null && stmt.totalPayoffs > 0 && stmt.balance <= 0.01;
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -285,7 +287,7 @@ export default async function PoolLoanPage({
       pct: drawable != null && drawable > 0 ? Math.round((drawn / drawable) * 100) : null,
       entries: es.map((e) => ({
         id: e.id,
-        date: fmtBr(fmtDate(e.date))!,
+        date: `${fmtDate(e.date).slice(5, 7)}/${fmtDate(e.date).slice(8, 10)}/${fmtDate(e.date).slice(0, 4)}`,
         typeLabel: ENTRY_TYPE_LABEL[e.type] ?? e.type,
         memo: e.memo,
         amountFmt: formatMoney(Number(e.amount), pool.currency),
@@ -390,44 +392,48 @@ export default async function PoolLoanPage({
     baseFmt: p.baseEnd > 0 ? formatMoney(p.baseEnd, pool.currency) : null,
     expectedFmt: formatMoney(p.expected, pool.currency),
     chargedFmt: p.charged > 0 ? formatMoney(p.charged, pool.currency) : null,
-    dueDate: `${p.dueDate.slice(8, 10)}/${p.dueDate.slice(5, 7)}/${p.dueDate.slice(2, 4)}`,
+    paidFmt: p.paid > 0 ? formatMoney(p.paid, pool.currency) : null,
+    dueDate: `${p.dueDate.slice(5, 7)}/${p.dueDate.slice(8, 10)}/${p.dueDate.slice(0, 4)}`,
     dDays: Math.ceil((new Date(p.dueDate).getTime() - Date.now()) / dayMs0),
     status: p.status,
-    owed: Math.max(0, p.owed),
+    owed: Math.max(0, Math.round((p.owed - p.paid) * 100) / 100),
   }));
   const interestRule = loan
     ? `Vencimento: dia ${loan.interestDueDay ?? 1} do mês seguinte${loan.graceDays ? ` · grace ${loan.graceDays} dias` : ""}${loan.lateFeePct ? ` · multa ${Number(loan.lateFeePct)}%` : ""} — ${loan.interestDueDay ? "lido do contrato (editável nos Termos)" : "padrão (a leitura do contrato preenche; editável nos Termos)"}. Esperado = accrual diário APR/360 sobre o saldo; cobrado vem do extrato do banco.`
     : "";
 
-  // ── lembrete (17/07): loans ATIVOS sem interest reserve pagam juro mensal POR FORA —
-  // um aviso por loan com o valor estimado (non-Dutch: saldo × APR/12; Dutch: comprometido)
-  const interestReminders = pool.loans
-    .map((l) => {
-      const bank2 = l.bankProfile;
-      if (!l.closingDate || !bank2 || bank2.hasInterestReserve) return null;
-      const solid = l.entries.filter((e) => !e.pending);
-      const balance = solid.reduce((s, e) => s + Number(e.amount), 0);
-      const quitado = solid.some((e) => e.type === "PAYOFF") && balance <= 0.01;
-      if (quitado) return null;
-      const aprL =
-        l.aprPct != null
-          ? Number(l.aprPct)
-          : bank2.rateType === "FIXED"
-            ? Number(bank2.aprPct)
-            : Number(bank2.indexPct) + Number(bank2.spreadPct);
-      const dutch = bank2.interestBasis === "COMMITTED";
-      const baseAmt = dutch ? Number(l.committed ?? 0) : balance;
-      return {
-        id: l.id,
-        label: loanLabel(l),
-        aprL,
-        monthly: baseAmt > 0 ? (baseAmt * (aprL / 100)) / 12 : null,
-        baseAmt,
-        dutch,
-        semLancamentos: !dutch && balance <= 0.01,
-      };
-    })
-    .filter((r): r is NonNullable<typeof r> => r != null);
+  // ── separação PRINCIPAL × JUROS EM ABERTO (mock aprovado 17/07): o juro entra e sai
+  // sem embolar o extrato — saldo devido total = principal + juros em aberto. O lembrete
+  // de juros saiu do header (mora no menu Juros). Datas em MM/DD/YYYY.
+  const round2p = (v: number) => Math.round(v * 100) / 100;
+  const fmtUS = (d: Date | string | null): string => {
+    if (d == null) return "—";
+    const isoS = typeof d === "string" ? d : fmtDate(d);
+    return `${isoS.slice(5, 7)}/${isoS.slice(8, 10)}/${isoS.slice(0, 4)}`;
+  };
+  const monthTag = (d: Date) =>
+    `${d.toLocaleString("en-US", { month: "long", timeZone: "UTC" }).toUpperCase()} ${d.getUTCFullYear()}`;
+  const runMap = new Map<string, { principal: number; juros: number }>();
+  {
+    let pRun = 0;
+    let jRun = 0;
+    for (const r of stmt?.rows ?? []) {
+      if (r.type === "INTEREST" || r.type === "INTEREST_PAYMENT") jRun = round2p(jRun + r.amount);
+      else pRun = round2p(pRun + r.amount);
+      runMap.set(r.id, { principal: pRun, juros: jRun });
+    }
+  }
+  const jurosAbertos = round2p(
+    (loan?.entries ?? [])
+      .filter((e) => !e.pending && (e.type === "INTEREST" || e.type === "INTEREST_PAYMENT"))
+      .reduce((s, e) => s + Number(e.amount), 0),
+  );
+  const principalDevido = round2p((stmt?.balance ?? 0) - jurosAbertos);
+  const reserveFinanced = round2p(
+    (loan?.entries ?? [])
+      .filter((e) => !e.pending && e.type === "RESERVE")
+      .reduce((s, e) => s + Number(e.amount), 0),
+  );
 
   // ── aba DRAWS (mock aprovado 17/07): a gestão de draws mora DENTRO do loan — a tela
   // do menu é só dash. Portado de /pools/draws/[poolId] (aposentada).
@@ -642,44 +648,17 @@ export default async function PoolLoanPage({
 
       <PoolTabsNav poolId={pool.id} active="loan" />
 
-      {/* Lembrete: juros mensais POR FORA nos loans ativos sem interest reserve */}
-      {interestReminders.length > 0 && (
-        <section className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
-          <p className="mb-1 text-sm font-semibold text-amber-900">
-            💰 Juros mensais por fora — {interestReminders.length === 1 ? "este loan não tem" : "estes loans não têm"} interest
-            reserve: o pagamento sai do caixa todo mês.
-          </p>
-          <ul className="space-y-0.5">
-            {interestReminders.map((r) => (
-              <li key={r.id} className="text-xs text-amber-800">
-                <span className="font-semibold">{r.label}</span>
-                {r.monthly != null ? (
-                  <>
-                    {" — "}≈ <span className="font-bold tabular-nums">{formatMoney(r.monthly, pool.currency)}/mês</span>{" "}
-                    ({r.aprL}% sobre {r.dutch ? "o comprometido (Dutch)" : `o saldo de ${formatMoney(r.baseAmt, pool.currency)}`})
-                  </>
-                ) : r.semLancamentos ? (
-                  <> — sem lançamentos no statement ainda; lance os draws (ou suba o extrato) para estimar o juro mensal ({r.aprL}% sobre o sacado)</>
-                ) : (
-                  <> — defina o comprometido para estimar</>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
-      {/* Um pool pode ter N loans (bancos diferentes por grupo de casas) — seletor */}
+      {/* Loans como SUB-ABAS (pedido 17/07 — não cards); o lembrete de juros mora no menu Juros */}
       {pool.loans.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap gap-1 border-b-2 border-slate-200">
           {pool.loans.map((l) => (
             <Link
               key={l.id}
               href={`/pools/${pool.id}/loan?loan=${l.id}`}
-              className={`rounded-full border px-3 py-1.5 text-sm transition ${
+              className={`-mb-0.5 rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
                 loan?.id === l.id
-                  ? "border-[#1f3a5f] bg-[#1f3a5f] font-medium text-white"
-                  : "border-slate-300 text-slate-600 hover:border-slate-400"
+                  ? "border-[#1f3a5f] font-semibold text-[#1f3a5f]"
+                  : "border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-700"
               }`}
             >
               {loanLabel(l)}
@@ -687,10 +666,10 @@ export default async function PoolLoanPage({
           ))}
           <Link
             href={`/pools/${pool.id}/loan?loan=new`}
-            className={`rounded-full border border-dashed px-3 py-1.5 text-sm transition ${
+            className={`-mb-0.5 rounded-t-lg border-b-2 px-4 py-2 text-sm transition ${
               creatingNew
-                ? "border-[#1f3a5f] font-medium text-[#1f3a5f]"
-                : "border-slate-300 text-slate-500 hover:border-slate-400"
+                ? "border-[#1f3a5f] font-semibold text-[#1f3a5f]"
+                : "border-transparent text-slate-400 hover:bg-slate-50 hover:text-slate-600"
             }`}
           >
             + Novo loan
@@ -698,7 +677,7 @@ export default async function PoolLoanPage({
         </div>
       )}
 
-      {/* KPIs (mock aprovado 17/07): as informações importantes do loan numa régua só */}
+      {/* KPIs (mock aprovado 17/07): principal × juros em aberto separados */}
       {loan && stmt && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Card
@@ -707,43 +686,36 @@ export default async function PoolLoanPage({
             hint="comprometido"
           />
           <Card
-            label="Sacado (draws das casas)"
+            label="Sacado (obra)"
             value={formatMoney(stmt.totalDraws, pool.currency)}
             hint={
               loan.committed
-                ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do total · fees ${formatMoney(stmt.totalFees, pool.currency)}`
-                : `fees ${formatMoney(stmt.totalFees, pool.currency)}`
+                ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do total`
+                : undefined
             }
           />
           <Card
             label="Disponível"
-            value={
-              loan.committed != null
-                ? formatMoney(Math.max(0, Number(loan.committed) - stmt.totalDraws), pool.currency)
-                : "—"
-            }
-            hint="p/ draws futuros"
-          />
-          <Card
-            label="Juros pagos"
-            value={formatMoney(interestView?.paidTotal ?? 0, pool.currency)}
-            hint={
-              interestView?.dueNow
-                ? `devido agora ${formatMoney(interestView.dueNow, pool.currency)}`
-                : apr != null
-                  ? `cobrado ${formatMoney(stmt.totalInterest, pool.currency)} (APR ${apr}%)`
-                  : undefined
-            }
+            value={formatMoney(
+              envelopeRest ?? Math.max(0, drawsBudget - drawsCredited - drawsAwaiting),
+              pool.currency,
+            )}
+            hint={envelopeRest != null ? "envelope − consumido − sacado" : "p/ draws futuros"}
           />
           <Card
             label={
-              stmt.totalPayoffs > 0 && stmt.balance <= 0.01 ? "Saldo devido — QUITADO" : "Saldo devido"
+              stmt.totalPayoffs > 0 && stmt.balance <= 0.01 ? "Principal — QUITADO" : "Principal devido"
             }
-            value={formatMoney(stmt.balance, pool.currency)}
+            value={formatMoney(principalDevido, pool.currency)}
+            hint={`payoffs ${formatMoney(stmt.totalPayoffs, pool.currency)} · conciliado ${stmt.reconciledCount}/${stmt.rows.length}`}
+          />
+          <Card
+            label="Juros em aberto"
+            value={formatMoney(jurosAbertos, pool.currency)}
             hint={
-              stmt.totalPayoffs > 0 && stmt.balance <= 0.01
-                ? `quitado · payoffs ${formatMoney(stmt.totalPayoffs, pool.currency)}`
-                : `payoffs ${formatMoney(stmt.totalPayoffs, pool.currency)} · conciliado ${stmt.reconciledCount}/${stmt.rows.length}`
+              interestView?.nextDue
+                ? `vencimento ${fmtUS(interestView.nextDue.date)} → aba Juros`
+                : "→ aba Juros"
             }
           />
         </div>
@@ -753,11 +725,16 @@ export default async function PoolLoanPage({
           {(
             [
               ["statement", "📑 Statement", null],
+              [
+                "interest",
+                "💰 Juros",
+                interestView && interestView.dueNow > 0 ? `$${Math.round(interestView.dueNow)}` : null,
+              ],
               ["docs", "📁 Documentos", loan.documents.length],
               ["terms", "⚙ Termos", null],
               ["houses", "🏠 Casas", linkedHouses.length],
               ["draws", "🏗 Draws", drawsPendingCount],
-            ] as Array<[string, string, number | null]>
+            ] as Array<[string, string, number | string | null]>
           ).map(([key, label, badge]) => (
             <Link
               key={key}
@@ -769,11 +746,12 @@ export default async function PoolLoanPage({
               }`}
             >
               {label}
-              {badge != null && badge > 0 && (
+              {badge != null && (typeof badge === "string" || badge > 0) && (
                 <span
                   className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
                     (key === "docs" && loan.documents.some((d) => d.proposal != null)) ||
-                    (key === "draws" && drawsPendingCount > 0)
+                    (key === "draws" && drawsPendingCount > 0) ||
+                    key === "interest"
                       ? "bg-amber-100 text-amber-800"
                       : "bg-slate-100 text-slate-500"
                   }`}
@@ -845,7 +823,7 @@ export default async function PoolLoanPage({
                   ? { text: "ativo", tone: "green" }
                   : { text: "aguardando closing", tone: "amber" },
               sourceChip: loiDoc
-                ? `preenchido do LOI${loiEx?.loiDate ? ` de ${fmtBr(loiEx.loiDate)}` : ""} · leitura por AI`
+                ? `preenchido do LOI${loiEx?.loiDate ? ` de ${loiEx.loiDate.slice(5, 7)}/${loiEx.loiDate.slice(8, 10)}/${loiEx.loiDate.slice(0, 4)}` : ""} · leitura por AI`
                 : null,
               contractText: contractDaysOf(loan),
             }}
@@ -880,6 +858,13 @@ export default async function PoolLoanPage({
           totals={casasTotals}
           envelope={envelopeLine}
         />
+      )}
+      {/* suficiência mora na aba Casas (mock aprovado 17/07 — é conta de obra/casa) */}
+      {loan && !creatingNew && stab === "houses" && (
+        <>
+          {suffSelected && <LoanSufficiencyPanel a={suffSelected} cur={pool.currency} />}
+          {pool.loans.length > 1 && <PoolSufficiencySummary aggs={suffAggs} cur={pool.currency} />}
+        </>
       )}
 
       {/* aba DRAWS (mock aprovado 17/07): a gestão mora aqui — o menu Draws é só dash */}
@@ -940,24 +925,77 @@ export default async function PoolLoanPage({
         </>
       )}
 
-      {loan && stmt && stab === "statement" && (
+      {/* aba JUROS (mock aprovado 17/07): saem do Statement — KPIs, períodos e lançamentos */}
+      {loan && stab === "interest" && (
         <>
-          <LoanChargesPanel poolId={pool.id} loanId={loan.id} candidates={chargeCandidates} fundedNote={fundedNote} />
-          {suffSelected && <LoanSufficiencyPanel a={suffSelected} cur={pool.currency} />}
-          {pool.loans.length > 1 && <PoolSufficiencySummary aggs={suffAggs} cur={pool.currency} />}
-          {interestRows.length > 0 && (
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card
+              label="Cobrado acumulado"
+              value={formatMoney(interestView?.chargedTotal ?? 0, pool.currency)}
+              hint="linhas INTEREST do extrato"
+            />
+            <Card
+              label="Pago acumulado"
+              value={formatMoney(interestView?.paidTotal ?? 0, pool.currency)}
+              hint={
+                loan.bankProfile?.hasInterestReserve
+                  ? `reserve financiada ${formatMoney(reserveFinanced, pool.currency)}`
+                  : "do caixa do pool"
+              }
+            />
+            <Card
+              label="Devido agora"
+              value={formatMoney(interestView?.dueNow ?? 0, pool.currency)}
+              hint={interestView && interestView.dueNow > 0 ? "períodos fechados não cobertos" : "nada vencido"}
+            />
+            <Card
+              label="Próximo vencimento"
+              value={interestView?.nextDue ? fmtUS(interestView.nextDue.date) : "—"}
+              hint={
+                interestView?.nextDue
+                  ? `${(() => {
+                      const dd = Math.ceil((new Date(interestView.nextDue.date).getTime() - Date.now()) / dayMs0);
+                      return dd < 0 ? `vencido há ${-dd}d` : `D-${dd}`;
+                    })()}${loan.graceDays ? ` · grace ${loan.graceDays}d` : ""}${loan.lateFeePct ? ` · multa ${Number(loan.lateFeePct)}%` : ""}`
+                  : loan.closingDate
+                    ? "sem juros em aberto"
+                    : "sem juros até o closing"
+              }
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            {loan.bankProfile && !loan.bankProfile.hasInterestReserve ? (
+              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
+                💰 sem interest reserve — o pagamento sai do caixa do pool todo mês
+              </span>
+            ) : (
+              <span />
+            )}
+            <LaunchInterestButton
+              poolId={pool.id}
+              loanId={loan.id}
+              hasReserve={loan.bankProfile?.hasInterestReserve ?? false}
+            />
+          </div>
+          {interestRows.length > 0 ? (
             <LoanInterestPanel
               poolId={pool.id}
               loanId={loan.id}
               rows={interestRows}
               ruleText={interestRule}
-              footNote={
-                loan.bankProfile && !loan.bankProfile.hasInterestReserve
-                  ? "Sem interest reserve — o pagamento sai do caixa do pool todo mês."
-                  : null
-              }
+              footNote={null}
             />
+          ) : (
+            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-400">
+              Sem períodos ainda — os juros começam no closing do loan.
+            </p>
           )}
+        </>
+      )}
+
+      {loan && stmt && stab === "statement" && (
+        <>
+          <LoanChargesPanel poolId={pool.id} loanId={loan.id} candidates={chargeCandidates} fundedNote={fundedNote} />
           {pendingPayoffs.length > 0 && (
             <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
               <p className="mb-2 text-sm text-amber-800">
@@ -981,26 +1019,37 @@ export default async function PoolLoanPage({
           )}
 
           <section className="rounded-xl border border-slate-200 bg-white">
-            <div className="flex items-end justify-between border-b border-slate-100 px-5 py-4">
+            <div className="flex items-end justify-between gap-3 border-b border-slate-100 px-5 py-4">
               <div>
                 <h2 className="text-base font-medium text-slate-800">Statement</h2>
                 <p className="text-xs text-slate-400">
-                  Nas linhas de juro, "esperado" é o accrual diário (APR/360) sobre o saldo — o
-                  delta confere a cobrança do banco. O saldo é sempre acumulado desde o início.
+                  Agrupado por mês. As colunas separam o caminho do <b>principal</b> (draws +
+                  fees + crédito) e dos <b>juros em aberto</b> (cobrados − pagos) — o juro entra
+                  e sai sem embolar o saldo. Detalhe dos juros na aba <b>Juros</b>.
                 </p>
               </div>
-              <LoanMonthFilter months={months} value={month} />
+              <div className="flex items-center gap-2">
+                <LoanMonthFilter months={months} value={month} />
+                <LaunchEntryButton
+                  poolId={pool.id}
+                  loanId={loan.id}
+                  houses={pool.houses
+                    .filter((h) => h.loanId === loan.id || h.loanId == null)
+                    .map((h) => ({ id: h.id, address: h.address }))}
+                />
+              </div>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-100">
-                    <th className={th}>Data</th>
+                    <th className={th}>Date</th>
                     <th className={th}>Tipo</th>
                     <th className={th}>Casa / memo</th>
                     <th className={thRight}>Valor</th>
-                    <th className={thRight}>Saldo devido</th>
-                    <th className={thRight}>Esperado (juro)</th>
+                    <th className={thRight}>Principal</th>
+                    <th className={thRight}>Juros abertos</th>
+                    <th className={thRight}>Saldo total</th>
                     <th className={thRight}>✓</th>
                     <th className={thRight}></th>
                   </tr>
@@ -1008,89 +1057,93 @@ export default async function PoolLoanPage({
                 <tbody>
                   {visibleRows.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-5 py-6 text-center text-sm text-slate-400">
+                      <td colSpan={9} className="px-5 py-6 text-center text-sm text-slate-400">
                         {month === "all"
                           ? "Nenhum lançamento ainda — comece pelos fees do closing e a reserve."
                           : "Nenhum lançamento neste mês."}
                       </td>
                     </tr>
                   )}
-                  {visibleRows.map((e) => (
-                    <tr key={e.id} className={`border-b border-slate-50 ${e.reconciled ? "" : "bg-amber-50/30"}`}>
-                      <td className={td}>{fmtDate(e.date)}</td>
-                      <td className={td}>
-                        <span
-                          className={`text-xs ${
-                            e.type === "PAYOFF" || e.type === "CREDIT"
-                              ? "text-emerald-700"
-                              : e.type === "INTEREST"
-                                ? "text-blue-700"
-                                : "text-slate-500"
-                          }`}
-                        >
-                          {ENTRY_TYPE_LABEL[e.type] ?? e.type}
-                        </span>
-                      </td>
-                      <td className={`${td} text-slate-500`}>
-                        {e.houseLabel ?? ""}
-                        {e.houseLabel && e.memo ? " · " : ""}
-                        {e.memo ?? ""}
-                      </td>
-                      <td className={`${tdRight} ${e.amount < 0 ? "text-emerald-700" : ""}`}>
-                        {formatMoney(e.amount, pool.currency)}
-                      </td>
-                      <td className={`${tdRight} font-medium`}>{formatMoney(e.balance, pool.currency)}</td>
-                      <td className={tdRight}>
-                        {e.expectedInterest != null ? (
-                          <span
-                            title={`delta ${formatMoney(e.interestDelta ?? 0, pool.currency)}`}
-                            className={
-                              Math.abs(e.interestDelta ?? 0) > Math.abs(e.expectedInterest) * 0.05
-                                ? "text-amber-600"
-                                : "text-slate-400"
-                            }
-                          >
-                            {formatMoney(e.expectedInterest, pool.currency)}
-                          </span>
-                        ) : (
-                          ""
+                  {visibleRows.map((e, i) => {
+                    const run = runMap.get(e.id);
+                    const isInterest = e.type === "INTEREST" || e.type === "INTEREST_PAYMENT";
+                    const prevRow = i > 0 ? visibleRows[i - 1] : null;
+                    const newMonth = !prevRow || monthKey(prevRow.date) !== monthKey(e.date);
+                    return (
+                      <Fragment key={e.id}>
+                        {newMonth && (
+                          <tr>
+                            <td colSpan={9} className="bg-slate-50 px-3 py-1 text-[10.5px] font-bold tracking-widest text-slate-500">
+                              {monthTag(e.date)}
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className={tdRight}>
-                        <form action={toggleLoanEntryReconciled} className="inline">
-                          <input type="hidden" name="entryId" value={e.id} />
-                          <input type="hidden" name="poolId" value={pool.id} />
-                          <button
-                            type="submit"
-                            title={e.reconciled ? "Conciliado — clique para desfazer" : "Marcar como conciliado com o extrato"}
-                            className={e.reconciled ? "text-emerald-600" : "text-slate-300 hover:text-emerald-600"}
+                        <tr className={`border-b border-slate-50 ${e.reconciled ? "" : "bg-amber-50/30"}`}>
+                          <td className={td}>{fmtUS(e.date)}</td>
+                          <td className={td}>
+                            <span
+                              className={`text-xs ${
+                                e.type === "PAYOFF" || e.type === "CREDIT" || e.type === "INTEREST_PAYMENT"
+                                  ? "text-emerald-700"
+                                  : e.type === "INTEREST"
+                                    ? "text-blue-700"
+                                    : "text-slate-500"
+                              }`}
+                            >
+                              {ENTRY_TYPE_LABEL[e.type] ?? e.type}
+                            </span>
+                          </td>
+                          <td className={`${td} text-slate-500`}>
+                            {e.houseLabel ?? ""}
+                            {e.houseLabel && e.memo ? " · " : ""}
+                            {e.memo ?? ""}
+                          </td>
+                          <td
+                            className={`${tdRight} ${
+                              e.amount < 0 ? "text-emerald-700" : e.type === "INTEREST" ? "text-blue-700" : ""
+                            }`}
                           >
-                            ✓
-                          </button>
-                        </form>
-                      </td>
-                      <td className={tdRight}>
-                        <form action={deleteLoanEntry} className="inline">
-                          <input type="hidden" name="entryId" value={e.id} />
-                          <input type="hidden" name="poolId" value={pool.id} />
-                          <button type="submit" className="text-xs text-slate-300 hover:text-red-500" title="Delete">
-                            ✕
-                          </button>
-                        </form>
-                      </td>
-                    </tr>
-                  ))}
+                            {formatMoney(e.amount, pool.currency)}
+                          </td>
+                          <td className={`${tdRight} ${isInterest ? "text-slate-300" : "font-medium"}`}>
+                            {formatMoney(run?.principal ?? 0, pool.currency)}
+                          </td>
+                          <td
+                            className={`${tdRight} ${
+                              (run?.juros ?? 0) > 0.01 ? "font-medium text-amber-700" : "text-slate-300"
+                            }`}
+                          >
+                            {(run?.juros ?? 0) !== 0 ? formatMoney(run!.juros, pool.currency) : "—"}
+                          </td>
+                          <td className={`${tdRight} font-medium`}>{formatMoney(e.balance, pool.currency)}</td>
+                          <td className={tdRight}>
+                            <form action={toggleLoanEntryReconciled} className="inline">
+                              <input type="hidden" name="entryId" value={e.id} />
+                              <input type="hidden" name="poolId" value={pool.id} />
+                              <button
+                                type="submit"
+                                title={e.reconciled ? "Conciliado — clique para desfazer" : "Marcar como conciliado com o extrato"}
+                                className={e.reconciled ? "text-emerald-600" : "text-slate-300 hover:text-emerald-600"}
+                              >
+                                ✓
+                              </button>
+                            </form>
+                          </td>
+                          <td className={tdRight}>
+                            <form action={deleteLoanEntry} className="inline">
+                              <input type="hidden" name="entryId" value={e.id} />
+                              <input type="hidden" name="poolId" value={pool.id} />
+                              <button type="submit" className="text-xs text-slate-300 hover:text-red-500" title="Delete">
+                                ✕
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
-            </div>
-            <div className="border-t border-slate-100 px-5 py-4">
-              <AddLoanEntryForm
-                poolId={pool.id}
-                loanId={loan.id}
-                houses={pool.houses
-                  .filter((h) => h.loanId === loan.id || h.loanId == null)
-                  .map((h) => ({ id: h.id, address: h.address }))}
-              />
             </div>
           </section>
         </>

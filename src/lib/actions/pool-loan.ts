@@ -620,7 +620,7 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
   return { ok: true };
 }
 
-// Lança o juro REAL do mês (aba Juros & reserve): cria INTEREST e, se "pago da reserve",
+// Lança o juro REAL do mês (aba Juros do loan): cria INTEREST e, se "pago da reserve",
 // o INTEREST_PAYMENT espelhado na mesma data (padrão Builders Capital — saldo não compõe).
 export async function addMonthlyInterest(
   poolId: string,
@@ -656,7 +656,8 @@ export async function addMonthlyInterest(
   ]);
   revalidatePath(`/pools/${poolId}`);
   revalidatePath(`/pools/${poolId}/loan`);
-  return undefined;
+  revalidatePath(`/pools/interest`);
+  return { ok: true };
 }
 
 // Gera o PAYOFF (e reconveyance, se o banco cobra) a partir dos dados de venda da casa —

@@ -215,7 +215,7 @@ export function buildLoanDocProposal(
       label: `Juro do período${txt(ex.interestPeriodEnd) ? ` até ${ex.interestPeriodEnd}` : ""}: ${money0(ex.interestAmount)}`,
       from: null,
       to: money0(ex.interestAmount),
-      target: "→ lançamento INTEREST (aba Juros & reserve)",
+      target: "→ lançamento INTEREST (aba Juros do loan)",
       defaultOn: true,
       set: { entry: { type: "INTEREST", date: txt(ex.interestPeriodEnd) ?? anchorDate, amount: ex.interestAmount, memo: `Juro do mês — ${src}` } },
     });
