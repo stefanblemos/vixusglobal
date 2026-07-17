@@ -148,6 +148,10 @@ async function runLoanDocPipeline(opts: {
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Falha na extração do documento." };
   }
+  const housesBudgetAgg = await prisma.poolHouse.aggregate({
+    where: { loanId: loan.id },
+    _sum: { bankLoanAmount: true },
+  });
   const proposal = buildLoanDocProposal(ex, kind as never, {
     fileName,
     loan: {
@@ -163,6 +167,8 @@ async function runLoanDocPipeline(opts: {
           extensionMonths: loan.bankProfile.extensionMonths,
         }
       : null,
+    housesBudget:
+      housesBudgetAgg._sum.bankLoanAmount != null ? Number(housesBudgetAgg._sum.bankLoanAmount) : null,
   });
   await upsertDoc({
     kind: kind as never,
@@ -559,6 +565,7 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
   const requested = optNum(formData.get("requestedAmount"));
   const requestDateRaw = String(formData.get("requestDate") ?? "").trim();
   const released = optNum(formData.get("releasedAmount"));
+  const creditedNet = optNum(formData.get("creditedAmount")); // o que CAIU na conta
   const creditDateRaw = String(formData.get("creditDate") ?? "").trim();
   const houseId = String(formData.get("houseId") ?? "").trim() || null;
   const memo = String(formData.get("memo") ?? "").trim() || null;
@@ -572,6 +579,14 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
   const fees = releasing
     ? await predictedDrawFees(entry.loanId, entry.loan.bankProfile, creditDate, entry.id)
     : [];
+  // Banco depositou o LÍQUIDO? aprovado − creditado = fees retidos na fonte → lançamento
+  // automático de DRAW_FEE na casa da inspeção (17/07 — "como saber se cobraram do draw")
+  if (releasing && creditedNet != null && released != null && creditedNet < released - 0.01) {
+    fees.push({
+      amount: released - creditedNet,
+      memo: `Fees retidos na fonte (aprovado ${released.toFixed(2)} − creditado ${creditedNet.toFixed(2)})`,
+    });
+  }
 
   await prisma.$transaction([
     prisma.poolLoanEntry.update({
@@ -732,6 +747,11 @@ export async function saveLoanTermsFull(
         return v != null ? Math.max(0, Math.round(v)) : null;
       })(),
       lateFeePct: optNum(formData.get("lateFeePct")),
+      // modalidade do envelope: IN = fees por dentro do teto; OUT = por fora; "" = indefinida
+      feesInEnvelope: (() => {
+        const v = String(formData.get("feesInEnvelope") ?? "");
+        return v === "IN" ? true : v === "OUT" ? false : null;
+      })(),
       notes: String(formData.get("notes") ?? "").trim() || null,
     },
   });

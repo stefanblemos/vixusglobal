@@ -69,7 +69,7 @@ function EditDrawForm({
         <input name="requestDate" type="date" defaultValue={draw.requestDate ?? ""} className={inputClass} />
       </div>
       <div className="w-32">
-        <label className={labelClass}>Liberado $ {draw.pending && "(banco)"}</label>
+        <label className={labelClass}>Aprovado $ {draw.pending && "(banco)"}</label>
         <input
           name="releasedAmount"
           defaultValue={draw.pending ? "" : draw.amount}
@@ -77,6 +77,14 @@ function EditDrawForm({
           className={inputClass}
         />
       </div>
+      {draw.pending && (
+        <div className="w-36">
+          <label className={labelClass} title="O valor que CAIU na conta — se for menor que o aprovado, a diferença vira fee retido na fonte, lançado na casa automaticamente">
+            Creditado na conta $
+          </label>
+          <input name="creditedAmount" placeholder="se veio líquido" className={inputClass} />
+        </div>
+      )}
       <div className="w-40">
         <label className={labelClass}>Data do crédito</label>
         <input name="creditDate" type="date" defaultValue={draw.pending ? "" : draw.date} className={inputClass} />
@@ -102,7 +110,8 @@ function EditDrawForm({
       {draw.pending && (
         <p className="w-full text-xs text-slate-400">
           Ao registrar a liberação, o draw entra no saldo do loan na data do crédito e os fees
-          previstos do contrato são lançados juntos.
+          previstos do contrato são lançados juntos. Se o banco depositou o LÍQUIDO, informe o
+          creditado — a diferença vira fee retido na fonte, lançado na casa da inspeção.
         </p>
       )}
       {state?.error && <p className="w-full text-sm text-red-600">{state.error}</p>}

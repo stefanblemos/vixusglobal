@@ -160,6 +160,20 @@ function LinkHousesModal({
   );
 }
 
+export type HousesTotals = {
+  drawableFmt: string;
+  drawnFmt: string;
+  availableFmt: string;
+  interestFmt: string;
+};
+
+export type EnvelopeLine = {
+  comprFmt: string; // orçamentos restantes das casas
+  envFmt: string; // envelope restante (teto − consumido − sacado)
+  descoberto: boolean;
+  descobertoFmt: string;
+};
+
 export function PoolLoanHousesTab({
   poolId,
   loanId,
@@ -167,6 +181,8 @@ export function PoolLoanHousesTab({
   houses,
   unlinked,
   footNote,
+  totals,
+  envelope,
 }: {
   poolId: string;
   loanId: string;
@@ -174,6 +190,8 @@ export function PoolLoanHousesTab({
   houses: LoanHouseRow[];
   unlinked: UnlinkedHouse[];
   footNote: string | null;
+  totals: HousesTotals | null;
+  envelope: EnvelopeLine | null;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState(false);
@@ -232,7 +250,32 @@ export function PoolLoanHousesTab({
                 />
               ))}
             </tbody>
+            {totals && houses.length > 1 && (
+              <tfoot>
+                <tr>
+                  <td className="border-t-2 border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-800">
+                    Total ({houses.length} casas)
+                  </td>
+                  <td className={`${tdRight} border-t-2 border-slate-200 font-bold`}>{totals.drawableFmt}</td>
+                  <td className={`${tdRight} border-t-2 border-slate-200 font-bold`}>{totals.drawnFmt}</td>
+                  <td className={`${tdRight} border-t-2 border-slate-200 font-bold`}>{totals.availableFmt}</td>
+                  <td className={`${tdRight} border-t-2 border-slate-200 font-bold`}>{totals.interestFmt}</td>
+                  <td className="border-t-2 border-slate-200" colSpan={2} />
+                </tr>
+              </tfoot>
+            )}
           </table>
+        </div>
+      )}
+      {envelope && (
+        <div
+          className={`mx-5 mb-3 mt-1 rounded-lg px-4 py-2.5 text-xs font-semibold ${
+            envelope.descoberto ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
+          }`}
+        >
+          {envelope.descoberto
+            ? `⚠ Orçamentos restantes ${envelope.comprFmt} × envelope restante ${envelope.envFmt} — faltarão ${envelope.descobertoFmt} no final (os últimos draws não cabem no teto)`
+            : `✓ Orçamentos restantes ${envelope.comprFmt} cabem no envelope restante ${envelope.envFmt}`}
         </div>
       )}
       {footNote && (

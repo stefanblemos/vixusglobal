@@ -43,7 +43,18 @@ export default async function DrawsDashboardPage() {
     const credited = draws.filter((e) => !e.pending).reduce((s, e) => s + Number(e.amount), 0);
     const awaiting = draws.filter((e) => e.pending).reduce((s, e) => s + Number(e.requestedAmount ?? 0), 0);
     const budget = loan.houses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
-    const available = budget - credited - awaiting;
+    // envelope ciente da modalidade (17/07): por dentro → fees consumidos roubam espaço
+    const inEnv = loan.feesInEnvelope !== false;
+    const consumed = loan.entries
+      .filter((e) => !e.pending && ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(e.type))
+      .reduce((s, e) => s + Number(e.amount), 0);
+    const envelopeRest =
+      loan.committed != null
+        ? Number(loan.committed) - (inEnv ? consumed : 0) - credited - awaiting
+        : null;
+    const descoberto =
+      loan.committed != null ? budget + (inEnv ? consumed : 0) - Number(loan.committed) : null;
+    const available = envelopeRest ?? budget - credited - awaiting;
     const pendingCount = draws.filter((e) => e.pending).length;
     const oldestPending = draws
       .filter((e) => e.pending && e.requestDate)
@@ -62,6 +73,7 @@ export default async function DrawsDashboardPage() {
       awaiting,
       budget,
       available,
+      descoberto,
       pendingCount,
       oldestPending,
       creditedYear,
@@ -130,6 +142,10 @@ export default async function DrawsDashboardPage() {
                 </span>
                 {c.paidOff ? (
                   <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">Quitado</span>
+                ) : c.descoberto != null && c.descoberto > 0.01 ? (
+                  <span className="rounded-full bg-red-50 px-2 py-0.5 text-xs font-bold text-red-700" title="Orçamentos das casas não cabem no envelope do loan">
+                    ⚠ envelope −{formatMoney(c.descoberto, c.p.currency)}
+                  </span>
                 ) : c.awaitingClosing ? (
                   <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">aguardando closing</span>
                 ) : c.pendingCount > 0 ? (

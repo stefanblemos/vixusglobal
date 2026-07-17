@@ -1497,6 +1497,9 @@ model PoolLoan {
   interestDueDay Int? // dia do mês do vencimento (ex.: 1 = todo dia 1º)
   graceDays      Int? // dias de carência após o vencimento
   lateFeePct     Decimal? @db.Decimal(6, 3) // multa por atraso (%)
+  // modalidade do envelope (17/07): true = fees POR DENTRO (consomem o teto — net funding);
+  // false = POR FORA (somam ao comprometido — gross-up); null = não definido (trata como dentro)
+  feesInEnvelope Boolean?
   expectedClosingDate DateTime? @db.Date // closing PREVISTO (regra dos 80% dos permits)
   closingDate   DateTime? @db.Date // closing REAL
   notes         String?

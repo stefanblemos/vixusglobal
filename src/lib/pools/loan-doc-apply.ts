@@ -31,6 +31,7 @@ export function buildLoanDocProposal(
     fileName: string;
     loan: { closingDate: string | null; committed: number | null; aprPct: number | null; loanNumber: string | null };
     bank: { name: string; termMonths: number; extensionMonths: number } | null;
+    housesBudget?: number | null; // Σ drawable das casas do loan (p/ sugerir a modalidade)
   },
 ): LoanDocProposalItem[] {
   const items: LoanDocProposalItem[] = [];
@@ -110,6 +111,29 @@ export function buildLoanDocProposal(
         },
       },
     });
+  }
+  // modalidade do envelope (17/07): a matemática entrega — teto ≈ Σ casas → fees POR
+  // DENTRO (net funding); teto ≈ Σ casas + fees → POR FORA (gross-up). Sugestão revisável.
+  if (ex.committed > 0 && ctx.housesBudget != null && ctx.housesBudget > 0) {
+    const feesSum = ex.feesAtClosing.filter((f) => f.financed && f.amount > 0).reduce((s, f) => s + f.amount, 0);
+    const tol = Math.max(1000, ex.committed * 0.01);
+    const diff = ex.committed - ctx.housesBudget;
+    const guess: "IN" | "OUT" | null =
+      Math.abs(diff) <= tol ? "IN" : feesSum > 0 && Math.abs(diff - feesSum) <= Math.max(tol, feesSum * 0.25) ? "OUT" : null;
+    if (guess) {
+      items.push({
+        key: "feesMode",
+        label:
+          guess === "IN"
+            ? `Modalidade: fees POR DENTRO do teto (teto ${money0(ex.committed)} ≈ soma das casas ${money0(ctx.housesBudget)})`
+            : `Modalidade: fees POR FORA (teto ${money0(ex.committed)} ≈ casas ${money0(ctx.housesBudget)} + fees ${money0(feesSum)})`,
+        from: null,
+        to: guess === "IN" ? "por dentro" : "por fora",
+        target: "→ Loan · envelope, suficiência e disponibilidade de draws",
+        defaultOn: true,
+        set: { loan: { feesInEnvelope: guess } },
+      });
+    }
   }
   // vencimento dos juros (mock aprovado 17/07): dia + grace + multa → campos do loan
   if (ex.paymentDueDay > 0 && ex.paymentDueDay <= 31) {
@@ -241,7 +265,8 @@ export async function applyLoanDocProposal(
   for (const it of chosen) {
     if ("loan" in it.set) {
       for (const [k, v] of Object.entries(it.set.loan))
-        loanData[k] = k === "closingDate" ? new Date(String(v)) : v;
+        loanData[k] =
+          k === "closingDate" ? new Date(String(v)) : k === "feesInEnvelope" ? v === "IN" : v;
     } else if ("bank" in it.set) {
       Object.assign(bankData, it.set.bank);
     } else {

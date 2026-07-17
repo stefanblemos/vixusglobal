@@ -44,6 +44,8 @@ if (process.env.VERCEL_ENV === "production") {
   run("node scripts/fix-ph4-loans.mjs");
   // Baselines congelados: fase Obra re-extraída do cronograma físico da sim (units)
   run("node scripts/fix-baseline-build-phase.mjs");
+  // PH-4/FCI: drawable = obra pura (fees vão pela modalidade do envelope, não rateados)
+  run("node scripts/fix-fci-drawables.mjs");
 }
 
 run("next build");

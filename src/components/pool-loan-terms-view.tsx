@@ -23,6 +23,7 @@ export type LoanTermsData = {
   interestDueDay: string | null; // dia do vencimento do juro mensal
   graceDays: string | null;
   lateFeePct: string | null;
+  feesInEnvelope: "IN" | "OUT" | ""; // modalidade: fees por dentro do teto | por fora | indefinida
   notes: string | null;
   statusChip: { text: string; tone: "amber" | "green" | "slate" };
   sourceChip: string | null; // "preenchido do LOI de … · leitura por AI"
@@ -159,6 +160,14 @@ export function PoolLoanTermsView({
             <EditField l="Vencimento do juro (dia)" name="interestDueDay" defaultValue={loan.interestDueDay} />
             <EditField l="Grace (dias)" name="graceDays" defaultValue={loan.graceDays} />
             <EditField l="Multa por atraso %" name="lateFeePct" defaultValue={loan.lateFeePct} />
+            <div>
+              <span className={label}>Fees do closing (modalidade)</span>
+              <select name="feesInEnvelope" defaultValue={loan.feesInEnvelope} className={inputClass}>
+                <option value="">— indefinida</option>
+                <option value="IN">por dentro do teto (net funding)</option>
+                <option value="OUT">por fora — somam ao comprometido</option>
+              </select>
+            </div>
           </div>
 
           {bank && (
@@ -260,6 +269,17 @@ export function PoolLoanTermsView({
               ? `dia ${loan.interestDueDay}${loan.graceDays ? ` · grace ${loan.graceDays}d` : ""}${loan.lateFeePct ? ` · multa ${loan.lateFeePct}%` : ""}`
               : null
           }
+        />
+        <Field
+          l="Fees do closing (modalidade)"
+          v={
+            loan.feesInEnvelope === "IN"
+              ? "por dentro do teto (consomem o envelope)"
+              : loan.feesInEnvelope === "OUT"
+                ? "por fora (somam ao comprometido)"
+                : null
+          }
+          dim={loan.feesInEnvelope === ""}
         />
       </div>
 

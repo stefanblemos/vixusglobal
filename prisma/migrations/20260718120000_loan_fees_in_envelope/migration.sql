@@ -1,0 +1,1 @@
+ALTER TABLE "PoolLoan" ADD COLUMN IF NOT EXISTS "feesInEnvelope" BOOLEAN;

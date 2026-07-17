@@ -216,14 +216,23 @@ export default async function PoolLoanPage({
   const entriesOfHouse = (houseId: string) =>
     loan?.entries.filter((e) => e.houseId === houseId) ?? [];
   const linkedHouses = loan ? pool.houses.filter((h) => h.loanId === loan.id) : [];
-  // Suficiência do financiamento (17/07, fórmula do Stefan): o closing consome parte do
-  // financiado → disponível p/ obra = drawable − closing rateado. Necessário do banco =
-  // obra estimada − aporte próprio além do lote. Falta > 0 = aporte dos sócios.
-  const loanConsumed = loan
-    ? loan.entries
-        .filter((e) => !e.pending && ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(e.type))
-        .reduce((s, e) => s + Number(e.amount), 0)
-    : 0;
+  // Suficiência do financiamento (17/07, fórmula do Stefan + modalidade do envelope):
+  // POR DENTRO (feesInEnvelope ≠ false): fees consomem o teto — fee de draw COM casa
+  // desconta da própria casa; o resto (closing/reserve/crédito) rateia pelo drawable.
+  // POR FORA: fees somam ao comprometido — nada desconta da obra.
+  const inEnvelope = loan ? loan.feesInEnvelope !== false : true;
+  const feesByHouse = new Map<string, number>();
+  let loanConsumedGeneral = 0;
+  if (loan) {
+    for (const e of loan.entries.filter(
+      (x) => !x.pending && ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(x.type),
+    )) {
+      if (e.type === "DRAW_FEE" && e.houseId)
+        feesByHouse.set(e.houseId, (feesByHouse.get(e.houseId) ?? 0) + Number(e.amount));
+      else loanConsumedGeneral += Number(e.amount);
+    }
+  }
+  const loanConsumed = loanConsumedGeneral + [...feesByHouse.values()].reduce((s, v) => s + v, 0);
   const loanDrawableTotal = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
   const suffOf = (h: (typeof pool.houses)[number]) => {
     const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
@@ -233,7 +242,10 @@ export default async function PoolLoanPage({
     const aporte = Number(h.ownCapital ?? 0);
     const equityObra = Math.max(0, aporte - lote); // aporte próprio além do lote
     const necessario = Math.max(0, obra - equityObra);
-    const consumido = loanDrawableTotal > 0 ? loanConsumed * (drawable / loanDrawableTotal) : 0;
+    const consumido = inEnvelope
+      ? (loanDrawableTotal > 0 ? loanConsumedGeneral * (drawable / loanDrawableTotal) : 0) +
+        (feesByHouse.get(h.id) ?? 0)
+      : 0;
     const disponivel = drawable - consumido;
     const falta = necessario - disponivel;
     const f = (v: number) => formatMoney(v, pool.currency);
@@ -478,6 +490,42 @@ export default async function PoolLoanPage({
       reconciled: d.reconciled,
       memo: d.memo,
     }));
+  // ── envelope do loan (17/07): a trava real é o teto — na modalidade "por dentro" os
+  // fees consumidos roubam espaço da obra; o DESCOBERTO = orçamentos + consumido − teto
+  // é o que faltará no FINAL (os últimos draws não cabem). Visível sempre.
+  const envelopeRest =
+    loan?.committed != null
+      ? Number(loan.committed) - (inEnvelope ? loanConsumed : 0) - drawsCredited - drawsAwaiting
+      : null;
+  const descoberto =
+    loan?.committed != null ? drawsBudget + (inEnvelope ? loanConsumed : 0) - Number(loan.committed) : null;
+  const casasTotals = (() => {
+    let drawn = 0;
+    let interest = 0;
+    for (const h of linkedHouses) {
+      const es = entriesOfHouse(h.id).filter((e) => !e.pending);
+      drawn += es.filter((e) => e.type === "DRAW").reduce((s, e) => s + Number(e.amount), 0);
+      interest += Math.abs(
+        es.filter((e) => e.type === "INTEREST_PAYMENT").reduce((s, e) => s + Number(e.amount), 0),
+      );
+    }
+    return {
+      drawableFmt: formatMoney(drawsBudget, pool.currency),
+      drawnFmt: drawn > 0 ? formatMoney(drawn, pool.currency) : "—",
+      availableFmt: formatMoney(Math.max(0, drawsBudget - drawn), pool.currency),
+      interestFmt: interest > 0 ? formatMoney(interest, pool.currency) : "—",
+    };
+  })();
+  const envelopeLine =
+    loan?.committed != null && descoberto != null
+      ? {
+          comprFmt: formatMoney(Math.max(0, drawsBudget - drawsCredited - drawsAwaiting), pool.currency),
+          envFmt: formatMoney(envelopeRest ?? 0, pool.currency),
+          descoberto: descoberto > 0.01,
+          descobertoFmt: formatMoney(Math.abs(descoberto), pool.currency),
+        }
+      : null;
+
   const feeBits: string[] = [];
   if (bp) {
     if (Number(bp.drawProcessingFee) > 0) feeBits.push(`$${Number(bp.drawProcessingFee)} processing`);
@@ -505,9 +553,14 @@ export default async function PoolLoanPage({
     const solid = l.entries.filter((e) => !e.pending);
     const balanceL = solid.reduce((s, e) => s + Number(e.amount), 0);
     const quitado = solid.some((e) => e.type === "PAYOFF") && balanceL <= 0.01 && solid.length > 0;
-    const consumedL = solid
-      .filter((e) => ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(e.type))
-      .reduce((s, e) => s + Number(e.amount), 0);
+    const inEnv = l.feesInEnvelope !== false; // modalidade: por fora → fees não consomem obra
+    const feesByH = new Map<string, number>();
+    let consumedGen = 0;
+    for (const e of solid.filter((x) => ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(x.type))) {
+      if (e.type === "DRAW_FEE" && e.houseId)
+        feesByH.set(e.houseId, (feesByH.get(e.houseId) ?? 0) + Number(e.amount));
+      else consumedGen += Number(e.amount);
+    }
     const drawTotal = lHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
     const rows2 = lHouses.map((h) => {
       const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
@@ -517,7 +570,10 @@ export default async function PoolLoanPage({
       const lote = Number(h.actualLotCost ?? h.plannedLotCost ?? 0);
       const equity = Math.max(0, Number(h.ownCapital ?? 0) - lote);
       const necessario = Math.max(0, obra - equity);
-      const disponivel = drawable - (drawTotal > 0 ? consumedL * (drawable / drawTotal) : 0);
+      const consumidoH = inEnv
+        ? (drawTotal > 0 ? consumedGen * (drawable / drawTotal) : 0) + (feesByH.get(h.id) ?? 0)
+        : 0;
+      const disponivel = drawable - consumidoH;
       return { addr: h.address.split(",")[0], obra, equity, necessario, disponivel, delta: disponivel - necessario };
     });
     const liquido = rows2.reduce((s, r) => s + (r.delta ?? 0), 0);
@@ -781,6 +837,7 @@ export default async function PoolLoanPage({
               interestDueDay: loan.interestDueDay?.toString() ?? null,
               graceDays: loan.graceDays?.toString() ?? null,
               lateFeePct: loan.lateFeePct?.toString() ?? null,
+              feesInEnvelope: loan.feesInEnvelope === true ? "IN" : loan.feesInEnvelope === false ? "OUT" : "",
               notes: loan.notes,
               statusChip: paidOff
                 ? { text: "quitado", tone: "slate" }
@@ -820,6 +877,8 @@ export default async function PoolLoanPage({
           houses={houseRows}
           unlinked={unlinkedHouses}
           footNote={housesFootNote}
+          totals={casasTotals}
+          envelope={envelopeLine}
         />
       )}
 
@@ -835,11 +894,28 @@ export default async function PoolLoanPage({
               hint={drawsPendingCount > 0 ? `${drawsPendingCount} ${drawsPendingCount === 1 ? "draw solicitado" : "draws solicitados"}` : "nenhum pendente"}
             />
             <Card
-              label="Disponível"
-              value={formatMoney(Math.max(0, drawsBudget - drawsCredited - drawsAwaiting), pool.currency)}
-              hint="aprovado − creditado − aguardando"
+              label={envelopeRest != null ? "Envelope restante" : "Disponível"}
+              value={formatMoney(
+                envelopeRest ?? Math.max(0, drawsBudget - drawsCredited - drawsAwaiting),
+                pool.currency,
+              )}
+              hint={
+                envelopeRest != null
+                  ? `teto${inEnvelope ? " − consumido" : ""} − sacado − aguardando`
+                  : "aprovado − creditado − aguardando"
+              }
             />
           </div>
+          {descoberto != null && descoberto > 0.01 && (
+            <section className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+              <p className="text-sm font-semibold text-amber-900">
+                ⚠ Descoberto do envelope: os orçamentos das casas{inEnvelope ? " + o que o closing já consumiu" : ""} somam{" "}
+                {formatMoney(drawsBudget + (inEnvelope ? loanConsumed : 0), pool.currency)}, mas o teto do loan é{" "}
+                {formatMoney(Number(loan.committed), pool.currency)} — os últimos draws ficarão{" "}
+                <b>{formatMoney(descoberto, pool.currency)}</b> descobertos (aporte dos sócios ou redução de orçamento).
+              </p>
+            </section>
+          )}
           <DrawHousesPanel
             poolId={pool.id}
             loanId={loan.id}
