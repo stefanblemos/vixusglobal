@@ -19,6 +19,7 @@ import {
   type InterestRow,
 } from "@/components/pool-loan-interest-panels";
 import { computeLoanInterest } from "@/lib/pools/loan-interest";
+import { LoanSufficiencyPanel, PoolSufficiencySummary } from "@/components/pool-loan-sufficiency";
 import { DrawHousesPanel, type HouseAvailability } from "@/components/pool-draw-houses";
 import { DrawList, type DrawRow } from "@/components/pool-draw-list";
 import { byAddressNumber } from "@/lib/pools/math";
@@ -298,18 +299,17 @@ export default async function PoolLoanPage({
     docDate?: string;
     endingBalance?: number;
   };
-  const chargeCandidates: ChargeCandidate[] = [];
-  let fundedNote: string | null = null;
-  if (loan) {
+  const candidatesOf = (l: (typeof pool.loans)[number]): ChargeCandidate[] => {
+    const out: ChargeCandidate[] = [];
     const launched = [
-      ...loan.entries
+      ...l.entries
         .filter((e) => ["CLOSING_FEE", "DRAW_FEE", "OTHER", "RESERVE", "DRAW"].includes(e.type))
         .map((e) => Number(e.amount)),
       ...pool.expenses.map((e) => Number(e.amount)),
     ];
     const near = (a: number) => launched.some((x) => Math.abs(Math.abs(x) - a) < 1);
     const seen = new Set<string>();
-    for (const d of loan.documents.filter(
+    for (const d of l.documents.filter(
       (dd) => ["AGREEMENT", "NOTE", "SETTLEMENT"].includes(dd.kind) && dd.extracted != null,
     )) {
       const ex2 = d.extracted as ExLite;
@@ -318,7 +318,7 @@ export default async function PoolLoanPage({
         const dupKey = `${f.name.toLowerCase()}|${Math.round(f.amount)}`;
         if (f.amount <= 0 || near(f.amount) || seen.has(dupKey)) return;
         seen.add(dupKey);
-        chargeCandidates.push({
+        out.push({
           key: `${d.id}:${i}`,
           name: f.name,
           source: `«${d.fileName}»`,
@@ -331,7 +331,7 @@ export default async function PoolLoanPage({
       const cash = ex2.cashToBorrower ?? 0;
       if (cash > 0 && !near(cash) && !seen.has(`cash|${Math.round(cash)}`)) {
         seen.add(`cash|${Math.round(cash)}`);
-        chargeCandidates.push({
+        out.push({
           key: `${d.id}:cash`,
           name: "Crédito recebido no closing (cash to borrower)",
           source: `«${d.fileName}»`,
@@ -341,8 +341,20 @@ export default async function PoolLoanPage({
           target: "CREDIT_IN",
         });
       }
-      if (ex2.endingBalance && ex2.endingBalance > 0 && !fundedNote)
+    }
+    return out;
+  };
+  const chargeCandidates: ChargeCandidate[] = loan ? candidatesOf(loan) : [];
+  let fundedNote: string | null = null;
+  if (loan) {
+    for (const d of loan.documents.filter(
+      (dd) => ["AGREEMENT", "NOTE", "SETTLEMENT"].includes(dd.kind) && dd.extracted != null,
+    )) {
+      const ex2 = d.extracted as ExLite;
+      if (ex2.endingBalance && ex2.endingBalance > 0) {
         fundedNote = `Referência do banco: saldo ${formatMoney(ex2.endingBalance, pool.currency)} («${d.fileName}»).`;
+        break;
+      }
     }
   }
 
@@ -474,6 +486,82 @@ export default async function PoolLoanPage({
   }
   const feesHint =
     feeBits.length > 0 ? `Fees previstos na liberação (${bp?.name}): ${feeBits.join(" + ")}.` : "";
+
+  // ── Suficiência do LOAN + resumo geral do pool (mock aprovado 17/07; escolha do
+  // Stefan: consolidado soma TODOS os loans — a sobra de um cobre a falta do outro).
+  // Custos por vir são estimativas transparentes: juros ≈ APR/12 × média(saldo atual,
+  // drawable total) × meses restantes; fees de draw ≈ 4 draws/casa − feitos; closing
+  // pendente = cobranças achadas nos documentos e não lançadas.
+  const monthsUntil = (target: Date | null, from: Date): number => {
+    if (!target || target.getTime() <= from.getTime()) return 0;
+    return Math.max(1, Math.round((target.getTime() - from.getTime()) / (30 * 24 * 60 * 60 * 1000)));
+  };
+  const baselinePayoff = (() => {
+    const b = pool.scheduleBaseline as { pool?: { loanPayoff?: string | null } } | null;
+    return b?.pool?.loanPayoff ? new Date(b.pool.loanPayoff) : null;
+  })();
+  const suffAggOf = (l: (typeof pool.loans)[number]) => {
+    const lHouses = pool.houses.filter((h) => h.loanId === l.id);
+    const solid = l.entries.filter((e) => !e.pending);
+    const balanceL = solid.reduce((s, e) => s + Number(e.amount), 0);
+    const quitado = solid.some((e) => e.type === "PAYOFF") && balanceL <= 0.01 && solid.length > 0;
+    const consumedL = solid
+      .filter((e) => ["CLOSING_FEE", "OTHER", "RESERVE", "DRAW_FEE"].includes(e.type))
+      .reduce((s, e) => s + Number(e.amount), 0);
+    const drawTotal = lHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
+    const rows2 = lHouses.map((h) => {
+      const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
+      const obra = h.plannedBuildCost != null ? Number(h.plannedBuildCost) : null;
+      if (drawable == null || obra == null)
+        return { addr: h.address.split(",")[0], obra, equity: null, necessario: null, disponivel: drawable, delta: null };
+      const lote = Number(h.actualLotCost ?? h.plannedLotCost ?? 0);
+      const equity = Math.max(0, Number(h.ownCapital ?? 0) - lote);
+      const necessario = Math.max(0, obra - equity);
+      const disponivel = drawable - (drawTotal > 0 ? consumedL * (drawable / drawTotal) : 0);
+      return { addr: h.address.split(",")[0], obra, equity, necessario, disponivel, delta: disponivel - necessario };
+    });
+    const liquido = rows2.reduce((s, r) => s + (r.delta ?? 0), 0);
+    const aprL =
+      l.aprPct != null
+        ? Number(l.aprPct)
+        : l.bankProfile
+          ? l.bankProfile.rateType === "FIXED"
+            ? Number(l.bankProfile.aprPct)
+            : Number(l.bankProfile.indexPct) + Number(l.bankProfile.spreadPct)
+          : null;
+    const mesesRest = quitado
+      ? 0
+      : monthsUntil(baselinePayoff, new Date()) ||
+        (l.bankProfile ? l.bankProfile.termMonths : 0);
+    const jurosEst =
+      aprL != null && drawTotal > 0 && !quitado
+        ? ((aprL / 100 / 12) * ((Math.max(0, balanceL) + drawTotal) / 2)) * mesesRest
+        : 0;
+    const drawsFeitos = solid.filter((e) => e.type === "DRAW").length;
+    const drawFeeEst = l.bankProfile
+      ? Number(l.bankProfile.inspectionFeePerDraw) * Math.max(0, lHouses.length * 4 - drawsFeitos)
+      : 0;
+    const closingPend = candidatesOf(l).reduce((s, c) => s + c.amount, 0);
+    const custosPorVir = jurosEst + drawFeeEst + closingPend;
+    return {
+      loanId: l.id,
+      label: `${l.bankProfile?.name?.split(" ")[0] ?? "Banco"}${l.loanNumber ? ` · ${l.loanNumber}` : ""}`,
+      quitado,
+      rows: rows2,
+      liquido,
+      jurosEst,
+      mesesRest,
+      aprL,
+      drawFeeEst,
+      closingPend,
+      custosPorVir,
+      resultado: liquido - custosPorVir,
+    };
+  };
+  const suffAggs = pool.loans.map(suffAggOf);
+  const suffSelected = loan ? suffAggs.find((a) => a.loanId === loan.id) ?? null : null;
+  const suffActive = suffAggs.filter((a) => !a.quitado);
+  const poolResultado = suffActive.reduce((s, a) => s + a.resultado, 0);
 
   const drawableSum = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
   const housesFootNote =
@@ -779,6 +867,8 @@ export default async function PoolLoanPage({
       {loan && stmt && stab === "statement" && (
         <>
           <LoanChargesPanel poolId={pool.id} loanId={loan.id} candidates={chargeCandidates} fundedNote={fundedNote} />
+          {suffSelected && <LoanSufficiencyPanel a={suffSelected} cur={pool.currency} />}
+          {pool.loans.length > 1 && <PoolSufficiencySummary aggs={suffAggs} cur={pool.currency} />}
           {interestRows.length > 0 && (
             <LoanInterestPanel
               poolId={pool.id}
