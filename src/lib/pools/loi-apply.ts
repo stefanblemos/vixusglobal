@@ -19,16 +19,62 @@ const txt = (s: string) => (s.trim() ? s.trim() : null);
 
 const MAPPED_FEES = ["appraisal", "legal", "processing", "feasibility", "budget review"];
 
+// Palavras genéricas de nome de lender — não bastam para dizer que é o MESMO credor.
+const GENERIC_TOKENS = new Set([
+  "llc", "inc", "corp", "corporation", "company", "co", "lp", "ltd", "the", "a",
+  "lender", "lenders", "lending", "services", "service", "capital", "private",
+  "bank", "group", "team", "delaware", "florida",
+]);
+function lenderTokens(name: string): Set<string> {
+  return new Set(
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length >= 2 && !GENERIC_TOKENS.has(t)),
+  );
+}
+// Mesmo credor se algum token distintivo coincide ("FCI Lender Services" ↔ "FCI";
+// "2BTRUST LLC" ↔ "2BTrust"). Sem nome legível → assume que é o mesmo (não arrisca
+// criar banco fantasma por falha de extração).
+export function sameLender(a: string, b: string): boolean {
+  const ta = lenderTokens(a);
+  const tb = lenderTokens(b);
+  if (ta.size === 0 || tb.size === 0) return true;
+  for (const t of ta) if (tb.has(t)) return true;
+  return false;
+}
+
 export async function applyLoiToBankProfile(
   bytes: Buffer,
   fileName: string,
   targetBankId: string | null,
-): Promise<{ bank: { id: string; name: string }; ex: LoiExtraction } | { error: string }> {
+): Promise<
+  { bank: { id: string; name: string }; ex: LoiExtraction; matchedTarget: boolean } | { error: string }
+> {
   let ex: LoiExtraction;
   try {
     ex = await analyzeLoiPdf(bytes.toString("base64"));
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Falha na extração do LOI." };
+  }
+
+  // Guarda anti-sobrescrita (bug PH-4 17/07: LOIs da RBI e da 2BTrust aplicados por cima
+  // do perfil FCI): se o credor do LOI NÃO é o banco alvo, redireciona para o perfil do
+  // próprio credor (existente por nome, ou criado) em vez de corromper o alvo.
+  let effectiveTargetId = targetBankId;
+  let matchedTarget = true;
+  if (targetBankId) {
+    const target = await prisma.bankProfile.findUnique({
+      where: { id: targetBankId },
+      select: { name: true },
+    });
+    if (!target) return { error: "Banco alvo não encontrado." };
+    if (txt(ex.bankName) && !sameLender(ex.bankName, target.name)) {
+      matchedTarget = false;
+      const all = await prisma.bankProfile.findMany({ select: { id: true, name: true } });
+      effectiveTargetId = all.find((b) => sameLender(ex.bankName, b.name))?.id ?? null;
+    }
   }
 
   const fees = ex.fixedFees ?? [];
@@ -73,8 +119,8 @@ export async function applyLoiToBankProfile(
   const changedBy = session?.user?.email ?? "unknown";
 
   let bank: { id: string; name: string };
-  if (targetBankId) {
-    const existing = await prisma.bankProfile.findUnique({ where: { id: targetBankId } });
+  if (effectiveTargetId) {
+    const existing = await prisma.bankProfile.findUnique({ where: { id: effectiveTargetId } });
     if (!existing) return { error: "Banco alvo não encontrado." };
     await prisma.bankProfile.update({ where: { id: existing.id }, data: mapped });
     bank = existing;
@@ -131,7 +177,7 @@ export async function applyLoiToBankProfile(
     },
   });
 
-  return { bank: { id: bank.id, name: bank.name }, ex };
+  return { bank: { id: bank.id, name: bank.name }, ex, matchedTarget };
 }
 
 export const loiTxt = txt;

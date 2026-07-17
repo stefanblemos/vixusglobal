@@ -39,6 +39,9 @@ if (process.env.VERCEL_ENV === "production") {
   run("node scripts/fix-ph3-sales-panel.mjs");
   run("node scripts/fix-rbi-loi.mjs");
   run("node scripts/fix-scenarios-restore.mjs");
+  // PH-4: desfaz os LOIs aplicados por cima do loan/perfil FCI (RBI e 2BTrust viram
+  // loans próprios com os termos dos PDFs arquivados)
+  run("node scripts/fix-ph4-loans.mjs");
 }
 
 run("next build");

@@ -76,11 +76,29 @@ export async function uploadLoanDocument(
     const { applyLoiToBankProfile } = await import("@/lib/pools/loi-apply");
     const res = await applyLoiToBankProfile(bytes, file.name, loan.bankProfileId);
     if ("error" in res) return { error: res.error };
-    const { bank, ex } = res;
+    const { bank, ex, matchedTarget } = res;
+    // credor do LOI ≠ banco deste loan → aplica no loan DO CREDOR (existente no pool, ou
+    // criado agora); o loan original fica intacto (bug PH-4: RBI/2BTrust por cima da FCI)
+    let target = loan;
+    let createdNewLoan = false;
+    if (!matchedTarget) {
+      const sibling = await prisma.poolLoan.findFirst({
+        where: { poolId, bankProfileId: bank.id },
+        include: { bankProfile: true },
+      });
+      if (sibling) target = sibling;
+      else {
+        target = await prisma.poolLoan.create({
+          data: { poolId, bankProfileId: bank.id },
+          include: { bankProfile: true },
+        });
+        createdNewLoan = true;
+      }
+    }
     const noteBits = `LOI ${ex.loiNumber.trim() || file.name}${ex.loiDate.trim() ? ` de ${ex.loiDate.trim()}` : ""} lido por AI — ${ex.summary}`;
     await prisma.$transaction([
       prisma.poolLoan.update({
-        where: { id: loan.id },
+        where: { id: target.id },
         data: {
           bankProfileId: bank.id,
           ...(ex.totalLoanAmount > 0 ? { committed: ex.totalLoanAmount } : {}),
@@ -88,20 +106,23 @@ export async function uploadLoanDocument(
           ...(ex.loiNumber.trim() ? { loanNumber: ex.loiNumber.trim() } : {}),
           // a data do LOI abre a fase de CONTRATAÇÃO do loan no Cronograma (celeridade
           // do banco = LOI → closing); só preenche se ainda vazio (editável nos Termos)
-          ...(ex.loiDate.trim() && !loan.firstContactDate
+          ...(ex.loiDate.trim() && !target.firstContactDate
             ? { firstContactDate: new Date(ex.loiDate.trim()) }
             : {}),
-          notes: [loan.notes, noteBits].filter(Boolean).join(" · "),
+          notes: [target.notes, noteBits].filter(Boolean).join(" · "),
         },
       }),
       prisma.poolLoanDocument.create({
         data: {
           ...base,
+          loanId: target.id,
           kind: "LOI",
           summary: ex.summary,
           extracted: JSON.parse(JSON.stringify(ex)),
           appliedAt: new Date(),
-          appliedSummary: `condições aplicadas ao banco (${bank.name}) + loan`,
+          appliedSummary: createdNewLoan
+            ? `credor ${bank.name} ≠ banco do loan — loan novo criado no pool + condições aplicadas`
+            : `condições aplicadas ao banco (${bank.name}) + loan`,
         },
       }),
     ]);
