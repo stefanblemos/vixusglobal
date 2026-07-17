@@ -81,6 +81,31 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
 
   const today = new Date().toISOString().slice(0, 10);
 
+  // ── ciclo do LOAN (Stefan, 17/07): LINHA ÚNICA por loan, em 2 segmentos coloridos —
+  // CONTRATAÇÃO (solicitação do LOI → closing; mede a celeridade do banco) e ATIVO
+  // (closing → payoff final, saldo quitado). Previsto (da sim) plotado no 1º loan.
+  const loanInfo = pool.loans.map((l, i) => {
+    const bank = l.bankProfile?.name ?? "Banco a definir";
+    const first = iso(l.firstContactDate);
+    const closing = iso(l.closingDate);
+    const balance = l.entries.reduce((s, e) => s + Number(e.amount), 0);
+    const payoffs = l.entries.filter((e) => e.type === "PAYOFF").map((e) => iso(e.date)!).sort();
+    const paidOff = l.entries.length > 0 && balance <= 0.01 && payoffs.length > 0;
+    const payoffReal = paidOff ? payoffs[payoffs.length - 1] : null;
+    const contractDays =
+      first != null
+        ? Math.round((new Date(closing ?? today).getTime() - new Date(first).getTime()) / DAY_MS)
+        : null;
+    return { id: l.id, bank, first, closing, payoffReal, active: l.entries.length > 0, contractDays, isFirst: i === 0 };
+  });
+  const loanPhaseOf = (l: (typeof loanInfo)[number], label: string): Phase => ({
+    label,
+    prev: l.isFirst && baseline ? prevSpan(baseline.pool.loanClosing, baseline.pool.loanPayoff ?? null) : null,
+    contract: l.first ? { start: l.first, end: l.closing } : null,
+    real: l.closing ? { start: l.closing, end: l.payoffReal } : null,
+  });
+  const loanInfoById = new Map(loanInfo.map((l) => [l.id, l]));
+
   const rows: RowData[] = (baseline?.houses ?? [])
     .map((b) => {
       const h = houseById.get(b.houseId);
@@ -90,10 +115,13 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
         const real = realOf(h, m.key);
         return { key: m.key as string, label: m.label, prev, real, delta: deltaDays(prev, real) };
       });
-      // fases como BARRAS início→fim (pedido do Stefan): venda fecha com a data de MERCADO
+      // fases como BARRAS início→fim (pedido do Stefan): venda fecha com a data de MERCADO;
+      // o loan DA CASA entra entre o permit e a obra (posição cronológica correta)
+      const hl = h.loanId ? loanInfoById.get(h.loanId) : undefined;
       const phases: Phase[] = [
         { label: "Lote", prev: prevSpan(b.emd, b.lotClose), real: realSpan(iso(h.lotContractDate) ?? iso(h.lotPaidDate), iso(h.lotPaidDate)) },
         { label: "Permit", prev: prevSpan(b.permitApp, b.permitIssued), real: realSpan(iso(h.permitAppliedDate), iso(h.permitIssuedDate)) },
+        ...(hl ? [loanPhaseOf(hl, `Loan ${hl.bank.split(" ")[0]}`)] : []),
         { label: "Obra", prev: prevSpan(b.buildStart, b.buildEnd), real: realSpan(iso(h.buildStartDate) ?? iso(h.loanEntries[0]?.date ?? null), iso(h.coDate)) },
         { label: "Venda", prev: prevSpan(b.buildEnd, b.sale), real: realSpan(iso(h.listedDate), iso(h.saleDate)) },
       ];
@@ -103,9 +131,11 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
     .sort((a, b) => (a.cells[0].prev ?? "9999").localeCompare(b.cells[0].prev ?? "9999"));
 
   // ── consolidado do pool (igual ao gráfico de fases da simulação) ──
-  const aggPhase = (label: string, idx: number): Phase => {
-    const prevs = rows.map((r) => r.phases[idx].prev).filter((s): s is Span => s != null);
-    const reals = rows.map((r) => r.phases[idx].real).filter((s): s is Span => s != null);
+  // por LABEL (não índice): a linha do loan é opcional por casa e deslocaria os índices
+  const aggPhase = (label: string, houseLabel: string): Phase => {
+    const found = rows.map((r) => r.phases.find((p) => p.label === houseLabel)).filter((p): p is Phase => p != null);
+    const prevs = found.map((p) => p.prev).filter((s): s is Span => s != null);
+    const reals = found.map((p) => p.real).filter((s): s is Span => s != null);
     const min = (xs: string[]) => (xs.length ? xs.reduce((a, b) => (a < b ? a : b)) : null);
     const max = (xs: string[]) => (xs.length ? xs.reduce((a, b) => (a > b ? a : b)) : null);
     const anyOpen = reals.some((s) => s.end == null);
@@ -122,46 +152,18 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
   const firstDist = iso(pool.distributions[0]?.date ?? null);
   const lastDist = iso(pool.distributions[pool.distributions.length - 1]?.date ?? null);
 
-  // ── ciclo do LOAN (pedido do Stefan, 17/07): linha contínua em 2 partes por loan —
-  // CONTRATAÇÃO (solicitação do LOI → closing; mede a celeridade do banco) e ATIVO
-  // (closing → payoff final, saldo quitado). Previsto (da sim) plotado no 1º loan.
-  const loanInfo = pool.loans.map((l, i) => {
-    const bank = l.bankProfile?.name ?? "Banco a definir";
-    const first = iso(l.firstContactDate);
-    const closing = iso(l.closingDate);
-    const balance = l.entries.reduce((s, e) => s + Number(e.amount), 0);
-    const payoffs = l.entries.filter((e) => e.type === "PAYOFF").map((e) => iso(e.date)!).sort();
-    const paidOff = l.entries.length > 0 && balance <= 0.01 && payoffs.length > 0;
-    const payoffReal = paidOff ? payoffs[payoffs.length - 1] : null;
-    const contractDays =
-      first != null
-        ? Math.round((new Date(closing ?? today).getTime() - new Date(first).getTime()) / DAY_MS)
-        : null;
-    return { bank, first, closing, payoffReal, active: l.entries.length > 0, contractDays, isFirst: i === 0 };
-  });
+  // todos os loans do projeto, entre os permits e a obra (posição cronológica correta)
   const loanPhases: Phase[] = baseline
-    ? loanInfo.flatMap((l) => [
-        {
-          label: `${l.bank.split(" ")[0]} · contratação`,
-          // motor não modela a solicitação — o previsto da contratação é o closing (marco)
-          prev: l.isFirst ? prevSpan(baseline.pool.loanClosing, baseline.pool.loanClosing) : null,
-          real: l.first ? { start: l.first, end: l.closing } : null,
-        },
-        {
-          label: `${l.bank.split(" ")[0]} · ativo`,
-          prev: l.isFirst ? prevSpan(baseline.pool.loanClosing, baseline.pool.loanPayoff ?? null) : null,
-          real: l.closing ? { start: l.closing, end: l.payoffReal } : null,
-        },
-      ])
+    ? loanInfo.map((l) => loanPhaseOf(l, `Loan ${l.bank.split(" ")[0]}`))
     : [];
 
   const consolidated: Phase[] = baseline
     ? [
-        aggPhase("Lotes", 0),
-        aggPhase("Permits", 1),
-        aggPhase("Obra", 2),
-        aggPhase("Vendas", 3),
+        aggPhase("Lotes", "Lote"),
+        aggPhase("Permits", "Permit"),
         ...loanPhases,
+        aggPhase("Obra", "Obra"),
+        aggPhase("Vendas", "Venda"),
         {
           label: "Distribuições",
           prev: prevSpan(baseline.pool.firstReturn, baseline.pool.lastReturn),
@@ -172,7 +174,7 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
 
   // range global do gantt
   const allDates = [
-    ...consolidated.flatMap((p) => [p.prev?.start, p.prev?.end, p.real?.start, p.real?.end]),
+    ...consolidated.flatMap((p) => [p.prev?.start, p.prev?.end, p.real?.start, p.real?.end, p.contract?.start, p.contract?.end]),
     baseline?.pool.loanClosing ?? null,
     today,
   ].filter((d): d is string => d != null);

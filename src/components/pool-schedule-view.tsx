@@ -9,7 +9,9 @@ import { useState } from "react";
  */
 
 export type Span = { start: string; end: string | null }; // end null = em curso (até hoje)
-export type Phase = { label: string; prev: Span | null; real: Span | null };
+// contract (linhas de loan): segmento de CONTRATAÇÃO (LOI → closing) desenhado na MESMA
+// linha do real (ativo), em cor própria — linha única com as fases distinguidas por cor
+export type Phase = { label: string; prev: Span | null; real: Span | null; contract?: Span | null };
 export type Cell = { key: string; label: string; prev: string | null; real: string | null; delta: number | null };
 export type RowData = { houseId: string; addr: string; sub: string; cells: Cell[]; phases: Phase[] };
 
@@ -84,12 +86,21 @@ export function PhaseGantt({
                 false,
                 `previsto: ${fmt(p.prev.start)} → ${fmt(p.prev.end)}`,
               )}
+            {p.contract &&
+              bar(
+                p.contract,
+                "bottom-0.5 bg-[#7a94b8]",
+                p.contract.end == null,
+                `contratação (LOI → closing): ${fmt(p.contract.start)} → ${p.contract.end ? fmt(p.contract.end) : "em curso"}`,
+              )}
             {p.real &&
               bar(
                 p.real,
                 "bottom-0.5 bg-[#1f3a5f]",
                 p.real.end == null,
-                `realizado: ${fmt(p.real.start)} → ${p.real.end ? fmt(p.real.end) : "em curso"}`,
+                p.contract !== undefined
+                  ? `ativo (closing → payoff): ${fmt(p.real.start)} → ${p.real.end ? fmt(p.real.end) : "em curso"}`
+                  : `realizado: ${fmt(p.real.start)} → ${p.real.end ? fmt(p.real.end) : "em curso"}`,
               )}
           </div>
         </div>
@@ -97,6 +108,9 @@ export function PhaseGantt({
       <div className="mt-1.5 flex items-center gap-4 text-[10px] text-slate-400">
         <span><i className="mr-1 inline-block h-1.5 w-4 rounded-sm bg-slate-300 align-middle" />previsto (congelado)</span>
         <span><i className="mr-1 inline-block h-1.5 w-4 rounded-sm bg-[#1f3a5f] align-middle" />realizado</span>
+        {phases.some((p) => p.contract !== undefined) && (
+          <span><i className="mr-1 inline-block h-1.5 w-4 rounded-sm bg-[#7a94b8] align-middle" />loan · contratação</span>
+        )}
         <span><i className="mr-1 inline-block h-1.5 w-4 rounded-sm bg-[#1f3a5f] align-middle opacity-70" style={{ backgroundImage: "repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.5) 4px, rgba(255,255,255,.5) 7px)" }} />em curso</span>
         <span className="text-red-400">┊ hoje</span>
         <span className="ml-auto tabular-nums">{fmt(range.min)} — {fmt(range.max)}</span>
