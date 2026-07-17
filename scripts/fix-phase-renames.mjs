@@ -12,6 +12,33 @@ const RENAMES = [
 ];
 
 async function main() {
+  // Casca "VHP-I" criada por BUILD FORA DE ORDEM (16/07: webhook atrasado re-rodou o
+  // seed-ph3 antigo, que buscava VHP-I, depois do rename → criou duplicata do PH3).
+  // Guardas: alias PH3 + criada em/após 16/07 + SEM dados de usuário (distribuições,
+  // calls, expenses, sim vinculada) — o PH-3 verdadeiro é de 09/07 e tem tudo original.
+  const shell = await prisma.investmentPool.findFirst({
+    where: {
+      code: "VHP-I",
+      alias: "PH3",
+      createdAt: { gte: new Date("2026-07-16T00:00:00Z") },
+      distributions: { none: {} },
+      capitalCalls: { none: {} },
+      expenses: { none: {} },
+      simulations: { none: {} },
+    },
+    include: { members: { select: { id: true } } },
+  });
+  if (shell) {
+    const memberIds = shell.members.map((m) => m.id);
+    await prisma.poolContribution.deleteMany({ where: { memberId: { in: memberIds } } });
+    await prisma.poolMember.deleteMany({ where: { poolId: shell.id } });
+    await prisma.poolLoanEntry.deleteMany({ where: { loan: { poolId: shell.id } } });
+    await prisma.poolLoan.deleteMany({ where: { poolId: shell.id } });
+    await prisma.poolHouse.deleteMany({ where: { poolId: shell.id } });
+    await prisma.investmentPool.delete({ where: { id: shell.id } });
+    console.log("fix-phase-renames: casca VHP-I (duplicata do PH3, build fora de ordem) removida");
+  }
+
   for (const r of RENAMES) {
     const pool = await prisma.investmentPool.findUnique({ where: { code: r.fromCode } });
     if (!pool || pool.alias !== r.alias) {
