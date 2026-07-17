@@ -319,6 +319,7 @@ export default async function PoolLoanPage({
                   loanNumber: loan.loanNumber,
                   committed: loan.committed?.toString() ?? null,
                   aprPct: loan.aprPct?.toString() ?? null,
+                  firstContactDate: loan.firstContactDate ? fmtDate(loan.firstContactDate) : null,
                   expectedClosingDate: loan.expectedClosingDate ? fmtDate(loan.expectedClosingDate) : null,
                   closingDate: loan.closingDate ? fmtDate(loan.closingDate) : null,
                   notes: loan.notes,

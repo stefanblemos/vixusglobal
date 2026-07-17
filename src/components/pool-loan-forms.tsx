@@ -24,6 +24,7 @@ export function PoolLoanTermsForm({
     loanNumber: string | null;
     committed: string | null;
     aprPct: string | null;
+    firstContactDate: string | null; // yyyy-mm-dd — solicitação do LOI (abre a contratação)
     expectedClosingDate: string | null; // yyyy-mm-dd
     closingDate: string | null; // yyyy-mm-dd
     notes: string | null;
@@ -60,6 +61,17 @@ export function PoolLoanTermsForm({
       <div className="w-24">
         <label className={labelClass}>APR %</label>
         <input name="aprPct" defaultValue={loan?.aprPct ?? ""} className={inputClass} />
+      </div>
+      <div className="w-40">
+        <label className={labelClass} title="Solicitação do LOI — abre a fase de contratação do loan no Cronograma (a leitura do LOI preenche sozinha)">
+          Solicitação do LOI
+        </label>
+        <input
+          name="firstContactDate"
+          type="date"
+          defaultValue={loan?.firstContactDate ?? ""}
+          className={inputClass}
+        />
       </div>
       <div className="w-40">
         <label className={labelClass}>Closing previsto</label>

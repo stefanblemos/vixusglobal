@@ -86,6 +86,11 @@ export async function uploadLoanDocument(
           ...(ex.totalLoanAmount > 0 ? { committed: ex.totalLoanAmount } : {}),
           ...(ex.interestRatePct > 0 ? { aprPct: ex.interestRatePct } : {}),
           ...(ex.loiNumber.trim() ? { loanNumber: ex.loiNumber.trim() } : {}),
+          // a data do LOI abre a fase de CONTRATAÇÃO do loan no Cronograma (celeridade
+          // do banco = LOI → closing); só preenche se ainda vazio (editável nos Termos)
+          ...(ex.loiDate.trim() && !loan.firstContactDate
+            ? { firstContactDate: new Date(ex.loiDate.trim()) }
+            : {}),
           notes: [loan.notes, noteBits].filter(Boolean).join(" · "),
         },
       }),
@@ -235,6 +240,8 @@ export async function savePoolLoan(
     loanNumber: String(formData.get("loanNumber") ?? "").trim() || null,
     committed: optNum(formData.get("committed")),
     aprPct: optNum(formData.get("aprPct")),
+    // solicitação do LOI — abre a fase de contratação do loan no Cronograma
+    firstContactDate: optDate(formData.get("firstContactDate")),
     expectedClosingDate: optDate(formData.get("expectedClosingDate")),
     closingDate: optDate(formData.get("closingDate")),
     notes: String(formData.get("notes") ?? "").trim() || null,

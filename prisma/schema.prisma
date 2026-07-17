@@ -1492,6 +1492,7 @@ model PoolLoan {
   loanNumber    String? // ex.: "77959"
   committed     Decimal?  @db.Decimal(20, 2) // valor comprometido
   aprPct        Decimal?  @db.Decimal(6, 3) // taxa contratual (p/ conferência dos juros)
+  firstContactDate DateTime? @db.Date // 1º contato com o banco (abre o estágio de documentação; AI preenche com a data do LOI)
   expectedClosingDate DateTime? @db.Date // closing PREVISTO (regra dos 80% dos permits)
   closingDate   DateTime? @db.Date // closing REAL
   notes         String?

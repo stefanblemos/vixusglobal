@@ -45,7 +45,13 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
       houses: {
         include: { loanEntries: { where: { type: "DRAW", pending: false }, orderBy: { date: "asc" }, take: 1 } },
       },
-      loans: { orderBy: { createdAt: "asc" }, include: { bankProfile: { select: { name: true } } } },
+      loans: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          bankProfile: { select: { name: true } },
+          entries: { where: { pending: false }, select: { type: true, amount: true, date: true } },
+        },
+      },
       distributions: { orderBy: { date: "asc" } },
     },
   });
@@ -115,12 +121,47 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
   };
   const firstDist = iso(pool.distributions[0]?.date ?? null);
   const lastDist = iso(pool.distributions[pool.distributions.length - 1]?.date ?? null);
+
+  // ── ciclo do LOAN (pedido do Stefan, 17/07): linha contínua em 2 partes por loan —
+  // CONTRATAÇÃO (solicitação do LOI → closing; mede a celeridade do banco) e ATIVO
+  // (closing → payoff final, saldo quitado). Previsto (da sim) plotado no 1º loan.
+  const loanInfo = pool.loans.map((l, i) => {
+    const bank = l.bankProfile?.name ?? "Banco a definir";
+    const first = iso(l.firstContactDate);
+    const closing = iso(l.closingDate);
+    const balance = l.entries.reduce((s, e) => s + Number(e.amount), 0);
+    const payoffs = l.entries.filter((e) => e.type === "PAYOFF").map((e) => iso(e.date)!).sort();
+    const paidOff = l.entries.length > 0 && balance <= 0.01 && payoffs.length > 0;
+    const payoffReal = paidOff ? payoffs[payoffs.length - 1] : null;
+    const contractDays =
+      first != null
+        ? Math.round((new Date(closing ?? today).getTime() - new Date(first).getTime()) / DAY_MS)
+        : null;
+    return { bank, first, closing, payoffReal, active: l.entries.length > 0, contractDays, isFirst: i === 0 };
+  });
+  const loanPhases: Phase[] = baseline
+    ? loanInfo.flatMap((l) => [
+        {
+          label: `${l.bank.split(" ")[0]} · contratação`,
+          // motor não modela a solicitação — o previsto da contratação é o closing (marco)
+          prev: l.isFirst ? prevSpan(baseline.pool.loanClosing, baseline.pool.loanClosing) : null,
+          real: l.first ? { start: l.first, end: l.closing } : null,
+        },
+        {
+          label: `${l.bank.split(" ")[0]} · ativo`,
+          prev: l.isFirst ? prevSpan(baseline.pool.loanClosing, baseline.pool.loanPayoff ?? null) : null,
+          real: l.closing ? { start: l.closing, end: l.payoffReal } : null,
+        },
+      ])
+    : [];
+
   const consolidated: Phase[] = baseline
     ? [
         aggPhase("Lotes", 0),
         aggPhase("Permits", 1),
         aggPhase("Obra", 2),
         aggPhase("Vendas", 3),
+        ...loanPhases,
         {
           label: "Distribuições",
           prev: prevSpan(baseline.pool.firstReturn, baseline.pool.lastReturn),
@@ -230,20 +271,53 @@ export default async function PoolSchedulePage({ params }: { params: Promise<{ i
             <div className="mt-3">
               <PhaseGantt phases={consolidated} range={range} height="lg" />
             </div>
-            <p className="mt-2 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
-              Closing do loan{pool.loans.length > 1 ? "s" : ""}: prev{" "}
-              <b className="tabular-nums">{fmt(baseline.pool.loanClosing)}</b> · real{" "}
-              {loanReal ? (
-                <b className="tabular-nums">{fmt(iso(loanReal))}</b>
-              ) : (
-                <Link href={`/pools/${pool.id}/loan?stab=docs`} className="font-semibold text-amber-700 underline">
-                  suba o contrato
-                </Link>
-              )}
-              {" · "}Distribuições: prev <b className="tabular-nums">{fmt(baseline.pool.firstReturn)}</b> →{" "}
-              <b className="tabular-nums">{fmt(baseline.pool.lastReturn)}</b> · real{" "}
-              <b className="tabular-nums">{firstDist ? `${fmt(firstDist)} → ${lastDist ? fmt(lastDist) : "…"}` : "—"}</b>
-            </p>
+            <div className="mt-2 space-y-0.5 border-t border-slate-100 pt-2 text-[11px] text-slate-500">
+              {loanInfo.map((l) => (
+                <p key={l.bank}>
+                  <b>{l.bank}</b>:{" "}
+                  {l.first ? (
+                    <>
+                      LOI <b className="tabular-nums">{fmt(l.first)}</b> → closing{" "}
+                      {l.closing ? (
+                        <>
+                          <b className="tabular-nums">{fmt(l.closing)}</b> —{" "}
+                          <b className={l.contractDays! > 60 ? "text-amber-700" : "text-emerald-700"}>
+                            contratado em {l.contractDays}d
+                          </b>
+                        </>
+                      ) : (
+                        <b className="text-amber-700">
+                          pendente · {l.contractDays}d desde a solicitação —{" "}
+                          <Link href={`/pools/${pool.id}/loan?stab=docs`} className="underline">
+                            suba o contrato
+                          </Link>
+                        </b>
+                      )}
+                      {l.payoffReal && (
+                        <>
+                          {" "}· quitado em <b className="tabular-nums">{fmt(l.payoffReal)}</b>
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-amber-700">
+                      solicitação do LOI sem data —{" "}
+                      <Link href={`/pools/${pool.id}/loan?stab=terms`} className="underline">
+                        registre nos Termos
+                      </Link>{" "}
+                      (a leitura do LOI preenche sozinha)
+                    </span>
+                  )}
+                </p>
+              ))}
+              <p>
+                Previsto na simulação: closing <b className="tabular-nums">{fmt(baseline.pool.loanClosing)}</b> · payoff
+                final <b className="tabular-nums">{fmt(baseline.pool.loanPayoff ?? null)}</b> · Distribuições{" "}
+                <b className="tabular-nums">{fmt(baseline.pool.firstReturn)}</b> →{" "}
+                <b className="tabular-nums">{fmt(baseline.pool.lastReturn)}</b> · real{" "}
+                <b className="tabular-nums">{firstDist ? `${fmt(firstDist)} → ${lastDist ? fmt(lastDist) : "…"}` : "—"}</b>
+              </p>
+            </div>
           </section>
 
           <section className="rounded-xl border border-slate-200 bg-white">

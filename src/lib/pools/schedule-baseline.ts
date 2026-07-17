@@ -25,7 +25,12 @@ export type ScheduleBaseline = {
   scenarioCode: string;
   startDate: string; // âncora (início do pool/sim)
   houses: BaselineHouse[];
-  pool: { loanClosing: string | null; firstReturn: string | null; lastReturn: string | null };
+  pool: {
+    loanClosing: string | null;
+    loanPayoff?: string | null; // último payoff previsto (fecha a fase "loan ativo")
+    firstReturn: string | null;
+    lastReturn: string | null;
+  };
 };
 
 type SimEvent = { day: number; kind: string; label: string; amount: number };
@@ -54,9 +59,11 @@ export function extractScheduleBaseline(
     marks.set(label, m);
   };
   let loanClosing: number | null = null;
+  let loanPayoff: number | null = null;
   const returns: number[] = [];
   for (const e of result.events) {
     if (e.kind === "BANK_FEE" && loanClosing == null) loanClosing = e.day;
+    if (e.kind === "BANK_PAYOFF") loanPayoff = Math.max(loanPayoff ?? 0, e.day);
     if (e.kind === "RETURN") returns.push(e.day);
     const h = houseOf(e.label);
     if (!h) continue;
@@ -106,6 +113,7 @@ export function extractScheduleBaseline(
     houses: out,
     pool: {
       loanClosing: loanClosing != null ? dt(loanClosing) : null,
+      loanPayoff: loanPayoff != null ? dt(loanPayoff) : null,
       firstReturn: returns.length > 0 ? dt(returns[0]) : null,
       lastReturn: returns.length > 0 ? dt(returns[returns.length - 1]) : null,
     },
@@ -123,7 +131,30 @@ export async function ensureScheduleBaseline(poolId: string): Promise<ScheduleBa
     },
   });
   if (!pool) return null;
-  if (pool.scheduleBaseline) return pool.scheduleBaseline as unknown as ScheduleBaseline;
+  if (pool.scheduleBaseline) {
+    const existing = pool.scheduleBaseline as unknown as ScheduleBaseline;
+    // backfill one-time (16/07: baselines congelados antes do ciclo do loan não têm o
+    // payoff previsto) — SÓ adiciona o marco ausente; nenhum valor congelado é alterado
+    if (existing.pool.loanPayoff === undefined) {
+      const sim0 = pool.simulations[0];
+      const res0 = sim0?.result as SimResultLike | null;
+      let loanPayoff: string | null = null;
+      if (res0?.events?.length && pool.startDate) {
+        const last = res0.events.filter((e) => e.kind === "BANK_PAYOFF").map((e) => e.day);
+        if (last.length > 0) {
+          const x = new Date(pool.startDate);
+          x.setUTCDate(x.getUTCDate() + Math.max(...last));
+          loanPayoff = x.toISOString().slice(0, 10);
+        }
+      }
+      existing.pool.loanPayoff = loanPayoff;
+      await prisma.investmentPool.update({
+        where: { id: poolId },
+        data: { scheduleBaseline: JSON.parse(JSON.stringify(existing)) },
+      });
+    }
+    return existing;
+  }
 
   const sim = pool.simulations[0];
   const result = sim?.result as SimResultLike | null;
