@@ -6,6 +6,7 @@ import {
   applyLoanDoc,
   archiveLoanDoc,
   deleteLoanDoc,
+  reclassifyLoanDoc,
   uploadLoanDocument,
   type FormState,
 } from "@/lib/actions/pool-loan";
@@ -92,12 +93,13 @@ export function PoolLoanDocs({
         >
           <input type="hidden" name="loanId" value={loanId} />
           <div className="min-w-56 flex-1">
-            <label className={labelClass}>Documento (PDF)</label>
-            <input name="file" type="file" accept="application/pdf" required className={inputClass} />
+            <label className={labelClass}>Documentos (PDF — pode selecionar vários)</label>
+            <input name="file" type="file" accept="application/pdf" multiple required className={inputClass} />
           </div>
           <div className="w-64">
             <label className={labelClass}>Tipo</label>
-            <select name="kind" defaultValue="AGREEMENT" className={inputClass}>
+            <select name="kind" defaultValue="AUTO" className={inputClass}>
+              <option value="AUTO">Auto — a leitura identifica</option>
               {KIND_OPTIONS.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
@@ -110,11 +112,13 @@ export function PoolLoanDocs({
             disabled={uploading}
             className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
           >
-            {uploading ? "Analisando com AI… (~30s)" : "↑ Ler com AI"}
+            {uploading ? "Analisando com AI… (~1min)" : "↑ Ler com AI"}
           </button>
           <p className="w-full text-[11px] text-slate-400">
-            O tipo diz à IA o que procurar — LOI aplica direto ao banco + loan; contrato, note,
-            settlement, draw e extrato geram proposta revisável; &quot;Outro&quot; só arquiva.
+            Cada upload SOMA ao arquivo do loan — nada substitui nada (LOI, contrato, note,
+            settlement, draws e extratos convivem). Em &quot;Auto&quot; a leitura identifica o
+            tipo; se ficar em dúvida, o documento entra como &quot;Outro&quot; e você ajusta na
+            lista. LOI aplica direto ao banco + loan; os demais geram proposta revisável.
           </p>
           {upState?.error && <p className="w-full text-sm text-red-600">{upState.error}</p>}
         </form>
@@ -155,6 +159,7 @@ export function PoolLoanDocs({
                       <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-[10.5px] font-bold ${KIND_CHIP[d.kind]?.cls ?? ""}`}>
                         {KIND_CHIP[d.kind]?.label ?? d.kind}
                       </span>
+                      <ReclassifyControl poolId={poolId} doc={d} />
                     </td>
                     <td className="px-3 py-2 text-xs text-slate-500">{d.date}</td>
                     <td className="px-3 py-2 text-xs text-slate-400">{d.summary ?? "—"}</td>
@@ -200,6 +205,45 @@ export function PoolLoanDocs({
         )}
       </div>
     </section>
+  );
+}
+
+// ajuste de tipo (17/07): quando a classificação erra/não identifica, o select relê o PDF
+// guardado com o tipo escolhido e atualiza a mesma linha — nada é apagado do arquivo
+function ReclassifyControl({ poolId, doc }: { poolId: string; doc: LoanDocRow }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    reclassifyLoanDoc.bind(null, poolId),
+    undefined,
+  );
+  const router = useRouter();
+  useEffect(() => {
+    if (state?.ok) router.refresh();
+  }, [state, router]);
+  return (
+    <form action={action} className="mt-1 flex items-center gap-1">
+      <input type="hidden" name="docId" value={doc.id} />
+      <select
+        name="kind"
+        defaultValue={doc.kind}
+        className="rounded border border-slate-200 px-1 py-0.5 text-[10px] text-slate-500"
+        title="Ajustar o tipo — relê o PDF com o tipo escolhido"
+      >
+        {KIND_OPTIONS.map(([v, l]) => (
+          <option key={v} value={v}>
+            {l}
+          </option>
+        ))}
+      </select>
+      <button
+        type="submit"
+        disabled={pending}
+        className="text-[10px] text-[#1f3a5f] hover:underline disabled:opacity-50"
+        title="Reler o documento com o tipo escolhido"
+      >
+        {pending ? "relendo…" : "↻ reler"}
+      </button>
+      {state?.error && <span className="text-[10px] text-red-600">{state.error}</span>}
+    </form>
   );
 }
 

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import type { PoolLoanEntryType } from "@prisma/client";
+import { Prisma, type PoolLoanEntryType } from "@prisma/client";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
 
@@ -48,33 +48,45 @@ const ENTRY_TYPES = [
 // LOI mantém o pipeline direto (banco + loan); os demais tipos geram proposta revisável.
 const DOC_KINDS = ["LOI", "AGREEMENT", "NOTE", "SETTLEMENT", "DRAW", "STATEMENT", "OTHER"] as const;
 
-export async function uploadLoanDocument(
-  poolId: string,
-  _prev: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { error: "Escolha o PDF do documento." };
-  if (file.size > 10 * 1024 * 1024) return { error: "PDF acima de 10MB." };
-  const kind = String(formData.get("kind") ?? "");
-  if (!DOC_KINDS.includes(kind as (typeof DOC_KINDS)[number])) return { error: "Escolha o tipo do documento." };
-  const loanId = String(formData.get("loanId") ?? "").trim();
-  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, include: { bankProfile: true } });
-  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado neste pool." };
+type LoanWithBank = NonNullable<
+  Awaited<ReturnType<typeof prisma.poolLoan.findUnique<{ where: { id: string }; include: { bankProfile: true } }>>>
+>;
 
-  const bytes = Buffer.from(await file.arrayBuffer());
-  const base = { loanId: loan.id, fileName: file.name, pdf: new Uint8Array(bytes), pdfSize: bytes.length };
+// Núcleo do pipeline de UM documento com o tipo já resolvido. Uploads sempre ACRESCENTAM
+// ao arquivo do loan (nunca substituem — pode haver LOI + contrato + note + extratos).
+// docId presente = ajuste de tipo: relê o PDF guardado e ATUALIZA a mesma linha.
+async function runLoanDocPipeline(opts: {
+  poolId: string;
+  loan: LoanWithBank;
+  bytes: Buffer;
+  fileName: string;
+  kind: string;
+  autoNote?: string | null; // nota da classificação automática (ex.: não identificado)
+  docId?: string;
+}): Promise<{ error: string } | { ok: true }> {
+  const { poolId, loan, bytes, fileName, kind, autoNote, docId } = opts;
+  const base = { loanId: loan.id, fileName, pdf: new Uint8Array(bytes), pdfSize: bytes.length };
+  const upsertDoc = (data: Record<string, unknown>) =>
+    docId
+      ? prisma.poolLoanDocument.update({ where: { id: docId }, data })
+      : prisma.poolLoanDocument.create({ data: { ...base, ...data } as never });
 
   if (kind === "OTHER") {
-    await prisma.poolLoanDocument.create({ data: { ...base, kind: "OTHER" } });
-    revalidatePath(`/pools/${poolId}/loan`);
+    await upsertDoc({
+      kind: "OTHER",
+      summary: autoNote ?? null,
+      extracted: Prisma.DbNull,
+      proposal: Prisma.DbNull,
+      appliedAt: null,
+      appliedSummary: null,
+    });
     return { ok: true };
   }
 
   if (kind === "LOI") {
-    // pipeline existente: condições → perfil do banco (do loan; sem banco = cria do LOI)
+    // pipeline direto: condições → perfil do banco (do loan; sem banco = cria do LOI)
     const { applyLoiToBankProfile } = await import("@/lib/pools/loi-apply");
-    const res = await applyLoiToBankProfile(bytes, file.name, loan.bankProfileId);
+    const res = await applyLoiToBankProfile(bytes, fileName, loan.bankProfileId);
     if ("error" in res) return { error: res.error };
     const { bank, ex, matchedTarget } = res;
     // credor do LOI ≠ banco deste loan → aplica no loan DO CREDOR (existente no pool, ou
@@ -95,7 +107,7 @@ export async function uploadLoanDocument(
         createdNewLoan = true;
       }
     }
-    const noteBits = `LOI ${ex.loiNumber.trim() || file.name}${ex.loiDate.trim() ? ` de ${ex.loiDate.trim()}` : ""} lido por AI — ${ex.summary}`;
+    const noteBits = `LOI ${ex.loiNumber.trim() || fileName}${ex.loiDate.trim() ? ` de ${ex.loiDate.trim()}` : ""} lido por AI — ${ex.summary}`;
     await prisma.$transaction([
       prisma.poolLoan.update({
         where: { id: target.id },
@@ -112,21 +124,18 @@ export async function uploadLoanDocument(
           notes: [target.notes, noteBits].filter(Boolean).join(" · "),
         },
       }),
-      prisma.poolLoanDocument.create({
-        data: {
-          ...base,
-          loanId: target.id,
-          kind: "LOI",
-          summary: ex.summary,
-          extracted: JSON.parse(JSON.stringify(ex)),
-          appliedAt: new Date(),
-          appliedSummary: createdNewLoan
-            ? `credor ${bank.name} ≠ banco do loan — loan novo criado no pool + condições aplicadas`
-            : `condições aplicadas ao banco (${bank.name}) + loan`,
-        },
+      upsertDoc({
+        loanId: target.id,
+        kind: "LOI",
+        summary: ex.summary,
+        extracted: JSON.parse(JSON.stringify(ex)),
+        proposal: Prisma.DbNull,
+        appliedAt: new Date(),
+        appliedSummary: createdNewLoan
+          ? `credor ${bank.name} ≠ banco do loan — loan novo criado no pool + condições aplicadas`
+          : `condições aplicadas ao banco (${bank.name}) + loan`,
       }),
     ]);
-    revalidatePath(`/pools/${poolId}/loan`);
     return { ok: true };
   }
 
@@ -140,7 +149,7 @@ export async function uploadLoanDocument(
     return { error: e instanceof Error ? e.message : "Falha na extração do documento." };
   }
   const proposal = buildLoanDocProposal(ex, kind as never, {
-    fileName: file.name,
+    fileName,
     loan: {
       closingDate: loan.closingDate ? loan.closingDate.toISOString().slice(0, 10) : null,
       committed: loan.committed != null ? Number(loan.committed) : null,
@@ -155,18 +164,96 @@ export async function uploadLoanDocument(
         }
       : null,
   });
-  await prisma.poolLoanDocument.create({
-    data: {
-      ...base,
-      kind: kind as never,
-      summary: ex.summary || null,
-      extracted: JSON.parse(JSON.stringify(ex)),
-      proposal: proposal.length > 0 ? JSON.parse(JSON.stringify(proposal)) : undefined,
-      ...(proposal.length === 0 ? { appliedSummary: "nada a aplicar — só arquivado" } : {}),
-    },
+  await upsertDoc({
+    kind: kind as never,
+    summary: [autoNote, ex.summary || null].filter(Boolean).join(" · ") || null,
+    extracted: JSON.parse(JSON.stringify(ex)),
+    proposal: proposal.length > 0 ? JSON.parse(JSON.stringify(proposal)) : Prisma.DbNull,
+    appliedAt: null,
+    appliedSummary: proposal.length === 0 ? "nada a aplicar — só arquivado" : null,
+  });
+  return { ok: true };
+}
+
+export async function uploadLoanDocument(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  // MULTI-upload (17/07): vários PDFs num lote — todos ACRESCENTAM ao arquivo do loan
+  const files = formData.getAll("file").filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { error: "Escolha o(s) PDF(s) do(s) documento(s)." };
+  if (files.length > 6) return { error: "Máximo de 6 documentos por lote." };
+  for (const f of files) if (f.size > 10 * 1024 * 1024) return { error: `${f.name}: PDF acima de 10MB.` };
+  const kindSel = String(formData.get("kind") ?? "AUTO");
+  if (kindSel !== "AUTO" && !DOC_KINDS.includes(kindSel as (typeof DOC_KINDS)[number]))
+    return { error: "Escolha o tipo do documento." };
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, include: { bankProfile: true } });
+  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado neste pool." };
+
+  const results = await Promise.all(
+    files.map(async (file): Promise<string | null> => {
+      try {
+        const bytes = Buffer.from(await file.arrayBuffer());
+        let kind = kindSel;
+        let autoNote: string | null = null;
+        if (kindSel === "AUTO") {
+          // a LEITURA diz o que é o documento; sem certeza → arquiva p/ o usuário ajustar
+          try {
+            const { classifyLoanDocPdf } = await import("@/lib/pools/loan-doc-analyze");
+            const guess = await classifyLoanDocPdf(bytes.toString("base64"));
+            if (guess.confidence === "HIGH" && guess.kind !== "OTHER") kind = guess.kind;
+            else {
+              kind = "OTHER";
+              autoNote = `tipo não identificado pela leitura${guess.reason ? ` (${guess.reason})` : ""} — ajuste ao lado`;
+            }
+          } catch {
+            kind = "OTHER";
+            autoNote = "classificação automática falhou — ajuste o tipo ao lado";
+          }
+        }
+        const r = await runLoanDocPipeline({ poolId, loan, bytes, fileName: file.name, kind, autoNote });
+        return "error" in r ? `${file.name}: ${r.error}` : null;
+      } catch (e) {
+        return `${file.name}: ${e instanceof Error ? e.message : "falha no processamento"}`;
+      }
+    }),
+  );
+  revalidatePath(`/pools/${poolId}/loan`);
+  const errors = results.filter((r): r is string => r != null);
+  if (errors.length > 0)
+    return {
+      error: `${errors.join(" · ")}${files.length > errors.length ? " — os demais entraram no arquivo" : ""}`,
+    };
+  return { ok: true };
+}
+
+// Ajuste de tipo (17/07): quando a classificação erra ou não identifica, o select relê o
+// PDF guardado com o tipo escolhido e atualiza a MESMA linha do arquivo.
+export async function reclassifyLoanDoc(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const docId = String(formData.get("docId") ?? "");
+  const kind = String(formData.get("kind") ?? "");
+  if (!DOC_KINDS.includes(kind as (typeof DOC_KINDS)[number])) return { error: "Tipo inválido." };
+  const doc = await prisma.poolLoanDocument.findUnique({
+    where: { id: docId },
+    include: { loan: { include: { bankProfile: true } } },
+  });
+  if (!doc || doc.loan.poolId !== poolId) return { error: "Documento não encontrado." };
+  const r = await runLoanDocPipeline({
+    poolId,
+    loan: doc.loan,
+    bytes: Buffer.from(doc.pdf),
+    fileName: doc.fileName,
+    kind,
+    docId: doc.id,
   });
   revalidatePath(`/pools/${poolId}/loan`);
-  return { ok: true };
+  return "error" in r ? { error: r.error } : { ok: true };
 }
 
 // Aplica os itens selecionados da proposta de um documento (checkbox por campo).

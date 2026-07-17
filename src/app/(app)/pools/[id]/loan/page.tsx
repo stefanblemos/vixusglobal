@@ -18,6 +18,8 @@ import { PoolTabsNav } from "@/components/pool-tabs";
 import { LoanMonthFilter } from "@/components/loan-month-filter";
 
 export const dynamic = "force-dynamic";
+// lote de documentos com leitura AI (classificação + extração em paralelo) pode demorar
+export const maxDuration = 300;
 
 const th = "px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400";
 const thRight = "px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400";
@@ -241,6 +243,36 @@ export default async function PoolLoanPage({
       address: h.address,
       drawableFmt: h.bankLoanAmount != null ? formatMoney(Number(h.bankLoanAmount), pool.currency) : null,
     }));
+  // ── lembrete (17/07): loans ATIVOS sem interest reserve pagam juro mensal POR FORA —
+  // um aviso por loan com o valor estimado (non-Dutch: saldo × APR/12; Dutch: comprometido)
+  const interestReminders = pool.loans
+    .map((l) => {
+      const bank2 = l.bankProfile;
+      if (!l.closingDate || !bank2 || bank2.hasInterestReserve) return null;
+      const solid = l.entries.filter((e) => !e.pending);
+      const balance = solid.reduce((s, e) => s + Number(e.amount), 0);
+      const quitado = solid.some((e) => e.type === "PAYOFF") && balance <= 0.01;
+      if (quitado) return null;
+      const aprL =
+        l.aprPct != null
+          ? Number(l.aprPct)
+          : bank2.rateType === "FIXED"
+            ? Number(bank2.aprPct)
+            : Number(bank2.indexPct) + Number(bank2.spreadPct);
+      const dutch = bank2.interestBasis === "COMMITTED";
+      const baseAmt = dutch ? Number(l.committed ?? 0) : balance;
+      return {
+        id: l.id,
+        label: loanLabel(l),
+        aprL,
+        monthly: baseAmt > 0 ? (baseAmt * (aprL / 100)) / 12 : null,
+        baseAmt,
+        dutch,
+        semLancamentos: !dutch && balance <= 0.01,
+      };
+    })
+    .filter((r): r is NonNullable<typeof r> => r != null);
+
   const drawableSum = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
   const housesFootNote =
     loan && drawableSum > 0 && loan.committed != null
@@ -267,6 +299,33 @@ export default async function PoolLoanPage({
       </div>
 
       <PoolTabsNav poolId={pool.id} active="loan" />
+
+      {/* Lembrete: juros mensais POR FORA nos loans ativos sem interest reserve */}
+      {interestReminders.length > 0 && (
+        <section className="rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3">
+          <p className="mb-1 text-sm font-semibold text-amber-900">
+            💰 Juros mensais por fora — {interestReminders.length === 1 ? "este loan não tem" : "estes loans não têm"} interest
+            reserve: o pagamento sai do caixa todo mês.
+          </p>
+          <ul className="space-y-0.5">
+            {interestReminders.map((r) => (
+              <li key={r.id} className="text-xs text-amber-800">
+                <span className="font-semibold">{r.label}</span>
+                {r.monthly != null ? (
+                  <>
+                    {" — "}≈ <span className="font-bold tabular-nums">{formatMoney(r.monthly, pool.currency)}/mês</span>{" "}
+                    ({r.aprL}% sobre {r.dutch ? "o comprometido (Dutch)" : `o saldo de ${formatMoney(r.baseAmt, pool.currency)}`})
+                  </>
+                ) : r.semLancamentos ? (
+                  <> — sem lançamentos no statement ainda; lance os draws (ou suba o extrato) para estimar o juro mensal ({r.aprL}% sobre o sacado)</>
+                ) : (
+                  <> — defina o comprometido para estimar</>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* Um pool pode ter N loans (bancos diferentes por grupo de casas) — seletor */}
       {pool.loans.length > 0 && (

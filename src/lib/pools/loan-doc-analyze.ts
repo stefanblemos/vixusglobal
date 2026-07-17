@@ -97,3 +97,47 @@ export async function analyzeLoanDocPdf(base64Pdf: string, kind: ExtractKind): P
   if (!parsed) throw new Error("A extração do documento não retornou dados estruturados.");
   return parsed;
 }
+
+// ── Classificação automática (17/07): a leitura diz O QUE é o documento ────────────────
+// O select do upload vira ajuste: AUTO classifica; LOW/OTHER → arquiva p/ o usuário ajustar.
+export const loanDocKindSchema = z.object({
+  kind: z
+    .enum(["LOI", "AGREEMENT", "NOTE", "SETTLEMENT", "DRAW", "STATEMENT", "OTHER"])
+    .describe(
+      "LOI = letter of intent/term sheet/loan estimate; AGREEMENT = contrato do loan; NOTE = promissory note; SETTLEMENT = settlement/closing statement (HUD/ALTA); DRAW = aprovação ou liberação de draw; STATEMENT = extrato/statement mensal do banco (juros do período, saldo); OTHER = nada disso",
+    ),
+  confidence: z.enum(["HIGH", "LOW"]).describe("LOW se houver dúvida razoável"),
+  reason: z.string().describe("Meia frase: por que classificou assim"),
+});
+
+export type LoanDocKindGuess = z.infer<typeof loanDocKindSchema>;
+
+export async function classifyLoanDocPdf(base64Pdf: string): Promise<LoanDocKindGuess> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("ANTHROPIC_API_KEY is not set. Add it to .env to enable document analysis.");
+  }
+  const client = new Anthropic({ maxRetries: 4 });
+  const res = await withRetry(() =>
+    client.messages.parse({
+      model: "claude-opus-4-8",
+      max_tokens: 1500,
+      thinking: { type: "adaptive" },
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64Pdf } },
+            {
+              type: "text",
+              text: "Classifique este documento de um construction loan imobiliário nos tipos do schema. Se não tiver certeza razoável, use confidence LOW (ou kind OTHER se não for nenhum dos tipos).",
+            },
+          ],
+        },
+      ],
+      output_config: { format: zodOutputFormat(loanDocKindSchema) },
+    }),
+  );
+  const parsed = res.parsed_output;
+  if (!parsed) throw new Error("A classificação do documento não retornou dados estruturados.");
+  return parsed;
+}
