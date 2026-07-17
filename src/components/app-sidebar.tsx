@@ -103,6 +103,7 @@ const NAV: Entry[] = [
     icon: Home,
     items: [
       { href: "/pools", label: "Pools", icon: Home },
+      { href: "/pools/interest", label: "Juros", icon: PiggyBank },
       { href: "/pools/draws", label: "Draws", icon: HandCoins },
       { href: "/pools/simulator", label: "Simulator", icon: Calculator },
       { href: "/pools/catalog", label: "Catalog", icon: ClipboardList },

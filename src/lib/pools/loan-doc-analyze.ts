@@ -28,6 +28,14 @@ export const loanDocExtractionSchema = z.object({
   interestPeriodEnd: z.string().describe("SÓ p/ extrato mensal: fim do período YYYY-MM-DD; \"\" se ausente"),
   interestAmount: z.number().describe("SÓ p/ extrato mensal: juro cobrado no período $; 0 se ausente"),
   endingBalance: z.number().describe("Saldo devedor ao fim do período se informado, $; 0 se ausente"),
+  cashToBorrower: z
+    .number()
+    .describe("Crédito/cash devolvido AO BORROWER no closing (cash-out/excesso), $; 0 se ausente"),
+  paymentDueDay: z
+    .number()
+    .describe("Dia do MÊS do vencimento do pagamento de juros (ex.: 1 = todo dia 1º); 0 se ausente"),
+  graceDays: z.number().describe("Dias de carência (grace) após o vencimento; 0 se ausente"),
+  lateChargePct: z.number().describe("Multa por atraso em % (late charge); 0 se ausente"),
   summary: z.string().describe("UMA frase de contexto (o que é o documento e os números-chave)"),
 });
 
@@ -37,13 +45,13 @@ export type ExtractKind = "AGREEMENT" | "NOTE" | "SETTLEMENT" | "DRAW" | "STATEM
 
 const FOCUS: Record<ExtractKind, string> = {
   AGREEMENT:
-    "Este é um LOAN AGREEMENT (contrato de construction loan). Foque em: data do closing, valor comprometido, taxa, prazo em meses e/ou maturity date, extensão (meses e fee %), interest reserve financiada, fees do fechamento.",
-  NOTE: "Esta é uma PROMISSORY NOTE. Foque em: valor do principal (committed), taxa de juros, data (closing), maturity date/prazo, extensão se prevista.",
+    "Este é um LOAN AGREEMENT (contrato de construction loan). Foque em: data do closing, valor comprometido, taxa, prazo em meses e/ou maturity date, extensão (meses e fee %), interest reserve financiada, fees do fechamento, e as condições de PAGAMENTO DOS JUROS (dia do vencimento mensal, dias de grace, multa por atraso em %).",
+  NOTE: "Esta é uma PROMISSORY NOTE. Foque em: valor do principal (committed), taxa de juros, data (closing), maturity date/prazo, extensão se prevista, e as condições de pagamento (dia do vencimento mensal, grace, late charge %).",
   SETTLEMENT:
-    "Este é um SETTLEMENT/CLOSING STATEMENT. Foque em: data do fechamento (closingDate) e TODOS os fees cobrados com o nome original e se foram financiados no loan (financed=true) ou pagos em caixa pelo borrower.",
+    "Este é um SETTLEMENT/CLOSING STATEMENT. Foque em: data do fechamento (closingDate), TODOS os fees cobrados com o nome original e se foram financiados no loan (financed=true) ou pagos em caixa pelo borrower, e o CASH devolvido ao borrower (cash to borrower / excesso), se houver.",
   DRAW: "Esta é uma APROVAÇÃO/LIBERAÇÃO DE DRAW de construction loan. Foque em: data da liberação (drawDate), valor liberado (drawAmount) e o endereço da casa/propriedade (drawHouseAddress). Se houver inspection/draw fee cobrado nesta liberação, inclua em feesAtClosing.",
   STATEMENT:
-    "Este é um EXTRATO/STATEMENT MENSAL do banco. Foque em: fim do período (interestPeriodEnd), juro cobrado no período (interestAmount) e saldo final (endingBalance).",
+    "Este é um EXTRATO/STATEMENT MENSAL (ou detalhe do servicer) do banco. Foque em: fim do período (interestPeriodEnd), juro cobrado no período (interestAmount), saldo final (endingBalance), e as condições de pagamento se aparecerem (dia do vencimento — ex.: next payment due, grace days, late charge %).",
 };
 
 const COMMON = `Extraia com fidelidade — os valores alimentam o controle financeiro do projeto e serão

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Mock — Cobranças do contrato + Juros do loan + menu Juros</title>
+<style>
+  :root { --navy:#1f3a5f; --slate9:#0f172a; --slate6:#475569; --slate4:#94a3b8; --slate2:#e2e8f0; --slate1:#f1f5f9; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:-apple-system,"Segoe UI",Roboto,sans-serif; background:#f8fafc; color:var(--slate9); padding:28px; font-size:14px; }
+  .wrap { max-width:1100px; margin:0 auto; }
+  h1 { font-size:18px; margin-bottom:4px; }
+  .sub { color:var(--slate4); font-size:12px; margin-bottom:20px; }
+  .card { background:#fff; border:1px solid var(--slate2); border-radius:14px; padding:20px; margin-bottom:22px; }
+  .cardhead { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .cardhead h2 { font-size:15px; }
+  .chip { font-size:10.5px; border-radius:99px; padding:2px 9px; background:var(--slate1); color:var(--slate6); }
+  .chip.green { background:#ecfdf5; color:#047857; }
+  .chip.amber { background:#fffbeb; color:#b45309; }
+  .chip.red { background:#fef2f2; color:#b91c1c; }
+  .chip.blue { background:#eef4ff; color:#3b5b8c; }
+  .kpis { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:18px; }
+  .kpi { background:#fff; border:1px solid var(--slate2); border-radius:12px; padding:12px 14px; }
+  .kpi .l { font-size:10.5px; color:var(--slate4); }
+  .kpi .n { font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .kpi .h { font-size:10.5px; color:var(--slate4); }
+  .bar { height:7px; background:var(--slate2); border-radius:99px; overflow:hidden; margin:5px 0 3px; }
+  .bar i { display:block; height:100%; background:var(--navy); border-radius:99px; }
+  table { width:100%; border-collapse:collapse; }
+  th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--slate4); padding:8px 10px; border-bottom:1px solid var(--slate2); }
+  th.num, td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  td { padding:8px 10px; border-bottom:1px solid var(--slate1); font-size:12.5px; }
+  .btn { border:1px solid var(--slate2); background:#fff; border-radius:9px; padding:5px 12px; font-size:11.5px; color:var(--navy); font-weight:600; }
+  .btn.primary { background:var(--navy); color:#fff; border-color:var(--navy); }
+  .panel { border:1px solid #d9e5f5; background:#f7faff; border-radius:12px; padding:14px 16px; margin-bottom:16px; }
+  .panel.amberp { border-color:#fde68a; background:#fffbeb; }
+  .panel .t { font-size:12.5px; font-weight:700; color:var(--navy); margin-bottom:2px; }
+  .panel .d { font-size:11px; color:var(--slate6); margin-bottom:8px; }
+  .obs { font-size:11px; color:var(--slate4); }
+  .approve { background:#fffbeb; border:1px solid #fde68a; border-radius:12px; padding:14px 18px; font-size:12.5px; color:#92400e; }
+  .approve b { display:block; margin-bottom:4px; }
+  .menuside { display:flex; gap:8px; align-items:center; background:var(--slate1); border-radius:10px; padding:8px 12px; font-size:12px; color:var(--slate6); margin-bottom:14px; }
+  .menuside .on { color:var(--navy); font-weight:800; }
+  .duebig { font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Mock — Cobranças em contrato, Juros claros e o menu "Juros"</h1>
+  <div class="sub">Dados reais: FCI #399671570 (servicing: $60k sacados, 11%, vence dia 1º, grace 5d, multa 10%) e Builders Capital #77959 do PH-3 (quitado)</div>
+
+  <!-- ══════ PARTE 1: STATEMENT DO LOAN (FCI) ══════ -->
+  <div class="card">
+    <div class="cardhead">
+      <h2>1 · Loan statement — FCI · 399671570</h2>
+      <span class="chip green">ativo desde 08/05/26</span>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="l">Total do loan</div><div class="n">$1.646.000</div><div class="h">comprometido</div></div>
+      <div class="kpi"><div class="l">Sacado (draws das casas)</div><div class="n">$60.000</div><div class="bar"><i style="width:3.6%"></i></div><div class="h">3,6% do total</div></div>
+      <div class="kpi"><div class="l">Disponível</div><div class="n">$1.586.000</div><div class="h">p/ draws futuros</div></div>
+      <div class="kpi"><div class="l">Juros pagos</div><div class="n">$1.100</div><div class="h">pago até 01/07/26</div></div>
+      <div class="kpi"><div class="l">Saldo devido</div><div class="n">$60.000</div><div class="h">draws + fees − payoffs</div></div>
+    </div>
+
+    <div class="panel amberp">
+      <div class="t">⚠ Cobranças do contrato ainda não lançadas como dívida</div>
+      <div class="d">Fees encontrados na LEITURA dos documentos (contrato / settlement / LOI) que ainda não estão no statement. Lançar cria a linha de dívida na data certa — financiado soma ao saldo; pago em caixa entra como fee sem juros.</div>
+      <table>
+        <thead><tr><th>Cobrança (fonte)</th><th>Data</th><th class="num">Valor</th><th>Financiado?</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>Origination fee 2% <span class="obs">· contrato p.3</span></td><td>08/05/26</td><td class="num">$32.920,00</td><td><span class="chip">financiado</span></td><td><button class="btn primary">Lançar como dívida</button></td></tr>
+          <tr><td>Underwriting fee <span class="obs">· settlement</span></td><td>08/05/26</td><td class="num">$1.500,00</td><td><span class="chip">financiado</span></td><td><button class="btn primary">Lançar como dívida</button></td></tr>
+          <tr><td>Doc/processing <span class="obs">· settlement</span></td><td>08/05/26</td><td class="num">$495,00</td><td><span class="chip amber">em caixa</span></td><td><button class="btn">Lançar (sem juros)</button></td></tr>
+        </tbody>
+      </table>
+      <div style="margin-top:8px"><button class="btn primary">Lançar todas (3)</button> <span class="obs">valores ILUSTRATIVOS — o contrato FCI real preenche isso na leitura (aba Documentos)</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="t">Juros — período a período</div>
+      <div class="d">Vencimento: <b>dia 1º do mês seguinte · grace 5 dias · multa 10%</b> — lido do contrato/servicing (editável nos Termos). Juro esperado = APR/360 sobre o saldo do período; "cobrado" vem do extrato do banco.</div>
+      <table>
+        <thead><tr><th>Período</th><th class="num">Saldo base</th><th class="num">Esperado</th><th class="num">Cobrado</th><th>Vencimento</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr><td>08/05 – 31/05/26</td><td class="num">$60.000</td><td class="num">$421</td><td class="num">$421</td><td>01/06/26</td><td><span class="chip green">pago ✓</span></td><td></td></tr>
+          <tr><td>jun/26</td><td class="num">$60.000</td><td class="num">$550</td><td class="num">$550</td><td>01/07/26</td><td><span class="chip green">pago ✓</span></td><td></td></tr>
+          <tr><td>jul/26</td><td class="num">$60.000</td><td class="num">$550</td><td class="num">$550</td><td class="duebig"><b>01/08/26</b> <span class="chip red">D-15</span></td><td><span class="chip amber">devido</span></td><td><button class="btn">registrar pagamento</button></td></tr>
+          <tr><td>ago/26 <span class="obs">previsão</span></td><td class="num">$60.000*</td><td class="num">$550</td><td class="num">—</td><td>01/09/26</td><td><span class="chip">previsto</span></td><td></td></tr>
+        </tbody>
+      </table>
+      <div class="obs" style="margin-top:6px">* saldo atual — muda com draws novos. Sem interest reserve: o pagamento sai do caixa do pool (lembrete já ativo no topo da tela).</div>
+    </div>
+  </div>
+
+  <!-- ══════ PARTE 2: MENU JUROS (sidebar) ══════ -->
+  <div class="card">
+    <div class="cardhead">
+      <h2>2 · Menu lateral "Juros" — todos os loans, todos os pools</h2>
+      <span class="chip blue">Investments → Pools · <b>Juros</b> · Draws · Simulator…</span>
+    </div>
+    <div class="menuside">📂 Investments&nbsp; ▸ Pools&nbsp; <span class="on">▸ 💰 Juros</span>&nbsp; ▸ Draws&nbsp; ▸ Simulator&nbsp; ▸ Catalog</div>
+
+    <div class="kpis" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi"><div class="l">Devido agora</div><div class="n" style="color:#b45309">$550</div><div class="h">1 vencimento até 01/08/26</div></div>
+      <div class="kpi"><div class="l">Previsto próximos 30 dias</div><div class="n">$1.100</div><div class="h">jul devido + ago previsto</div></div>
+      <div class="kpi"><div class="l">Pago no ano (2026)</div><div class="n">$1.100</div><div class="h">todos os loans ativos</div></div>
+    </div>
+
+    <table>
+      <thead><tr><th>Loan · pool</th><th>Status</th><th class="num">Saldo base</th><th class="num">Juros/mês</th><th class="num">Pago acum.</th><th class="num">Devido</th><th>Próx. vencimento</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>FCI · 399671570</b> <span class="obs">PH-4 · 11% · sem reserve</span></td>
+          <td><span class="chip green">ativo</span></td>
+          <td class="num">$60.000</td><td class="num">$550</td><td class="num">$1.100</td>
+          <td class="num" style="color:#b45309"><b>$550</b></td>
+          <td><b>01/08/26</b> <span class="chip red">D-15</span></td>
+        </tr>
+        <tr>
+          <td><b>RBI · 16804</b> <span class="obs">PH-4 · 9% · reserve como liquidez</span></td>
+          <td><span class="chip amber">aguardando closing</span></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+          <td class="obs">sem juros até o closing</td>
+        </tr>
+        <tr>
+          <td><b>2BTrust · 23169</b> <span class="obs">PH-4 · 12%</span></td>
+          <td><span class="chip amber">aguardando closing</span></td>
+          <td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>
+          <td class="obs">sem juros até o closing</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="obs" style="margin-top:10px">
+      ☑ <b>1 loan quitado oculto</b> — Builders Capital · 77959 (PH-3): juros totais $45.699 pagos pela interest reserve, payoff concluído.
+      <button class="btn" style="margin-left:8px">mostrar quitados</button>
+    </div>
+    <div class="obs" style="margin-top:6px">Clicar num loan abre o statement dele no pool (a tabela de juros da Parte 1).</div>
+  </div>
+
+  <div class="approve">
+    <b>Para aprovar:</b>
+    1) Cobranças do contrato: painel no Statement com o que a leitura achou e ainda não virou dívida — "financiado" soma ao saldo (com juros); "em caixa" entra como fee sem juros. Ok?&nbsp;
+    2) Juros por período com vencimento (dia 1º + grace 5d + multa 10% — lidos do contrato, editáveis nos Termos), status pago/devido/previsto e botão "registrar pagamento". Ok?&nbsp;
+    3) Menu "Juros" no sidebar (abaixo de Pools): todos os loans ativos, devido/previsto/pago; aguardando closing aparecem zerados; QUITADOS ocultos atrás do "mostrar quitados". Ok?
+  </div>
+</div>
+</body>
+</html>

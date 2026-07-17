@@ -20,6 +20,9 @@ export type LoanTermsData = {
   firstContactDate: string | null; // yyyy-mm-dd
   expectedClosingDate: string | null;
   closingDate: string | null;
+  interestDueDay: string | null; // dia do vencimento do juro mensal
+  graceDays: string | null;
+  lateFeePct: string | null;
   notes: string | null;
   statusChip: { text: string; tone: "amber" | "green" | "slate" };
   sourceChip: string | null; // "preenchido do LOI de … · leitura por AI"
@@ -153,6 +156,9 @@ export function PoolLoanTermsView({
             <EditField l="Solicitação do LOI" name="firstContactDate" type="date" defaultValue={loan.firstContactDate} />
             <EditField l="Closing previsto" name="expectedClosingDate" type="date" defaultValue={loan.expectedClosingDate} />
             <EditField l="Closing real" name="closingDate" type="date" defaultValue={loan.closingDate} />
+            <EditField l="Vencimento do juro (dia)" name="interestDueDay" defaultValue={loan.interestDueDay} />
+            <EditField l="Grace (dias)" name="graceDays" defaultValue={loan.graceDays} />
+            <EditField l="Multa por atraso %" name="lateFeePct" defaultValue={loan.lateFeePct} />
           </div>
 
           {bank && (
@@ -247,6 +253,14 @@ export function PoolLoanTermsView({
         <Field l="Closing previsto" v={fmtBr(loan.expectedClosingDate)} />
         <Field l="Closing real" v={fmtBr(loan.closingDate)} />
         <Field l="Contratação" v={loan.contractText} />
+        <Field
+          l="Vencimento do juro"
+          v={
+            loan.interestDueDay
+              ? `dia ${loan.interestDueDay}${loan.graceDays ? ` · grace ${loan.graceDays}d` : ""}${loan.lateFeePct ? ` · multa ${loan.lateFeePct}%` : ""}`
+              : null
+          }
+        />
       </div>
 
       {bank && (

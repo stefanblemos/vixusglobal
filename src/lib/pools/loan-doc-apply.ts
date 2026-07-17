@@ -111,6 +111,37 @@ export function buildLoanDocProposal(
       },
     });
   }
+  // vencimento dos juros (mock aprovado 17/07): dia + grace + multa → campos do loan
+  if (ex.paymentDueDay > 0 && ex.paymentDueDay <= 31) {
+    items.push({
+      key: "dueDay",
+      label: `Vencimento do juro: todo dia ${Math.round(ex.paymentDueDay)}${ex.graceDays > 0 ? ` (grace ${Math.round(ex.graceDays)}d)` : ""}${ex.lateChargePct > 0 ? ` · multa ${ex.lateChargePct}%` : ""}`,
+      from: null,
+      to: `dia ${Math.round(ex.paymentDueDay)}`,
+      target: "→ Loan · tabela de juros do statement e menu Juros",
+      defaultOn: true,
+      set: {
+        loan: {
+          interestDueDay: Math.round(ex.paymentDueDay),
+          ...(ex.graceDays > 0 ? { graceDays: Math.round(ex.graceDays) } : {}),
+          ...(ex.lateChargePct > 0 ? { lateFeePct: ex.lateChargePct } : {}),
+        },
+      },
+    });
+  }
+  // cash devolvido ao borrower no closing — COMPÕE o saldo inicial do banco junto com os
+  // fees financiados (nunca somar cobranças por cima de um funded que já as embute)
+  if (ex.cashToBorrower > 0) {
+    items.push({
+      key: "cashOut",
+      label: `Crédito recebido no closing (cash to borrower): ${money0(ex.cashToBorrower)}`,
+      from: null,
+      to: money0(ex.cashToBorrower),
+      target: "→ lançamento no statement (compõe o saldo inicial do banco)",
+      defaultOn: true,
+      set: { entry: { type: "OTHER", date: anchorDate, amount: ex.cashToBorrower, memo: `Crédito recebido no closing (cash-out) — ${src}` } },
+    });
+  }
   if (ex.interestReserveFinanced > 0) {
     items.push({
       key: "reserve",

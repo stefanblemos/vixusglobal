@@ -12,6 +12,13 @@ import {
 import { AddLoanEntryForm, PoolLoanTermsForm } from "@/components/pool-loan-forms";
 import { PoolLoanTermsView } from "@/components/pool-loan-terms-view";
 import { PoolLoanHousesTab, type LoanHouseRow } from "@/components/pool-loan-houses";
+import {
+  LoanChargesPanel,
+  LoanInterestPanel,
+  type ChargeCandidate,
+  type InterestRow,
+} from "@/components/pool-loan-interest-panels";
+import { computeLoanInterest } from "@/lib/pools/loan-interest";
 import { PoolLoanDocs } from "@/components/pool-loan-docs";
 import type { LoanDocProposalItem } from "@/lib/pools/loan-doc-apply";
 import { PoolTabsNav } from "@/components/pool-tabs";
@@ -73,6 +80,7 @@ export default async function PoolLoanPage({
           },
         },
       },
+      expenses: { select: { amount: true } },
     },
   });
   if (!pool) notFound();
@@ -243,6 +251,93 @@ export default async function PoolLoanPage({
       address: h.address,
       drawableFmt: h.bankLoanAmount != null ? formatMoney(Number(h.bankLoanAmount), pool.currency) : null,
     }));
+  // ── Cobranças do contrato (mock aprovado 17/07): fees + crédito do closing achados na
+  // leitura dos docs e ausentes do statement. O funded do banco costuma EMBUTIR essas
+  // linhas — lançá-las COMPÕE o saldo (nunca duplicar com um draw já lançado do mesmo valor).
+  type ExLite = {
+    feesAtClosing?: Array<{ name: string; amount: number; financed: boolean }>;
+    cashToBorrower?: number;
+    closingDate?: string;
+    docDate?: string;
+    endingBalance?: number;
+  };
+  const chargeCandidates: ChargeCandidate[] = [];
+  let fundedNote: string | null = null;
+  if (loan) {
+    const launched = [
+      ...loan.entries
+        .filter((e) => ["CLOSING_FEE", "DRAW_FEE", "OTHER", "RESERVE", "DRAW"].includes(e.type))
+        .map((e) => Number(e.amount)),
+      ...pool.expenses.map((e) => Number(e.amount)),
+    ];
+    const near = (a: number) => launched.some((x) => Math.abs(Math.abs(x) - a) < 1);
+    const seen = new Set<string>();
+    for (const d of loan.documents.filter(
+      (dd) => ["AGREEMENT", "NOTE", "SETTLEMENT"].includes(dd.kind) && dd.extracted != null,
+    )) {
+      const ex2 = d.extracted as ExLite;
+      const date = ex2.closingDate?.trim() || ex2.docDate?.trim() || fmtDate(d.createdAt);
+      (ex2.feesAtClosing ?? []).forEach((f, i) => {
+        const dupKey = `${f.name.toLowerCase()}|${Math.round(f.amount)}`;
+        if (f.amount <= 0 || near(f.amount) || seen.has(dupKey)) return;
+        seen.add(dupKey);
+        chargeCandidates.push({
+          key: `${d.id}:${i}`,
+          name: f.name,
+          source: `«${d.fileName}»`,
+          date,
+          amountFmt: formatMoney(f.amount, pool.currency),
+          amount: f.amount,
+          target: f.financed ? "DEBT" : "EXPENSE",
+        });
+      });
+      const cash = ex2.cashToBorrower ?? 0;
+      if (cash > 0 && !near(cash) && !seen.has(`cash|${Math.round(cash)}`)) {
+        seen.add(`cash|${Math.round(cash)}`);
+        chargeCandidates.push({
+          key: `${d.id}:cash`,
+          name: "Crédito recebido no closing (cash to borrower)",
+          source: `«${d.fileName}»`,
+          date,
+          amountFmt: formatMoney(cash, pool.currency),
+          amount: cash,
+          target: "CREDIT_IN",
+        });
+      }
+      if (ex2.endingBalance && ex2.endingBalance > 0 && !fundedNote)
+        fundedNote = `Referência do banco: saldo ${formatMoney(ex2.endingBalance, pool.currency)} («${d.fileName}»).`;
+    }
+  }
+
+  // ── Juros período a período (mock aprovado 17/07) ──
+  const interestView =
+    loan && loan.closingDate
+      ? computeLoanInterest({
+          entries: loan.entries
+            .filter((e) => !e.pending)
+            .map((e) => ({ type: e.type, date: e.date, amount: Number(e.amount) })),
+          aprPct: apr,
+          closingDate: loan.closingDate,
+          dueDay: loan.interestDueDay,
+          graceDays: loan.graceDays,
+          today: new Date(),
+        })
+      : null;
+  const dayMs0 = 24 * 60 * 60 * 1000;
+  const interestRows: InterestRow[] = (interestView?.periods ?? []).map((p) => ({
+    label: p.label,
+    baseFmt: p.baseEnd > 0 ? formatMoney(p.baseEnd, pool.currency) : null,
+    expectedFmt: formatMoney(p.expected, pool.currency),
+    chargedFmt: p.charged > 0 ? formatMoney(p.charged, pool.currency) : null,
+    dueDate: `${p.dueDate.slice(8, 10)}/${p.dueDate.slice(5, 7)}/${p.dueDate.slice(2, 4)}`,
+    dDays: Math.ceil((new Date(p.dueDate).getTime() - Date.now()) / dayMs0),
+    status: p.status,
+    owed: Math.max(0, p.owed),
+  }));
+  const interestRule = loan
+    ? `Vencimento: dia ${loan.interestDueDay ?? 1} do mês seguinte${loan.graceDays ? ` · grace ${loan.graceDays} dias` : ""}${loan.lateFeePct ? ` · multa ${Number(loan.lateFeePct)}%` : ""} — ${loan.interestDueDay ? "lido do contrato (editável nos Termos)" : "padrão (a leitura do contrato preenche; editável nos Termos)"}. Esperado = accrual diário APR/360 sobre o saldo; cobrado vem do extrato do banco.`
+    : "";
+
   // ── lembrete (17/07): loans ATIVOS sem interest reserve pagam juro mensal POR FORA —
   // um aviso por loan com o valor estimado (non-Dutch: saldo × APR/12; Dutch: comprometido)
   const interestReminders = pool.loans
@@ -356,9 +451,43 @@ export default async function PoolLoanPage({
         </div>
       )}
 
-      {/* KPIs sempre visíveis + sub-abas internas (aprovado 16/07) */}
+      {/* KPIs (mock aprovado 17/07): as informações importantes do loan numa régua só */}
       {loan && stmt && (
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+          <Card
+            label="Total do loan"
+            value={loan.committed != null ? formatMoney(Number(loan.committed), pool.currency) : "—"}
+            hint="comprometido"
+          />
+          <Card
+            label="Sacado (draws das casas)"
+            value={formatMoney(stmt.totalDraws, pool.currency)}
+            hint={
+              loan.committed
+                ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do total · fees ${formatMoney(stmt.totalFees, pool.currency)}`
+                : `fees ${formatMoney(stmt.totalFees, pool.currency)}`
+            }
+          />
+          <Card
+            label="Disponível"
+            value={
+              loan.committed != null
+                ? formatMoney(Math.max(0, Number(loan.committed) - stmt.totalDraws), pool.currency)
+                : "—"
+            }
+            hint="p/ draws futuros"
+          />
+          <Card
+            label="Juros pagos"
+            value={formatMoney(interestView?.paidTotal ?? 0, pool.currency)}
+            hint={
+              interestView?.dueNow
+                ? `devido agora ${formatMoney(interestView.dueNow, pool.currency)}`
+                : apr != null
+                  ? `cobrado ${formatMoney(stmt.totalInterest, pool.currency)} (APR ${apr}%)`
+                  : undefined
+            }
+          />
           <Card
             label={
               stmt.totalPayoffs > 0 && stmt.balance <= 0.01 ? "Saldo devido — QUITADO" : "Saldo devido"
@@ -366,30 +495,9 @@ export default async function PoolLoanPage({
             value={formatMoney(stmt.balance, pool.currency)}
             hint={
               stmt.totalPayoffs > 0 && stmt.balance <= 0.01
-                ? `quitado em ${stmt.rows[stmt.rows.length - 1]?.date.toISOString().slice(0, 10)}${stmt.balance < -0.01 ? ` · crédito ${formatMoney(-stmt.balance, pool.currency)} volta ao caixa do pool` : ""}`
-                : loan.committed
-                  ? `${((stmt.totalDraws / Number(loan.committed)) * 100).toFixed(1)}% do comprometido sacado`
-                  : undefined
+                ? `quitado · payoffs ${formatMoney(stmt.totalPayoffs, pool.currency)}`
+                : `payoffs ${formatMoney(stmt.totalPayoffs, pool.currency)} · conciliado ${stmt.reconciledCount}/${stmt.rows.length}`
             }
-          />
-          <Card
-            label="Juros reais lançados"
-            value={formatMoney(stmt.totalInterest, pool.currency)}
-            hint={
-              apr != null
-                ? `esperado ${formatMoney(stmt.totalExpectedInterest, pool.currency)} (APR ${apr}%)`
-                : "defina o APR para conferência"
-            }
-          />
-          <Card
-            label="Draws + fees"
-            value={formatMoney(stmt.totalDraws, pool.currency)}
-            hint={`fees ${formatMoney(stmt.totalFees, pool.currency)}`}
-          />
-          <Card
-            label="Payoffs / créditos"
-            value={formatMoney(stmt.totalPayoffs, pool.currency)}
-            hint={`créditos ${formatMoney(stmt.totalCredits, pool.currency)} · conciliado ${stmt.reconciledCount}/${stmt.rows.length}`}
           />
         </div>
       )}
@@ -477,6 +585,9 @@ export default async function PoolLoanPage({
               firstContactDate: loan.firstContactDate ? fmtDate(loan.firstContactDate) : null,
               expectedClosingDate: loan.expectedClosingDate ? fmtDate(loan.expectedClosingDate) : null,
               closingDate: loan.closingDate ? fmtDate(loan.closingDate) : null,
+              interestDueDay: loan.interestDueDay?.toString() ?? null,
+              graceDays: loan.graceDays?.toString() ?? null,
+              lateFeePct: loan.lateFeePct?.toString() ?? null,
               notes: loan.notes,
               statusChip: paidOff
                 ? { text: "quitado", tone: "slate" }
@@ -521,6 +632,20 @@ export default async function PoolLoanPage({
 
       {loan && stmt && stab === "statement" && (
         <>
+          <LoanChargesPanel poolId={pool.id} loanId={loan.id} candidates={chargeCandidates} fundedNote={fundedNote} />
+          {interestRows.length > 0 && (
+            <LoanInterestPanel
+              poolId={pool.id}
+              loanId={loan.id}
+              rows={interestRows}
+              ruleText={interestRule}
+              footNote={
+                loan.bankProfile && !loan.bankProfile.hasInterestReserve
+                  ? "Sem interest reserve — o pagamento sai do caixa do pool todo mês."
+                  : null
+              }
+            />
+          )}
           {pendingPayoffs.length > 0 && (
             <section className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
               <p className="mb-2 text-sm text-amber-800">

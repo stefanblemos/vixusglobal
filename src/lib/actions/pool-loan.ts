@@ -722,6 +722,16 @@ export async function saveLoanTermsFull(
       firstContactDate: optDate(formData.get("firstContactDate")),
       expectedClosingDate: optDate(formData.get("expectedClosingDate")),
       closingDate: optDate(formData.get("closingDate")),
+      // vencimento do juro mensal (tabela de juros do statement e menu Juros)
+      interestDueDay: (() => {
+        const v = optNum(formData.get("interestDueDay"));
+        return v != null ? Math.min(31, Math.max(1, Math.round(v))) : null;
+      })(),
+      graceDays: (() => {
+        const v = optNum(formData.get("graceDays"));
+        return v != null ? Math.max(0, Math.round(v)) : null;
+      })(),
+      lateFeePct: optNum(formData.get("lateFeePct")),
       notes: String(formData.get("notes") ?? "").trim() || null,
     },
   });
@@ -792,4 +802,71 @@ export async function unlinkHouseFromLoan(formData: FormData): Promise<void> {
   if (!house || house.poolId !== poolId) return;
   await prisma.poolHouse.update({ where: { id: houseId }, data: { loanId: null, bankName: null } });
   revalidatePath(`/pools/${poolId}/loan`);
+}
+
+// ── Cobranças do contrato + pagamento de juros (mock aprovado 17/07) ──────────────────
+
+// Lança uma cobrança achada na LEITURA dos documentos. Financiada → dívida no statement
+// (CLOSING_FEE/OTHER, rende juros). Em caixa → despesa do POOL (não entra no saldo do
+// banco). O crédito do closing (cash-out) entra como OTHER — compõe o saldo inicial.
+export async function launchLoanCharge(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId } });
+  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado." };
+  const amount = num(formData.get("amount"));
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Valor inválido." };
+  const date = optDate(formData.get("date")) ?? new Date();
+  const memo = String(formData.get("memo") ?? "").trim() || null;
+  const target = String(formData.get("target") ?? "DEBT"); // DEBT | CREDIT_IN | EXPENSE
+  if (target === "EXPENSE") {
+    await prisma.poolExpense.create({
+      data: {
+        poolId,
+        date,
+        category: "OTHER",
+        description: memo ?? "Fee do closing (pago em caixa)",
+        amount,
+        status: "PAID",
+      },
+    });
+  } else {
+    await prisma.poolLoanEntry.create({
+      data: {
+        loanId: loan.id,
+        type: target === "CREDIT_IN" ? "OTHER" : "CLOSING_FEE",
+        date,
+        amount, // positivo: soma à dívida
+        memo,
+      },
+    });
+    await recompute(poolId);
+  }
+  revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath(`/pools/interest`);
+  return { ok: true };
+}
+
+// Registra o pagamento de juros de um período (sai do caixa do pool → reduz o devido).
+export async function payLoanInterest(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId } });
+  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado." };
+  const amount = num(formData.get("amount"));
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Valor inválido." };
+  const date = optDate(formData.get("date")) ?? new Date();
+  const memo = String(formData.get("memo") ?? "").trim() || "Pagamento de juros";
+  await prisma.poolLoanEntry.create({
+    data: { loanId: loan.id, type: "INTEREST_PAYMENT", date, amount: -Math.abs(amount), memo },
+  });
+  revalidatePath(`/pools/${poolId}/loan`);
+  revalidatePath(`/pools/interest`);
+  return { ok: true };
 }
