@@ -19,6 +19,9 @@ import {
   type InterestRow,
 } from "@/components/pool-loan-interest-panels";
 import { computeLoanInterest } from "@/lib/pools/loan-interest";
+import { DrawHousesPanel, type HouseAvailability } from "@/components/pool-draw-houses";
+import { DrawList, type DrawRow } from "@/components/pool-draw-list";
+import { byAddressNumber } from "@/lib/pools/math";
 import { PoolLoanDocs } from "@/components/pool-loan-docs";
 import type { LoanDocProposalItem } from "@/lib/pools/loan-doc-apply";
 import { PoolTabsNav } from "@/components/pool-tabs";
@@ -57,7 +60,7 @@ export default async function PoolLoanPage({
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
-      houses: { orderBy: { createdAt: "asc" } },
+      houses: { orderBy: { createdAt: "asc" }, include: { catalogModel: true, catalogLocation: true } },
       loans: {
         orderBy: { createdAt: "asc" },
         include: {
@@ -87,8 +90,8 @@ export default async function PoolLoanPage({
   // seletor: ?loan=<id> | "new" (formulário vazio p/ criar) | default = primeiro loan
   const creatingNew = rawLoan === "new" || pool.loans.length === 0;
   const loan = creatingNew ? null : (pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0]);
-  // sub-abas internas (17/07): Statement (default) | Documentos | Termos | Casas
-  const stab = ["docs", "terms", "houses"].includes(rawStab ?? "") ? rawStab! : "statement";
+  // sub-abas internas (17/07): Statement (default) | Documentos | Termos | Casas | Draws
+  const stab = ["docs", "terms", "houses", "draws"].includes(rawStab ?? "") ? rawStab! : "statement";
   const banks = await prisma.bankProfile.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
@@ -368,6 +371,76 @@ export default async function PoolLoanPage({
     })
     .filter((r): r is NonNullable<typeof r> => r != null);
 
+  // ── aba DRAWS (mock aprovado 17/07): a gestão de draws mora DENTRO do loan — a tela
+  // do menu é só dash. Portado de /pools/draws/[poolId] (aposentada).
+  const drawEntries = loan ? loan.entries.filter((e) => e.type === "DRAW") : [];
+  const drawsPendingCount = drawEntries.filter((e) => e.pending).length;
+  const drawsCredited = drawEntries.filter((e) => !e.pending).reduce((s, e) => s + Number(e.amount), 0);
+  const drawsAwaiting = drawEntries
+    .filter((e) => e.pending)
+    .reduce((s, e) => s + Number(e.requestedAmount ?? 0), 0);
+  const drawsBudget = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
+  const drawAgg = new Map<string, { credited: number; pending: number }>();
+  for (const e of drawEntries) {
+    const k = e.houseId ?? "__none__";
+    const cur = drawAgg.get(k) ?? { credited: 0, pending: 0 };
+    if (e.pending) cur.pending += Number(e.requestedAmount ?? 0);
+    else cur.credited += Number(e.amount);
+    drawAgg.set(k, cur);
+  }
+  const drawHouses: HouseAvailability[] = [...linkedHouses].sort(byAddressNumber).map((h) => {
+    const a = drawAgg.get(h.id) ?? { credited: 0, pending: 0 };
+    const budget = h.bankLoanAmount == null ? null : Number(h.bankLoanAmount);
+    return {
+      id: h.id,
+      address: h.address,
+      modelLabel:
+        h.catalogModel || h.catalogLocation
+          ? [h.catalogModel?.name, h.catalogLocation?.name].filter(Boolean).join(" · ")
+          : null,
+      budget,
+      credited: a.credited,
+      pendingAmount: a.pending,
+      available: budget == null ? null : budget - a.credited - a.pending,
+    };
+  });
+  const drawNone = drawAgg.get("__none__");
+  if (drawNone) {
+    drawHouses.push({
+      id: null,
+      address: "(draws sem casa)",
+      modelLabel: null,
+      budget: null,
+      credited: drawNone.credited,
+      pendingAmount: drawNone.pending,
+      available: null,
+    });
+  }
+  const drawRows: DrawRow[] = [...drawEntries]
+    .sort((a, b) => Number(b.pending) - Number(a.pending) || b.date.getTime() - a.date.getTime())
+    .map((d) => ({
+      id: d.id,
+      poolId: pool.id,
+      poolCode: pool.code,
+      houseId: d.houseId,
+      houseAddress: d.house?.address ?? null,
+      pending: d.pending,
+      requestedAmount: d.requestedAmount?.toString() ?? null,
+      requestDate: d.requestDate ? fmtDate(d.requestDate) : null,
+      amount: d.amount.toString(),
+      date: fmtDate(d.date),
+      reconciled: d.reconciled,
+      memo: d.memo,
+    }));
+  const feeBits: string[] = [];
+  if (bp) {
+    if (Number(bp.drawProcessingFee) > 0) feeBits.push(`$${Number(bp.drawProcessingFee)} processing`);
+    if (Number(bp.inspectionFeePerDraw) > 0) feeBits.push(`$${Number(bp.inspectionFeePerDraw)} inspection`);
+    if (Number(bp.achFeePerBatch) > 0) feeBits.push(`$${Number(bp.achFeePerBatch)} ACH por lote`);
+  }
+  const feesHint =
+    feeBits.length > 0 ? `Fees previstos na liberação (${bp?.name}): ${feeBits.join(" + ")}.` : "";
+
   const drawableSum = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
   const housesFootNote =
     loan && drawableSum > 0 && loan.committed != null
@@ -385,11 +458,7 @@ export default async function PoolLoanPage({
         <p className="text-sm text-slate-500">
           O extrato interno do construction loan — draws, juros reais, fees e payoffs lançados
           aqui; o saldo devido é calculado e cada linha pode ser conciliada (✓) com o extrato do
-          banco. Draws novos entram pela tela{" "}
-          <Link href="/pools/draws" className="text-[#1f3a5f] hover:underline">
-            Draws
-          </Link>
-          .
+          banco. Draws novos entram pela aba <b>Draws</b> deste loan.
         </p>
       </div>
 
@@ -509,6 +578,7 @@ export default async function PoolLoanPage({
               ["docs", "📁 Documentos", loan.documents.length],
               ["terms", "⚙ Termos", null],
               ["houses", "🏠 Casas", linkedHouses.length],
+              ["draws", "🏗 Draws", drawsPendingCount],
             ] as Array<[string, string, number | null]>
           ).map(([key, label, badge]) => (
             <Link
@@ -524,7 +594,8 @@ export default async function PoolLoanPage({
               {badge != null && badge > 0 && (
                 <span
                   className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    key === "docs" && loan.documents.some((d) => d.proposal != null)
+                    (key === "docs" && loan.documents.some((d) => d.proposal != null)) ||
+                    (key === "draws" && drawsPendingCount > 0)
                       ? "bg-amber-100 text-amber-800"
                       : "bg-slate-100 text-slate-500"
                   }`}
@@ -628,6 +699,47 @@ export default async function PoolLoanPage({
           unlinked={unlinkedHouses}
           footNote={housesFootNote}
         />
+      )}
+
+      {/* aba DRAWS (mock aprovado 17/07): a gestão mora aqui — o menu Draws é só dash */}
+      {loan && !creatingNew && stab === "draws" && (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <Card label="Aprovado (casas do loan)" value={formatMoney(drawsBudget, pool.currency)} hint={`${linkedHouses.length} casas`} />
+            <Card label="Creditado" value={formatMoney(drawsCredited, pool.currency)} hint="draws liberados pelo banco" />
+            <Card
+              label="Aguardando banco"
+              value={formatMoney(drawsAwaiting, pool.currency)}
+              hint={drawsPendingCount > 0 ? `${drawsPendingCount} ${drawsPendingCount === 1 ? "draw solicitado" : "draws solicitados"}` : "nenhum pendente"}
+            />
+            <Card
+              label="Disponível"
+              value={formatMoney(Math.max(0, drawsBudget - drawsCredited - drawsAwaiting), pool.currency)}
+              hint="aprovado − creditado − aguardando"
+            />
+          </div>
+          <DrawHousesPanel
+            poolId={pool.id}
+            loanId={loan.id}
+            poolLabel={loanLabel(loan)}
+            feesHint={feesHint}
+            houses={drawHouses}
+          />
+          <section className="rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <h2 className="text-base font-medium text-slate-800">Ledger de draws</h2>
+              <p className="text-xs text-slate-400">
+                Pendentes primeiro. Clique na linha para editar / registrar a liberação — o
+                DRAW entra no statement na data da liberação{feesHint ? ` (${feesHint.toLowerCase()})` : ""}. ✓ =
+                conciliado com o extrato.
+              </p>
+            </div>
+            <DrawList
+              draws={drawRows}
+              housesByPool={{ [pool.id]: pool.houses.map((h) => ({ id: h.id, address: h.address })) }}
+            />
+          </section>
+        </>
       )}
 
       {loan && stmt && stab === "statement" && (
