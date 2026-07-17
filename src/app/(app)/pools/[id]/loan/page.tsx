@@ -10,7 +10,8 @@ import {
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
 import { AddLoanEntryForm, PoolLoanTermsForm } from "@/components/pool-loan-forms";
-import { HousesByBank } from "@/components/pool-loan-loi";
+import { PoolLoanTermsView } from "@/components/pool-loan-terms-view";
+import { PoolLoanHousesTab, type LoanHouseRow } from "@/components/pool-loan-houses";
 import { PoolLoanDocs } from "@/components/pool-loan-docs";
 import type { LoanDocProposalItem } from "@/lib/pools/loan-doc-apply";
 import { PoolTabsNav } from "@/components/pool-tabs";
@@ -76,8 +77,8 @@ export default async function PoolLoanPage({
   // seletor: ?loan=<id> | "new" (formulário vazio p/ criar) | default = primeiro loan
   const creatingNew = rawLoan === "new" || pool.loans.length === 0;
   const loan = creatingNew ? null : (pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0]);
-  // sub-aba interna (aprovado 16/07): Statement (default) | Documentos | Termos & casas
-  const stab = rawStab === "docs" || rawStab === "terms" ? rawStab : "statement";
+  // sub-abas internas (17/07): Statement (default) | Documentos | Termos | Casas
+  const stab = ["docs", "terms", "houses"].includes(rawStab ?? "") ? rawStab! : "statement";
   const banks = await prisma.bankProfile.findMany({
     orderBy: { name: "asc" },
     select: { id: true, name: true },
@@ -143,6 +144,108 @@ export default async function PoolLoanPage({
           !payoffLaunched.has(h.id),
       )
     : [];
+
+  // ── aba TERMOS (travada) — dados do loan + condições do perfil do banco + LOI ──
+  const fmtBr = (iso: string | null) =>
+    iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : null;
+  const num = (v: unknown) => String(Number(v ?? 0));
+  const paidOff = stmt != null && stmt.totalPayoffs > 0 && stmt.balance <= 0.01;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const loiDoc = loan?.documents.find((d) => d.kind === "LOI" && d.extracted != null);
+  const loiEx = (loiDoc?.extracted ?? null) as { loiDate?: string; prepaymentPenalty?: string } | null;
+  const customFees =
+    stab === "terms" && loan?.bankProfileId
+      ? await prisma.bankCustomFee.findMany({
+          where: { bankProfileId: loan.bankProfileId },
+          orderBy: { name: "asc" },
+        })
+      : [];
+  const contractDaysOf = (l: NonNullable<typeof loan>) => {
+    if (!l.firstContactDate) return null;
+    const end = l.closingDate ? fmtDate(l.closingDate) : todayIso;
+    const d = Math.round((new Date(end).getTime() - new Date(fmtDate(l.firstContactDate)).getTime()) / dayMs);
+    return l.closingDate ? `contratado em ${d}d` : `${d}d em curso ⏱`;
+  };
+  const bp = loan?.bankProfile ?? null;
+  const termsBank = bp
+    ? {
+        rateText:
+          bp.rateType === "FIXED"
+            ? "fixa"
+            : bp.rateType === "PRIME_SPREAD"
+              ? `Prime + ${num(bp.spreadPct)}%`
+              : `SOFR + ${num(bp.spreadPct)}%`,
+        basisText:
+          bp.interestBasis === "DRAWN" ? "sobre o sacado (non-Dutch)" : "sobre o comprometido (Dutch)",
+        termMonths: bp.termMonths,
+        extensionMonths: bp.extensionMonths,
+        ltcBuildPct: num(bp.ltcBuildPct),
+        ltvPct: num(bp.ltvPct),
+        originationPct: num(bp.originationPct),
+        brokerPct: num(bp.brokerPct),
+        processingFee: num(bp.processingFee),
+        appraisalFee: num(bp.appraisalFee),
+        legalFee: num(bp.legalFee),
+        budgetReviewFee: num(bp.budgetReviewFee),
+        inspectionFeePerDraw: num(bp.inspectionFeePerDraw),
+        feesFinanced: bp.feesFinanced,
+        reserveText: bp.hasInterestReserve
+          ? `financiada (${num(bp.reserveMonths)}m${bp.reserveInEnvelope ? ", no envelope" : ""})`
+          : "liquidez exigida (não financiada)",
+        reserveMonths: num(bp.reserveMonths),
+        customFees: customFees.map((f) => ({ name: f.name, amount: num(f.amount) })),
+      }
+    : null;
+
+  // ── aba CASAS — só as casas DESTE loan, com o loan da casa aberto no clique ──
+  const entriesOfHouse = (houseId: string) =>
+    loan?.entries.filter((e) => e.houseId === houseId) ?? [];
+  const linkedHouses = loan ? pool.houses.filter((h) => h.loanId === loan.id) : [];
+  const houseRows: LoanHouseRow[] = linkedHouses.map((h) => {
+    const es = entriesOfHouse(h.id);
+    const solid = es.filter((e) => !e.pending);
+    const sum = (types: string[]) =>
+      solid.filter((e) => types.includes(e.type)).reduce((s, e) => s + Number(e.amount), 0);
+    const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
+    const drawn = sum(["DRAW"]);
+    const interestPaid = Math.abs(sum(["INTEREST_PAYMENT"]));
+    const payoff = Math.abs(sum(["PAYOFF"]));
+    const parts = h.address.split(",");
+    return {
+      id: h.id,
+      address: parts[0],
+      sub: parts.slice(1).join(",").trim() || null,
+      statusLabel: h.status.replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase()),
+      drawableFmt: drawable != null ? formatMoney(drawable, pool.currency) : null,
+      drawnFmt: drawn > 0 ? formatMoney(drawn, pool.currency) : null,
+      availableFmt: drawable != null ? formatMoney(Math.max(0, drawable - drawn), pool.currency) : null,
+      interestFmt: interestPaid > 0 ? formatMoney(interestPaid, pool.currency) : null,
+      payoffFmt: payoff > 0 ? formatMoney(payoff, pool.currency) : null,
+      pct: drawable != null && drawable > 0 ? Math.round((drawn / drawable) * 100) : null,
+      entries: es.map((e) => ({
+        id: e.id,
+        date: fmtBr(fmtDate(e.date))!,
+        typeLabel: ENTRY_TYPE_LABEL[e.type] ?? e.type,
+        memo: e.memo,
+        amountFmt: formatMoney(Number(e.amount), pool.currency),
+        negative: Number(e.amount) < 0,
+        pending: e.pending,
+      })),
+    };
+  });
+  const unlinkedHouses = pool.houses
+    .filter((h) => h.loanId == null)
+    .map((h) => ({
+      id: h.id,
+      address: h.address,
+      drawableFmt: h.bankLoanAmount != null ? formatMoney(Number(h.bankLoanAmount), pool.currency) : null,
+    }));
+  const drawableSum = linkedHouses.reduce((s, h) => s + Number(h.bankLoanAmount ?? 0), 0);
+  const housesFootNote =
+    loan && drawableSum > 0 && loan.committed != null
+      ? `Soma dos loans das casas: ${formatMoney(drawableSum, pool.currency)} · comprometido do loan: ${formatMoney(Number(loan.committed), pool.currency)}${Math.abs(drawableSum - Number(loan.committed)) > 1 ? " (diferença = fees/reserve do envelope)" : ""}`
+      : null;
 
   return (
     <div className="space-y-6">
@@ -237,7 +340,8 @@ export default async function PoolLoanPage({
             [
               ["statement", "📑 Statement", null],
               ["docs", "📁 Documentos", loan.documents.length],
-              ["terms", "⚙ Termos & casas", null],
+              ["terms", "⚙ Termos", null],
+              ["houses", "🏠 Casas", linkedHouses.length],
             ] as Array<[string, string, number | null]>
           ).map(([key, label, badge]) => (
             <Link
@@ -253,7 +357,7 @@ export default async function PoolLoanPage({
               {badge != null && badge > 0 && (
                 <span
                   className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
-                    loan.documents.some((d) => d.proposal != null)
+                    key === "docs" && loan.documents.some((d) => d.proposal != null)
                       ? "bg-amber-100 text-amber-800"
                       : "bg-slate-100 text-slate-500"
                   }`}
@@ -287,14 +391,49 @@ export default async function PoolLoanPage({
         />
       )}
 
-      {(creatingNew || stab === "terms") && (
-      <section className="rounded-xl border border-slate-200 bg-white p-5">
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-medium text-slate-800">
-            {creatingNew && pool.loans.length > 0 ? "Novo loan" : "Termos do loan"}
+      {/* criar loan novo: formulário direto (não há o que travar) */}
+      {creatingNew && (
+        <section className="rounded-xl border border-slate-200 bg-white p-5">
+          <h2 className="mb-3 text-base font-medium text-slate-800">
+            {pool.loans.length > 0 ? "Novo loan" : "Termos do loan"}
           </h2>
-          {loan && loan.entries.length === 0 && (
-            <form action={deletePoolLoan}>
+          <PoolLoanTermsForm key="new" poolId={pool.id} loanId={null} banks={banks} loan={null} />
+        </section>
+      )}
+
+      {/* aba TERMOS (mock aprovado 17/07): tudo visível e TRAVADO; Editar corrige a leitura */}
+      {loan && !creatingNew && stab === "terms" && (
+        <>
+          <PoolLoanTermsView
+            key={loan.id}
+            poolId={pool.id}
+            banks={banks}
+            loan={{
+              loanId: loan.id,
+              bankProfileId: loan.bankProfileId,
+              loanNumber: loan.loanNumber,
+              committed: loan.committed?.toString() ?? null,
+              committedFmt: loan.committed != null ? formatMoney(Number(loan.committed), pool.currency) : null,
+              aprPct: loan.aprPct?.toString() ?? null,
+              firstContactDate: loan.firstContactDate ? fmtDate(loan.firstContactDate) : null,
+              expectedClosingDate: loan.expectedClosingDate ? fmtDate(loan.expectedClosingDate) : null,
+              closingDate: loan.closingDate ? fmtDate(loan.closingDate) : null,
+              notes: loan.notes,
+              statusChip: paidOff
+                ? { text: "quitado", tone: "slate" }
+                : loan.closingDate
+                  ? { text: "ativo", tone: "green" }
+                  : { text: "aguardando closing", tone: "amber" },
+              sourceChip: loiDoc
+                ? `preenchido do LOI${loiEx?.loiDate ? ` de ${fmtBr(loiEx.loiDate)}` : ""} · leitura por AI`
+                : null,
+              contractText: contractDaysOf(loan),
+            }}
+            bank={termsBank}
+            loi={loiEx ? { loiDate: loiEx.loiDate ?? null, prepayment: loiEx.prepaymentPenalty?.trim() || null } : null}
+          />
+          {loan.entries.length === 0 && (
+            <form action={deletePoolLoan} className="text-right">
               <input type="hidden" name="loanId" value={loan.id} />
               <input type="hidden" name="poolId" value={pool.id} />
               <button
@@ -306,41 +445,18 @@ export default async function PoolLoanPage({
               </button>
             </form>
           )}
-        </div>
-        <PoolLoanTermsForm
-          key={loan?.id ?? "new"}
-          poolId={pool.id}
-          loanId={loan?.id ?? null}
-          banks={banks}
-          loan={
-            loan
-              ? {
-                  bankProfileId: loan.bankProfileId,
-                  loanNumber: loan.loanNumber,
-                  committed: loan.committed?.toString() ?? null,
-                  aprPct: loan.aprPct?.toString() ?? null,
-                  firstContactDate: loan.firstContactDate ? fmtDate(loan.firstContactDate) : null,
-                  expectedClosingDate: loan.expectedClosingDate ? fmtDate(loan.expectedClosingDate) : null,
-                  closingDate: loan.closingDate ? fmtDate(loan.closingDate) : null,
-                  notes: loan.notes,
-                }
-              : null
-          }
-        />
-      </section>
+        </>
       )}
 
-      {/* Casas por banco (15/07): o VHP-II tem 3 bancos — cada casa aponta p/ seu loan */}
-      {loan && stab === "terms" && pool.houses.length > 0 && (
-        <HousesByBank
+      {/* aba CASAS (mock aprovado 17/07 + modal): só as casas DESTE loan */}
+      {loan && !creatingNew && stab === "houses" && (
+        <PoolLoanHousesTab
           poolId={pool.id}
-          houses={pool.houses.map((h) => ({
-            id: h.id,
-            address: h.address,
-            status: h.status,
-            loanId: h.loanId,
-          }))}
-          loans={pool.loans.map((l) => ({ id: l.id, label: loanLabel(l) }))}
+          loanId={loan.id}
+          loanLabel={loanLabel(loan)}
+          houses={houseRows}
+          unlinked={unlinkedHouses}
+          footNote={housesFootNote}
         />
       )}
 

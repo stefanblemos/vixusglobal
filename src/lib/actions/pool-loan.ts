@@ -609,3 +609,100 @@ export async function generatePayoffFromHouse(formData: FormData): Promise<void>
   await recompute(poolId);
   revalidatePath(`/pools/${poolId}/loan`);
 }
+
+// ── Termos travados + Casas do loan (mock aprovado 17/07) ─────────────────────────────
+
+// Salva os termos completos: campos do LOAN + condições do BANCO (perfil) numa tela só.
+// Editar as condições atualiza o PERFIL do banco — vale p/ simulações e outros pools
+// (decisão validada no mock). Campos vazios no form viram null (loan) / ficam como estão (banco).
+export async function saveLoanTermsFull(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId } });
+  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado." };
+
+  const bankProfileId = String(formData.get("bankProfileId") ?? "").trim() || null;
+  await prisma.poolLoan.update({
+    where: { id: loanId },
+    data: {
+      bankProfileId,
+      loanNumber: String(formData.get("loanNumber") ?? "").trim() || null,
+      committed: optNum(formData.get("committed")),
+      aprPct: optNum(formData.get("aprPct")),
+      firstContactDate: optDate(formData.get("firstContactDate")),
+      expectedClosingDate: optDate(formData.get("expectedClosingDate")),
+      closingDate: optDate(formData.get("closingDate")),
+      notes: String(formData.get("notes") ?? "").trim() || null,
+    },
+  });
+
+  // condições do banco: só aplica o que veio preenchido (não zera por campo vazio)
+  if (bankProfileId) {
+    const bnum = (name: string) => optNum(formData.get(name));
+    const bankData: Record<string, unknown> = {};
+    const map: Array<[string, string]> = [
+      ["ltcBuildPct", "bankLtc"],
+      ["ltvPct", "bankLtv"],
+      ["originationPct", "bankOrigination"],
+      ["brokerPct", "bankBroker"],
+      ["processingFee", "bankProcessing"],
+      ["appraisalFee", "bankAppraisal"],
+      ["legalFee", "bankLegal"],
+      ["budgetReviewFee", "bankFeasibility"],
+      ["inspectionFeePerDraw", "bankDrawFee"],
+      ["reserveMonths", "bankReserveMonths"],
+    ];
+    for (const [field, input] of map) {
+      const v = bnum(input);
+      if (v != null) bankData[field] = v;
+    }
+    const term = bnum("bankTermMonths");
+    if (term != null) bankData.termMonths = Math.round(term);
+    const ext = bnum("bankExtensionMonths");
+    if (ext != null) bankData.extensionMonths = Math.round(ext);
+    if (formData.has("bankFeesFinancedSent"))
+      bankData.feesFinanced = formData.get("bankFeesFinanced") === "on";
+    if (Object.keys(bankData).length > 0)
+      await prisma.bankProfile.update({ where: { id: bankProfileId }, data: bankData });
+  }
+
+  revalidatePath(`/pools/${poolId}/loan`);
+  return { ok: true };
+}
+
+// Vincula ao loan as casas selecionadas no modal — SÓ casas ainda sem loan apontado.
+export async function linkHousesToLoan(
+  poolId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({
+    where: { id: loanId },
+    include: { bankProfile: { select: { name: true } } },
+  });
+  if (!loan || loan.poolId !== poolId) return { error: "Loan não encontrado." };
+  const houseIds = formData.getAll("houseIds").map(String).filter(Boolean);
+  if (houseIds.length === 0) return { error: "Selecione ao menos uma casa." };
+  const { count } = await prisma.poolHouse.updateMany({
+    where: { id: { in: houseIds }, poolId, loanId: null },
+    data: { loanId: loan.id, ...(loan.bankProfile ? { bankName: loan.bankProfile.name } : {}) },
+  });
+  if (count === 0) return { error: "Nenhuma casa vinculada — já tinham banco?" };
+  revalidatePath(`/pools/${poolId}/loan`);
+  return { ok: true };
+}
+
+// Desvincula a casa do loan (volta a "sem banco" — pode ser vinculada a outro loan).
+export async function unlinkHouseFromLoan(formData: FormData): Promise<void> {
+  const houseId = String(formData.get("houseId") ?? "");
+  const poolId = String(formData.get("poolId") ?? "");
+  if (!houseId) return;
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house || house.poolId !== poolId) return;
+  await prisma.poolHouse.update({ where: { id: houseId }, data: { loanId: null, bankName: null } });
+  revalidatePath(`/pools/${poolId}/loan`);
+}
