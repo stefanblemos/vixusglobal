@@ -51,6 +51,9 @@ const EXPENSE_CATEGORIES = [
   ["ANNUAL_REPORT", "Annual report"],
   ["TAX_PREP", "IR / K-1s"],
   ["ACCOUNTING", "Contabilidade"],
+  // Fase 4: provisão de encerramento da SPV — enquanto não existir, a projeção líquida
+  // usa a estimativa padrão ($2.5K) com selo "estimado"
+  ["DISSOLUTION", "Encerramento da SPV (dissolução + 1065 final)"],
   ["OTHER", "Outra"],
 ] as const;
 

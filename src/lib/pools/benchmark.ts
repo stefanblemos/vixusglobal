@@ -64,6 +64,40 @@ export function ncStatsForLocation(locationName: string): {
 const median = (a: number[]) =>
   a.length === 0 ? null : a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
 
+// Preço A MERCADO de uma casa (Fase 4, aprovado 19/07): a projeção líquida do investidor
+// vende o não-vendido pelo que o mercado pratica, não pelo plano.
+// Regra conservadora e explicável: com sqft + amostra $/sf → mediana $/sf × sqft, clampada
+// no teto observado; sem sqft → plano clampado no teto observado; sem amostra → plano puro
+// (flag NO_BENCHMARK — ex.: Port Charlotte fora do feed ATTOM).
+export type MarketEstimate = {
+  value: number | null;
+  method: "PPSF" | "CAPPED_PLAN" | "NO_BENCHMARK";
+  detail: string; // ex.: "mediana $164.3/sf × 1,844 sqft" | "plano no teto observado $456k"
+};
+
+export function marketEstimateForHouse(
+  locationName: string | null,
+  sqft: number | null,
+  plannedSale: number | null,
+): MarketEstimate {
+  const sub = locationName ? subOf(locationName) : null;
+  const soldMax = (() => {
+    const p = sub?.benchmark?.ncSoldPrices ?? [];
+    return p.length >= 5 ? Math.max(...p) : null;
+  })();
+  if (sub && sqft && (sub.benchmark?.ncPpsf?.length ?? 0) >= 5) {
+    const medPpsf = median(sub.benchmark!.ncPpsf)!;
+    let v = Math.round(medPpsf * sqft);
+    if (soldMax != null) v = Math.min(v, soldMax);
+    return { value: v, method: "PPSF", detail: `$${medPpsf.toFixed(1)}/sf × ${sqft} sqft` };
+  }
+  if (sub && soldMax != null) {
+    const v = plannedSale != null ? Math.min(plannedSale, soldMax) : soldMax;
+    return { value: v, method: "CAPPED_PLAN", detail: `teto observado ${Math.round(soldMax / 1000)}k` };
+  }
+  return { value: plannedSale, method: "NO_BENCHMARK", detail: "sem amostra no feed" };
+}
+
 const pctOf = (v: number, sorted: number[]) =>
   sorted.length === 0 ? null : Math.round((100 * sorted.filter((x) => x <= v).length) / sorted.length);
 

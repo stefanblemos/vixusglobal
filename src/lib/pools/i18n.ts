@@ -95,9 +95,86 @@ const DICT = {
     en: "source: pool registration (performance/entity) + origin simulation (vehicle costs) — nothing typed by hand.",
     pt: "fonte: cadastro do pool (performance/entity) + simulação de origem (custos de veículo) — nada digitado à mão.",
   },
+
+  // investor view (Fase 4)
+  "iv.list.title": { en: "Investors — consolidated view", pt: "Investidores — visão consolidada" },
+  "iv.list.desc": {
+    en: "One investor entity may be in several pools — one screen shows everything, pro-rata.",
+    pt: "A mesma entidade investidora pode estar em vários pools — uma tela mostra tudo, pro-rata.",
+  },
+  "iv.list.investor": { en: "Investor", pt: "Investidor" },
+  "iv.list.pools": { en: "Pools", pt: "Pools" },
+  "iv.list.invested": { en: "Invested", pt: "Investido" },
+  "iv.list.units": { en: "Units", pt: "Units" },
+  "iv.list.view": { en: "view as investor →", pt: "ver como investidor →" },
+  "iv.active": { en: "active investments", pt: "investimentos ativos" },
+  "iv.k.invested": { en: "Invested", pt: "Investido" },
+  "iv.k.today": { en: "Value today (NAV)", pt: "Valor hoje (NAV)" },
+  "iv.k.today.h": { en: "conservative — J curve", pt: "conservador — curva J" },
+  "iv.k.end": { en: "Projected at end (net)", pt: "Projeção no fim (líq.)" },
+  "iv.k.end.h": { en: "@ market, after perf./costs", pt: "@ mercado, após perf./custos" },
+  "iv.k.dist": { en: "Distributed", pt: "Distribuído" },
+  "iv.k.next": { en: "next", pt: "próx." },
+  "iv.k.irr": { en: "Your IRR", pt: "TIR do investidor" },
+  "iv.k.irr.h": { en: "XIRR of YOUR flows + projection", pt: "XIRR dos SEUS fluxos + projeção" },
+  "iv.k.tvpi": { en: "TVPI today → proj.", pt: "TVPI hoje → proj." },
+  "iv.k.tvpi.h": { en: "net of everything", pt: "líquido de tudo" },
+  "iv.stake": { en: "Your stake · invested", pt: "Sua participação · investido" },
+  "iv.valueToday": { en: "Value today", pt: "Valor hoje" },
+  "iv.valueToday.unsold": {
+    en: "Value today (houses still unsold)",
+    pt: "Valor hoje (casas ainda não vendidas)",
+  },
+  "iv.projEnd": { en: "Projected at end (net)", pt: "Projeção no fim (líquida)" },
+  "iv.nextDist": { en: "Next distribution (your share)", pt: "Próxima distribuição (sua parte)" },
+  "iv.sold": { en: "sold", pt: "vendidas" },
+  "iv.chart.caption": {
+    en: "value per unit ($) × time · solid = actual · dotted = net projection at market",
+    pt: "valor por unit ($) × tempo · sólido = realizado · pontilhado = projeção líquida a mercado",
+  },
+  "iv.chart.par": { en: "par", pt: "par" },
+  "iv.chart.today": { en: "today", pt: "hoje" },
+  "iv.chart.start": { en: "start", pt: "início" },
+  "iv.chart.end": { en: "end", pt: "fim" },
+  "iv.how": { en: "how we got to", pt: "como chegamos em" },
+  "iv.cas.cash": { en: "Cash available today", pt: "Caixa disponível hoje" },
+  "iv.cas.futureSales": { en: "+ future sales @ ATTOM market", pt: "+ vendas futuras @ mercado ATTOM" },
+  "iv.cas.remainingCosts": {
+    en: "− cost to finish + sale closings",
+    pt: "− custo p/ terminar + closing das vendas",
+  },
+  "iv.cas.financing": { en: "− payoff + financing to come", pt: "− payoff + financiamento por vir" },
+  "iv.cas.provisioned": { en: "− provisioned expenses", pt: "− despesas provisionadas" },
+  "iv.cas.windDown": { en: "− SPV wind-down (estimated)", pt: "− encerramento da SPV (estimado)" },
+  "iv.cas.vehicle": { en: "− vehicle costs remaining (plan)", pt: "− custos do veículo restantes (plano)" },
+  "iv.cas.performance": { en: "− 4U performance", pt: "− performance da 4U" },
+  "iv.cas.promote": { en: "− Vixus promote (plan)", pt: "− promote da Vixus (plano)" },
+  "iv.cas.total": { en: "Net to investors ÷ units", pt: "Líquido aos investidores ÷ units" },
+  "iv.noBenchmark": {
+    en: "no ATTOM sample — using plan/manual estimate",
+    pt: "sem amostra ATTOM — usando plano/avaliação manual",
+  },
+  "iv.windDownSuggest": {
+    en: "wind-down not provisioned yet — using default estimate; provision it in the pool",
+    pt: "encerramento ainda não provisionado — usando estimativa padrão; provisione no pool",
+  },
+  "iv.activity": { en: "Activity across your investments", pt: "Atividade dos seus investimentos" },
+  "iv.activity.note": {
+    en: "pool milestones and amounts — never other investors' contributions",
+    pt: "marcos e valores do pool — nunca os aportes dos outros sócios",
+  },
+  "iv.viewPool": { en: "view project →", pt: "ver projeto →" },
+  "iv.link": { en: "👤 Investor view →", pt: "👤 Visão do investidor →" },
 } as const;
 
 export type DictKey = keyof typeof DICT;
+
+// mês/ano curto no idioma do CONTEÚDO (labels de projeção; datas exatas seguem o locale)
+const MES = {
+  en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
+  pt: ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"],
+} as const;
+export const mesAnoLang = (d: Date, lang: Lang) => `${MES[lang][d.getUTCMonth()]}/${d.getUTCFullYear()}`;
 
 // t(lang) → função de tradução; {n} etc. via vars
 export function tOf(lang: Lang) {

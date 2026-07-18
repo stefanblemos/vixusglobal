@@ -1112,7 +1112,7 @@ export default async function PoolDetailPage({
           Distribuições como sub-abas; despesas do pool moram no Ledger */}
       {tab === "investors" && (
         <div className="space-y-4">
-          <div className="flex gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             {INVESTOR_SUBS.map((key) => (
               <Link
                 key={key}
@@ -1126,6 +1126,13 @@ export default async function PoolDetailPage({
                 {t(`sub.${key}` as "sub.members")}
               </Link>
             ))}
+            {/* Fase 4: portfólio consolidado por entidade — a futura home do portal */}
+            <Link
+              href="/pools/investors"
+              className="ml-auto text-xs font-semibold text-[#1f3a5f] hover:underline"
+            >
+              {t("iv.link")}
+            </Link>
           </div>
 
           {invSub === "members" && (
