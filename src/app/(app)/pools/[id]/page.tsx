@@ -13,6 +13,7 @@ import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { buildStatement } from "@/lib/pools/loan-statement";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
+import { buildActivityFeed } from "@/lib/pools/activity-feed";
 
 export const dynamic = "force-dynamic";
 
@@ -128,7 +129,7 @@ export default async function PoolDetailPage({
           bankProfile: true,
           entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
           // suficiência (fonte única): cobranças pendentes vêm da leitura dos documentos
-          documents: { select: { id: true, fileName: true, kind: true, extracted: true } },
+          documents: { select: { id: true, fileName: true, kind: true, extracted: true, createdAt: true } },
         },
       },
       simulations: {
@@ -292,6 +293,36 @@ export default async function PoolDetailPage({
   const suffAggs = computeSuffAggs(pool, new Date());
   const loanSurplus = poolLoanSurplus(suffAggs);
   const aporteLiquido = shortfall != null ? Math.max(0, shortfall - loanSurplus) : null;
+
+  // Feed do pool (Fase 0 investor-grade, 18/07): timeline derivada dos dados existentes
+  const houseAddrById = new Map(pool.houses.map((h) => [h.id, h.address]));
+  const feed = buildActivityFeed(
+    {
+      members: pool.members.map((m) => ({
+        name: memberName(m),
+        entries: m.entries.map((e) => ({ kind: e.kind, date: e.date, amount: e.amount })),
+      })),
+      loans: pool.loans.map((l) => ({
+        bankName: l.bankProfile?.name ?? null,
+        entries: l.entries.map((e) => ({
+          type: e.type,
+          date: e.date,
+          amount: e.amount,
+          pending: e.pending,
+          houseAddress: e.houseId ? houseAddrById.get(e.houseId) ?? null : null,
+        })),
+        documents: l.documents.map((d) => ({ kind: d.kind, fileName: d.fileName, createdAt: d.createdAt })),
+      })),
+      houses: pool.houses,
+      distributions: pool.distributions.map((d) => ({
+        date: d.date,
+        amount: d.lines.reduce((s, l) => s + Number(l.amount), 0),
+      })),
+      expenses: pool.expenses,
+      currency: pool.currency,
+    },
+    20,
+  );
 
   // prazo do projeto SEMPRE visível (17/07): início → fim, decorrido e restantes
   const prazo = (() => {
@@ -805,6 +836,38 @@ export default async function PoolDetailPage({
               </p>
             )}
           </section>
+
+          {/* Feed do pool (Fase 0 investor-grade, 18/07): o que aconteceu, dos dados existentes */}
+          {feed.events.length > 0 && (
+            <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                Atividade do pool
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-400">
+                Gerada automaticamente dos lançamentos e datas do pool — a narrativa do report
+                mensal nasce daqui.
+              </p>
+              <div className="mt-3 space-y-0">
+                {feed.events.map((e, i) => (
+                  <div
+                    key={`${e.date.toISOString()}-${i}`}
+                    className="flex items-baseline gap-3 border-l-2 border-slate-100 py-1.5 pl-4"
+                  >
+                    <span className="w-20 shrink-0 text-[11px] tabular-nums text-slate-400">
+                      {`${String(e.date.getUTCMonth() + 1).padStart(2, "0")}/${String(e.date.getUTCDate()).padStart(2, "0")}/${e.date.getUTCFullYear()}`}
+                    </span>
+                    <span className="shrink-0 text-sm">{e.icon}</span>
+                    <span className="text-sm text-slate-700">{e.text}</span>
+                  </div>
+                ))}
+              </div>
+              {feed.total > feed.events.length && (
+                <p className="mt-2 text-[11px] text-slate-400">
+                  mostrando os últimos {feed.events.length} de {feed.total} eventos
+                </p>
+              )}
+            </section>
+          )}
 
           {/* premissas compactas + prazos (projeto e por loan) */}
           <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
