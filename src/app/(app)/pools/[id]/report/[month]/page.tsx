@@ -153,9 +153,30 @@ export default async function MonthlyReportPage({
         </div>
       </div>
 
-      {/* o documento */}
-      <div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 print:border-0 print:px-0">
-        <div className="flex items-end justify-between border-b-[3px] border-[#1f3a5f] pb-3">
+      {/* o documento — no print vira PDF dedicado: shell some (layout), margens de página
+          e cabeçalho slim repetido em TODAS as páginas (thead repete por página) */}
+      <div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 print:rounded-none print:border-0 print:p-0 print:[print-color-adjust:exact]">
+        <style>{`@media print { @page { size: letter; margin: 12mm 14mm; } }`}</style>
+        <table className="w-full border-collapse">
+          <thead className="hidden print:table-header-group">
+            <tr>
+              <td className="pb-3">
+                <div className="flex items-center justify-between border-b-2 border-[#1f3a5f] pb-1.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/vixus-logo.png" alt="Vixus Global" className="h-6 w-auto" />
+                  <span className="text-[9.5px] font-bold tracking-wide text-slate-600">
+                    {t("rp.title")} — {data.poolName} · {mesAnoLang(monthDate, lang)}
+                  </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/4u-homes-horizontal-orange.png" alt="4U Custom Homes" className="h-5 w-auto" />
+                </div>
+              </td>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+        <div className="flex items-end justify-between border-b-[3px] border-[#1f3a5f] pb-3 print:hidden">
           {/* logos reais (pedido 19/07): Vixus (gestora) + 4U (construtora) */}
           <div className="flex items-center gap-4">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -175,7 +196,13 @@ export default async function MonthlyReportPage({
           </div>
         </div>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {/* no print a capa grande sai (o cabeçalho repetido assume) — mantém só a linha de datas */}
+        <p className="hidden text-[9.5px] text-slate-400 print:block">
+          {t("rp.generated")} {fmtD(data.generatedAt)} · {t("rp.dataUntil")} {fmtD(data.cutoff)}
+          {published ? ` · ${t("rp.published")}` : ""}
+        </p>
+
+        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6 print:mt-2">
           {kpis.map((kk) => (
             <div
               key={kk.label}
@@ -410,6 +437,10 @@ export default async function MonthlyReportPage({
           </span>
           <span>{t("rp.footer.disclaimer")}</span>
         </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
