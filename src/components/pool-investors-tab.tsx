@@ -54,6 +54,7 @@ export function PoolInvestorsTab({
   memberOptions,
   ownerOptions,
   suggestedCallAmount,
+  distOptions = [],
 }: {
   poolId: string;
   poolStatus: string; // fora de FUNDING, entrada de sócio NOVO é travada (aportes seguem)
@@ -67,6 +68,8 @@ export function PoolInvestorsTab({
   memberOptions: MemberOption[];
   ownerOptions: OwnerOption[];
   suggestedCallAmount: string | null;
+  // rolagem direta no aporte (regra da carteira): distribuições do pool p/ vincular
+  distOptions?: Array<{ id: string; label: string }>;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [presetMemberId, setPresetMemberId] = useState<string | undefined>(undefined);
@@ -178,6 +181,7 @@ export function PoolInvestorsTab({
                 poolId={poolId}
                 members={memberOptions}
                 defaultMemberId={presetMemberId}
+                distOptions={distOptions}
               />
             )}
             {panel === "socio" && <AddMemberForm poolId={poolId} owners={ownerOptions} />}

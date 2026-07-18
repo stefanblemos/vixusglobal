@@ -16,7 +16,16 @@ const CATEGORIES: Array<[string, string, string]> = [
   ["OTHER", "Other (EIN, certificates, contracts)", "Outros (EIN, certidões, contratos)"],
 ];
 
-export function UploadPoolDocForm({ poolId, lang }: { poolId: string; lang: Lang }) {
+export function UploadPoolDocForm({
+  poolId,
+  lang,
+  memberOptions = [],
+}: {
+  poolId: string;
+  lang: Lang;
+  // doc pessoal (tax center): K-1 por sócio — só ele verá no portal
+  memberOptions?: Array<{ id: string; name: string }>;
+}) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     uploadPoolDocument.bind(null, poolId),
     undefined,
@@ -40,6 +49,25 @@ export function UploadPoolDocForm({ poolId, lang }: { poolId: string; lang: Lang
           ))}
         </select>
       </div>
+      {memberOptions.length > 0 && (
+        <div className="w-64">
+          <label className="mb-1 block text-xs font-medium text-slate-500">
+            {pt ? "Sócio (doc pessoal — opcional)" : "Member (personal doc — optional)"}
+          </label>
+          <select
+            name="memberId"
+            defaultValue=""
+            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+          >
+            <option value="">{pt ? "— do pool (todos)" : "— pool-wide"}</option>
+            {memberOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <div className="min-w-56 flex-1">
         <label className="mb-1 block text-xs font-medium text-slate-500">
           {pt ? "Arquivo(s) PDF — até 6, 10MB cada" : "PDF file(s) — up to 6, 10MB each"}

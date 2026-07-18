@@ -220,6 +220,14 @@ export async function addContribution(
   if (pool.status !== "FUNDING")
     return { error: "Funding window is closed — use a unit transfer instead." };
 
+  // classificação do dinheiro (regra da carteira, aprovada 19/07): AUTO (presunção da
+  // carteira) | ROLLOVER (vincula a distribuição reusada — fato) | NEW (força novo)
+  const classification = String(formData.get("classification") ?? "AUTO");
+  const rolloverOfDistributionId =
+    classification === "ROLLOVER" ? String(formData.get("rolloverOfDistributionId") ?? "").trim() || null : null;
+  if (classification === "ROLLOVER" && !rolloverOfDistributionId)
+    return { error: "Escolha a distribuição reusada." };
+
   const units = D(d.amount).div(pool.unitPrice);
   await prisma.poolContribution.create({
     data: {
@@ -229,6 +237,8 @@ export async function addContribution(
       amount: d.amount,
       units,
       memo: d.memo,
+      rolloverOfDistributionId,
+      newMoneyOverride: classification === "NEW",
     },
   });
   revalidatePath(`/pools/${poolId}`);

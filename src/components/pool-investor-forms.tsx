@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   addContribution,
   addDistribution,
@@ -65,15 +65,19 @@ export function AddContributionForm({
   poolId,
   members,
   defaultMemberId,
+  distOptions = [],
 }: {
   poolId: string;
   members: MemberOption[];
   defaultMemberId?: string;
+  // extrato do investidor (regra da carteira): rolagem direta escolhe a distribuição reusada
+  distOptions?: Array<{ id: string; label: string }>;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     addContribution.bind(null, poolId),
     undefined,
   );
+  const [classification, setClassification] = useState("AUTO");
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
       <div className="min-w-56 flex-1">
@@ -115,6 +119,40 @@ export function AddContributionForm({
         </label>
         <input id="contrib-memo" name="memo" className={inputClass} />
       </div>
+      {/* classificação do dinheiro (regra da carteira, 19/07): automática | rolagem | novo */}
+      <div className="w-52">
+        <label htmlFor="contrib-class" className={labelClass}>
+          Classificação do dinheiro
+        </label>
+        <select
+          id="contrib-class"
+          name="classification"
+          value={classification}
+          onChange={(e) => setClassification(e.target.value)}
+          className={inputClass}
+        >
+          <option value="AUTO">Automática (carteira)</option>
+          <option value="ROLLOVER" disabled={distOptions.length === 0}>
+            ↩ Reuso de distribuição…
+          </option>
+          <option value="NEW">Forçar dinheiro novo</option>
+        </select>
+      </div>
+      {classification === "ROLLOVER" && (
+        <div className="min-w-56 flex-1">
+          <label htmlFor="contrib-rollover" className={labelClass}>
+            Distribuição reusada
+          </label>
+          <select id="contrib-rollover" name="rolloverOfDistributionId" required className={inputClass}>
+            <option value="">Selecione…</option>
+            {distOptions.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       <button type="submit" disabled={pending} className={buttonClass}>
         {pending ? "Adding…" : "+ Contribution"}
       </button>

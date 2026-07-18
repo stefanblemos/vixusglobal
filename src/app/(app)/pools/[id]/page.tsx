@@ -98,7 +98,15 @@ export default async function PoolDetailPage({
       // data room (Fase 3): docs do pool SEM os bytes (pdfSize diz se tem arquivo)
       documents: {
         orderBy: { createdAt: "asc" },
-        select: { id: true, docType: true, fileName: true, createdAt: true, portalVisible: true, pdfSize: true },
+        select: {
+          id: true,
+          docType: true,
+          fileName: true,
+          createdAt: true,
+          portalVisible: true,
+          pdfSize: true,
+          memberId: true,
+        },
       },
       loans: {
         orderBy: { createdAt: "asc" },
@@ -1170,6 +1178,10 @@ export default async function PoolDetailPage({
                 ? String(Math.ceil(risk.callMin90d))
                 : null
           }
+          distOptions={distRows.map((d) => ({
+            id: d.id,
+            label: `${d.date} · ${d.kind === "PROFIT" ? "lucro" : "capital"} · ${formatMoney(d.total, pool.currency)}`,
+          }))}
         />
           )}
 
@@ -1272,7 +1284,9 @@ export default async function PoolDetailPage({
                 createdAt: d.createdAt,
                 portalVisible: d.portalVisible,
                 hasPdf: d.pdfSize != null,
+                memberName: d.memberId ? (memberById.get(d.memberId) ?? null) : null,
               }))}
+              memberOptions={memberOptions.map((m) => ({ id: m.id, name: m.name }))}
               fees={{
                 perfPct: pool.profitSharePct != null ? Number(pool.profitSharePct) : null,
                 perfTiming: pool.profitShareTiming,

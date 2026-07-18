@@ -22,6 +22,7 @@ export type PoolDocRow = {
   createdAt: Date;
   portalVisible: boolean;
   hasPdf: boolean;
+  memberName?: string | null; // doc pessoal (K-1 etc.) — só o sócio vê no portal
 };
 export type FeesData = {
   perfPct: number | null; // fração do lucro dos INVESTIDORES (cadastro do pool)
@@ -80,6 +81,7 @@ export function PoolDataRoom({
   loanDocs,
   poolDocs,
   fees,
+  memberOptions = [],
 }: {
   poolId: string;
   lang: Lang;
@@ -88,6 +90,7 @@ export function PoolDataRoom({
   loanDocs: LoanDocRow[];
   poolDocs: PoolDocRow[];
   fees: FeesData;
+  memberOptions?: Array<{ id: string; name: string }>;
 }) {
   const t = tOf(lang);
   const fmtDate = (d: Date) => {
@@ -136,6 +139,11 @@ export function PoolDataRoom({
             <span className="rounded-full bg-[#e8eef7] px-2 py-0.5 text-[10px] font-bold text-[#1f3a5f]">
               {d.docType.replace(/_/g, " ")}
             </span>
+            {d.memberName && (
+              <span className="ml-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                👤 {d.memberName.split(" ")[0]}
+              </span>
+            )}
           </td>
           <td className={`${td} tabular-nums`}>{fmtDate(d.createdAt)}</td>
           <td className="px-3 py-1.5 text-right">
@@ -165,7 +173,7 @@ export function PoolDataRoom({
               {t("dr.add")}
             </summary>
             <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <UploadPoolDocForm poolId={poolId} lang={lang} />
+              <UploadPoolDocForm poolId={poolId} lang={lang} memberOptions={memberOptions} />
             </div>
           </details>
         </div>

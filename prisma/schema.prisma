@@ -1013,6 +1013,11 @@ model PoolContribution {
   amount          Decimal       @db.Decimal(20, 2)
   units           Decimal       @db.Decimal(20, 4)
   transferGroupId String? // liga o par TRANSFER_OUT/TRANSFER_IN
+  // Extrato do investidor (carteira, regra aprovada 19/07): rolagem DIRETA vincula o
+  // aporte à distribuição reusada (fato); override força "dinheiro novo" mesmo com
+  // saldo na carteira (não consome). Sem nada: presunção automática da carteira.
+  rolloverOfDistributionId String?
+  newMoneyOverride         Boolean @default(false)
   memo            String?
   createdAt       DateTime      @default(now())
 

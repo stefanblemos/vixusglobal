@@ -11,6 +11,7 @@ import { computeNav, liveIrr, xirr, type NavHouse } from "./nav";
 import { buildRisk, type RiskResult } from "./risk";
 import { computeEndNet, type EndNetResult } from "./investor-value";
 import { buildActivityFeed, type FeedEvent } from "./activity-feed";
+import { buildInvestorStatement, type StmtMovement, type StmtResult } from "./investor-statement";
 
 const n = (v: unknown) => (v == null ? 0 : Number(v));
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -89,6 +90,8 @@ export type InvestorPortfolio = {
   tvpiProjected: number | null;
   nextDist: { date: Date; share: number; poolCode: string } | null;
   feed: { events: Array<FeedEvent & { poolCode: string }>; total: number };
+  statement: StmtResult; // extrato "conta bancária" (regra da carteira)
+  memberIds: string[]; // PoolMember ids da entidade (tax center: docs por sócio)
 };
 
 export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfolio | null> {
@@ -128,6 +131,8 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
   const positions: PortfolioPosition[] = [];
   const flows: Array<{ date: Date; amount: number }> = [];
   const feedAll: Array<FeedEvent & { poolCode: string }> = [];
+  const movements: StmtMovement[] = [];
+  const memberIds: string[] = [];
   let feedTotal = 0;
   let investorName = "?";
   let distributedTotal = 0;
@@ -248,11 +253,31 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
       unitsTotal,
     });
 
-    // fluxos DELE: aportes/compras negativos, saídas/distribuições positivos + projeção
+    // fluxos DELE: aportes/compras negativos, saídas/distribuições positivos + projeção;
+    // e os mesmos eventos alimentam o extrato (carteira novo × reuso)
+    memberIds.push(me.id);
     for (const e of me.entries) {
-      if (e.kind === "CONTRIBUTION" || e.kind === "CAPITAL_CALL" || e.kind === "TRANSFER_IN")
+      if (e.kind === "CONTRIBUTION" || e.kind === "CAPITAL_CALL" || e.kind === "TRANSFER_IN") {
         flows.push({ date: e.date, amount: -Math.abs(n(e.amount)) });
-      else if (e.kind === "TRANSFER_OUT") flows.push({ date: e.date, amount: Math.abs(n(e.amount)) });
+        movements.push({
+          type: e.kind,
+          date: e.date,
+          amount: n(e.amount),
+          poolCode: pool.code,
+          rollover: e.rolloverOfDistributionId != null,
+          newMoneyOverride: e.newMoneyOverride,
+          memo: e.memo,
+        });
+      } else if (e.kind === "TRANSFER_OUT") {
+        flows.push({ date: e.date, amount: Math.abs(n(e.amount)) });
+        movements.push({
+          type: "TRANSFER_OUT",
+          date: e.date,
+          amount: n(e.amount),
+          poolCode: pool.code,
+          memo: e.memo,
+        });
+      }
     }
     let myDistributed = 0;
     for (const d of pool.distributions)
@@ -260,6 +285,13 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
         if (kind === "c" ? l.member.companyId === id : l.member.partyId === id) {
           flows.push({ date: d.date, amount: n(l.amount) });
           myDistributed += n(l.amount);
+          movements.push({
+            type: d.kind === "PROFIT" ? "DIST_PROFIT" : "DIST_CAPITAL",
+            date: d.date,
+            amount: n(l.amount),
+            poolCode: pool.code,
+            memo: d.memo,
+          });
         }
     distributedTotal += myDistributed;
 
@@ -352,5 +384,7 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     tvpiProjected: invested > 0 ? round2((endNetTotal + distributedTotal) / invested) : null,
     nextDist: nextDist?.nextDist ? { ...nextDist.nextDist, poolCode: nextDist.code } : null,
     feed: { events: feedAll.slice(0, 12), total: feedTotal },
+    statement: buildInvestorStatement(movements),
+    memberIds,
   };
 }

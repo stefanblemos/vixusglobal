@@ -35,11 +35,17 @@ export async function uploadPoolDocument(
     return { error: "Categoria inválida. / Invalid category." };
   const pool = await prisma.investmentPool.findUnique({ where: { id: poolId }, select: { id: true } });
   if (!pool) return { error: "Pool não encontrado. / Pool not found." };
+  // doc pessoal do sócio (tax center): K-1/1099/statement — só o sócio vê no portal
+  const memberId = String(formData.get("memberId") ?? "").trim() || null;
+  if (memberId) {
+    const member = await prisma.poolMember.findUnique({ where: { id: memberId }, select: { poolId: true } });
+    if (!member || member.poolId !== poolId) return { error: "Sócio inválido. / Invalid member." };
+  }
 
   for (const file of files) {
     const bytes = Buffer.from(await file.arrayBuffer());
     await prisma.poolDocument.create({
-      data: { poolId, docType, fileName: file.name, pdf: bytes, pdfSize: bytes.length },
+      data: { poolId, docType, fileName: file.name, pdf: bytes, pdfSize: bytes.length, memberId },
     });
   }
   revalidatePath(`/pools/${poolId}`);
