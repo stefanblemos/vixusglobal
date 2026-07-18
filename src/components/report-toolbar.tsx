@@ -23,23 +23,28 @@ export function PublishReportForm({
   poolId,
   month,
   defaultNarrative,
+  defaultMarket = "",
   publishLabel,
   narrativeLabel,
+  marketLabel,
   lang,
 }: {
   poolId: string;
   month: string;
   defaultNarrative: string;
+  defaultMarket?: string;
   publishLabel: string;
   narrativeLabel: string;
+  marketLabel: string;
   lang: Lang;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     publishMonthlyReport.bind(null, poolId, month),
     undefined,
   );
-  // narrativa IA (mock aprovado): gera no textarea p/ revisão — publicar continua manual
+  // prosa IA: gera narrativa + comentário de mercado p/ revisão — publicar continua manual
   const [narrative, setNarrative] = useState(defaultNarrative);
+  const [market, setMarket] = useState(defaultMarket);
   const [aiError, setAiError] = useState<string | null>(null);
   const [aiPending, startAi] = useTransition();
   const generate = () =>
@@ -47,7 +52,8 @@ export function PublishReportForm({
       setAiError(null);
       const r = await generateReportNarrative(poolId, month);
       if (r.text) setNarrative(r.text);
-      else setAiError(r.error ?? "—");
+      if (r.market) setMarket(r.market);
+      if (!r.text) setAiError(r.error ?? "—");
     });
   return (
     <details className="relative">
@@ -79,7 +85,15 @@ export function PublishReportForm({
           name="narrative"
           value={narrative}
           onChange={(e) => setNarrative(e.target.value)}
-          rows={8}
+          rows={7}
+          className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        />
+        <label className="mb-1 mt-2 block text-xs font-medium text-slate-500">{marketLabel}</label>
+        <textarea
+          name="marketCommentary"
+          value={market}
+          onChange={(e) => setMarket(e.target.value)}
+          rows={4}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
         {aiError && <p className="mt-1 text-xs text-amber-700">{aiError}</p>}

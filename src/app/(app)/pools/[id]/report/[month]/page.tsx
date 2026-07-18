@@ -144,8 +144,10 @@ export default async function MonthlyReportPage({
             poolId={id}
             month={month}
             defaultNarrative={data.narrative}
+            defaultMarket={data.marketCommentary ?? ""}
             publishLabel={published ? t("rp.republish") : t("rp.publish")}
             narrativeLabel={t("rp.narrative.label")}
+            marketLabel={t("rp.market.label")}
             lang={lang}
           />
           <PrintButton label={t("rp.print")} />
@@ -202,7 +204,7 @@ export default async function MonthlyReportPage({
           {published ? ` · ${t("rp.published")}` : ""}
         </p>
 
-        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6 print:mt-2">
+        <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6 print:mt-2 print:grid-cols-6">
           {kpis.map((kk) => (
             <div
               key={kk.label}
@@ -375,16 +377,28 @@ export default async function MonthlyReportPage({
           </table>
         </div>
 
-        {/* 5 · mercado */}
+        {/* 5 · mercado — faróis estruturados no idioma do leitor + comentário do gestor (IA) */}
         <h2 className={h2}>{t("rp.s5")}</h2>
-        <div className="flex justify-between text-[11.5px] text-slate-600">
-          <span>{t("rp.market.lights")}</span>
-          <b>
+        <div className="flex justify-between gap-4 text-[11.5px] text-slate-600">
+          <span className="shrink-0">{t("rp.market.lights")}</span>
+          <b className="text-right">
             {data.market.green} ✓ · {data.market.amber} △ · {data.market.red} ⚠
-            {data.market.notes.length > 0 ? ` — ${data.market.notes.join(" · ")}` : ""}
+            {data.market.notes.length > 0
+              ? ` — ${data.market.notes
+                  .map((nn) =>
+                    typeof nn === "string"
+                      ? nn // snapshots antigos (strings prontas)
+                      : `${nn.addr}: ${t(`mk.${nn.kind}` as "mk.P90", { pct: nn.pct ?? 0 })}`,
+                  )
+                  .join(" · ")}`
+              : ""}
           </b>
         </div>
-        <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{t("rp.market.note")}</p>
+        {data.marketCommentary ? (
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-slate-700">{data.marketCommentary}</p>
+        ) : (
+          <p className="mt-1 text-[12px] leading-relaxed text-slate-500">{t("rp.market.note")}</p>
+        )}
 
         {/* 6 · distribuições */}
         <h2 className={h2}>{t("rp.s6")}</h2>
@@ -408,8 +422,8 @@ export default async function MonthlyReportPage({
           </div>
         </div>
 
-        {/* glossário (pedido 19/07): o investidor pode não conhecer as siglas */}
-        <h2 className={h2}>{t("rp.glossary")}</h2>
+        {/* glossário (pedido 19/07): página final própria no PDF (quebra antes) */}
+        <h2 className={`${h2} print:break-before-page`}>{t("rp.glossary")}</h2>
         <div className="grid gap-x-6 gap-y-1.5 md:grid-cols-2">
           {(
             [

@@ -1,52 +1,70 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { z } from "zod";
 import type { ReportMonthData } from "./report-month";
 import type { Lang } from "./i18n";
 
 /**
- * Narrativa IA do report mensal (prometida no mock aprovado 19/07: "gerada dos eventos,
- * com opção de refinar via IA"). Grounding = o próprio ReportMonthData — a IA só pode
- * citar o que está no JSON. Falha → null: o botão avisa e a narrativa determinística
- * continua valendo (a publicação nunca fica refém da IA). Mesmo modelo do report de
- * investimento (report-ai-core).
+ * Prosa IA do report mensal (mock aprovado 19/07 + pedido 19/07: mesmo tratamento na
+ * seção de mercado). Gera DOIS textos de uma vez — narrativa do mês e comentário de
+ * mercado — com grounding EXCLUSIVO no ReportMonthData. Falha → null: os textos
+ * determinísticos continuam valendo (a publicação nunca fica refém da IA).
  */
 
 const MODEL = "claude-opus-4-8";
 
+const proseSchema = z.object({
+  narrative: z.string().describe("the single-paragraph month summary"),
+  marketCommentary: z.string().describe("the single-paragraph market commentary"),
+});
+export type MonthProse = z.infer<typeof proseSchema>;
+
 const PROMPT: Record<Lang, string> = {
-  pt: `Você escreve a seção "O mês em resumo" de um Monthly Investor Report de um pool de
-construção residencial (single-family, Flórida). Voz do GESTOR: sóbria, institucional,
-factual — sem promessas, sem adjetivos vazios, sem exclamações.
+  pt: `Você escreve duas seções de um Monthly Investor Report de um pool de construção
+residencial (single-family, Flórida). Voz do GESTOR: sóbria, institucional, factual —
+sem promessas, sem adjetivos vazios, sem exclamações. Responda em português.
 
-Escreva UM parágrafo único de 4 a 7 frases, em português, cobrindo na ordem que fizer
-sentido: (1) os eventos relevantes do mês (agrupe os parecidos — ex.: "os três contratos
-de financiamento foram processados" em vez de listar arquivos); (2) o andamento da obra
-e do cronograma; (3) a marcação (NAV/unit e a variação vs mês anterior, se houver);
-(4) pontos de atenção com honestidade (ex.: runway curto e capital call sugerida);
-(5) feche com o que vem a seguir ancorado na próxima distribuição prevista.
+1) "narrative" — UM parágrafo de 4 a 7 frases sobre o mês: eventos relevantes (agrupe
+os parecidos), andamento de obra/cronograma, a marcação (NAV/unit e variação vs mês
+anterior, se houver), pontos de atenção com honestidade (ex.: runway curto e capital
+call sugerida), fechando com o que vem a seguir ancorado na próxima distribuição
+prevista.
 
-REGRAS DURAS: use SOMENTE os fatos do JSON abaixo — nunca invente números, datas ou
-eventos; valores aproximados do JSON continuam aproximados (use "≈"); projeções são
-"previstas/estimadas", nunca certezas; não repita o glossário nem explique siglas.
-Responda APENAS com o parágrafo, sem título e sem markdown.`,
-  en: `You write the "Month in summary" section of a Monthly Investor Report for a
-residential construction pool (single-family, Florida). MANAGER's voice: sober,
-institutional, factual — no promises, no empty adjectives, no exclamation marks.
+2) "marketCommentary" — UM parágrafo de 3 a 5 frases interpretando os faróis de
+mercado (market.green/amber/red e market.notes): o que significam os avisos casa a
+casa (acima do p90 = preço planejado no topo da distribuição de vendidas; acima do
+teto = acima do maior valor observado; margem fina = pouco colchão), por que a
+projeção líquida usa o preço A MERCADO e o efeito disso vs o plano
+(endPerUnitNetProjection × plano), e o que o gestor fará a respeito SOMENTE se os
+dados indicarem (ex.: monitorar, revisar preço) — sem inventar ações.
 
-Write ONE single paragraph of 4–7 sentences, in English, covering in whatever order
-reads best: (1) the month's relevant events (group similar ones — e.g. "the three
-financing agreements were processed" instead of listing files); (2) build & schedule
-progress; (3) the mark (NAV/unit and the change vs the previous month, if any);
-(4) points of attention stated honestly (e.g. short cash runway and the suggested
-capital call); (5) close with what comes next anchored on the next projected
-distribution.
+REGRAS DURAS: use SOMENTE os fatos do JSON — nunca invente números, datas, eventos ou
+ações; aproximados continuam aproximados (use "≈"); projeções são "previstas/
+estimadas"; não explique siglas (há glossário). Sem títulos e sem markdown.`,
+  en: `You write two sections of a Monthly Investor Report for a residential
+construction pool (single-family, Florida). MANAGER's voice: sober, institutional,
+factual — no promises, no empty adjectives, no exclamation marks. Reply in English.
 
-HARD RULES: use ONLY facts from the JSON below — never invent numbers, dates or
-events; approximate values stay approximate (use "≈"); projections are "projected/
-estimated", never certainties; do not repeat the glossary or explain acronyms.
-Reply with the paragraph ONLY — no title, no markdown.`,
+1) "narrative" — ONE paragraph of 4–7 sentences about the month: relevant events
+(group similar ones), build & schedule progress, the mark (NAV/unit and change vs
+previous month, if any), points of attention stated honestly (e.g. short cash runway
+and the suggested capital call), closing with what comes next anchored on the next
+projected distribution.
+
+2) "marketCommentary" — ONE paragraph of 3–5 sentences interpreting the market
+lights (market.green/amber/red and market.notes): what the house-level flags mean
+(above p90 = planned price at the top of the sold distribution; above ceiling =
+above the highest observed sale; thin margin = little cushion), why the net
+projection prices unsold homes AT MARKET and its effect vs plan
+(endPerUnitNetProjection × plan), and what the manager will do about it ONLY if the
+data supports it (e.g. monitor, reprice) — never invent actions.
+
+HARD RULES: use ONLY facts from the JSON — never invent numbers, dates, events or
+actions; approximate values stay approximate (use "≈"); projections are "projected/
+estimated"; do not explain acronyms (there is a glossary). No titles, no markdown.`,
 };
 
-// grounding enxuto: só o que a narrativa pode citar
+// grounding enxuto: só o que a prosa pode citar
 function groundingOf(d: ReportMonthData) {
   return {
     pool: d.poolName,
@@ -62,15 +80,15 @@ function groundingOf(d: ReportMonthData) {
   };
 }
 
-export async function generateMonthNarrative(
+export async function generateMonthProse(
   d: ReportMonthData,
   lang: Lang,
   client: Anthropic = new Anthropic({ maxRetries: 2 }),
-): Promise<string | null> {
+): Promise<MonthProse | null> {
   try {
-    const resp = await client.messages.create({
+    const resp = await client.messages.parse({
       model: MODEL,
-      max_tokens: 600,
+      max_tokens: 900,
       messages: [
         {
           role: "user",
@@ -79,15 +97,11 @@ export async function generateMonthNarrative(
             JSON.stringify(groundingOf(d), null, 2),
         },
       ],
+      output_config: { format: zodOutputFormat(proseSchema) },
     });
-    const text = resp.content
-      .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
-      .map((b) => b.text)
-      .join("")
-      .trim();
-    return text || null;
+    return resp.parsed_output ?? null;
   } catch (e) {
-    console.error("report-month-ai: geração falhou (narrativa determinística continua)", e);
+    console.error("report-month-ai: geração falhou (textos determinísticos continuam)", e);
     return null;
   }
 }

@@ -274,6 +274,13 @@ const DICT = {
   "rp.risk.call": { en: "Suggested capital call", pt: "Capital call sugerida" },
   "rp.risk.breakeven": { en: "Breakeven — sales can drop", pt: "Breakeven — vendas podem cair" },
   "rp.market.lights": { en: "Lights across unsold houses", pt: "Faróis das casas não vendidas" },
+  "rp.market.label": {
+    en: "Market commentary (edit before publishing)",
+    pt: "Comentário de mercado (edite antes de publicar)",
+  },
+  "mk.CEILING": { en: "above observed ceiling", pt: "acima do teto observado" },
+  "mk.P90": { en: "above p90", pt: "acima do p90" },
+  "mk.THIN_MARGIN": { en: "thin margin ({pct}%)", pt: "margem fina ({pct}%)" },
   "rp.market.note": {
     en: "The net projection prices unsold homes AT MARKET — when it sits below plan, the difference is the market clamp, and it returns if the market validates the plan.",
     pt: "A projeção líquida usa o preço A MERCADO — quando fica abaixo do plano, a diferença é o clamp do mercado, e volta se o mercado validar o preço planejado.",

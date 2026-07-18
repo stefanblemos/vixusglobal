@@ -64,7 +64,15 @@ export type ReportMonthData = {
     breakevenPct: number | null;
     stress: Array<{ label: string; profit: number; tone: string }>;
   };
-  market: { green: number; amber: number; red: number; notes: string[] };
+  market: {
+    green: number;
+    amber: number;
+    red: number;
+    // estruturado (19/07): renderiza no idioma do LEITOR (antes eram strings PT fixas
+    // vazando no report EN); compat: snapshots antigos têm string[]
+    notes: Array<{ addr: string; kind: "CEILING" | "P90" | "THIN_MARGIN"; pct?: number } | string>;
+  };
+  marketCommentary?: string; // parágrafo do gestor sobre mercado (IA, editável)
   dist: {
     inMonth: number;
     cumulative: number;
@@ -372,9 +380,9 @@ export async function buildMonthlyReport(
     }
   }
 
-  // mercado: faróis (mesma régua da aba Casas › Mercado)
+  // mercado: faróis (mesma régua da aba Casas › Mercado) — estruturados p/ i18n
   let green = 0, amber = 0, red = 0;
-  const notes: string[] = [];
+  const notes: ReportMonthData["market"]["notes"] = [];
   for (const h of cur.pool.houses) {
     const hh = h as Record<string, unknown>;
     if (hh.saleDate != null) continue;
@@ -387,13 +395,13 @@ export async function buildMonthlyReport(
     const marginPct = sale != null && cost > 0 ? ((sale - cost) / sale) * 100 : null;
     if (sale != null && stats && sale > stats.max) {
       red++;
-      notes.push(`${addr}: acima do teto observado`);
+      notes.push({ addr, kind: "CEILING" });
     } else if (sale != null && stats && sale >= stats.p90) {
       amber++;
-      notes.push(`${addr}: acima do p90`);
+      notes.push({ addr, kind: "P90" });
     } else if (marginPct != null && marginPct < 5) {
       amber++;
-      notes.push(`${addr}: margem fina (${marginPct.toFixed(1)}%)`);
+      notes.push({ addr, kind: "THIN_MARGIN", pct: Math.round(marginPct * 10) / 10 });
     } else green++;
   }
 
