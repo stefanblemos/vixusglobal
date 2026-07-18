@@ -494,6 +494,24 @@ function PositionCard({ pos, lang, dateLocale }: { pos: PortfolioPosition; lang:
         )}
       </div>
 
+      {/* TIR e ROI da POSIÇÃO em destaque (nota do Stefan 19/07: não estavam claros) */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-[#1f3a5f]/25 bg-slate-50 px-3 py-1.5">
+          <div className="text-[9px] uppercase tracking-wider text-slate-400">{t("iv.pos.irr")}</div>
+          <div className="text-[15px] font-extrabold tabular-nums text-slate-900">
+            {pos.irr != null ? `≈ ${(pos.irr * 100).toFixed(1)}%` : "—"}
+          </div>
+        </div>
+        <div className="rounded-lg border border-[#1f3a5f]/25 bg-slate-50 px-3 py-1.5">
+          <div className="text-[9px] uppercase tracking-wider text-slate-400">{t("iv.pos.roi")}</div>
+          <div className="text-[15px] font-extrabold tabular-nums text-slate-900">
+            {pos.roiProjected != null
+              ? `${pos.roiProjected.toFixed(2)}× · ${pos.roiProjected >= 1 ? "+" : "−"}${Math.abs((pos.roiProjected - 1) * 100).toFixed(1)}%`
+              : "—"}
+          </div>
+        </div>
+      </div>
+
       <div className="mt-2">
         <UnitValueChart
           par={pos.unitPar}

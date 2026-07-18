@@ -165,6 +165,8 @@ const DICT = {
   },
   "iv.viewPool": { en: "view project →", pt: "ver projeto →" },
   "iv.link": { en: "👤 Investor view →", pt: "👤 Visão do investidor →" },
+  "iv.pos.irr": { en: "IRR (your flows)", pt: "TIR (seus fluxos)" },
+  "iv.pos.roi": { en: "Projected ROI", pt: "ROI projetado" },
 
   // extrato "conta bancária" + tax center
   "st.tab.overview": { en: "📊 Overview", pt: "📊 Visão geral" },

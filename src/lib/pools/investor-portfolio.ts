@@ -75,6 +75,8 @@ export type PortfolioPosition = {
   nextDist: { date: Date; share: number } | null; // pro-rata da 1ª venda da fila
   endNet: EndNetResult;
   distributedToInvestor: number;
+  irr: number | null; // TIR do investidor NESTE pool (fluxos dele + projeção)
+  roiProjected: number | null; // (projeção fim + distribuído) ÷ investido
 };
 
 export type InvestorPortfolio = {
@@ -254,11 +256,13 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     });
 
     // fluxos DELE: aportes/compras negativos, saídas/distribuições positivos + projeção;
-    // e os mesmos eventos alimentam o extrato (carteira novo × reuso)
+    // e os mesmos eventos alimentam o extrato (carteira novo × reuso). Coletados por
+    // pool p/ a TIR da POSIÇÃO (pedido 19/07: ROI e TIR claros em cada card).
+    const poolFlows: Array<{ date: Date; amount: number }> = [];
     memberIds.push(me.id);
     for (const e of me.entries) {
       if (e.kind === "CONTRIBUTION" || e.kind === "CAPITAL_CALL" || e.kind === "TRANSFER_IN") {
-        flows.push({ date: e.date, amount: -Math.abs(n(e.amount)) });
+        poolFlows.push({ date: e.date, amount: -Math.abs(n(e.amount)) });
         movements.push({
           type: e.kind,
           date: e.date,
@@ -269,7 +273,7 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
           memo: e.memo,
         });
       } else if (e.kind === "TRANSFER_OUT") {
-        flows.push({ date: e.date, amount: Math.abs(n(e.amount)) });
+        poolFlows.push({ date: e.date, amount: Math.abs(n(e.amount)) });
         movements.push({
           type: "TRANSFER_OUT",
           date: e.date,
@@ -283,7 +287,7 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     for (const d of pool.distributions)
       for (const l of d.lines)
         if (kind === "c" ? l.member.companyId === id : l.member.partyId === id) {
-          flows.push({ date: d.date, amount: n(l.amount) });
+          poolFlows.push({ date: d.date, amount: n(l.amount) });
           myDistributed += n(l.amount);
           movements.push({
             type: d.kind === "PROFIT" ? "DIST_PROFIT" : "DIST_CAPITAL",
@@ -302,9 +306,10 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     // projeção pro-rata: fila da Fase 2 nas datas do baseline; resto (caixa final) no endDate
     const queueTotal = risk.queue.reduce((s, q) => s + q.total, 0);
     for (const q of risk.queue)
-      if (q.date) flows.push({ date: q.date, amount: pct * q.total * (endNet.endValueNet > 0 && queueTotal > 0 ? Math.min(1, endNet.endValueNet / queueTotal) : 1) });
+      if (q.date) poolFlows.push({ date: q.date, amount: pct * q.total * (endNet.endValueNet > 0 && queueTotal > 0 ? Math.min(1, endNet.endValueNet / queueTotal) : 1) });
     const remainder = pct * Math.max(0, endNet.endValueNet - queueTotal);
-    if (remainder > 0.01 && endDate) flows.push({ date: endDate, amount: remainder });
+    if (remainder > 0.01 && endDate) poolFlows.push({ date: endDate, amount: remainder });
+    flows.push(...poolFlows);
 
     positions.push({
       poolId: pool.id,
@@ -327,6 +332,11 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
       nextDist: risk.next?.date ? { date: risk.next.date, share: round2(pct * risk.next.total) } : null,
       endNet,
       distributedToInvestor: round2(myDistributed),
+      irr: xirr(poolFlows),
+      roiProjected:
+        myInvested > 0 && endNet.endPerUnitNet != null
+          ? round2((endNet.endPerUnitNet * myUnits + myDistributed) / myInvested)
+          : null,
     });
 
     // feed do investidor: eventos do POOL + só os aportes DELE (nunca dos outros sócios)
