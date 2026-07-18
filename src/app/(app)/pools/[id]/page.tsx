@@ -14,6 +14,8 @@ import { PoolTabsNav } from "@/components/pool-tabs";
 import { buildStatement } from "@/lib/pools/loan-statement";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
+import { computeNav, liveIrr, type NavHouse } from "@/lib/pools/nav";
+import { ncStatsForLocation } from "@/lib/pools/benchmark";
 
 export const dynamic = "force-dynamic";
 
@@ -324,6 +326,93 @@ export default async function PoolDetailPage({
     20,
   );
 
+  // ── Marcação & retorno (Fase 1 investor-grade, mock aprovado 18/07) ──
+  const baselineSaleByHouse = (() => {
+    const b = pool.scheduleBaseline as { houses?: Array<{ houseId: string; sale: string | null }> } | null;
+    return new Map((b?.houses ?? []).map((h) => [h.houseId, h.sale ? new Date(h.sale) : null]));
+  })();
+  const navHouses: NavHouse[] = pool.houses.map((h) => {
+    const drawn = h.loanEntries.reduce((s, e) => s + Number(e.amount), 0);
+    const cost =
+      Number(h.plannedLotCost ?? 0) + Number(h.plannedBuildCost ?? 0) + Number(h.plannedClosingCost ?? 0);
+    const expectedProfit = h.plannedSalePrice != null && cost > 0 ? Number(h.plannedSalePrice) - cost : null;
+    const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
+    const buildPct = h.coDate ? 100 : drawable && drawable > 0 ? Math.min(100, (drawn / drawable) * 100) : 0;
+    return {
+      ownCapital: Number(h.ownCapital ?? 0),
+      bankDrawn: drawn,
+      expectedProfit,
+      buildPct,
+      sold: h.saleDate != null,
+      baselineSale: baselineSaleByHouse.get(h.id) ?? null,
+    };
+  });
+  const poolDebt = pool.loans.reduce(
+    (s, l) => s + Math.max(0, l.entries.filter((e) => !e.pending).reduce((x, e) => x + Number(e.amount), 0)),
+    0,
+  );
+  // drag de financiamento: fees/reserve/juros consumidos + estimados (OTHER fica fora — é crédito)
+  const financingIncurred = pool.loans
+    .flatMap((l) => l.entries)
+    .filter((e) => !e.pending && ["CLOSING_FEE", "RESERVE", "DRAW_FEE", "INTEREST"].includes(e.type))
+    .reduce((s, e) => s + Number(e.amount), 0);
+  const financingProjected = suffAggs
+    .filter((a) => !a.quitado)
+    .reduce((s, a) => s + a.jurosEst + a.drawFeeEst, 0);
+  const live = liveIrr({
+    contributions: contribs.map((e) => ({ date: e.date, amount: Number(e.amount) })),
+    distributions: pool.distributions.map((d) => ({
+      date: d.date,
+      amount: d.lines.reduce((s, l) => s + Number(l.amount), 0),
+    })),
+    houses: navHouses,
+    financingDrag: financingIncurred + financingProjected,
+    today: new Date(),
+  });
+  const navR = computeNav({
+    freeCash: Number(freeToReturn),
+    houses: navHouses,
+    debt: poolDebt,
+    unitsTotal: Number(table.totalUnits),
+    raised: raisedN,
+    distributed: Number(distributed),
+    projectedProfitNet: live.profitNet,
+  });
+  const planIrr = simKpis?.irrAnnual != null ? Number(simKpis.irrAnnual) : null;
+  const planMultiple = simKpis?.equityMultiple != null ? Number(simKpis.equityMultiple) : null;
+  const tvpi = raisedN > 0 ? (navR.nav + Number(distributed)) / raisedN : null;
+  const dpi = raisedN > 0 ? Number(distributed) / raisedN : null;
+  const unitPar = Number(pool.unitPrice);
+
+  // lucro por casa × mercado ATTOM (farol pelos percentis de NC vendidas do submercado)
+  const marketRows = pool.houses.map((h) => {
+    const cost =
+      Number(h.plannedLotCost ?? 0) + Number(h.plannedBuildCost ?? 0) + Number(h.plannedClosingCost ?? 0);
+    const sale = h.plannedSalePrice != null ? Number(h.plannedSalePrice) : null;
+    const margin = sale != null && cost > 0 ? sale - cost : null;
+    const marginPct = margin != null && cost > 0 ? (margin / cost) * 100 : null;
+    const stats = h.catalogLocation ? ncStatsForLocation(h.catalogLocation.name) : null;
+    let verdict: { label: string; tone: "green" | "amber" | "red" } = { label: "✓ dentro da faixa", tone: "green" };
+    if (sale != null && stats) {
+      if (sale > stats.max) verdict = { label: "⚠ acima do teto observado", tone: "red" };
+      else if (sale >= stats.p90) verdict = { label: "△ acima do p90", tone: "amber" };
+    }
+    if (verdict.tone === "green" && marginPct != null && marginPct < 5)
+      verdict = { label: `△ margem fina (${marginPct.toFixed(1)}%)`, tone: "amber" };
+    return {
+      id: h.id,
+      addr: h.address.split(",")[0],
+      model: h.catalogModel?.name ?? "—",
+      loc: h.catalogLocation?.name ?? "—",
+      cost,
+      sale,
+      margin,
+      stats,
+      verdict,
+      sold: h.saleDate != null,
+    };
+  });
+
   // prazo do projeto SEMPRE visível (17/07): início → fim, decorrido e restantes
   const prazo = (() => {
     const start = pool.startDate;
@@ -559,6 +648,108 @@ export default async function PoolDetailPage({
       {/* Overview (mock UX 3/6): vida do pool + caixa em cascata + board de casas + prazos */}
       {tab === "overview" && (
         <div className="space-y-4">
+          {/* Marcação & retorno (Fase 1 investor-grade, mock aprovado 18/07) */}
+          <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+            <div className="mb-3 flex items-center gap-2">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                Marcação &amp; retorno
+              </h2>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700">
+                atualiza sozinha a cada lançamento
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+              <div className="rounded-xl border border-[#1f3a5f]/20 bg-slate-50 p-3.5">
+                <div className="text-[10.5px] text-slate-400">NAV do pool</div>
+                <div className="text-lg font-extrabold tabular-nums text-slate-900">
+                  {formatMoney(navR.nav, pool.currency)}
+                </div>
+                <div className="text-[10.5px] text-slate-400">marcação conservadora hoje</div>
+              </div>
+              <div className="rounded-xl border border-[#1f3a5f]/20 bg-slate-50 p-3.5">
+                <div className="text-[10.5px] text-slate-400">NAV por unit</div>
+                <div className="flex items-center gap-2">
+                  <div className="text-lg font-extrabold tabular-nums text-slate-900">
+                    {navR.navPerUnit != null ? formatMoney(navR.navPerUnit, pool.currency) : "—"}
+                  </div>
+                  {navR.navPerUnit != null && navR.endPerUnit != null && (
+                    <svg width="64" height="26" viewBox="0 0 64 26" className="shrink-0">
+                      {(() => {
+                        const ys = [unitPar, navR.navPerUnit, navR.endPerUnit];
+                        const min = Math.min(...ys);
+                        const max = Math.max(...ys);
+                        const y = (v: number) => (max === min ? 13 : 23 - ((v - min) / (max - min)) * 20);
+                        return (
+                          <polyline
+                            points={`2,${y(ys[0])} 32,${y(ys[1])} 62,${y(ys[2])}`}
+                            fill="none"
+                            stroke="#1f3a5f"
+                            strokeWidth="2"
+                          />
+                        );
+                      })()}
+                    </svg>
+                  )}
+                </div>
+                <div className="text-[10.5px] text-slate-400">
+                  par {formatMoney(unitPar, pool.currency)} · fim proj.{" "}
+                  {navR.endPerUnit != null ? formatMoney(navR.endPerUnit, pool.currency) : "—"} (curva J)
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                <div className="text-[10.5px] text-slate-400">TIR projetada (viva)</div>
+                <div className="text-lg font-extrabold tabular-nums text-slate-900">
+                  {live.irr != null ? `${(live.irr * 100).toFixed(1)}%` : "—"}
+                </div>
+                <div className="text-[10.5px] text-slate-400">
+                  {planIrr != null ? `plano REAL: ${(planIrr * 100).toFixed(1)}%` : "XIRR fluxos reais + plano"}
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                <div className="text-[10.5px] text-slate-400">MOIC projetado</div>
+                <div className="text-lg font-extrabold tabular-nums text-slate-900">
+                  {planMultiple != null ? `${planMultiple.toFixed(2)}×` : "—"}
+                </div>
+                <div className="text-[10.5px] text-slate-400">multiple do plano</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-3.5">
+                <div className="text-[10.5px] text-slate-400">TVPI · DPI</div>
+                <div className="text-lg font-extrabold tabular-nums text-slate-900">
+                  {tvpi != null ? `${tvpi.toFixed(2)}×` : "—"} · {dpi != null ? `${dpi.toFixed(2)}×` : "—"}
+                </div>
+                <div className="text-[10.5px] text-slate-400">NAV/aportado · distribuído/aportado</div>
+              </div>
+            </div>
+            <div className="mt-3 space-y-0.5 text-xs text-slate-600">
+              <div className="flex justify-between">
+                <span>Caixa disponível</span>
+                <span className="tabular-nums">{formatMoney(navR.cash, pool.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>+ custo incorrido nas casas (equity + obra do banco)</span>
+                <span className="tabular-nums">{formatMoney(navR.incurred, pool.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>+ valorização pela obra (lucro esperado × % concluído)</span>
+                <span className="tabular-nums text-emerald-700">{formatMoney(navR.uplift, pool.currency)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>− dívida dos loans (saldo devido)</span>
+                <span className="tabular-nums text-red-700">−{formatMoney(navR.debt, pool.currency)}</span>
+              </div>
+              <div className="flex justify-between border-t border-dashed border-slate-200 pt-1 font-bold text-slate-800">
+                <span>= NAV</span>
+                <span className="tabular-nums">{formatMoney(navR.nav, pool.currency)}</span>
+              </div>
+            </div>
+            <p className="mt-2 text-[10.5px] text-slate-400">
+              Curva J: custos de financiamento e juros saem antes do lucro — o NAV/unit mergulha
+              abaixo do par no início e sobe conforme a obra avança e as casas vendem. TIR viva =
+              XIRR dos aportes/distribuições reais + casas restantes nas datas do baseline com
+              lucro líquido do financiamento.
+            </p>
+          </section>
+
           {/* vida do pool + pendências */}
           <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
             <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
@@ -985,7 +1176,91 @@ export default async function PoolDetailPage({
 
       {/* Casas (mock UX 4/6): filtro por status + busca, contexto na linha, pendencias */}
       {tab === "houses" && (
-        <PoolHousesTab poolId={pool.id} rows={houseRows} initialStatus={rawStatus ?? null} />
+        <>
+          <PoolHousesTab poolId={pool.id} rows={houseRows} initialStatus={rawStatus ?? null} />
+          {/* lucro por casa × mercado ATTOM (Fase 1, mock aprovado 18/07) */}
+          <section className="mt-4 rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-100 px-5 py-3">
+              <h2 className="text-base font-medium text-slate-800">Lucro por casa × mercado</h2>
+              <p className="text-xs text-slate-400">
+                Venda planejada comparada com a distribuição de casas novas VENDIDAS do submercado
+                (ATTOM, feed semanal). &quot;Acima do p90/teto&quot; pede justificativa (sqft,
+                acabamento) ou revisão de preço.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400">Casa</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400">Submercado</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400">Custo total</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400">Venda plan.</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400">Mercado (mediana NC · DOM)</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400">Margem</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400">Farol</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {marketRows.map((r) => (
+                    <tr key={r.id} className={`border-b border-slate-50 ${r.sold ? "opacity-50" : ""}`}>
+                      <td className="px-3 py-2 text-sm">
+                        <span className="font-semibold text-slate-700">{r.addr}</span>
+                        <span className="ml-1.5 text-[10.5px] text-slate-400">{r.model}</span>
+                        {r.sold && <span className="ml-1.5 rounded-full bg-slate-100 px-1.5 text-[9.5px] text-slate-500">vendida</span>}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-500">{r.stats?.name ?? r.loc}</td>
+                      <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
+                        {r.cost > 0 ? formatMoney(r.cost, pool.currency) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
+                        {r.sale != null ? formatMoney(r.sale, pool.currency) : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-right text-xs tabular-nums text-slate-500">
+                        {r.stats
+                          ? `${formatMoney(r.stats.median, pool.currency)} · ${r.stats.dom}d${
+                              r.verdict.tone === "red"
+                                ? ` (máx obs. ${formatMoney(r.stats.max, pool.currency)})`
+                                : r.verdict.tone === "amber" && r.sale != null && r.sale >= r.stats.p90
+                                  ? ` (p90 ${formatMoney(r.stats.p90, pool.currency)})`
+                                  : ""
+                            }`
+                          : "sem amostra NC"}
+                      </td>
+                      <td className={`px-3 py-2 text-right text-sm font-bold tabular-nums ${(r.margin ?? 0) >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                        {r.margin != null ? `+${formatMoney(r.margin, pool.currency)}` : "—"}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        <span
+                          className={
+                            r.verdict.tone === "green"
+                              ? "font-semibold text-emerald-700"
+                              : r.verdict.tone === "amber"
+                                ? "font-semibold text-amber-700"
+                                : "font-semibold text-red-700"
+                          }
+                        >
+                          {r.verdict.label}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={5} className="px-3 py-2.5 text-sm font-bold text-slate-800">
+                      Lucro previsto do pool
+                    </td>
+                    <td className="border-t-2 border-slate-200 px-3 py-2 text-right text-sm font-bold tabular-nums text-emerald-700">
+                      +{formatMoney(marketRows.reduce((s, r) => s + (r.margin ?? 0), 0), pool.currency)}
+                    </td>
+                    <td className="border-t-2 border-slate-200" />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
+        </>
       )}
 
       {/* Investidores (mock UX 2/6): captacao + acoes em painel + cap table visual + calls */}

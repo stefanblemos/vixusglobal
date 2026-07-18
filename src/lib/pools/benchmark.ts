@@ -39,6 +39,28 @@ function subOf(locationName: string): Sub | null {
   return key ? (marketStats.submarkets.find((s) => s.key === key) ?? null) : null;
 }
 
+// Estatísticas de NC vendidas do submercado da location (Fase 1: farol lucro × mercado)
+export function ncStatsForLocation(locationName: string): {
+  name: string;
+  median: number;
+  p90: number;
+  max: number;
+  dom: number;
+  n: number;
+} | null {
+  const sub = subOf(locationName);
+  const prices = (sub?.benchmark?.ncSoldPrices ?? []).slice().sort((a, b) => a - b);
+  if (!sub || prices.length === 0) return null;
+  return {
+    name: sub.name,
+    median: median(prices) ?? 0,
+    p90: prices[Math.min(prices.length - 1, Math.floor(prices.length * 0.9))],
+    max: prices[prices.length - 1],
+    dom: sub.medianDaysOnMarket,
+    n: prices.length,
+  };
+}
+
 const median = (a: number[]) =>
   a.length === 0 ? null : a.length % 2 ? a[(a.length - 1) / 2] : (a[a.length / 2 - 1] + a[a.length / 2]) / 2;
 
