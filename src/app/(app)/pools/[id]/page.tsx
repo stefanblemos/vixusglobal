@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { formatMoney, sum } from "@/lib/money";
 import { byAddressNumber, capTable, houseEconomics, memberName } from "@/lib/pools/math";
@@ -16,6 +17,9 @@ import { buildActivityFeed } from "@/lib/pools/activity-feed";
 import { computeNav, liveIrr, type NavHouse } from "@/lib/pools/nav";
 import { buildRisk, mesAno } from "@/lib/pools/risk";
 import { ncStatsForLocation } from "@/lib/pools/benchmark";
+import { INV_LANG_COOKIE, langFromCookie, tOf } from "@/lib/pools/i18n";
+import { LangToggle } from "@/components/lang-toggle";
+import { PoolDataRoom } from "@/components/pool-dataroom";
 
 export const dynamic = "force-dynamic";
 
@@ -25,12 +29,8 @@ const TABS = [
   ["investors", "Investidores"],
 ] as const;
 
-// sub-abas de Investidores (layout novo 18/07): Sócios | Capital ledger | Distribuições
-const INVESTOR_SUBS = [
-  ["members", "👥 Sócios"],
-  ["ledger", "📒 Capital ledger"],
-  ["distributions", "📤 Distribuições"],
-] as const;
+// sub-abas de Investidores (layout 18/07 + Fase 3): labels bilíngues vêm do dicionário
+const INVESTOR_SUBS = ["members", "ledger", "distributions", "dataroom"] as const;
 
 const STATUS_STYLE: Record<string, string> = {
   FUNDING: "bg-amber-50 text-amber-700",
@@ -62,10 +62,16 @@ export default async function PoolDetailPage({
   // links antigos (?tab=ledger / ?tab=distributions) caem nas sub-abas de Investidores
   const legacySub = rawTab === "ledger" ? "ledger" : rawTab === "distributions" ? "distributions" : null;
   const tab = legacySub ? "investors" : TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
-  const invSub = INVESTOR_SUBS.some(([s]) => s === (legacySub ?? rawSub))
+  const invSub = INVESTOR_SUBS.some((s) => s === (legacySub ?? rawSub))
     ? ((legacySub ?? rawSub) as string)
     : "members";
   const housesView = rawView === "market" ? "market" : "board"; // toggle Board | Mercado
+  // i18n (Fase 3): conteúdo pelo seletor EN|PT (cookie); datas pelo locale do navegador
+  const cookieStore = await cookies();
+  const lang = langFromCookie(cookieStore.get(INV_LANG_COOKIE)?.value);
+  const t = tOf(lang);
+  const hdrs = await headers();
+  const dateLocale = hdrs.get("accept-language")?.split(",")[0]?.trim() || "en-US";
   // self-healing (16/07): status são derivados dos fatos — recomputa antes de carregar,
   // então qualquer status defasado (ex.: clique manual antigo) se corrige sozinho aqui
   const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
@@ -89,13 +95,20 @@ export default async function PoolDetailPage({
       distributions: { orderBy: { date: "asc" }, include: { lines: true, house: true } },
       capitalCalls: { orderBy: { date: "asc" }, include: { lines: true } },
       expenses: { orderBy: { date: "asc" } },
+      // data room (Fase 3): docs do pool SEM os bytes (pdfSize diz se tem arquivo)
+      documents: {
+        orderBy: { createdAt: "asc" },
+        select: { id: true, docType: true, fileName: true, createdAt: true, portalVisible: true, pdfSize: true },
+      },
       loans: {
         orderBy: { createdAt: "asc" },
         include: {
           bankProfile: true,
           entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
           // suficiência (fonte única): cobranças pendentes vêm da leitura dos documentos
-          documents: { select: { id: true, fileName: true, kind: true, extracted: true, createdAt: true } },
+          documents: {
+            select: { id: true, fileName: true, kind: true, extracted: true, createdAt: true, portalVisible: true },
+          },
         },
       },
       simulations: {
@@ -564,12 +577,16 @@ export default async function PoolDetailPage({
             </span>
           </div>
         )}
-        <Link
-          href={`/pools/${pool.id}/edit`}
-          className={`${prazo ? "" : "ml-auto "}rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100`}
-        >
-          Edit pool
-        </Link>
+        <div className={`${prazo ? "" : "ml-auto "}flex items-center gap-2`}>
+          {/* seletor EN|PT (Fase 3): vale p/ o módulo todo; datas seguem o locale do Windows */}
+          <LangToggle lang={lang} />
+          <Link
+            href={`/pools/${pool.id}/edit`}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
+          >
+            Edit pool
+          </Link>
+        </div>
       </div>
 
       {/* Régua ÚNICA de 6 KPIs (substitui Raised/Units/Houses/Distributed + strip do prazo;
@@ -1096,7 +1113,7 @@ export default async function PoolDetailPage({
       {tab === "investors" && (
         <div className="space-y-4">
           <div className="flex gap-1.5">
-            {INVESTOR_SUBS.map(([key, label]) => (
+            {INVESTOR_SUBS.map((key) => (
               <Link
                 key={key}
                 href={`/pools/${pool.id}?tab=investors&sub=${key}`}
@@ -1106,7 +1123,7 @@ export default async function PoolDetailPage({
                     : "border-slate-300 text-slate-500 hover:bg-slate-50"
                 }`}
               >
-                {label}
+                {t(`sub.${key}` as "sub.members")}
               </Link>
             ))}
           </div>
@@ -1221,6 +1238,48 @@ export default async function PoolDetailPage({
               rows={distRows}
               houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
               members={distMembers}
+            />
+          )}
+
+          {/* Data room (Fase 3, mock aprovado 18/07): docs agrupados + taxas & partes */}
+          {invSub === "dataroom" && (
+            <PoolDataRoom
+              poolId={pool.id}
+              lang={lang}
+              dateLocale={dateLocale}
+              currency={pool.currency}
+              loanDocs={pool.loans.flatMap((l) =>
+                l.documents.map((d) => ({
+                  id: d.id,
+                  fileName: d.fileName,
+                  kind: d.kind as string,
+                  createdAt: d.createdAt,
+                  bank: l.bankProfile?.name?.split(" ")[0] ?? "—",
+                  portalVisible: d.portalVisible,
+                })),
+              )}
+              poolDocs={pool.documents.map((d) => ({
+                id: d.id,
+                docType: d.docType,
+                fileName: d.fileName,
+                createdAt: d.createdAt,
+                portalVisible: d.portalVisible,
+                hasPdf: d.pdfSize != null,
+              }))}
+              fees={{
+                perfPct: pool.profitSharePct != null ? Number(pool.profitSharePct) : null,
+                perfTiming: pool.profitShareTiming,
+                perfFeeTotal: simKpis?.perfFeeTotal ?? null,
+                contractorFeeTotal: simKpis?.contractorFeeTotal ?? null,
+                promoteTotal: simKpis?.promoteTotal ?? null,
+                vehicleCostTotal: simKpis?.vehicleCostTotal ?? null,
+                builderName: "4U Custom Homes Corp",
+                housesCount: pool.houses.length,
+                hasNote: pool.noteLoan != null,
+                banks: pool.loans
+                  .map((l) => l.bankProfile?.name?.split(" ")[0])
+                  .filter((b): b is string => !!b),
+              }}
             />
           )}
         </div>

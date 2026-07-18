@@ -1459,6 +1459,7 @@ model PoolLoanDocument {
   fileName String
   pdf      Bytes
   pdfSize  Int
+  portalVisible Boolean @default(false) // data room (Fase 3): investidor vê no portal?
   summary  String? // 1 linha da IA
   extracted Json? // extração completa (auditável)
   proposal  Json? // itens propostos aguardando revisão; null após aplicar/arquivar
@@ -1548,6 +1549,7 @@ model PoolDocument {
   fileName String
   pdf      Bytes?
   pdfSize  Int?
+  portalVisible Boolean @default(false) // data room (Fase 3): investidor vê no portal?
   signedAt DateTime? @db.Date
   createdAt DateTime @default(now())
 
