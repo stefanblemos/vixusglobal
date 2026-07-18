@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { publishMonthlyReport, type FormState } from "@/lib/actions/pool-docs";
+import { useActionState, useState, useTransition } from "react";
+import { generateReportNarrative, publishMonthlyReport, type FormState } from "@/lib/actions/pool-docs";
 import type { Lang } from "@/lib/pools/i18n";
 
 // Barra do report mensal (Fase 5): imprimir + publicar com narrativa editável.
@@ -38,6 +38,17 @@ export function PublishReportForm({
     publishMonthlyReport.bind(null, poolId, month),
     undefined,
   );
+  // narrativa IA (mock aprovado): gera no textarea p/ revisão — publicar continua manual
+  const [narrative, setNarrative] = useState(defaultNarrative);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiPending, startAi] = useTransition();
+  const generate = () =>
+    startAi(async () => {
+      setAiError(null);
+      const r = await generateReportNarrative(poolId, month);
+      if (r.text) setNarrative(r.text);
+      else setAiError(r.error ?? "—");
+    });
   return (
     <details className="relative">
       <summary className="inline-block cursor-pointer rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#2a4a75]">
@@ -47,13 +58,31 @@ export function PublishReportForm({
         action={formAction}
         className="absolute right-0 z-20 mt-2 w-[520px] max-w-[90vw] rounded-xl border border-slate-200 bg-white p-4 shadow-lg"
       >
-        <label className="mb-1 block text-xs font-medium text-slate-500">{narrativeLabel}</label>
+        <div className="mb-1 flex items-baseline justify-between">
+          <label className="text-xs font-medium text-slate-500">{narrativeLabel}</label>
+          <button
+            type="button"
+            onClick={generate}
+            disabled={aiPending}
+            className="rounded-lg border border-slate-300 px-2.5 py-1 text-[11px] font-semibold text-[#1f3a5f] hover:bg-slate-50 disabled:opacity-50"
+          >
+            {aiPending
+              ? lang === "pt"
+                ? "Gerando…"
+                : "Generating…"
+              : lang === "pt"
+                ? "✨ Gerar com IA"
+                : "✨ Generate with AI"}
+          </button>
+        </div>
         <textarea
           name="narrative"
-          defaultValue={defaultNarrative}
-          rows={6}
+          value={narrative}
+          onChange={(e) => setNarrative(e.target.value)}
+          rows={8}
           className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
         />
+        {aiError && <p className="mt-1 text-xs text-amber-700">{aiError}</p>}
         <button
           type="submit"
           disabled={pending}
