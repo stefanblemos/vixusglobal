@@ -237,6 +237,7 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
         plannedSalePrice: h.plannedSalePrice != null ? n(h.plannedSalePrice) : null,
         ownCapital: n(h.ownCapital),
         bankDrawn: h.loanEntries.reduce((s, e) => s + n(e.amount), 0),
+        drawable: h.bankLoanAmount != null ? n(h.bankLoanAmount) : null,
         locationName: h.catalogLocation?.name ?? null,
         sqft: h.catalogModel?.sqft ?? null,
       })),

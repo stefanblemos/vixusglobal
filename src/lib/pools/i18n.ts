@@ -139,11 +139,20 @@ const DICT = {
   "iv.how": { en: "how we got to", pt: "como chegamos em" },
   "iv.cas.cash": { en: "Cash available today", pt: "Caixa disponível hoje" },
   "iv.cas.futureSales": { en: "+ future sales @ ATTOM market", pt: "+ vendas futuras @ mercado ATTOM" },
-  "iv.cas.remainingCosts": {
-    en: "− cost to finish + sale closings",
-    pt: "− custo p/ terminar + closing das vendas",
+  "iv.cas.payoffFull": {
+    en: "− loan payoff (balance + 100% of remaining drawable)",
+    pt: "− payoff dos loans (saldo + 100% do drawable restante)",
   },
-  "iv.cas.financing": { en: "− payoff + financing to come", pt: "− payoff + financiamento por vir" },
+  "iv.cas.equityBuild": {
+    en: "− remaining build beyond the bank (equity)",
+    pt: "− obra restante além do banco (equity)",
+  },
+  "iv.cas.excessDraw": {
+    en: "+ excess draws (envelope > build)",
+    pt: "+ sobra de draws (envelope > obra)",
+  },
+  "iv.cas.closings": { en: "− sale closing costs", pt: "− closing das vendas" },
+  "iv.cas.financing": { en: "− interest & fees to come", pt: "− juros e fees por vir" },
   "iv.cas.provisioned": { en: "− provisioned expenses", pt: "− despesas provisionadas" },
   "iv.cas.windDown": { en: "− SPV wind-down (estimated)", pt: "− encerramento da SPV (estimado)" },
   "iv.cas.vehicle": { en: "− vehicle costs remaining (plan)", pt: "− custos do veículo restantes (plano)" },

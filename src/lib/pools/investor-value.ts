@@ -20,6 +20,7 @@ export type EndNetHouse = {
   plannedSalePrice: number | null;
   ownCapital: number;
   bankDrawn: number;
+  drawable: number | null; // teto do banco (bankLoanAmount) — payoff assume 100% sacado
   locationName: string | null;
   sqft: number | null;
 };
@@ -28,8 +29,11 @@ export type EndNetLine = {
   key:
     | "cash"
     | "futureSales"
-    | "remainingCosts"
-    | "financing"
+    | "payoffFull" // saldo atual + 100% do drawable restante — o que o banco VAI levar
+    | "equityBuild" // obra restante além do envelope do banco (sai do caixa/equity)
+    | "excessDraw" // envelope > obra: draw excedente vira caixa (e volta no payoff — soma aqui)
+    | "closings"
+    | "financing" // juros + fees por vir
     | "provisioned"
     | "windDown"
     | "performance"
@@ -84,8 +88,19 @@ export function computeEndNet(opts: {
     const incurred = h.bankDrawn + Math.max(0, h.ownCapital - lot);
     return s + Math.max(0, build - incurred);
   }, 0);
-  const closingCosts = unsold.reduce((s, h) => s + (h.plannedClosingCost ?? 0), 0);
-  const remainingCosts = round2(remainingBuild + closingCosts);
+  const closingCosts = round2(unsold.reduce((s, h) => s + (h.plannedClosingCost ?? 0), 0));
+
+  // PAYOFF CHEIO (correção do Stefan 19/07): o banco vai levar o saldo atual + 100% do
+  // drawable restante — é o que vai acontecer; mostrar só o saldo de hoje frustra depois.
+  // Em troca, a obra restante financiada pelos draws NÃO sai do caixa do pool: só o que
+  // exceder o envelope (equityBuild). Envelope maior que a obra → o draw excedente entra
+  // no caixa e volta no payoff (excessDraw soma p/ manter a conta fechada).
+  const futureDraws = round2(
+    unsold.reduce((s, h) => s + Math.max(0, (h.drawable ?? 0) - h.bankDrawn), 0),
+  );
+  const payoffFull = round2(opts.debt + futureDraws);
+  const equityBuild = round2(Math.max(0, remainingBuild - futureDraws));
+  const excessDraw = round2(Math.max(0, futureDraws - remainingBuild));
 
   const windDownEstimated = opts.hasEntity && !opts.hasWindDownProvision;
   const windDown = windDownEstimated ? WIND_DOWN_DEFAULT : 0;
@@ -97,8 +112,8 @@ export function computeEndNet(opts: {
   );
 
   const subtotal =
-    opts.freeCash + futureSales - remainingCosts - opts.debt - opts.financingComing -
-    opts.provisionedExpenses - windDown - vehicleRemaining;
+    opts.freeCash + futureSales + excessDraw - payoffFull - equityBuild - closingCosts -
+    opts.financingComing - opts.provisionedExpenses - windDown - vehicleRemaining;
 
   // performance da 4U sobre o LUCRO projetado (lucro = valor final + distribuído − captado)
   const profitProjected = Math.max(0, subtotal + opts.distributed - opts.raised);
@@ -112,8 +127,11 @@ export function computeEndNet(opts: {
   const lines: EndNetLine[] = [
     { key: "cash", amount: round2(opts.freeCash) },
     { key: "futureSales", amount: futureSales },
-    { key: "remainingCosts", amount: -remainingCosts },
-    { key: "financing", amount: -round2(opts.debt + opts.financingComing) },
+    ...(excessDraw > 0.01 ? [{ key: "excessDraw" as const, amount: excessDraw }] : []),
+    ...(payoffFull > 0.01 ? [{ key: "payoffFull" as const, amount: -payoffFull }] : []),
+    ...(equityBuild > 0.01 ? [{ key: "equityBuild" as const, amount: -equityBuild }] : []),
+    ...(closingCosts > 0.01 ? [{ key: "closings" as const, amount: -closingCosts }] : []),
+    ...(opts.financingComing > 0.01 ? [{ key: "financing" as const, amount: -round2(opts.financingComing) }] : []),
     ...(opts.provisionedExpenses > 0
       ? [{ key: "provisioned" as const, amount: -round2(opts.provisionedExpenses) }]
       : []),
