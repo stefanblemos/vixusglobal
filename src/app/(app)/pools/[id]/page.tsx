@@ -14,6 +14,7 @@ import { PoolTabsNav } from "@/components/pool-tabs";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
 import { computeNav, liveIrr, type NavHouse } from "@/lib/pools/nav";
+import { buildRisk, mesAno } from "@/lib/pools/risk";
 import { ncStatsForLocation } from "@/lib/pools/benchmark";
 
 export const dynamic = "force-dynamic";
@@ -388,6 +389,9 @@ export default async function PoolDetailPage({
     return { start, end, total, gone, left, pct: Math.round((gone / total) * 100) };
   })();
 
+  // Fase 2 (mock aprovado 18/07): risco & caixa futuro — card do Overview + KPI da régua
+  const risk = buildRisk(pool, new Date());
+
   // Layout novo (mock aprovado 18/07): valores compactos p/ régua + cards do Overview
   const fmtCompact = (v: number) => {
     try {
@@ -616,12 +620,13 @@ export default async function PoolDetailPage({
             {
               label: "Próx. distribuição",
               hero: false,
-              value: "—",
+              value: risk.next?.date ? mesAno(risk.next.date) : "—",
               up: false,
-              hint:
-                Number(distributed) > 0
+              hint: risk.next
+                ? `≈ ${fmtCompact(risk.next.total)} · ${risk.next.addr}`
+                : Number(distributed) > 0
                   ? `distribuído ${fmtCompact(Number(distributed))}`
-                  : "estimativa na Fase 2",
+                  : "sem vendas no baseline",
             },
           ] as Array<{ label: string; hero: boolean; value: string; up: boolean; hint: string }>
         ).map((k) => (
@@ -792,6 +797,77 @@ export default async function PoolDetailPage({
                     }`
                   : ""}
               </p>
+            </section>
+
+            {/* Risco & caixa futuro (Fase 2, mock aprovado 18/07) — resumo; painel na aba */}
+            <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-[10px] font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                  Risco &amp; caixa futuro
+                </h2>
+                <Link
+                  href={`/pools/${pool.id}/provision`}
+                  className="text-[10.5px] text-slate-400 hover:text-slate-600"
+                >
+                  ver painel &rarr; Provisão &amp; risco
+                </Link>
+              </div>
+              <div className="space-y-0.5 text-[11.5px] text-slate-600">
+                <div className="flex justify-between">
+                  <span>Runway do caixa</span>
+                  <b
+                    className={`tabular-nums ${
+                      risk.runwayMonths == null
+                        ? "text-slate-400"
+                        : risk.runwayMonths < 2
+                          ? "text-red-700"
+                          : risk.runwayMonths < 4
+                            ? "text-amber-700"
+                            : "text-emerald-700"
+                    }`}
+                  >
+                    {risk.runwayMonths == null
+                      ? "sem juros correndo"
+                      : `${risk.runwayMonths.toFixed(1).replace(".", ",")} mês${risk.runwayMonths >= 2 ? "es" : ""}${risk.runwayMonths < 2 ? " ⚠" : ""}`}
+                  </b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Juros/mês hoje ({risk.loans.filter((l) => !l.quitado).length} loans, sem reserve)</span>
+                  <b className="tabular-nums">&asymp; {formatMoney(risk.monthlyToday, pool.currency)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Breakeven — vendas podem cair</span>
+                  <b className="tabular-nums text-emerald-700">
+                    {risk.breakevenPct != null ? `≈ ${risk.breakevenPct.toFixed(1)}%` : "—"}
+                  </b>
+                </div>
+                <div className="flex justify-between">
+                  <span>Stress combinado (&minus;10% e +6m)</span>
+                  {(() => {
+                    const worst = risk.scenarios[risk.scenarios.length - 1];
+                    return (
+                      <b className={`tabular-nums ${worst.profit < 0 ? "text-red-700" : "text-slate-700"}`}>
+                        &asymp; {worst.profit < 0 ? "−" : ""}
+                        {fmtCompact(Math.abs(worst.profit))}
+                      </b>
+                    );
+                  })()}
+                </div>
+                <div className="flex justify-between border-t border-dashed border-slate-200 pt-1 font-bold text-slate-800">
+                  <span>Próx. distribuição (baseline)</span>
+                  <b className="tabular-nums">
+                    {risk.next?.date ? `${mesAno(risk.next.date)} · ≈ ${fmtCompact(risk.next.total)}` : "—"}
+                  </b>
+                </div>
+              </div>
+              {risk.runwayMonths != null && risk.runwayMonths < 1 && (
+                <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-[11px] text-red-700">
+                  &#9888; caixa {fmtCompact(risk.freeCash)} não cobre o próximo ciclo de juros (&asymp;
+                  {formatMoney(risk.monthlyToday, pool.currency)}) — capital call sugerido:{" "}
+                  {risk.callMin90d != null ? `${fmtCompact(risk.callMin90d)} (90d)` : ""}
+                  {risk.callSufficiency != null ? ` ou ${fmtCompact(risk.callSufficiency)} (suficiência)` : ""}
+                </p>
+              )}
             </section>
 
             {/* Atividade — últimos 6 eventos; feed completo na rota própria */}
@@ -1063,7 +1139,13 @@ export default async function PoolDetailPage({
           }))}
           memberOptions={memberOptions}
           ownerOptions={ownerOptions}
-          suggestedCallAmount={null}
+          suggestedCallAmount={
+            risk.callSufficiency != null
+              ? String(Math.round(risk.callSufficiency))
+              : risk.callMin90d != null
+                ? String(Math.ceil(risk.callMin90d))
+                : null
+          }
         />
           )}
 

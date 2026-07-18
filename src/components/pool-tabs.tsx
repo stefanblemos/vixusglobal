@@ -10,7 +10,7 @@ const TABS: Array<{ key: string; label: string; href: (poolId: string) => string
   { key: "schedule", label: "Cronograma", href: (id) => `/pools/${id}/schedule` },
   { key: "loan", label: "Financiamento", href: (id) => `/pools/${id}/loan` },
   { key: "investors", label: "Investidores", href: (id) => `/pools/${id}?tab=investors` },
-  { key: "provision", label: "Provisão", href: (id) => `/pools/${id}/provision` },
+  { key: "provision", label: "Provisão & risco", href: (id) => `/pools/${id}/provision` },
 ];
 
 export function PoolTabsNav({ poolId, active }: { poolId: string; active: string }) {

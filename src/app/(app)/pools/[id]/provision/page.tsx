@@ -6,13 +6,15 @@ import { PoolTabsNav } from "@/components/pool-tabs";
 import { buildSimInput, type PromoteTierInput, type SimOverrides, type UnitRef } from "@/lib/pools/build-sim-input";
 import { simulate } from "@/lib/pools/simulator";
 import { NATURE_LABEL, provisionOf } from "@/lib/pools/provision";
+import { buildRisk } from "@/lib/pools/risk";
+import { RiskPanel } from "@/components/pool-risk-panel";
 
 export const dynamic = "force-dynamic";
 
-// Provisão de recursos (16/07 — mock aprovado): a resposta pronta para "por que esse
-// valor?" dos sócios. Calculada AO VIVO da simulação de origem do pool (motor atual),
-// com seletor de cenário e o delta contra o snapshot congelado na conversão.
-// Report HTML imprimível (portal) fica para o fechamento do pool.
+// Provisão & risco (16/07 provisão + Fase 2 risco, mocks aprovados): no topo, o painel
+// de risco & caixa futuro (runway, juros hoje×pico, breakeven+stress, fila de
+// distribuições — lib/pools/risk.ts, fonte única); abaixo, a provisão por cenário
+// calculada AO VIVO da simulação de origem do pool, como antes.
 
 const th = "px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400";
 const thR = "px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400";
@@ -28,15 +30,35 @@ export default async function PoolProvisionPage({
 }) {
   const { id } = await params;
   const { cenario } = await searchParams;
-  const pool = await prisma.investmentPool.findUnique({ where: { id } });
+  const pool = await prisma.investmentPool.findUnique({
+    where: { id },
+    include: {
+      houses: true,
+      members: { include: { entries: true } },
+      distributions: true,
+      expenses: true,
+      loans: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          bankProfile: true,
+          entries: true,
+          documents: { select: { id: true, fileName: true, kind: true, extracted: true } },
+        },
+      },
+    },
+  });
   if (!pool) notFound();
   const sim = await prisma.poolSimulation.findFirst({ where: { poolId: id } });
+
+  const risk = buildRisk(pool, new Date());
+  const riskPanel = <RiskPanel risk={risk} currency={pool.currency} poolId={pool.id} />;
 
   if (!sim) {
     return (
       <div className="space-y-6">
         <Header pool={pool} />
         <PoolTabsNav poolId={pool.id} active="provision" />
+        {riskPanel}
         <div className="rounded-xl border border-dashed border-slate-300 p-10 text-center text-slate-500">
           Este pool não tem simulação de origem vinculada — a provisão é calculada da simulação
           que o gerou.
@@ -93,6 +115,7 @@ export default async function PoolProvisionPage({
     <div className="space-y-6">
       <Header pool={pool} />
       <PoolTabsNav poolId={pool.id} active="provision" />
+      {riskPanel}
 
       {/* seletor de cenário — o quadro vale para Real (padrão) e Estresse (colchão) */}
       <div className="flex flex-wrap items-center gap-2">
@@ -368,9 +391,10 @@ function Header({ pool }: { pool: { id: string; code: string; alias: string | nu
         ← {pool.code}
         {pool.alias ? ` · ${pool.alias}` : ""}
       </Link>
-      <h1 className="mt-1 text-2xl font-semibold text-slate-800">Provisão de recursos</h1>
+      <h1 className="mt-1 text-2xl font-semibold text-slate-800">Provisão &amp; risco</h1>
       <p className="text-sm text-slate-500">
-        O quadro que justifica o valor captado — calculado ao vivo da simulação de origem.
+        Risco &amp; caixa futuro do pool + o quadro que justifica o valor captado (calculado ao
+        vivo da simulação de origem).
       </p>
     </div>
   );
