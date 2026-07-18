@@ -60,6 +60,42 @@ export async function deletePoolDocument(formData: FormData) {
   revalidatePath(`/pools/${doc.poolId}`);
 }
 
+// Report mensal (Fase 5): publica o snapshot CONGELADO do mês no Data room (Reports,
+// visibilidade Portal). Republicar o mesmo mês substitui o snapshot.
+export async function publishMonthlyReport(
+  poolId: string,
+  month: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  if (!/^\d{4}-\d{2}$/.test(month)) return { error: "Mês inválido. / Invalid month." };
+  const { buildMonthlyReport } = await import("@/lib/pools/report-month");
+  const { langFromCookie, INV_LANG_COOKIE } = await import("@/lib/pools/i18n");
+  const { cookies } = await import("next/headers");
+  const lang = langFromCookie((await cookies()).get(INV_LANG_COOKIE)?.value);
+  const data = await buildMonthlyReport(poolId, month, lang);
+  if (!data) return { error: "Pool não encontrado. / Pool not found." };
+  const narrative = String(formData.get("narrative") ?? "").trim();
+  if (narrative) data.narrative = narrative;
+
+  const existing = await prisma.poolDocument.findFirst({
+    where: { poolId, reportMonth: month },
+    select: { id: true },
+  });
+  const doc = {
+    docType: "STATEMENT",
+    fileName: `Monthly Report ${data.poolCode} ${month}`,
+    reportMonth: month,
+    data: JSON.parse(JSON.stringify(data)),
+    portalVisible: true,
+  };
+  if (existing) await prisma.poolDocument.update({ where: { id: existing.id }, data: doc });
+  else await prisma.poolDocument.create({ data: { poolId, ...doc } });
+  revalidatePath(`/pools/${poolId}`);
+  revalidatePath(`/pools/${poolId}/report/${month}`);
+  return { ok: true };
+}
+
 // Toggle Interno|Portal — vale p/ docs do pool E docs dos loans (a flag que o portal respeita)
 export async function toggleDocPortalVisible(formData: FormData) {
   const docId = String(formData.get("docId") ?? "");

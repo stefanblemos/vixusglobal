@@ -1555,6 +1555,9 @@ model PoolDocument {
   pdf      Bytes?
   pdfSize  Int?
   portalVisible Boolean @default(false) // data room (Fase 3): investidor vê no portal?
+  // Report mensal (Fase 5): snapshot CONGELADO do mês — o report publicado nunca muda
+  reportMonth String? // "AAAA-MM" quando o doc é um monthly report
+  data        Json? // ReportMonthData serializado (fonte do render congelado)
   signedAt DateTime? @db.Date
   createdAt DateTime @default(now())
 

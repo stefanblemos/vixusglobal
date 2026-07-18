@@ -106,6 +106,7 @@ export default async function PoolDetailPage({
           portalVisible: true,
           pdfSize: true,
           memberId: true,
+          reportMonth: true,
         },
       },
       loans: {
@@ -1285,6 +1286,7 @@ export default async function PoolDetailPage({
                 portalVisible: d.portalVisible,
                 hasPdf: d.pdfSize != null,
                 memberName: d.memberId ? (memberById.get(d.memberId) ?? null) : null,
+                reportMonth: d.reportMonth,
               }))}
               memberOptions={memberOptions.map((m) => ({ id: m.id, name: m.name }))}
               fees={{

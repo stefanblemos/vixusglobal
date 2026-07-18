@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { formatMoney } from "@/lib/money";
 import { deletePoolDocument, toggleDocPortalVisible } from "@/lib/actions/pool-docs";
 import { tOf, type Lang } from "@/lib/pools/i18n";
@@ -23,6 +24,7 @@ export type PoolDocRow = {
   portalVisible: boolean;
   hasPdf: boolean;
   memberName?: string | null; // doc pessoal (K-1 etc.) — só o sócio vê no portal
+  reportMonth?: string | null; // report mensal (Fase 5): abre a página do report, não PDF
 };
 export type FeesData = {
   perfPct: number | null; // fração do lucro dos INVESTIDORES (cadastro do pool)
@@ -122,7 +124,11 @@ export function PoolDataRoom({
       {docs.map((d) => (
         <tr key={d.id} className="border-b border-slate-50">
           <td className={td}>
-            {d.hasPdf ? (
+            {d.reportMonth ? (
+              <Link href={`/pools/${poolId}/report/${d.reportMonth}`} className="text-[#1f3a5f] hover:underline">
+                {d.fileName}
+              </Link>
+            ) : d.hasPdf ? (
               <a
                 href={`/api/pool-docs/${d.id}/pdf`}
                 target="_blank"
@@ -248,7 +254,18 @@ export function PoolDataRoom({
           </table>
         </div>
 
-        <GroupHead label={t("dr.g.reports")} />
+        <div className="mt-4 mb-1 flex items-baseline justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            {t("dr.g.reports")}
+          </span>
+          {/* report mensal (Fase 5): gerar/rever o mês corrente */}
+          <Link
+            href={`/pools/${poolId}/report/${new Date().toISOString().slice(0, 7)}`}
+            className="text-[10.5px] font-semibold text-[#1f3a5f] hover:underline"
+          >
+            {t("dr.report.new")}
+          </Link>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full">
             <tbody>
