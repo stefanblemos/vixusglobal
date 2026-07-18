@@ -284,6 +284,47 @@ const DICT = {
     en: "{n} sales · ≈ {total} to return (capital {cap} + net profit {profit})",
     pt: "{n} vendas · ≈ {total} a devolver (capital {cap} + lucro líq. {profit})",
   },
+  "rp.glossary": { en: "Glossary", pt: "Glossário" },
+  "gl.nav": {
+    en: "NAV (Net Asset Value): what the pool is worth today — cash + cost incurred in the houses + build appreciation − bank debt. NAV/unit divides it by all units; 'par' is the entry price per unit.",
+    pt: "NAV (Net Asset Value): quanto o pool vale hoje — caixa + custo incorrido nas casas + valorização da obra − dívida com os bancos. NAV/unit divide pelo total de units; 'par' é o preço de entrada da unit.",
+  },
+  "gl.irr": {
+    en: "IRR / TIR (Internal Rate of Return): the annualized return of your actual dated cash flows plus the remaining plan. Sensitive to time — short holds show high rates.",
+    pt: "TIR (Taxa Interna de Retorno): o retorno ANUALIZADO dos fluxos reais datados + o plano restante. Sensível ao tempo — prazos curtos mostram taxas altas.",
+  },
+  "gl.tvpi": {
+    en: "TVPI: (current value + distributions) ÷ contributed. DPI: only distributions ÷ contributed. MOIC/ROI: total multiple of the plan (1.50× = +50%).",
+    pt: "TVPI: (valor atual + distribuições) ÷ aportado. DPI: só as distribuições ÷ aportado. MOIC/ROI: multiple total do plano (1,50× = +50%).",
+  },
+  "gl.runway": {
+    en: "Runway: how many months today's free cash covers the pool's monthly obligations (mainly loan interest). Under 1 month calls for a capital call.",
+    pt: "Runway: quantos meses o caixa livre de hoje cobre as obrigações mensais do pool (principalmente juros dos loans). Abaixo de 1 mês pede capital call.",
+  },
+  "gl.breakeven": {
+    en: "Breakeven: how much sale prices can drop before the pool's net profit reaches zero.",
+    pt: "Breakeven: quanto os preços de venda podem cair antes do lucro líquido do pool zerar.",
+  },
+  "gl.call": {
+    en: "Capital call: an additional contribution requested from members when cash won't cover upcoming obligations.",
+    pt: "Capital call: aporte adicional pedido aos sócios quando o caixa não cobre as próximas obrigações.",
+  },
+  "gl.payoff": {
+    en: "Drawable / payoff: the bank's construction envelope per house; the payoff repays the full drawn balance at each sale.",
+    pt: "Drawable / payoff: o envelope de obra do banco por casa; o payoff devolve o saldo sacado integral em cada venda.",
+  },
+  "gl.jcurve": {
+    en: "J curve: financing costs and fees come out before profits, so unit value dips below par early and recovers as houses sell.",
+    pt: "Curva J: custos de financiamento e fees saem antes do lucro — o valor da unit mergulha abaixo do par no início e recupera conforme as casas vendem.",
+  },
+  "gl.dist": {
+    en: "Distribution: return of capital (your principal back) and/or profit, paid pro-rata to units as houses sell.",
+    pt: "Distribuição: retorno de capital (seu principal de volta) e/ou lucro, pagos pro-rata às units conforme as casas vendem.",
+  },
+  "gl.market": {
+    en: "AT MARKET (≈): unsold homes valued by ATTOM comparables (median $/sf of the submarket), capped at the highest observed sale — not the plan price.",
+    pt: "A MERCADO (≈): casas não vendidas avaliadas pelos comparáveis ATTOM (mediana $/sf do submercado), com teto no maior valor observado — não pelo preço do plano.",
+  },
   "rp.footer.disclaimer": {
     en: "≈ projections derive from the frozen baseline + ATTOM market data · not an offer of securities",
     pt: "projeções ≈ derivadas do baseline congelado + mercado ATTOM · não é oferta de valores mobiliários",

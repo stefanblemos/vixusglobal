@@ -156,8 +156,13 @@ export default async function MonthlyReportPage({
       {/* o documento */}
       <div className="rounded-2xl border border-slate-200 bg-white px-8 py-6 print:border-0 print:px-0">
         <div className="flex items-end justify-between border-b-[3px] border-[#1f3a5f] pb-3">
-          <div className="text-xl font-black tracking-wide text-[#1f3a5f]">
-            VIXUS <span className="text-amber-700">· 4U</span>
+          {/* logos reais (pedido 19/07): Vixus (gestora) + 4U (construtora) */}
+          <div className="flex items-center gap-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/vixus-logo.png" alt="Vixus Global" className="h-10 w-auto" />
+            <span className="h-8 w-px bg-slate-200" />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/4u-homes-horizontal-orange.png" alt="4U Custom Homes" className="h-8 w-auto" />
           </div>
           <div className="text-right">
             <div className="text-[15px] font-extrabold text-slate-800">
@@ -374,6 +379,29 @@ export default async function MonthlyReportPage({
               })}
             </b>
           </div>
+        </div>
+
+        {/* glossário (pedido 19/07): o investidor pode não conhecer as siglas */}
+        <h2 className={h2}>{t("rp.glossary")}</h2>
+        <div className="grid gap-x-6 gap-y-1.5 md:grid-cols-2">
+          {(
+            [
+              "gl.nav",
+              "gl.irr",
+              "gl.tvpi",
+              "gl.runway",
+              "gl.breakeven",
+              "gl.call",
+              "gl.payoff",
+              "gl.jcurve",
+              "gl.dist",
+              "gl.market",
+            ] as const
+          ).map((key) => (
+            <p key={key} className="text-[10px] leading-snug text-slate-500">
+              {t(key)}
+            </p>
+          ))}
         </div>
 
         <div className="mt-6 flex justify-between border-t-2 border-slate-200 pt-2 text-[9.5px] text-slate-400">
