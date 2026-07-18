@@ -12,6 +12,7 @@ import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { buildStatement } from "@/lib/pools/loan-statement";
+import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 
 export const dynamic = "force-dynamic";
 
@@ -123,7 +124,12 @@ export default async function PoolDetailPage({
       expenses: { orderBy: { date: "asc" } },
       loans: {
         orderBy: { createdAt: "asc" },
-        include: { bankProfile: true, entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] } },
+        include: {
+          bankProfile: true,
+          entries: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
+          // suficiência (fonte única): cobranças pendentes vêm da leitura dos documentos
+          documents: { select: { id: true, fileName: true, kind: true, extracted: true } },
+        },
       },
       simulations: {
         orderBy: { updatedAt: "desc" },
@@ -266,13 +272,38 @@ export default async function PoolDetailPage({
       : sim?.fundingMode === "BANK"
         ? `Construction loan — ${sim.bankProfile?.name ?? ""} (previsto)`
         : "Equity (100% investidores)";
-  const pendencias: string[] = [
-    ...(!pool.fundingDeadline ? ["janela de captação sem data — definir"] : []),
+  // pendências com DESTINO certo (17/07): cada badge leva ao lugar onde se resolve
+  const pendencias: Array<{ text: string; href: string }> = [
+    ...(!pool.fundingDeadline
+      ? [{ text: "janela de captação sem data → Edit pool", href: `/pools/${pool.id}/edit` }]
+      : []),
     ...pool.loans
       .filter((l) => !l.closingDate)
-      .map((l) => `closing do loan não registrado — ${l.bankProfile?.name ?? "banco a definir"}`),
-    ...(!pool.company ? ["entidade não vinculada (entity not linked)"] : []),
+      .map((l) => ({
+        text: `registrar closing — ${l.bankProfile?.name?.split(" ")[0] ?? "banco"} → Termos`,
+        href: `/pools/${pool.id}/loan?loan=${l.id}&stab=terms`,
+      })),
+    ...(!pool.company
+      ? [{ text: "vincular entidade → Edit pool", href: `/pools/${pool.id}/edit` }]
+      : []),
   ];
+
+  // aporte estimado LÍQUIDO dos loans (17/07): a sobra da suficiência abate a captação
+  const suffAggs = computeSuffAggs(pool, new Date());
+  const loanSurplus = poolLoanSurplus(suffAggs);
+  const aporteLiquido = shortfall != null ? Math.max(0, shortfall - loanSurplus) : null;
+
+  // prazo do projeto SEMPRE visível (17/07): início → fim, decorrido e restantes
+  const prazo = (() => {
+    const start = pool.startDate;
+    const end = pool.effectiveEndDate ?? pool.plannedEndDate;
+    if (!start || !end) return null;
+    const dayMsP = 86_400_000;
+    const total = Math.max(1, Math.round((end.getTime() - start.getTime()) / dayMsP));
+    const gone = Math.min(total, Math.max(0, Math.round((Date.now() - start.getTime()) / dayMsP)));
+    const left = Math.round((end.getTime() - Date.now()) / dayMsP);
+    return { start, end, total, gone, left, pct: Math.round((gone / total) * 100) };
+  })();
 
   const statusCounts = (Object.keys(HOUSE_STATUS_LABEL) as string[]).map((s) => ({
     status: s,
@@ -459,6 +490,39 @@ export default async function PoolDetailPage({
         </div>
       </div>
 
+      {/* PRAZO sempre visível (17/07): a régua do projeto acima das abas */}
+      {prazo && (
+        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Prazo</span>
+          <span className="text-sm font-semibold tabular-nums text-slate-700">
+            {fmtDate(prazo.start)} → {fmtDate(prazo.end)}
+          </span>
+          <div className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-slate-100">
+            <div
+              className={`h-full rounded-full ${prazo.left < 30 ? "bg-red-500" : prazo.left < 90 ? "bg-amber-500" : "bg-[#1f3a5f]"}`}
+              style={{ width: `${prazo.pct}%` }}
+            />
+          </div>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums ${
+              prazo.left < 0
+                ? "bg-red-100 text-red-700"
+                : prazo.left < 30
+                  ? "bg-red-50 text-red-700"
+                  : prazo.left < 90
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-emerald-50 text-emerald-700"
+            }`}
+          >
+            {prazo.left < 0 ? `estourado há ${-prazo.left}d` : `restam ${prazo.left}d`}
+          </span>
+          <span className="text-[11px] text-slate-400">
+            {Math.round(prazo.total / 30)} meses · {prazo.total}d · {prazo.pct}% decorrido
+            {pool.fundingDeadline ? ` · funding deadline ${fmtDate(pool.fundingDeadline)}` : ""}
+          </span>
+        </div>
+      )}
+
       <PoolTabsNav poolId={pool.id} active={tab} />
 
       {/* Overview (mock UX 3/6): vida do pool + caixa em cascata + board de casas + prazos */}
@@ -473,11 +537,11 @@ export default async function PoolDetailPage({
             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
               {pendencias.map((p) => (
                 <Link
-                  key={p}
-                  href={`/pools/${pool.id}/edit`}
+                  key={p.text}
+                  href={p.href}
                   className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200"
                 >
-                  ⚠ {p}
+                  ⚠ {p.text}
                 </Link>
               ))}
               <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] text-slate-500">
@@ -547,16 +611,58 @@ export default async function PoolDetailPage({
                   </div>
                 )}
               </div>
+              {/* aporte estimado LÍQUIDO (17/07): a sobra dos loans abate a captação que falta */}
+              {shortfall != null && shortfall > 0 && (
+                <div
+                  className={`mt-3 rounded-lg border px-4 py-3 ${
+                    aporteLiquido != null && aporteLiquido <= 0.01
+                      ? "border-emerald-200 bg-emerald-50/60"
+                      : "border-amber-200 bg-amber-50/60"
+                  }`}
+                >
+                  <div className="space-y-0.5 text-xs text-slate-600">
+                    <div className="flex justify-between">
+                      <span>Falta captar (target − captado)</span>
+                      <span className="tabular-nums">{formatMoney(shortfall, pool.currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>
+                        {loanSurplus >= 0 ? "− sobra líquida dos loans (suficiência)" : "+ falta líquida dos loans (suficiência)"}
+                      </span>
+                      <span className={`tabular-nums ${loanSurplus >= 0 ? "text-emerald-700" : "text-red-700"}`}>
+                        {loanSurplus >= 0 ? "− " : "+ "}
+                        {formatMoney(Math.abs(loanSurplus), pool.currency)}
+                      </span>
+                    </div>
+                  </div>
+                  <div
+                    className={`mt-1.5 flex justify-between border-t border-dashed pt-1.5 text-sm font-bold ${
+                      aporteLiquido != null && aporteLiquido <= 0.01
+                        ? "border-emerald-200 text-emerald-700"
+                        : "border-amber-300 text-amber-800"
+                    }`}
+                  >
+                    <span>
+                      {aporteLiquido != null && aporteLiquido <= 0.01
+                        ? "✓ Sem aporte adicional previsto — os loans cobrem"
+                        : "= Aporte estimado dos sócios"}
+                    </span>
+                    <span className="tabular-nums">
+                      {aporteLiquido != null && aporteLiquido > 0.01 ? formatMoney(aporteLiquido, pool.currency) : ""}
+                    </span>
+                  </div>
+                  <Link
+                    href={`/pools/${pool.id}/loan?stab=houses`}
+                    className="mt-1 inline-block text-[11px] font-semibold text-[#1f3a5f] hover:underline"
+                  >
+                    ver a conta dos loans → aba Casas do loan
+                  </Link>
+                </div>
+              )}
               {lowCash && (
                 <p className="mt-3 rounded-r-lg border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
-                  Caixa em <b>{((availableN / raisedN) * 100).toFixed(1)}% do captado</b>
-                  {shortfall != null && shortfall > 0 && (
-                    <>
-                      {" "}
-                      e faltam <b>{formatMoney(shortfall, pool.currency)}</b> da provisão
-                    </>
-                  )}{" "}
-                  — os próximos desembolsos dependem de novos aportes (aba Investidores) ou capital
+                  Caixa em <b>{((availableN / raisedN) * 100).toFixed(1)}% do captado</b> — os
+                  próximos desembolsos dependem de novos aportes (aba Investidores) ou capital
                   call.
                 </p>
               )}

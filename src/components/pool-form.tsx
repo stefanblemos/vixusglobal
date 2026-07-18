@@ -22,11 +22,21 @@ export type PoolFormValues = {
   startDate: string;
   plannedEndDate: string;
   effectiveEndDate: string;
+  companyId: string; // entidade (Company) do pool — "" = não vinculada
+  noteLoanId: string; // nota participativa (IntercompanyLoan) — "" = nenhuma
   notes: string;
 };
 
-// Form único de pool: sem `values.id` cria; com id edita (inclui status).
-export function PoolForm({ values }: { values: PoolFormValues }) {
+// Form único de pool: sem `values.id` cria; com id edita (inclui status + entidade).
+export function PoolForm({
+  values,
+  companies = [],
+  noteLoans = [],
+}: {
+  values: PoolFormValues;
+  companies?: Array<{ id: string; name: string }>;
+  noteLoans?: Array<{ id: string; label: string }>;
+}) {
   const action = values.id ? updatePool.bind(null, values.id) : createPool;
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, undefined);
   const editing = Boolean(values.id);
@@ -182,6 +192,36 @@ export function PoolForm({ values }: { values: PoolFormValues }) {
               <option value="ACTIVE">Active</option>
               <option value="CLOSING">Closing</option>
               <option value="CLOSED">Closed</option>
+            </select>
+          </div>
+        )}
+        {editing && companies.length > 0 && (
+          <div className="col-span-2">
+            <label htmlFor="companyId" className={labelClass} title="A empresa (Company) dona do pool — some o badge 'entidade não vinculada'">
+              Entity (company)
+            </label>
+            <select id="companyId" name="companyId" defaultValue={values.companyId} className={inputClass}>
+              <option value="">— not linked</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {editing && noteLoans.length > 0 && (
+          <div className="col-span-2">
+            <label htmlFor="noteLoanId" className={labelClass} title="Nota participativa (intercompany) ligada ao pool, se houver">
+              Participation note
+            </label>
+            <select id="noteLoanId" name="noteLoanId" defaultValue={values.noteLoanId} className={inputClass}>
+              <option value="">— none</option>
+              {noteLoans.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.label}
+                </option>
+              ))}
             </select>
           </div>
         )}

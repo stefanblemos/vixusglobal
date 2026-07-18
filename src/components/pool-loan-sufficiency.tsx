@@ -1,36 +1,12 @@
 import { formatMoney } from "@/lib/money";
+import type { SuffAgg, SuffRow } from "@/lib/pools/loan-sufficiency";
 
 /**
- * Suficiência do financiamento no Statement (mock aprovado 17/07):
- * 1) painel por LOAN — todas as casas com necessário × disponível e Falta/Sobra, somatório
- *    no rodapé, e o líquido confrontado com os custos ainda por vir;
- * 2) resumo GERAL do pool — todos os loans juntos (escolha do Stefan: um cobre o outro).
- * Componentes server puros — os números chegam prontos da página.
+ * Suficiência do financiamento (mock aprovado 17/07): painéis server puros — a CONTA vive
+ * em lib/pools/loan-sufficiency (fonte única, usada também pelo Overview do pool).
  */
 
-export type SuffRow = {
-  addr: string;
-  obra: number | null;
-  equity: number | null;
-  necessario: number | null;
-  disponivel: number | null;
-  delta: number | null;
-};
-
-export type SuffAgg = {
-  loanId: string;
-  label: string;
-  quitado: boolean;
-  rows: SuffRow[];
-  liquido: number;
-  jurosEst: number;
-  mesesRest: number;
-  aprL: number | null;
-  drawFeeEst: number;
-  closingPend: number;
-  custosPorVir: number;
-  resultado: number;
-};
+export type { SuffAgg, SuffRow };
 
 const th = "px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400";
 const thRight = "px-3 py-2 text-right text-[10px] font-medium uppercase tracking-wide text-slate-400";

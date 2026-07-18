@@ -79,6 +79,13 @@ export async function updatePool(
       effectiveEndDate: d.effectiveEndDate,
       notes: d.notes,
       ...(status.success ? { status: status.data as PoolStatus } : {}),
+      // entidade do pool (17/07): editável aqui — os badges de pendência apontam p/ cá
+      ...(formData.has("companyId")
+        ? { companyId: String(formData.get("companyId") ?? "").trim() || null }
+        : {}),
+      ...(formData.has("noteLoanId")
+        ? { noteLoanId: String(formData.get("noteLoanId") ?? "").trim() || null }
+        : {}),
     },
   });
   revalidatePath(`/pools/${poolId}`);

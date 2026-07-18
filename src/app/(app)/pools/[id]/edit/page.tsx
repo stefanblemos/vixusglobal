@@ -11,6 +11,14 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const pool = await prisma.investmentPool.findUnique({ where: { id } });
   if (!pool) notFound();
+  // entidade + nota participativa (17/07): os badges de pendência do Overview apontam p/ cá
+  const [companies, noteLoans] = await Promise.all([
+    prisma.company.findMany({ orderBy: { legalName: "asc" }, select: { id: true, legalName: true } }),
+    prisma.intercompanyLoan.findMany({
+      orderBy: { createdAt: "desc" },
+      select: { id: true, lender: { select: { legalName: true } }, borrower: { select: { legalName: true } } },
+    }),
+  ]);
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -36,8 +44,15 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
           startDate: d(pool.startDate),
           plannedEndDate: d(pool.plannedEndDate),
           effectiveEndDate: d(pool.effectiveEndDate),
+          companyId: pool.companyId ?? "",
+          noteLoanId: pool.noteLoanId ?? "",
           notes: pool.notes ?? "",
         }}
+        companies={companies.map((c) => ({ id: c.id, name: c.legalName }))}
+        noteLoans={noteLoans.map((n) => ({
+          id: n.id,
+          label: `${n.lender.legalName} → ${n.borrower.legalName}`,
+        }))}
       />
     </div>
   );

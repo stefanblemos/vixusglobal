@@ -33,6 +33,8 @@ export default async function NewPoolPage() {
           startDate: "",
           plannedEndDate: "",
           effectiveEndDate: "",
+          companyId: "",
+          noteLoanId: "",
           notes: "",
         }}
       />
