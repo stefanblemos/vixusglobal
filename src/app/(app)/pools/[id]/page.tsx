@@ -11,7 +11,6 @@ import { PoolStatusStepper } from "@/components/pool-status-stepper";
 import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
-import { buildStatement } from "@/lib/pools/loan-statement";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
 import { computeNav, liveIrr, type NavHouse } from "@/lib/pools/nav";
@@ -23,9 +22,13 @@ const TABS = [
   ["overview", "Overview"],
   ["houses", "Casas"],
   ["investors", "Investidores"],
-  ["interest", "Juros & reserve"],
-  ["ledger", "Capital ledger"],
-  ["distributions", "Distribuições"],
+] as const;
+
+// sub-abas de Investidores (layout novo 18/07): Sócios | Capital ledger | Distribuições
+const INVESTOR_SUBS = [
+  ["members", "👥 Sócios"],
+  ["ledger", "📒 Capital ledger"],
+  ["distributions", "📤 Distribuições"],
 ] as const;
 
 const STATUS_STYLE: Record<string, string> = {
@@ -44,64 +47,24 @@ const HOUSE_STATUS_LABEL: Record<string, string> = {
   SOLD: "Sold",
 };
 
-const HOUSE_STATUS_STYLE: Record<string, string> = {
-  PLANNED: "bg-slate-100 text-slate-500",
-  LOT_PURCHASED: "bg-amber-50 text-amber-700",
-  UNDER_CONSTRUCTION: "bg-amber-50 text-amber-700",
-  FOR_SALE: "bg-blue-50 text-blue-700",
-  UNDER_CONTRACT: "bg-blue-50 text-blue-700",
-  SOLD: "bg-emerald-50 text-emerald-700",
-};
-
 const fmtDate = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : "—");
-
-// Prazos (mock 3/6 + pedido do Stefan): total em meses e dias + dias restantes,
-// tanto do projeto quanto de cada loan (pool pode ter vários bancos).
-const DAY_MS = 86400000;
-const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
-const addMonths = (d: Date, m: number) => {
-  const x = new Date(d);
-  x.setMonth(x.getMonth() + m);
-  return x;
-};
-const monthsDays = (a: Date, b: Date) => {
-  let months = (b.getFullYear() - a.getFullYear()) * 12 + (b.getMonth() - a.getMonth());
-  if (addMonths(a, months) > b) months--;
-  return { months, days: daysBetween(addMonths(a, months), b) };
-};
-const spanLabel = (a: Date, b: Date) => {
-  const { months, days } = monthsDays(a, b);
-  return `${months}m ${days}d (${daysBetween(a, b)} dias)`;
-};
-// restam N dias (verde/normal) ou vencido há N dias (vermelho)
-function RemainingDays({ to, done }: { to: Date | null; done?: boolean }) {
-  if (done) return <span className="text-slate-400">encerrado</span>;
-  if (!to) return null;
-  const rem = daysBetween(new Date(), to);
-  return rem >= 0 ? (
-    <span className={rem <= 30 ? "font-semibold text-amber-700" : "font-semibold text-emerald-700"}>
-      restam {rem} dias
-    </span>
-  ) : (
-    <span className="font-semibold text-red-700">vencido há {-rem} dias</span>
-  );
-}
-
-const th = "px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-slate-400";
-const thRight = "px-3 py-2 text-right text-xs font-medium uppercase tracking-wide text-slate-400";
-const td = "px-3 py-2 text-sm text-slate-600";
-const tdRight = "px-3 py-2 text-right text-sm tabular-nums text-slate-700";
 
 export default async function PoolDetailPage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; status?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; sub?: string; view?: string }>;
 }) {
   const { id } = await params;
-  const { tab: rawTab, status: rawStatus } = await searchParams;
-  const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
+  const { tab: rawTab, status: rawStatus, sub: rawSub, view: rawView } = await searchParams;
+  // links antigos (?tab=ledger / ?tab=distributions) caem nas sub-abas de Investidores
+  const legacySub = rawTab === "ledger" ? "ledger" : rawTab === "distributions" ? "distributions" : null;
+  const tab = legacySub ? "investors" : TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
+  const invSub = INVESTOR_SUBS.some(([s]) => s === (legacySub ?? rawSub))
+    ? ((legacySub ?? rawSub) as string)
+    : "members";
+  const housesView = rawView === "market" ? "market" : "board"; // toggle Board | Mercado
   // self-healing (16/07): status são derivados dos fatos — recomputa antes de carregar,
   // então qualquer status defasado (ex.: clique manual antigo) se corrige sozinho aqui
   const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
@@ -425,6 +388,26 @@ export default async function PoolDetailPage({
     return { start, end, total, gone, left, pct: Math.round((gone / total) * 100) };
   })();
 
+  // Layout novo (mock aprovado 18/07): valores compactos p/ régua + cards do Overview
+  const fmtCompact = (v: number) => {
+    try {
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: pool.currency,
+        notation: "compact",
+        maximumFractionDigits: 1,
+      }).format(v);
+    } catch {
+      return String(Math.round(v));
+    }
+  };
+  const marketAlerts = marketRows.filter((r) => !r.sold && r.verdict.tone !== "green");
+  // "descoberto do envelope": casas cujo disponível do banco já não cobre o necessário
+  const envelopeShortRows = suffAggs
+    .filter((a) => !a.quitado)
+    .flatMap((a) => a.rows)
+    .filter((r) => (r.delta ?? 0) < -0.01);
+
   const statusCounts = (Object.keys(HOUSE_STATUS_LABEL) as string[]).map((s) => ({
     status: s,
     count: pool.houses.filter((h) => h.status === s).length,
@@ -531,655 +514,423 @@ export default async function PoolDetailPage({
     };
   });
 
-  // prazos por loan: closing (real ?? previsto) + termMonths do banco → maturity
-  const loanTerms = pool.loans.map((l) => {
-    const bank = l.bankProfile?.name ?? "banco a definir";
-    const closing = l.closingDate ?? l.expectedClosingDate;
-    const term = l.bankProfile?.termMonths ?? null;
-    const maturity = closing && term ? addMonths(closing, term) : null;
-    const ext = l.bankProfile?.extensionMonths ?? 0;
-    return { id: l.id, bank, closing, usesExpected: !l.closingDate && !!l.expectedClosingDate, term, maturity, ext };
-  });
-
   return (
-    <div className="space-y-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="space-y-5">
+      {/* Header em 1 bloco (layout novo 18/07): título + status + prazo fundido + Edit */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <div>
-          <Link href="/pools" className="text-sm text-slate-500 hover:text-slate-700">
+          <Link href="/pools" className="text-xs text-slate-400 hover:text-slate-600">
             ← Pools
           </Link>
-          <div className="mt-1 flex items-center gap-3">
-            <h1 className="text-2xl font-semibold text-slate-800">{pool.name}</h1>
-            <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_STYLE[pool.status] ?? ""}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-slate-800">{pool.name}</h1>
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${STATUS_STYLE[pool.status] ?? ""}`}>
               {pool.status}
             </span>
+            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] text-slate-500">
+              {pool.code}
+              {pool.alias ? ` · ${pool.alias}` : ""}
+              {pool.company ? ` · ${pool.company.legalName}` : " · entity not linked"}
+              {pool.noteLoan ? ` · note to ${pool.noteLoan.borrower.legalName}` : ""}
+            </span>
           </div>
-          <p className="text-sm text-slate-500">
-            {pool.code}
-            {pool.alias ? ` · ${pool.alias}` : ""}
-            {pool.company ? ` · entity: ${pool.company.legalName}` : " · entity not linked yet"}
-            {pool.noteLoan ? ` · note to ${pool.noteLoan.borrower.legalName}` : ""}
-          </p>
         </div>
+        {prazo && (
+          <div className="ml-auto flex items-center gap-2 text-[11px] text-slate-500">
+            <span className="tabular-nums">
+              {fmtDate(prazo.start)} → {fmtDate(prazo.end)}
+            </span>
+            <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={`h-full rounded-full ${prazo.left < 30 ? "bg-red-500" : prazo.left < 90 ? "bg-amber-500" : "bg-[#1f3a5f]"}`}
+                style={{ width: `${prazo.pct}%` }}
+              />
+            </div>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10.5px] font-bold tabular-nums ${
+                prazo.left < 0
+                  ? "bg-red-100 text-red-700"
+                  : prazo.left < 90
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-emerald-50 text-emerald-700"
+              }`}
+              title={`${Math.round(prazo.total / 30)} meses · ${prazo.total}d · ${prazo.pct}% decorrido`}
+            >
+              {prazo.left < 0 ? `estourado há ${-prazo.left}d` : `restam ${prazo.left}d`}
+            </span>
+          </div>
+        )}
         <Link
           href={`/pools/${pool.id}/edit`}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          className={`${prazo ? "" : "ml-auto "}rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100`}
         >
           Edit pool
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-400">Raised</div>
-          <div className="text-xl font-semibold tabular-nums text-slate-900">
-            {formatMoney(table.totalInvested, pool.currency)}
-          </div>
-          <div className="text-xs text-slate-400">
-            {pool.targetAmount ? `target ${formatMoney(pool.targetAmount, pool.currency)}` : "no target set"}
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-400">Units issued</div>
-          <div className="text-xl font-semibold tabular-nums text-slate-900">
-            {table.totalUnits.toFixed(2)}
-          </div>
-          <div className="text-xs text-slate-400">
-            unit price {formatMoney(pool.unitPrice, pool.currency)}
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-400">Houses</div>
-          <div className="text-xl font-semibold tabular-nums text-slate-900">
-            {sold}/{pool.houses.length} <span className="text-sm font-normal text-slate-400">sold</span>
-          </div>
-          <div className="text-xs text-slate-400">
-            funding deadline {fmtDate(pool.fundingDeadline)}
-          </div>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs text-slate-400">Distributed</div>
-          <div className="text-xl font-semibold tabular-nums text-slate-900">
-            {formatMoney(distributed, pool.currency)}
-          </div>
-          <div className="text-xs text-slate-400">
-            {pool.profitSharePct
-              ? `investor profit share ${Number(pool.profitSharePct) * 100}%`
-              : "profit share not set"}
-          </div>
-        </div>
-      </div>
-
-      {/* PRAZO sempre visível (17/07): a régua do projeto acima das abas */}
-      {prazo && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-2.5">
-          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Prazo</span>
-          <span className="text-sm font-semibold tabular-nums text-slate-700">
-            {fmtDate(prazo.start)} → {fmtDate(prazo.end)}
-          </span>
-          <div className="h-2 min-w-32 flex-1 overflow-hidden rounded-full bg-slate-100">
-            <div
-              className={`h-full rounded-full ${prazo.left < 30 ? "bg-red-500" : prazo.left < 90 ? "bg-amber-500" : "bg-[#1f3a5f]"}`}
-              style={{ width: `${prazo.pct}%` }}
-            />
-          </div>
-          <span
-            className={`rounded-full px-2.5 py-0.5 text-xs font-bold tabular-nums ${
-              prazo.left < 0
-                ? "bg-red-100 text-red-700"
-                : prazo.left < 30
-                  ? "bg-red-50 text-red-700"
-                  : prazo.left < 90
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-emerald-50 text-emerald-700"
+      {/* Régua ÚNICA de 6 KPIs (substitui Raised/Units/Houses/Distributed + strip do prazo;
+          captado/units/distribuído em detalhe moram na aba Investidores) */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+        {(
+          [
+            {
+              label: "NAV / unit",
+              hero: true,
+              value: navR.navPerUnit != null ? formatMoney(navR.navPerUnit, pool.currency) : "—",
+              up: navR.navPerUnit != null && navR.endPerUnit != null && navR.endPerUnit > navR.navPerUnit,
+              hint: `NAV ${fmtCompact(navR.nav)} · fim ${
+                navR.endPerUnit != null ? formatMoney(navR.endPerUnit, pool.currency) : "—"
+              }`,
+            },
+            {
+              label: "TIR viva",
+              hero: true,
+              value: live.irr != null ? `${(live.irr * 100).toFixed(1)}%` : "—",
+              up: false,
+              hint: planIrr != null ? `plano ${(planIrr * 100).toFixed(1)}%` : "XIRR real + plano",
+            },
+            {
+              label: "TVPI · DPI",
+              hero: false,
+              value: `${tvpi != null ? `${tvpi.toFixed(2)}×` : "—"} · ${dpi != null ? `${dpi.toFixed(2)}×` : "—"}`,
+              up: false,
+              hint: planMultiple != null ? `MOIC plano ${planMultiple.toFixed(2)}×` : "curva J",
+            },
+            {
+              label: "Captado",
+              hero: false,
+              value: pctRaised != null ? `${pctRaised}%` : fmtCompact(raisedN),
+              up: false,
+              hint:
+                targetN != null
+                  ? `${fmtCompact(raisedN)} de ${fmtCompact(targetN)}`
+                  : `${table.totalUnits.toFixed(0)} units · sem target`,
+            },
+            {
+              label: "Obra",
+              hero: false,
+              value: `${housesStarted}/${pool.houses.length}`,
+              up: false,
+              hint: `iniciadas · ${sold} vendida${sold === 1 ? "" : "s"}`,
+            },
+            {
+              label: "Próx. distribuição",
+              hero: false,
+              value: "—",
+              up: false,
+              hint:
+                Number(distributed) > 0
+                  ? `distribuído ${fmtCompact(Number(distributed))}`
+                  : "estimativa na Fase 2",
+            },
+          ] as Array<{ label: string; hero: boolean; value: string; up: boolean; hint: string }>
+        ).map((k) => (
+          <div
+            key={k.label}
+            className={`rounded-xl border px-3 py-2 ${
+              k.hero ? "border-[#1f3a5f]/25 bg-slate-50" : "border-slate-200 bg-white"
             }`}
           >
-            {prazo.left < 0 ? `estourado há ${-prazo.left}d` : `restam ${prazo.left}d`}
-          </span>
-          <span className="text-[11px] text-slate-400">
-            {Math.round(prazo.total / 30)} meses · {prazo.total}d · {prazo.pct}% decorrido
-            {pool.fundingDeadline ? ` · funding deadline ${fmtDate(pool.fundingDeadline)}` : ""}
-          </span>
-        </div>
-      )}
+            <div className="text-[9.5px] uppercase tracking-wider text-slate-400">{k.label}</div>
+            <div className="text-[15px] font-extrabold tabular-nums text-slate-900">
+              {k.value}
+              {k.up && <span className="ml-1 text-emerald-600">⤴</span>}
+            </div>
+            <div className="text-[9.5px] text-slate-400">{k.hint}</div>
+          </div>
+        ))}
+      </div>
 
       <PoolTabsNav poolId={pool.id} active={tab} />
 
-      {/* Overview (mock UX 3/6): vida do pool + caixa em cascata + board de casas + prazos */}
+      {/* Overview (layout novo 18/07, mock aprovado): stepper fino + badges + grid 2x2 de
+          cards compactos com "ver detalhe" — o painel completo mora na aba dele. Regra
+          permanente: métrica nova (Fase 2+) = card compacto com drill, nunca painel inteiro. */}
       {tab === "overview" && (
-        <div className="space-y-4">
-          {/* Marcação & retorno (Fase 1 investor-grade, mock aprovado 18/07) */}
-          <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-            <div className="mb-3 flex items-center gap-2">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                Marcação &amp; retorno
-              </h2>
-              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700">
-                atualiza sozinha a cada lançamento
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-              <div className="rounded-xl border border-[#1f3a5f]/20 bg-slate-50 p-3.5">
-                <div className="text-[10.5px] text-slate-400">NAV do pool</div>
-                <div className="text-lg font-extrabold tabular-nums text-slate-900">
-                  {formatMoney(navR.nav, pool.currency)}
-                </div>
-                <div className="text-[10.5px] text-slate-400">marcação conservadora hoje</div>
-              </div>
-              <div className="rounded-xl border border-[#1f3a5f]/20 bg-slate-50 p-3.5">
-                <div className="text-[10.5px] text-slate-400">NAV por unit</div>
-                <div className="flex items-center gap-2">
-                  <div className="text-lg font-extrabold tabular-nums text-slate-900">
-                    {navR.navPerUnit != null ? formatMoney(navR.navPerUnit, pool.currency) : "—"}
-                  </div>
-                  {navR.navPerUnit != null && navR.endPerUnit != null && (
-                    <svg width="64" height="26" viewBox="0 0 64 26" className="shrink-0">
-                      {(() => {
-                        const ys = [unitPar, navR.navPerUnit, navR.endPerUnit];
-                        const min = Math.min(...ys);
-                        const max = Math.max(...ys);
-                        const y = (v: number) => (max === min ? 13 : 23 - ((v - min) / (max - min)) * 20);
-                        return (
-                          <polyline
-                            points={`2,${y(ys[0])} 32,${y(ys[1])} 62,${y(ys[2])}`}
-                            fill="none"
-                            stroke="#1f3a5f"
-                            strokeWidth="2"
-                          />
-                        );
-                      })()}
-                    </svg>
-                  )}
-                </div>
-                <div className="text-[10.5px] text-slate-400">
-                  par {formatMoney(unitPar, pool.currency)} · fim proj.{" "}
-                  {navR.endPerUnit != null ? formatMoney(navR.endPerUnit, pool.currency) : "—"} (curva J)
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-                <div className="text-[10.5px] text-slate-400">TIR projetada (viva)</div>
-                <div className="text-lg font-extrabold tabular-nums text-slate-900">
-                  {live.irr != null ? `${(live.irr * 100).toFixed(1)}%` : "—"}
-                </div>
-                <div className="text-[10.5px] text-slate-400">
-                  {planIrr != null ? `plano REAL: ${(planIrr * 100).toFixed(1)}%` : "XIRR fluxos reais + plano"}
-                </div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-                <div className="text-[10.5px] text-slate-400">MOIC projetado</div>
-                <div className="text-lg font-extrabold tabular-nums text-slate-900">
-                  {planMultiple != null ? `${planMultiple.toFixed(2)}×` : "—"}
-                </div>
-                <div className="text-[10.5px] text-slate-400">multiple do plano</div>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-3.5">
-                <div className="text-[10.5px] text-slate-400">TVPI · DPI</div>
-                <div className="text-lg font-extrabold tabular-nums text-slate-900">
-                  {tvpi != null ? `${tvpi.toFixed(2)}×` : "—"} · {dpi != null ? `${dpi.toFixed(2)}×` : "—"}
-                </div>
-                <div className="text-[10.5px] text-slate-400">NAV/aportado · distribuído/aportado</div>
-              </div>
-            </div>
-            <div className="mt-3 space-y-0.5 text-xs text-slate-600">
-              <div className="flex justify-between">
-                <span>Caixa disponível</span>
-                <span className="tabular-nums">{formatMoney(navR.cash, pool.currency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>+ custo incorrido nas casas (equity + obra do banco)</span>
-                <span className="tabular-nums">{formatMoney(navR.incurred, pool.currency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>+ valorização pela obra (lucro esperado × % concluído)</span>
-                <span className="tabular-nums text-emerald-700">{formatMoney(navR.uplift, pool.currency)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>− dívida dos loans (saldo devido)</span>
-                <span className="tabular-nums text-red-700">−{formatMoney(navR.debt, pool.currency)}</span>
-              </div>
-              <div className="flex justify-between border-t border-dashed border-slate-200 pt-1 font-bold text-slate-800">
-                <span>= NAV</span>
-                <span className="tabular-nums">{formatMoney(navR.nav, pool.currency)}</span>
-              </div>
-            </div>
-            <p className="mt-2 text-[10.5px] text-slate-400">
-              Curva J: custos de financiamento e juros saem antes do lucro — o NAV/unit mergulha
-              abaixo do par no início e sobe conforme a obra avança e as casas vendem. TIR viva =
-              XIRR dos aportes/distribuições reais + casas restantes nas datas do baseline com
-              lucro líquido do financiamento.
-            </p>
-          </section>
+        <div className="space-y-3">
+          <PoolStatusStepper status={pool.status} subtitles={stepSubtitles} />
+          <div className="flex flex-wrap items-center gap-1.5">
+            {pendencias.map((p) => (
+              <Link
+                key={p.text}
+                href={p.href}
+                className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200"
+              >
+                &#9888; {p.text}
+              </Link>
+            ))}
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] text-slate-500">
+              {formaPagamento}
+            </span>
+          </div>
 
-          {/* vida do pool + pendências */}
-          <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-            <h2 className="mb-2.5 text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-              Vida do pool
-            </h2>
-            <PoolStatusStepper status={pool.status} subtitles={stepSubtitles} />
-            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
-              {pendencias.map((p) => (
+          <div className="grid gap-3 md:grid-cols-2">
+            {/* Caixa & aporte — resumo; despesas + ledger completos em Investidores */}
+            <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-[10px] font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                  Caixa &amp; aporte
+                </h2>
                 <Link
-                  key={p.text}
-                  href={p.href}
-                  className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-200"
+                  href={`/pools/${pool.id}?tab=investors&sub=ledger`}
+                  className="text-[10.5px] text-slate-400 hover:text-slate-600"
                 >
-                  ⚠ {p.text}
+                  ver detalhe &rarr; Investidores
                 </Link>
-              ))}
-              <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] text-slate-500">
-                {formaPagamento}
-              </span>
-            </div>
-          </section>
-
-          <div className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
-            {/* caixa & provisões — cascata visual */}
-            <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                Caixa &amp; provisões
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-400">
-                Aportado × gasto × disponível — sobra sem previsão de gasto pode ser devolvida aos
-                investidores. Despesas do pool saem do caixa antes do lucro.
-              </p>
-              <div className="mt-3 space-y-1.5">
-                {(
-                  [
-                    ["Aportado", raisedN, "#1f3a5f", false],
-                    ["− Gasto nas casas", Number(spentOnHouses), "#f59e0b", true],
-                    ["+ Recebido das vendas", Number(receivedFromSales), "#16a34a", false],
-                    ["− Despesas pagas", Number(expensesPaid), "#94a3b8", true],
-                    ["− Distribuído", Number(distributed), "#94a3b8", true],
-                  ] as Array<[string, number, string, boolean]>
-                ).map(([label, v, color, neg]) => (
-                  <div
-                    key={label}
-                    className="grid grid-cols-[150px_1fr_110px] items-center gap-2.5 text-xs"
-                  >
-                    <span className="text-slate-500">{label}</span>
-                    <div className="h-3 rounded bg-slate-50">
-                      {raisedN > 0 && v > 0 && (
-                        <div
-                          className="h-full rounded"
-                          style={{
-                            width: `${Math.min(100, (v / raisedN) * 100)}%`,
-                            background: color,
-                          }}
-                        />
-                      )}
-                    </div>
-                    <span
-                      className={`text-right tabular-nums font-semibold ${
-                        v === 0 ? "text-slate-300" : neg ? "text-amber-700" : "text-slate-700"
-                      }`}
-                    >
-                      {neg && v > 0 ? "−" : ""}
-                      {formatMoney(v, pool.currency)}
-                    </span>
-                  </div>
-                ))}
               </div>
-              <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                <div className="text-[11px] text-slate-400">
-                  Disponível hoje · livre para devolução
+              <div className="space-y-0.5 text-[11.5px] text-slate-600">
+                <div className="flex justify-between">
+                  <span>Aportado</span>
+                  <b className="tabular-nums">{formatMoney(raisedN, pool.currency)}</b>
                 </div>
-                <div className="text-xl font-extrabold tabular-nums text-slate-800">
-                  {formatMoney(freeToReturn, pool.currency)}
+                <div className="flex justify-between">
+                  <span>&minus; gasto nas casas</span>
+                  <b className="tabular-nums text-amber-700">&minus;{formatMoney(spentOnHouses, pool.currency)}</b>
                 </div>
-                {Number(expensesProvisioned) > 0 && (
-                  <div className="text-[11px] text-slate-400">
-                    disponível {formatMoney(available, pool.currency)} − provisões pendentes{" "}
-                    {formatMoney(expensesProvisioned, pool.currency)}
+                {Number(receivedFromSales) > 0 && (
+                  <div className="flex justify-between">
+                    <span>+ recebido das vendas</span>
+                    <b className="tabular-nums text-emerald-700">{formatMoney(receivedFromSales, pool.currency)}</b>
                   </div>
                 )}
-              </div>
-              {/* aporte estimado LÍQUIDO (17/07): a sobra dos loans abate a captação que falta */}
-              {shortfall != null && shortfall > 0 && (
-                <div
-                  className={`mt-3 rounded-lg border px-4 py-3 ${
-                    aporteLiquido != null && aporteLiquido <= 0.01
-                      ? "border-emerald-200 bg-emerald-50/60"
-                      : "border-amber-200 bg-amber-50/60"
-                  }`}
-                >
-                  <div className="space-y-0.5 text-xs text-slate-600">
-                    <div className="flex justify-between">
-                      <span>Falta captar (target − captado)</span>
-                      <span className="tabular-nums">{formatMoney(shortfall, pool.currency)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>
-                        {loanSurplus >= 0 ? "− sobra líquida dos loans (suficiência)" : "+ falta líquida dos loans (suficiência)"}
-                      </span>
-                      <span className={`tabular-nums ${loanSurplus >= 0 ? "text-emerald-700" : "text-red-700"}`}>
-                        {loanSurplus >= 0 ? "− " : "+ "}
-                        {formatMoney(Math.abs(loanSurplus), pool.currency)}
-                      </span>
-                    </div>
+                {Number(expensesPaid) > 0 && (
+                  <div className="flex justify-between">
+                    <span>&minus; despesas pagas</span>
+                    <b className="tabular-nums">&minus;{formatMoney(expensesPaid, pool.currency)}</b>
                   </div>
-                  <div
-                    className={`mt-1.5 flex justify-between border-t border-dashed pt-1.5 text-sm font-bold ${
-                      aporteLiquido != null && aporteLiquido <= 0.01
-                        ? "border-emerald-200 text-emerald-700"
-                        : "border-amber-300 text-amber-800"
-                    }`}
-                  >
-                    <span>
-                      {aporteLiquido != null && aporteLiquido <= 0.01
-                        ? "✓ Sem aporte adicional previsto — os loans cobrem"
-                        : "= Aporte estimado dos sócios"}
-                    </span>
-                    <span className="tabular-nums">
-                      {aporteLiquido != null && aporteLiquido > 0.01 ? formatMoney(aporteLiquido, pool.currency) : ""}
-                    </span>
+                )}
+                {Number(distributed) > 0 && (
+                  <div className="flex justify-between">
+                    <span>&minus; distribuído</span>
+                    <b className="tabular-nums">&minus;{formatMoney(distributed, pool.currency)}</b>
                   </div>
-                  <Link
-                    href={`/pools/${pool.id}/loan?stab=houses`}
-                    className="mt-1 inline-block text-[11px] font-semibold text-[#1f3a5f] hover:underline"
-                  >
-                    ver a conta dos loans → aba Casas do loan
-                  </Link>
+                )}
+                <div className="flex justify-between border-t border-dashed border-slate-200 pt-1 font-bold text-slate-800">
+                  <span>Disponível hoje{Number(expensesProvisioned) > 0 ? " (livre de provisões)" : ""}</span>
+                  <b className="tabular-nums">{formatMoney(freeToReturn, pool.currency)}</b>
                 </div>
+              </div>
+              {shortfall != null && shortfall > 0 && (
+                aporteLiquido != null && aporteLiquido <= 0.01 ? (
+                  <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 text-[11px] text-emerald-700">
+                    &#10003; Sem aporte adicional previsto — os loans cobrem a captação que falta
+                  </div>
+                ) : (
+                  <div className="mt-2 flex justify-between rounded-lg border border-amber-200 bg-amber-50/60 px-2.5 py-1.5 text-[11.5px] font-bold text-amber-800">
+                    <span>Aporte estimado (líq. dos loans)</span>
+                    <span className="tabular-nums">{formatMoney(aporteLiquido ?? shortfall, pool.currency)}</span>
+                  </div>
+                )
               )}
-              {lowCash && (
-                <p className="mt-3 rounded-r-lg border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
-                  Caixa em <b>{((availableN / raisedN) * 100).toFixed(1)}% do captado</b> — os
-                  próximos desembolsos dependem de novos aportes (aba Investidores) ou capital
-                  call.
+              {shortfall != null && shortfall > 0 && (
+                <p className="mt-1 text-[10.5px] text-slate-400">
+                  falta captar {fmtCompact(shortfall)} {loanSurplus >= 0 ? "\u2212 sobra" : "+ falta"} dos loans{" "}
+                  {fmtCompact(Math.abs(loanSurplus))} &middot;{" "}
+                  <Link href={`/pools/${pool.id}/loan?stab=houses`} className="underline hover:text-slate-600">
+                    ver a conta &rarr;
+                  </Link>
                 </p>
               )}
-              {pool.expenses.length > 0 && (
-                <div className="mt-3 divide-y divide-slate-50 border-t border-slate-100">
-                  {pool.expenses.map((e) => (
-                    <div key={e.id} className="flex items-center justify-between py-2 text-sm">
-                      <span className="text-slate-500">{fmtDate(e.date)}</span>
-                      <span className="flex-1 px-4 font-medium text-slate-700">{e.description}</span>
-                      <span className="tabular-nums text-slate-800">
-                        {formatMoney(e.amount, pool.currency)}
+              {lowCash && (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                  Caixa em <b>{((availableN / raisedN) * 100).toFixed(1)}% do captado</b> — próximos
+                  desembolsos dependem de aportes ou capital call.
+                </p>
+              )}
+            </section>
+
+            {/* Marcação & retorno — resumo da cascata; regua tem NAV/unit, TIR, TVPI/DPI */}
+            <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-[10px] font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                  Marcação &amp; retorno
+                </h2>
+                {sim && (
+                  <Link
+                    href={`/pools/simulator/${sim.id}`}
+                    className="text-[10.5px] text-slate-400 hover:text-slate-600"
+                  >
+                    ver simulação &rarr;
+                  </Link>
+                )}
+              </div>
+              <div className="space-y-0.5 text-[11.5px] text-slate-600">
+                <div className="flex justify-between">
+                  <span>Caixa disponível</span>
+                  <b className="tabular-nums">{formatMoney(navR.cash, pool.currency)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>+ custo incorrido nas casas (equity + banco)</span>
+                  <b className="tabular-nums">{formatMoney(navR.incurred, pool.currency)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>+ valorização pela obra</span>
+                  <b className="tabular-nums text-emerald-700">{formatMoney(navR.uplift, pool.currency)}</b>
+                </div>
+                <div className="flex justify-between">
+                  <span>&minus; dívida dos loans</span>
+                  <b className="tabular-nums text-red-700">&minus;{formatMoney(navR.debt, pool.currency)}</b>
+                </div>
+                <div className="flex justify-between border-t border-dashed border-slate-200 pt-1 font-bold text-slate-800">
+                  <span>= NAV &rarr; por unit</span>
+                  <b className="tabular-nums">
+                    {formatMoney(navR.nav, pool.currency)}
+                    {navR.navPerUnit != null ? ` \u2192 ${formatMoney(navR.navPerUnit, pool.currency)}` : ""}
+                  </b>
+                </div>
+              </div>
+              <p className="mt-1.5 text-[10.5px] text-slate-400">
+                curva J: par {formatMoney(unitPar, pool.currency)} &rarr; hoje{" "}
+                {navR.navPerUnit != null ? formatMoney(navR.navPerUnit, pool.currency) : "\u2014"} &rarr; fim{" "}
+                {navR.endPerUnit != null ? formatMoney(navR.endPerUnit, pool.currency) : "\u2014"}
+                {navR.navPerUnit != null && navR.endPerUnit != null && navR.endPerUnit > navR.navPerUnit
+                  ? " \u2934"
+                  : ""}
+                {planIrr != null || planMultiple != null
+                  ? ` \u00b7 plano: TIR ${planIrr != null ? `${(planIrr * 100).toFixed(1)}%` : "\u2014"} \u00b7 MOIC ${
+                      planMultiple != null ? `${planMultiple.toFixed(2)}\u00d7` : "\u2014"
+                    }`
+                  : ""}
+              </p>
+            </section>
+
+            {/* Atividade — últimos 6 eventos; feed completo na rota própria */}
+            <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-[10px] font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                  Atividade
+                </h2>
+                <Link
+                  href={`/pools/${pool.id}/activity`}
+                  className="text-[10.5px] text-slate-400 hover:text-slate-600"
+                >
+                  ver todas ({feed.total}) &rarr;
+                </Link>
+              </div>
+              {feed.events.length === 0 ? (
+                <p className="text-[11.5px] text-slate-400">sem eventos registrados ainda</p>
+              ) : (
+                <div className="space-y-0.5">
+                  {feed.events.slice(0, 6).map((e, i) => (
+                    <div key={`${e.date.toISOString()}-${i}`} className="flex items-baseline gap-2 text-[11.5px] text-slate-600">
+                      <span className="w-11 shrink-0 tabular-nums text-[10px] text-slate-400">
+                        {`${String(e.date.getUTCMonth() + 1).padStart(2, "0")}/${String(e.date.getUTCDate()).padStart(2, "0")}`}
                       </span>
-                      <form action={togglePoolExpensePaid} className="ml-3">
-                        <input type="hidden" name="expenseId" value={e.id} />
-                        <button
-                          type="submit"
-                          className={`rounded-full px-2 py-0.5 text-xs ${
-                            e.status === "PAID"
-                              ? "bg-emerald-50 text-emerald-700"
-                              : "bg-amber-50 text-amber-700"
-                          }`}
-                          title="Clique para alternar provisionada/paga"
-                        >
-                          {e.status === "PAID" ? "Paga" : "Provisionada"}
-                        </button>
-                      </form>
-                      <form action={deletePoolExpense} className="ml-2">
-                        <input type="hidden" name="expenseId" value={e.id} />
-                        <button type="submit" className="text-xs text-slate-300 hover:text-red-500">
-                          ✕
-                        </button>
-                      </form>
+                      <span className="shrink-0">{e.icon}</span>
+                      <span className="truncate">{e.text}</span>
                     </div>
                   ))}
                 </div>
               )}
-              {/* despesa sai do meio do card — abre só quando precisa */}
-              <details className="mt-3">
-                <summary className="inline-block cursor-pointer rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                  + Despesa
-                </summary>
-                <div className="mt-3">
-                  <AddPoolExpenseForm poolId={pool.id} />
-                </div>
-              </details>
             </section>
 
-            {/* casas — progresso por status */}
-            <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                Casas — progresso
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-400">
-                {sold} de {pool.houses.length} vendidas
-                {!houseTotals.plannedProfit.isZero() &&
-                  ` · lucro previsto ${formatMoney(houseTotals.plannedProfit, pool.currency)}`}
-              </p>
-              <div className="mt-3 space-y-1.5">
-                {statusCounts.map(({ status, count }) => (
-                  <Link
-                    key={status}
-                    href={`/pools/${pool.id}?tab=houses&status=${status}`}
-                    className="grid grid-cols-[120px_1fr_28px] items-center gap-2.5 rounded text-xs hover:bg-slate-50"
-                  >
-                    <span className="text-slate-500">{HOUSE_STATUS_LABEL[status]}</span>
-                    <div className="h-3 rounded bg-slate-50">
-                      {count > 0 && (
-                        <div
-                          className={`h-full rounded ${
-                            status === "SOLD"
-                              ? "bg-emerald-500"
-                              : status === "FOR_SALE" || status === "UNDER_CONTRACT"
-                                ? "bg-blue-400"
-                                : status === "PLANNED"
-                                  ? "bg-slate-300"
-                                  : "bg-amber-400"
-                          }`}
-                          style={{ width: `${(count / Math.max(1, pool.houses.length)) * 100}%` }}
-                        />
-                      )}
-                    </div>
-                    <span className="text-right font-bold tabular-nums text-slate-700">{count}</span>
-                  </Link>
-                ))}
+            {/* Casas — progresso por status + alertas de mercado; board + tabela na aba Casas */}
+            <section className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="mb-2 flex items-baseline justify-between">
+                <h2 className="text-[10px] font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                  Casas
+                </h2>
+                <Link
+                  href={`/pools/${pool.id}?tab=houses`}
+                  className="text-[10.5px] text-slate-400 hover:text-slate-600"
+                >
+                  board + mercado &rarr; Casas
+                </Link>
               </div>
-              {statusLag && (
-                <p className="mt-3 rounded-r-lg border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
-                  Todas as casas estão em Planned, mas o gasto de capital já é{" "}
-                  <b>{formatMoney(spentOnHouses, pool.currency)}</b> — os status estão atrasados em
-                  relação ao dinheiro. Atualize pelo stepper na ficha de cada casa.
+              <div className="space-y-1">
+                {statusCounts
+                  .filter(({ status, count }) => count > 0 || status === "SOLD")
+                  .map(({ status, count }) => (
+                    <Link
+                      key={status}
+                      href={`/pools/${pool.id}?tab=houses&status=${status}`}
+                      className="grid grid-cols-[110px_1fr_24px] items-center gap-2 rounded text-[11px] text-slate-600 hover:bg-slate-50"
+                    >
+                      <span>{HOUSE_STATUS_LABEL[status]}</span>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        {count > 0 && (
+                          <div
+                            className={`h-full rounded-full ${
+                              status === "SOLD"
+                                ? "bg-emerald-500"
+                                : status === "FOR_SALE" || status === "UNDER_CONTRACT"
+                                  ? "bg-blue-400"
+                                  : status === "PLANNED"
+                                    ? "bg-slate-300"
+                                    : "bg-amber-400"
+                            }`}
+                            style={{ width: `${(count / Math.max(1, pool.houses.length)) * 100}%` }}
+                          />
+                        )}
+                      </div>
+                      <b className="text-right tabular-nums text-slate-700">{count}</b>
+                    </Link>
+                  ))}
+              </div>
+              {marketAlerts.length > 0 && (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                  &#9888; mercado:{" "}
+                  {marketAlerts
+                    .slice(0, 3)
+                    .map((r) => `${r.addr} \u2014 ${r.verdict.label.replace(/^[\u26a0\u25b3\u2713] /u, "")}`)
+                    .join(" \u00b7 ")}
+                  {marketAlerts.length > 3 ? ` \u00b7 +${marketAlerts.length - 3}` : ""} &middot;{" "}
+                  <Link href={`/pools/${pool.id}?tab=houses&view=market`} className="underline">
+                    ver tabela &rarr;
+                  </Link>
                 </p>
               )}
-            </section>
-          </div>
-
-          {/* esperado — da simulação */}
-          <section className="rounded-xl border border-slate-200 bg-white">
-            <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                Esperado — da simulação
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-400">
-                {sim
-                  ? `Simulação "${sim.name}" (cenário ${sim.scenario.name}) — o que foi apresentado aos investidores.`
-                  : "Nenhuma simulação vinculada a este pool."}{" "}
-                {sim && (
-                  <Link href={`/pools/simulator/${sim.id}`} className="text-[#1f3a5f] underline hover:no-underline">
-                    Ver ledger completo →
+              {statusLag && (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                  Casas em Planned com gasto de {fmtCompact(Number(spentOnHouses))} — status
+                  atrasados; atualize pelo stepper na ficha de cada casa.
+                </p>
+              )}
+              <p className="mt-1.5 text-[10.5px] text-slate-400">
+                lucro previsto {formatMoney(houseTotals.plannedProfit, pool.currency)} &middot; descoberto do
+                envelope:{" "}
+                {envelopeShortRows.length === 0 ? (
+                  "nenhum"
+                ) : (
+                  <Link href={`/pools/${pool.id}/loan?stab=houses`} className="text-amber-700 underline">
+                    {envelopeShortRows.length} casa{envelopeShortRows.length === 1 ? "" : "s"} &rarr;
                   </Link>
                 )}
               </p>
-            </div>
-            {sim && simKpis ? (
-              <div className="grid grid-cols-2 gap-3 p-4 lg:grid-cols-4">
-                {(
-                  [
-                    [
-                      "Capital do investidor (pico)",
-                      simKpis.peakCapital != null ? formatMoney(simKpis.peakCapital, pool.currency) : "—",
-                    ],
-                    ["Lucro esperado", simKpis.profit != null ? formatMoney(simKpis.profit, pool.currency) : "—"],
-                    ["TIR esperada (a.a.)", simKpis.irrAnnual != null ? `${(simKpis.irrAnnual * 100).toFixed(1)}%` : "—"],
-                    ["ROI (multiple)", simKpis.equityMultiple != null ? `${simKpis.equityMultiple.toFixed(2)}x` : "—"],
-                  ] as Array<[string, string]>
-                ).map(([label, value]) => (
-                  <div key={label} className="rounded-xl bg-slate-50 p-4">
-                    <div className="text-xs text-slate-400">{label}</div>
-                    <div className="text-xl font-semibold tabular-nums text-slate-900">{value}</div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="p-5 text-sm text-slate-400">
-                Crie a simulação no{" "}
-                <Link href="/pools/simulator" className="text-[#1f3a5f] hover:underline">
-                  Simulator
-                </Link>{" "}
-                e converta em pool para os esperados aparecerem aqui — ou vincule uma simulação
-                existente escolhendo este pool no campo &quot;Link to pool&quot;.
-              </p>
-            )}
-          </section>
-
-          {/* Feed do pool (Fase 0 investor-grade, 18/07): o que aconteceu, dos dados existentes */}
-          {feed.events.length > 0 && (
-            <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                Atividade do pool
-              </h2>
-              <p className="mt-0.5 text-xs text-slate-400">
-                Gerada automaticamente dos lançamentos e datas do pool — a narrativa do report
-                mensal nasce daqui.
-              </p>
-              <div className="mt-3 space-y-0">
-                {feed.events.map((e, i) => (
-                  <div
-                    key={`${e.date.toISOString()}-${i}`}
-                    className="flex items-baseline gap-3 border-l-2 border-slate-100 py-1.5 pl-4"
-                  >
-                    <span className="w-20 shrink-0 text-[11px] tabular-nums text-slate-400">
-                      {`${String(e.date.getUTCMonth() + 1).padStart(2, "0")}/${String(e.date.getUTCDate()).padStart(2, "0")}/${e.date.getUTCFullYear()}`}
-                    </span>
-                    <span className="shrink-0 text-sm">{e.icon}</span>
-                    <span className="text-sm text-slate-700">{e.text}</span>
-                  </div>
-                ))}
-              </div>
-              {feed.total > feed.events.length && (
-                <p className="mt-2 text-[11px] text-slate-400">
-                  mostrando os últimos {feed.events.length} de {feed.total} eventos
-                </p>
-              )}
             </section>
-          )}
-
-          {/* premissas compactas + prazos (projeto e por loan) */}
-          <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                Premissas do pool
-              </h2>
-              <Link
-                href={`/pools/${pool.id}/edit`}
-                className="rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100"
-              >
-                Edit pool
-              </Link>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-x-8 gap-y-4 md:grid-cols-3">
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Início</div>
-                <div className="text-sm font-semibold text-slate-800">{fmtDate(pool.startDate)}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Término previsto / real</div>
-                <div className="text-sm font-semibold text-slate-800">
-                  {fmtDate(pool.plannedEndDate)} /{" "}
-                  {pool.effectiveEndDate ? fmtDate(pool.effectiveEndDate) : <span className="text-amber-700">—</span>}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Prazo do projeto</div>
-                <div className="text-sm font-semibold text-slate-800">
-                  {pool.startDate && pool.plannedEndDate ? (
-                    <>
-                      {spanLabel(pool.startDate, pool.effectiveEndDate ?? pool.plannedEndDate)} ·{" "}
-                      <RemainingDays to={pool.plannedEndDate} done={!!pool.effectiveEndDate} />
-                    </>
-                  ) : (
-                    <span className="text-amber-700">— definir início/término</span>
-                  )}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Forma de pagamento</div>
-                <div className="text-sm font-semibold text-slate-800">{formaPagamento}</div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Aporte esperado</div>
-                <div className="text-sm font-semibold text-slate-800">
-                  {pool.targetAmount ? formatMoney(pool.targetAmount, pool.currency) : "—"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Remuneração 4U</div>
-                <div className="text-sm font-semibold text-slate-800">
-                  {pool.profitSharePct
-                    ? `Performance ${(Number(pool.profitSharePct) * 100).toFixed(0)}% (antes do split)`
-                    : "Contractor fee"}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Unit price</div>
-                <div className="text-sm font-semibold text-slate-800">
-                  {formatMoney(pool.unitPrice, pool.currency)}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] uppercase tracking-wider text-slate-400">Janela de captação até</div>
-                <div className="text-sm font-semibold text-slate-800">
-                  {pool.fundingDeadline ? (
-                    fmtDate(pool.fundingDeadline)
-                  ) : (
-                    <span className="text-amber-700">— definir</span>
-                  )}
-                </div>
-              </div>
-              {loanTerms.map((lt) => (
-                <div key={lt.id}>
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                    Prazo do loan — {lt.bank}
-                  </div>
-                  <div className="text-sm font-semibold text-slate-800">
-                    {lt.closing && lt.term && lt.maturity ? (
-                      <>
-                        {spanLabel(lt.closing, lt.maturity)}
-                        {lt.usesExpected && <span className="font-normal text-slate-400"> (closing prev.)</span>} ·{" "}
-                        <RemainingDays to={lt.maturity} />
-                        {lt.ext > 0 && (
-                          <span className="font-normal text-slate-400"> · +{lt.ext}m ext. possível</span>
-                        )}
-                      </>
-                    ) : (
-                      <span className="text-amber-700">— registrar closing do loan</span>
-                    )}
-                  </div>
-                </div>
-              ))}
-              {pool.loans.map((l) => (
-                <div key={`closing-${l.id}`}>
-                  <div className="text-[10px] uppercase tracking-wider text-slate-400">
-                    Closing do loan — {l.bankProfile?.name ?? "banco a definir"}
-                  </div>
-                  <div className="text-sm font-semibold text-slate-800">
-                    prev. {fmtDate(l.expectedClosingDate)} · real{" "}
-                    {l.closingDate ? fmtDate(l.closingDate) : <span className="text-amber-700">—</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {pool.notes && (
-              <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                <span className="text-slate-400">Notas:</span> {pool.notes}
-              </p>
-            )}
-          </section>
+          </div>
         </div>
       )}
 
-      {/* Casas (mock UX 4/6): filtro por status + busca, contexto na linha, pendencias */}
+      {/* Casas (mock UX 4/6 + layout novo 18/07): toggle Board | Mercado — a tabela
+          lucro × mercado saiu do Overview e virou a segunda visão da aba */}
       {tab === "houses" && (
-        <>
-          <PoolHousesTab poolId={pool.id} rows={houseRows} initialStatus={rawStatus ?? null} />
-          {/* lucro por casa × mercado ATTOM (Fase 1, mock aprovado 18/07) */}
-          <section className="mt-4 rounded-xl border border-slate-200 bg-white">
+        <div className="space-y-4">
+          <div className="flex gap-1.5">
+            {(
+              [
+                ["board", "🏘 Board"],
+                ["market", "📈 Mercado"],
+              ] as const
+            ).map(([key, label]) => (
+              <Link
+                key={key}
+                href={`/pools/${pool.id}?tab=houses${key === "market" ? "&view=market" : ""}`}
+                className={`rounded-full border px-3.5 py-1 text-xs font-semibold transition ${
+                  housesView === key
+                    ? "border-[#1f3a5f] bg-[#1f3a5f] text-white"
+                    : "border-slate-300 text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+          {housesView === "board" && (
+            <PoolHousesTab poolId={pool.id} rows={houseRows} initialStatus={rawStatus ?? null} />
+          )}
+          {housesView === "market" && (
+          <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-3">
               <h2 className="text-base font-medium text-slate-800">Lucro por casa × mercado</h2>
               <p className="text-xs text-slate-400">
@@ -1260,11 +1011,31 @@ export default async function PoolDetailPage({
               </table>
             </div>
           </section>
-        </>
+          )}
+        </div>
       )}
 
-      {/* Investidores (mock UX 2/6): captacao + acoes em painel + cap table visual + calls */}
+      {/* Investidores (mock UX 2/6 + layout novo 18/07): absorve Capital ledger e
+          Distribuições como sub-abas; despesas do pool moram no Ledger */}
       {tab === "investors" && (
+        <div className="space-y-4">
+          <div className="flex gap-1.5">
+            {INVESTOR_SUBS.map(([key, label]) => (
+              <Link
+                key={key}
+                href={`/pools/${pool.id}?tab=investors&sub=${key}`}
+                className={`rounded-full border px-3.5 py-1 text-xs font-semibold transition ${
+                  invSub === key
+                    ? "border-[#1f3a5f] bg-[#1f3a5f] text-white"
+                    : "border-slate-300 text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                {label}
+              </Link>
+            ))}
+          </div>
+
+          {invSub === "members" && (
         <PoolInvestorsTab
           poolId={pool.id}
           poolStatus={pool.status}
@@ -1294,28 +1065,83 @@ export default async function PoolDetailPage({
           ownerOptions={ownerOptions}
           suggestedCallAmount={null}
         />
-      )}
+          )}
 
-      {/* Capital ledger (mock UX 6/6): filtros, acumulado, transfer pareada, CSV */}
-      {tab === "ledger" && (
-        <PoolLedgerTab
-          poolId={pool.id}
-          rows={ledgerRows}
-          members={memberOptions}
-          raised={Number(raised)}
-          totalUnits={Number(table.totalUnits)}
-        />
-      )}
+          {/* Capital ledger (mock UX 6/6): filtros, acumulado, transfer pareada, CSV */}
+          {invSub === "ledger" && (
+            <>
+              <PoolLedgerTab
+                poolId={pool.id}
+                rows={ledgerRows}
+                members={memberOptions}
+                raised={Number(raised)}
+                totalUnits={Number(table.totalUnits)}
+              />
+              {/* Despesas do pool (saíram do Overview no layout novo): pagas × provisionadas */}
+              <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                  Despesas do pool
+                </h2>
+                <p className="mt-0.5 text-xs text-slate-400">
+                  Saem do caixa antes do lucro — provisionadas seguram a devolução aos investidores.
+                </p>
+                {pool.expenses.length > 0 ? (
+                  <div className="mt-2 divide-y divide-slate-50 border-t border-slate-100">
+                    {pool.expenses.map((e) => (
+                      <div key={e.id} className="flex items-center justify-between py-2 text-sm">
+                        <span className="text-slate-500">{fmtDate(e.date)}</span>
+                        <span className="flex-1 px-4 font-medium text-slate-700">{e.description}</span>
+                        <span className="tabular-nums text-slate-800">
+                          {formatMoney(e.amount, pool.currency)}
+                        </span>
+                        <form action={togglePoolExpensePaid} className="ml-3">
+                          <input type="hidden" name="expenseId" value={e.id} />
+                          <button
+                            type="submit"
+                            className={`rounded-full px-2 py-0.5 text-xs ${
+                              e.status === "PAID"
+                                ? "bg-emerald-50 text-emerald-700"
+                                : "bg-amber-50 text-amber-700"
+                            }`}
+                            title="Clique para alternar provisionada/paga"
+                          >
+                            {e.status === "PAID" ? "Paga" : "Provisionada"}
+                          </button>
+                        </form>
+                        <form action={deletePoolExpense} className="ml-2">
+                          <input type="hidden" name="expenseId" value={e.id} />
+                          <button type="submit" className="text-xs text-slate-300 hover:text-red-500">
+                            ✕
+                          </button>
+                        </form>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-400">Nenhuma despesa lançada.</p>
+                )}
+                <details className="mt-3">
+                  <summary className="inline-block cursor-pointer rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                    + Despesa
+                  </summary>
+                  <div className="mt-3">
+                    <AddPoolExpenseForm poolId={pool.id} />
+                  </div>
+                </details>
+              </section>
+            </>
+          )}
 
-
-      {/* Distribuicoes (mock UX 6/6): resumo, preview do rateio, linha expansivel */}
-      {tab === "distributions" && (
-        <PoolDistributionsTab
-          poolId={pool.id}
-          rows={distRows}
-          houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
-          members={distMembers}
-        />
+          {/* Distribuições (mock UX 6/6): resumo, preview do rateio, linha expansível */}
+          {invSub === "distributions" && (
+            <PoolDistributionsTab
+              poolId={pool.id}
+              rows={distRows}
+              houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
+              members={distMembers}
+            />
+          )}
+        </div>
       )}
     </div>
   );
