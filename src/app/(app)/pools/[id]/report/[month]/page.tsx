@@ -4,6 +4,7 @@ import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 import { buildMonthlyReport, type ReportMonthData } from "@/lib/pools/report-month";
+import { loadPreflight } from "@/lib/pools/preflight";
 import { INV_LANG_COOKIE, langFromCookie, mesAnoLang, tOf } from "@/lib/pools/i18n";
 import { LangToggle } from "@/components/lang-toggle";
 import { UnitValueChart } from "@/components/unit-value-chart";
@@ -41,6 +42,9 @@ export default async function MonthlyReportPage({
     : await buildMonthlyReport(id, month, lang);
   if (!data) notFound();
   const cur = data.currency;
+
+  // pre-flight de fechamento (#64) — checklist antes de publicar
+  const preflight = await loadPreflight(id, month, lang);
 
   const fmtD = (isoStr: string | null) => {
     if (!isoStr) return "—";
@@ -149,6 +153,7 @@ export default async function MonthlyReportPage({
             narrativeLabel={t("rp.narrative.label")}
             marketLabel={t("rp.market.label")}
             lang={lang}
+            preflight={preflight}
           />
           <PrintButton label={t("rp.print")} />
           <LangToggle lang={lang} />

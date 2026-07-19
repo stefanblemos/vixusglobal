@@ -98,6 +98,20 @@ export async function publishMonthlyReport(
   const { langFromCookie, INV_LANG_COOKIE } = await import("@/lib/pools/i18n");
   const { cookies } = await import("next/headers");
   const lang = langFromCookie((await cookies()).get(INV_LANG_COOKIE)?.value);
+
+  // pre-flight de fechamento (#64): trava a publicação se há BLOCKER, salvo confirmação
+  // explícita do operador ("publicar mesmo assim")
+  const { loadPreflight } = await import("@/lib/pools/preflight");
+  const preflight = await loadPreflight(poolId, month, lang);
+  const force = formData.get("force") === "on";
+  if (preflight.blockers > 0 && !force)
+    return {
+      error:
+        lang === "pt"
+          ? `${preflight.blockers} pendência(s) bloqueiam a publicação — revise o checklist ou confirme "publicar mesmo assim".`
+          : `${preflight.blockers} blocking issue(s) — review the checklist or confirm "publish anyway".`,
+    };
+
   const data = await buildMonthlyReport(poolId, month, lang);
   if (!data) return { error: "Pool não encontrado. / Pool not found." };
   const narrative = String(formData.get("narrative") ?? "").trim();
