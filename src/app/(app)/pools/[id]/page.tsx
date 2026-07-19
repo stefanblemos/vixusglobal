@@ -125,6 +125,11 @@ export default async function PoolDetailPage({
         take: 1,
         include: { scenario: true, bankProfile: true },
       },
+      // subscrições online (Leva 2): convite → wizard → assinatura → aceite do Manager
+      subscriptions: {
+        orderBy: { createdAt: "desc" },
+        include: { party: { select: { name: true } }, company: { select: { legalName: true } } },
+      },
     },
   });
   if (!pool) notFound();
@@ -136,6 +141,25 @@ export default async function PoolDetailPage({
 
   const table = capTable(pool.members);
   const memberById = new Map(pool.members.map((m) => [m.id, memberName(m)]));
+
+  // subscrições online — origin p/ montar o link do convite (mesmo host da request)
+  const subscribeOrigin = `${hdrs.get("x-forwarded-proto") ?? "http"}://${hdrs.get("host") ?? "localhost:3005"}`;
+  const subscriptionRows = pool.subscriptions.map((s) => {
+    const data = (s.data ?? {}) as { legalName?: string };
+    const who = data.legalName?.trim() || s.party?.name || s.company?.legalName || s.email || "Investidor sem nome";
+    const units = s.units != null ? Number(s.units) : null;
+    return {
+      id: s.id,
+      token: s.token,
+      who,
+      units,
+      commitment: units != null ? units * Number(s.unitPrice) : null,
+      status: s.status,
+      prefilled: s.prefilled,
+      signedAt: s.signedAt ? fmtDate(s.signedAt) : null,
+      createdAt: fmtDate(s.createdAt),
+    };
+  });
   const entries = pool.members
     .flatMap((m) => m.entries.map((e) => ({ ...e, memberId: m.id })))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
@@ -1183,6 +1207,8 @@ export default async function PoolDetailPage({
             id: d.id,
             label: `${d.date} · ${d.kind === "PROFIT" ? "lucro" : "capital"} · ${formatMoney(d.total, pool.currency)}`,
           }))}
+          subscriptions={subscriptionRows}
+          subscribeOrigin={subscribeOrigin}
         />
           )}
 

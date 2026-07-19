@@ -11,6 +11,7 @@ import {
   type OwnerOption,
 } from "@/components/pool-investor-forms";
 import { CreateCapitalCallForm } from "@/components/pool-capital-forms";
+import { PoolSubscriptionsPanel, type SubscriptionRow } from "@/components/pool-subscriptions-panel";
 
 // Aba Investidores (mock UX 2/6 aprovado): captação no topo, UMA ação por vez em painel,
 // cap table com % visual + atalho "+ aporte" por sócio, saída de sócio legível.
@@ -55,6 +56,8 @@ export function PoolInvestorsTab({
   ownerOptions,
   suggestedCallAmount,
   distOptions = [],
+  subscriptions = [],
+  subscribeOrigin = "",
 }: {
   poolId: string;
   poolStatus: string; // fora de FUNDING, entrada de sócio NOVO é travada (aportes seguem)
@@ -70,6 +73,8 @@ export function PoolInvestorsTab({
   suggestedCallAmount: string | null;
   // rolagem direta no aporte (regra da carteira): distribuições do pool p/ vincular
   distOptions?: Array<{ id: string; label: string }>;
+  subscriptions?: SubscriptionRow[];
+  subscribeOrigin?: string;
 }) {
   const [panel, setPanel] = useState<Panel>(null);
   const [presetMemberId, setPresetMemberId] = useState<string | undefined>(undefined);
@@ -192,6 +197,15 @@ export function PoolInvestorsTab({
           </div>
         )}
       </section>
+
+      {/* 2.5 subscrições online — convite + fila de aceite */}
+      <PoolSubscriptionsPanel
+        poolId={poolId}
+        origin={subscribeOrigin}
+        newMemberLocked={newMemberLocked}
+        owners={ownerOptions}
+        rows={subscriptions}
+      />
 
       {/* 3. cap table com % visual */}
       <section className="rounded-xl border border-slate-200 bg-white">

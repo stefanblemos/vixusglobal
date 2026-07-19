@@ -136,6 +136,8 @@ model Party {
   ownedStakes Ownership[] @relation("OwnedParty")
   personalReturns PersonalReturn[]
   poolMemberships PoolMember[] @relation("PoolMemberParty")
+  investorProfile InvestorProfile?
+  subscriptions   PoolSubscription[]
 }
 
 model Company {
@@ -185,6 +187,8 @@ model Company {
   stateTaxFilings StateTaxFiling[]
   poolsAsEntity   InvestmentPool[]   @relation("PoolEntity")
   poolMemberships PoolMember[]       @relation("PoolMemberCompany")
+  investorProfile InvestorProfile?
+  subscriptions   PoolSubscription[]
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o
@@ -843,6 +847,7 @@ model InvestmentPool {
   loans         PoolLoan[] // um pool pode ter N construction loans (bancos diferentes por grupo de casas)
   capitalCalls  PoolCapitalCall[]
   expenses      PoolExpense[]
+  subscriptions PoolSubscription[]
 }
 
 // Uma casa do pool: pro forma (esperado) + premissas do banco + realizado. O nº de casas é
@@ -996,6 +1001,7 @@ model PoolMember {
   entries           PoolContribution[]
   distributionLines PoolDistributionLine[]
   capitalCallLines  PoolCapitalCallLine[]
+  subscriptions     PoolSubscription[]
 
   @@index([poolId])
 }
@@ -1544,6 +1550,58 @@ model PoolLoanEntry {
 
 // PDFs do pool (subscription agreement, cap table, nota, novação, extratos, closing
 // statement) — gerados pela plataforma ou anexados; Bytes no Postgres como CorporateDoc.
+// ── Subscrição online (mock aprovado 19/07/2026) ─────────────
+// Fluxo: convite (token = segredo do link) → wizard público → assinatura click-wrap
+// (nome + IP + hash) → aceite do Manager, que cria o PoolMember, gera o pacote DOCX
+// (Subscription + Joinder) no data room e arquiva o perfil p/ reuso.
+enum PoolSubscriptionStatus {
+  INVITED
+  IN_PROGRESS
+  SIGNED
+  ACCEPTED
+  REJECTED
+}
+
+// Perfil KYC reutilizável por entidade investidora — pré-preenche a próxima subscrição
+// com aviso "revise seus dados" (regra do Stefan, 19/07). Atualizado a cada assinatura.
+model InvestorProfile {
+  id        String   @id @default(cuid())
+  partyId   String?  @unique
+  party     Party?   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  companyId String?  @unique
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  data      Json // respostas do wizard (identidade, credenciamento, UBO, fiscal, origem)
+  updatedAt DateTime @updatedAt
+}
+
+model PoolSubscription {
+  id        String                 @id @default(cuid())
+  poolId    String
+  pool      InvestmentPool         @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  token     String                 @unique @default(cuid())
+  email     String?
+  partyId   String?
+  party     Party?                 @relation(fields: [partyId], references: [id])
+  companyId String?
+  company   Company?               @relation(fields: [companyId], references: [id])
+  units     Decimal?               @db.Decimal(20, 4)
+  unitPrice Decimal                @default(1000) @db.Decimal(20, 2)
+  status    PoolSubscriptionStatus @default(INVITED)
+  data      Json? // respostas do wizard — draft até assinar, congeladas na assinatura
+  prefilled Boolean                @default(false) // partiu de perfil anterior (banner "revise")
+  signName  String?
+  signIp    String?
+  signHash  String? // sha256 do payload assinado (trilha do click-wrap)
+  signedAt  DateTime?
+  memberId  String?
+  member    PoolMember?            @relation(fields: [memberId], references: [id])
+  decidedAt DateTime? // aceite ou rejeição
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  @@index([poolId])
+}
+
 model PoolDocument {
   id     String         @id @default(cuid())
   poolId String

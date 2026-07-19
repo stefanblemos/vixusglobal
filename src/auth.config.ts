@@ -12,6 +12,8 @@ export const authConfig = {
       const { nextUrl } = request;
       const isLoggedIn = !!auth?.user;
       const role = (auth?.user as { role?: string } | undefined)?.role;
+      // Wizard público de subscrição (o token cuid do link é o segredo; mock 19/07).
+      if (nextUrl.pathname.startsWith("/subscribe")) return true;
       const isOnLogin = nextUrl.pathname.startsWith("/login");
       if (isOnLogin) {
         // já logado tentando ver /login → manda para o dashboard
