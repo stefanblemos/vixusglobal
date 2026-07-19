@@ -1561,6 +1561,11 @@ model PoolLoanEntry {
   requestDate     DateTime? @db.Date
   // Draw AGUARDANDO resposta do banco: não entra no saldo nem gera fees até a liberação
   pending         Boolean   @default(false)
+  // Ciclo de vida do DRAW: REQUESTED (pendente) → APPROVED | DENIED | CANCELLED. Negado/
+  // cancelado fica na trilha (amount 0) mas não afeta saldo. Numeração sequencial por loan.
+  drawStatus  String? // REQUESTED | APPROVED | DENIED | CANCELLED (null = legado / não-draw)
+  drawNumber  Int? // Draw #1, #2… por loan (só DRAW)
+  denyReason  String? // motivo quando DENIED/CANCELLED
   memo       String?
   reconciled Boolean           @default(false) // conferido contra o extrato do banco
   createdAt  DateTime          @default(now())

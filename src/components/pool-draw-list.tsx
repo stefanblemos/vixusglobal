@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { editDraw, toggleLoanEntryReconciled, type FormState } from "@/lib/actions/pool-loan";
+import { editDraw, resolveDrawOutcome, toggleLoanEntryReconciled, type FormState } from "@/lib/actions/pool-loan";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20";
@@ -20,12 +20,22 @@ export type DrawRow = {
   houseId: string | null;
   houseAddress: string | null;
   pending: boolean;
+  drawNumber: number | null;
+  drawStatus: "REQUESTED" | "APPROVED" | "DENIED" | "CANCELLED";
+  denyReason: string | null;
   requestedAmount: string | null;
   requestDate: string | null; // yyyy-mm-dd
   amount: string; // liberado (0 se pendente)
   date: string; // data do crédito (ou da solicitação, se pendente)
   reconciled: boolean;
   memo: string | null;
+};
+
+const STATUS_BADGE: Record<DrawRow["drawStatus"], { label: string; cls: string }> = {
+  REQUESTED: { label: "Solicitado", cls: "bg-blue-50 text-blue-700" },
+  APPROVED: { label: "Aprovado", cls: "bg-emerald-50 text-emerald-700" },
+  DENIED: { label: "Negado", cls: "bg-red-50 text-red-600" },
+  CANCELLED: { label: "Cancelado", cls: "bg-slate-100 text-slate-500" },
 };
 
 const usDate = (iso: string | null) =>
@@ -122,6 +132,29 @@ function EditDrawForm({
   );
 }
 
+// Negar/cancelar um draw pendente — abre um mini-form com o motivo.
+function DenyDrawButton({ entryId, drawNumber }: { entryId: string; drawNumber: number | null }) {
+  const [open, setOpen] = useState(false);
+  if (!open)
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="text-red-500 hover:text-red-700">
+        negar
+      </button>
+    );
+  return (
+    <form action={resolveDrawOutcome} className="inline-flex flex-wrap items-center gap-1 align-middle">
+      <input type="hidden" name="entryId" value={entryId} />
+      <select name="outcome" className="rounded border border-slate-300 px-1 py-0.5 text-[11px]">
+        <option value="DENIED">Negado pelo banco</option>
+        <option value="CANCELLED">Cancelado por nós</option>
+      </select>
+      <input name="reason" placeholder={`motivo do Draw #${drawNumber ?? ""}`} className="w-32 rounded border border-slate-300 px-1 py-0.5 text-[11px]" />
+      <button type="submit" className="rounded bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white">ok</button>
+      <button type="button" onClick={() => setOpen(false)} className="text-[11px] text-slate-400">cancelar</button>
+    </form>
+  );
+}
+
 export function DrawList({
   draws,
   housesByPool,
@@ -137,6 +170,7 @@ export function DrawList({
         <thead>
           <tr className="border-b border-slate-100">
             <th className={th}>Pool</th>
+            <th className={th}>Draw</th>
             <th className={th}>Casa</th>
             <th className={th}>Status</th>
             <th className={th}>Solicitado em</th>
@@ -151,7 +185,7 @@ export function DrawList({
         <tbody>
           {draws.length === 0 && (
             <tr>
-              <td colSpan={10} className="px-5 py-6 text-center text-sm text-slate-400">
+              <td colSpan={11} className="px-5 py-6 text-center text-sm text-slate-400">
                 Nenhum draw lançado ainda.
               </td>
             </tr>
@@ -162,7 +196,7 @@ export function DrawList({
                 ? Number(d.amount) - Number(d.requestedAmount)
                 : null;
             return (
-              <DrawRowGroup key={d.id} colSpan={10} open={openId === d.id}>
+              <DrawRowGroup key={d.id} colSpan={11} open={openId === d.id}>
                 <tr
                   className={`cursor-pointer border-b border-slate-50 ${
                     d.pending ? "bg-blue-50/40" : d.reconciled ? "" : "bg-amber-50/30"
@@ -178,17 +212,13 @@ export function DrawList({
                       {d.poolCode}
                     </Link>
                   </td>
+                  <td className={`${td} font-semibold text-slate-700`}>{d.drawNumber != null ? `#${d.drawNumber}` : "—"}</td>
                   <td className={`${td} text-slate-500`}>{d.houseAddress ?? "—"}</td>
                   <td className={td}>
-                    {d.pending ? (
-                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
-                        Aguardando banco
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
-                        Creditado
-                      </span>
-                    )}
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[d.drawStatus].cls}`}>
+                      {STATUS_BADGE[d.drawStatus].label}
+                    </span>
+                    {d.denyReason && <div className="mt-0.5 text-[10px] text-slate-400">{d.denyReason}</div>}
                   </td>
                   <td className={td}>{usDate(d.requestDate)}</td>
                   <td className={tdRight}>{d.requestedAmount != null ? money(d.requestedAmount) : "—"}</td>
@@ -211,13 +241,16 @@ export function DrawList({
                       </form>
                     )}
                   </td>
-                  <td className={`${tdRight} text-xs text-[#1f3a5f]`}>
-                    {openId === d.id ? "fechar" : d.pending ? "registrar liberação" : "editar"}
+                  <td className={`${tdRight} text-xs`} onClick={(e) => e.stopPropagation()}>
+                    {d.pending && <DenyDrawButton entryId={d.id} drawNumber={d.drawNumber} />}
+                    <button type="button" onClick={() => setOpenId(openId === d.id ? null : d.id)} className="ml-2 text-[#1f3a5f]">
+                      {openId === d.id ? "fechar" : d.pending ? "registrar liberação" : "editar"}
+                    </button>
                   </td>
                 </tr>
                 {openId === d.id && (
                   <tr>
-                    <td colSpan={10} className="px-3 pb-3">
+                    <td colSpan={11} className="px-3 pb-3">
                       <EditDrawForm
                         draw={d}
                         houses={housesByPool[d.poolId] ?? []}

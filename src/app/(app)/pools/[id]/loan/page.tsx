@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { effectiveDrawStatus } from "@/lib/pools/draws";
 import { formatMoney } from "@/lib/money";
 import { buildStatement, ENTRY_TYPE_LABEL } from "@/lib/pools/loan-statement";
 import {
@@ -455,6 +456,9 @@ export default async function PoolLoanPage({
       houseId: d.houseId,
       houseAddress: d.house?.address ?? null,
       pending: d.pending,
+      drawNumber: d.drawNumber,
+      drawStatus: effectiveDrawStatus(d),
+      denyReason: d.denyReason,
       requestedAmount: d.requestedAmount?.toString() ?? null,
       requestDate: d.requestDate ? fmtDate(d.requestDate) : null,
       amount: d.amount.toString(),

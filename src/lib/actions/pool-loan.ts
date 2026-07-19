@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { Prisma, type PoolLoanEntryType } from "@prisma/client";
+import { nextDrawNumber } from "@/lib/pools/draws";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
 
@@ -507,6 +508,7 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
   if (!loan) return { error: "Loan not found." };
   const memo = String(formData.get("memo") ?? "").trim() || null;
 
+  const drawNumber = await nextDrawNumber(loan.id);
   if (released == null) {
     // SOLICITAÇÃO pendente: não afeta o saldo; sem fees até a liberação
     await prisma.poolLoanEntry.create({
@@ -515,6 +517,8 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
         houseId,
         type: "DRAW",
         pending: true,
+        drawStatus: "REQUESTED",
+        drawNumber,
         date: new Date(requestDateRaw),
         amount: 0,
         requestedAmount: Math.abs(requested!),
@@ -531,6 +535,8 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
           loanId: loan.id,
           houseId,
           type: "DRAW",
+          drawStatus: "APPROVED",
+          drawNumber,
           date: creditDate,
           amount: Math.abs(released),
           requestedAmount: requested,
@@ -596,7 +602,7 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
         requestedAmount: requested,
         requestDate: requestDateRaw ? new Date(requestDateRaw) : entry.requestDate,
         ...(released != null
-          ? { amount: Math.abs(released), date: creditDate, pending: false }
+          ? { amount: Math.abs(released), date: creditDate, pending: false, drawStatus: "APPROVED" }
           : {}),
         memo,
       },
@@ -618,6 +624,34 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
   revalidatePath(`/pools/${entry.loan.poolId}/loan`);
   revalidatePath("/pools/draws");
   return { ok: true };
+}
+
+// Nega ou cancela um draw solicitado. Fica na trilha (amount 0, não entra no saldo),
+// com o motivo. DENIED = banco recusou; CANCELLED = nós desistimos.
+export async function resolveDrawOutcome(formData: FormData): Promise<void> {
+  const entryId = String(formData.get("entryId") ?? "");
+  const outcome = String(formData.get("outcome") ?? "DENIED") === "CANCELLED" ? "CANCELLED" : "DENIED";
+  const reason = String(formData.get("reason") ?? "").trim() || null;
+  if (!entryId) return;
+  const entry = await prisma.poolLoanEntry.findUnique({
+    where: { id: entryId },
+    include: { loan: { select: { poolId: true } } },
+  });
+  if (!entry || entry.type !== "DRAW" || !entry.pending) return; // só draws pendentes
+  await prisma.poolLoanEntry.update({
+    where: { id: entryId },
+    data: { pending: false, amount: 0, drawStatus: outcome, denyReason: reason },
+  });
+  const { logInvestmentAudit } = await import("@/lib/audit");
+  await logInvestmentAudit({
+    poolId: entry.loan.poolId,
+    entity: "HOUSE",
+    entityId: entry.houseId,
+    action: "UPDATE",
+    summary: `Draw #${entry.drawNumber ?? "?"} ${outcome === "DENIED" ? "negado pelo banco" : "cancelado"}${reason ? ` — ${reason}` : ""}`,
+  });
+  revalidatePath(`/pools/${entry.loan.poolId}/loan`);
+  revalidatePath("/pools/draws");
 }
 
 // Lança o juro REAL do mês (aba Juros do loan): cria INTEREST e, se "pago da reserve",
