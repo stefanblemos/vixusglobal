@@ -912,6 +912,10 @@ model PoolHouse {
   // Anunciada no mercado (16/07): abre a fase Venda no gantt (listed → closing)
   listedDate DateTime? @db.Date
 
+  // Marcos de construção (#73): { "<catalogKey>": "AAAA-MM-DD" } das fases concluídas.
+  // % de obra = soma dos pesos das fases marcadas (fonte quando existir; senão draws).
+  milestones Json?
+
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1140,6 +1144,19 @@ model CatalogWaterfallTier {
   promotePct Decimal  @db.Decimal(6, 2) // % da faixa para a VIXUS
   sortOrder  Int      @default(0)
   updatedAt  DateTime @updatedAt
+}
+
+// Marcos de construção (#73) — fases ponderadas globais, editáveis no Catalog. Marcar as
+// fases concluídas de uma casa soma os pesos → % de obra → base do draw esperado.
+// Os pesos DEVEM somar 100 (validado na app). PoolHouse.milestones guarda { key: dataISO }.
+model CatalogBuildMilestone {
+  id        String   @id @default(cuid())
+  key       String   @unique // "site", "found", "block"… — estável, referenciado por casa
+  name      String
+  detail    String? // subtítulo ("rough-in", "slab"…)
+  weightPct Decimal  @db.Decimal(6, 2) // peso da fase (somam 100)
+  sortOrder Int      @default(0)
+  updatedAt DateTime @updatedAt
 }
 
 // Custos estimados do VEÍCULO (LLC da Vixus): abertura, encerramento, contador anual etc.

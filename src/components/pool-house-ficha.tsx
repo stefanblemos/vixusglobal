@@ -108,6 +108,7 @@ export function PoolHouseFicha({
   coCount,
   changeOrders,
   dangerZone,
+  milestones,
 }: {
   values: FichaValues;
   catalog: FichaCatalog;
@@ -120,6 +121,7 @@ export function PoolHouseFicha({
   // server-rendered, com forms próprias — ficam FORA do <form> principal (abas via CSS)
   changeOrders?: React.ReactNode;
   dangerZone?: React.ReactNode;
+  milestones?: React.ReactNode;
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     updateHouse.bind(null, values.id),
@@ -399,6 +401,9 @@ export function PoolHouseFicha({
           />
           <Kpi label="Change orders" value={(coTotal >= 0 ? "+" : "−") + fmt(Math.abs(coTotal))} sub={`${coCount} lançados`} />
         </section>
+
+        {/* marcos de construção (#73) — sempre visível, entre os KPIs e as sub-abas */}
+        {milestones}
 
         {/* sub-abas (aprovado 16/07): zero rolagem — o miolo troca, cabeçalho e KPIs ficam */}
         <div className="flex gap-1 border-b-2 border-slate-200">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { saveHouseTypeFee } from "@/lib/actions/catalog";
 import { CatalogVehicle } from "@/components/catalog-vehicle";
+import { CatalogMilestones } from "@/components/catalog-milestones";
 import { CatalogScenarios } from "@/components/catalog-scenarios";
 import { CatalogBanks } from "@/components/catalog-banks";
 import { BankLoiUpload } from "@/components/bank-loi-upload";
@@ -24,6 +25,7 @@ const TABS = [
   ["banks", "Bank profiles"],
   ["scenarios", "Scenarios"],
   ["vehicle", "Veículo & waterfall"],
+  ["milestones", "Marcos de obra"],
 ] as const;
 
 function Section({
@@ -54,7 +56,7 @@ export default async function PoolCatalogPage({
   const { tab: rawTab } = await searchParams;
   const tab = TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "locations";
 
-  const [locations, models, fees, banks, scenarios, changeLog, lois, waterfallTiers, vehicleCosts] = await Promise.all([
+  const [locations, models, fees, banks, scenarios, changeLog, lois, waterfallTiers, vehicleCosts, buildMilestones] = await Promise.all([
     prisma.catalogLocation.findMany({
       orderBy: { name: "asc" },
       include: { models: { include: { model: true }, orderBy: { model: { name: "asc" } } } },
@@ -89,6 +91,7 @@ export default async function PoolCatalogPage({
     }),
     prisma.catalogWaterfallTier.findMany({ orderBy: { sortOrder: "asc" } }),
     prisma.catalogVehicleCost.findMany({ orderBy: { sortOrder: "asc" } }),
+    prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" } }),
   ]);
   const feeByType = new Map(fees.map((f) => [f.type as string, f.fee.toString()]));
   const history = (entity: string): HistoryEntry[] =>
@@ -303,6 +306,22 @@ export default async function PoolCatalogPage({
             timing: c.timing,
           }))}
         />
+      )}
+
+      {tab === "milestones" && (
+        <Section
+          title="Marcos de construção"
+          hint="Fases da obra com peso (somam 100%). Marcar as fases concluídas de cada casa dá o % de obra e a base do draw. Vale para todas as casas."
+        >
+          <CatalogMilestones
+            initial={buildMilestones.map((m) => ({
+              key: m.key,
+              name: m.name,
+              detail: m.detail ?? "",
+              weightPct: Number(m.weightPct),
+            }))}
+          />
+        </Section>
       )}
 
       {tab === "scenarios" && (

@@ -4,6 +4,8 @@ import { formatMoney, sum } from "@/lib/money";
 import { PoolHouseFicha } from "@/components/pool-house-ficha";
 import { AddChangeOrderForm } from "@/components/pool-capital-forms";
 import { deleteChangeOrder, deleteHouse } from "@/lib/actions/pools";
+import { HouseMilestonesPanel } from "@/components/house-milestones-panel";
+import { estimatedDrawable, milestonePct, milestoneRows, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,19 @@ export default async function PoolHousePage({
   const drawsTotal = sum(house.loanEntries.map((e) => e.amount));
   const coTotal = sum(house.changeOrders.map((c) => c.amount));
   const cur = house.pool.currency;
+
+  // marcos de construção (#73): catálogo + % + draw estimado
+  const milestoneCatalog: MilestoneCatalog[] = (
+    await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" } })
+  ).map((r) => ({ key: r.key, name: r.name, detail: r.detail, weightPct: Number(r.weightPct), sortOrder: r.sortOrder }));
+  const doneMilestones = house.milestones as HouseMilestones | null;
+  const mPct = milestonePct(milestoneCatalog, doneMilestones);
+  const loanAmount = house.bankLoanAmount != null ? Number(house.bankLoanAmount) : 0;
+  const alreadyDrawn = house.loanEntries.reduce(
+    (s, e) => s + (e.pending ? Number(e.requestedAmount ?? 0) : Number(e.amount)),
+    0,
+  );
+  const drawEst = estimatedDrawable({ pct: mPct, loanAmount, alreadyDrawn });
 
   return (
     <div className="max-w-4xl">
@@ -94,6 +109,18 @@ export default async function PoolHousePage({
           listedDate: d(house.listedDate),
           notes: house.notes ?? "",
         }}
+        milestones={
+          <HouseMilestonesPanel
+            houseId={house.id}
+            rows={milestoneRows(milestoneCatalog, doneMilestones)}
+            pct={mPct ?? 0}
+            loanAmount={loanAmount}
+            hasLoan={!!house.loanId}
+            expectedCumulative={drawEst.expectedCumulative}
+            toRequest={drawEst.toRequest}
+            alreadyDrawn={alreadyDrawn}
+          />
+        }
         changeOrders={
           <section className="mt-4 rounded-xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">

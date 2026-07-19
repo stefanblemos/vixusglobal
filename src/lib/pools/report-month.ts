@@ -15,6 +15,7 @@ import { buildRisk } from "./risk";
 import { computeEndNet } from "./investor-value";
 import { buildActivityFeed } from "./activity-feed";
 import { ncStatsForLocation } from "./benchmark";
+import { milestonePctAsOf, type HouseMilestones, type MilestoneCatalog } from "./milestones";
 import type { Lang } from "./i18n";
 
 const n = (v: unknown) => (v == null ? 0 : Number(v));
@@ -126,7 +127,7 @@ type PoolView = {
 } & Loose;
 
 // métricas centrais num corte (usada p/ o mês e p/ o Δ do mês anterior)
-function metricsAt(poolRaw: any, asOf: Date) {
+function metricsAt(poolRaw: any, asOf: Date, mCatalog: MilestoneCatalog[] = []) {
   const pool = poolAt(poolRaw, asOf) as PoolView;
   const raised = pool.members
     .flatMap((m) => m.entries)
@@ -172,7 +173,11 @@ function metricsAt(poolRaw: any, asOf: Date) {
       ownCapital: n(hh.ownCapital),
       bankDrawn: drawn,
       expectedProfit,
-      buildPct: hh.coDate ? 100 : drawable && drawable > 0 ? Math.min(100, (drawn / drawable) * 100) : 0,
+      buildPct:
+        hh.coDate != null
+          ? 100
+          : (milestonePctAsOf(mCatalog, hh.milestones as HouseMilestones | null, asOf) ??
+            (drawable && drawable > 0 ? Math.min(100, (drawn / drawable) * 100) : 0)),
       sold: hh.saleDate != null,
       baselineSale: baselineSaleByHouse.get(hh.id as string) ?? null,
     };
@@ -316,8 +321,11 @@ export async function buildMonthlyReport(
   const now = new Date();
   const asOf = monthEnd.getTime() < now.getTime() ? monthEnd : now;
 
-  const cur = metricsAt(poolRaw, asOf);
-  const prev = metricsAt(poolRaw, new Date(Date.UTC(y, m - 1, 0, 23, 59, 59)));
+  const mCatalog: MilestoneCatalog[] = (
+    await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" } })
+  ).map((r) => ({ key: r.key, name: r.name, detail: r.detail, weightPct: Number(r.weightPct), sortOrder: r.sortOrder }));
+  const cur = metricsAt(poolRaw, asOf, mCatalog);
+  const prev = metricsAt(poolRaw, new Date(Date.UTC(y, m - 1, 0, 23, 59, 59)), mCatalog);
 
   // eventos do mês (feed da Fase 0 na visão as-of)
   const houseAddrById = new Map(cur.pool.houses.map((h) => [(h as { id: string }).id, (h as { address: string }).address]));

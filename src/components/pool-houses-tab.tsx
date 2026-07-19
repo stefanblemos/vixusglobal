@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import Link from "next/link";
 import { AddHouseForm } from "@/components/pool-house-form";
+import { requestBatchDraw } from "@/lib/actions/milestones";
 
 // Aba Casas (mock UX 4/6 aprovado): filtro por status + busca, contexto (modelo · local ·
 // banco) na linha, capital próprio com % do previsto, pendências por casa, + Casa colapsado.
@@ -45,6 +46,30 @@ const STATUS_STYLE: Record<string, string> = {
   UNDER_CONTRACT: "bg-blue-50 text-blue-700",
   SOLD: "bg-emerald-50 text-emerald-700",
 };
+
+// Draw em lote (#73): requisita o draw estimado de todas as casas com % de obra acima do já
+// sacado, uma submissão só ("pool de draw"). Cria draws pendentes por casa no loan.
+function BatchDrawButton({ poolId }: { poolId: string }) {
+  const [state, action, pending] = useActionState<{ error?: string; ok?: boolean } | undefined, FormData>(
+    requestBatchDraw,
+    undefined,
+  );
+  return (
+    <form action={action} className="flex items-center gap-2">
+      <input type="hidden" name="poolId" value={poolId} />
+      <button
+        type="submit"
+        disabled={pending}
+        title="Requisita o draw estimado de todas as casas com obra à frente do sacado"
+        className="rounded-lg border border-[#1f3a5f] bg-white px-3.5 py-1.5 text-xs font-semibold text-[#1f3a5f] hover:bg-blue-50 disabled:opacity-50"
+      >
+        {pending ? "Requisitando…" : "📤 Draw em lote"}
+      </button>
+      {state?.error && <span className="text-[11px] text-red-600">{state.error}</span>}
+      {state?.ok && <span className="text-[11px] text-emerald-700">✓ requisitado</span>}
+    </form>
+  );
+}
 
 export function PoolHousesTab({
   poolId,
@@ -118,17 +143,20 @@ export function PoolHousesTab({
               amortiza o pool). Lucro (custo) = venda − closing − custos reais da casa.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setAdding((v) => !v)}
-            className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition ${
-              adding
-                ? "border-[#1f3a5f] bg-blue-50 text-[#1f3a5f]"
-                : "border-slate-300 text-slate-600 hover:bg-slate-50"
-            }`}
-          >
-            + Casa
-          </button>
+          <div className="flex items-center gap-2">
+            <BatchDrawButton poolId={poolId} />
+            <button
+              type="button"
+              onClick={() => setAdding((v) => !v)}
+              className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition ${
+                adding
+                  ? "border-[#1f3a5f] bg-blue-50 text-[#1f3a5f]"
+                  : "border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              + Casa
+            </button>
+          </div>
         </div>
         {adding && (
           <div className="mt-3 rounded-lg border border-blue-100 bg-slate-50 p-4">

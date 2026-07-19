@@ -15,6 +15,7 @@ import { PoolTabsNav } from "@/components/pool-tabs";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
 import { computeNav, liveIrr, type NavHouse } from "@/lib/pools/nav";
+import { milestonePct, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
 import { buildRisk, mesAno } from "@/lib/pools/risk";
 import { ncStatsForLocation } from "@/lib/pools/benchmark";
 import { INV_LANG_COOKIE, langFromCookie, tOf } from "@/lib/pools/i18n";
@@ -141,6 +142,12 @@ export default async function PoolDetailPage({
 
   const table = capTable(pool.members);
   const memberById = new Map(pool.members.map((m) => [m.id, memberName(m)]));
+
+  // marcos de construção (#73): % de obra vem dos marcos quando existirem (senão draws)
+  const mCatalog: MilestoneCatalog[] = (
+    await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" } })
+  ).map((r) => ({ key: r.key, name: r.name, detail: r.detail, weightPct: Number(r.weightPct), sortOrder: r.sortOrder }));
+  const mPctOf = (m: unknown) => milestonePct(mCatalog, m as HouseMilestones | null);
 
   // subscrições online — origin p/ montar o link do convite (mesmo host da request)
   const subscribeOrigin = `${hdrs.get("x-forwarded-proto") ?? "http"}://${hdrs.get("host") ?? "localhost:3005"}`;
@@ -347,7 +354,8 @@ export default async function PoolDetailPage({
       Number(h.plannedLotCost ?? 0) + Number(h.plannedBuildCost ?? 0) + Number(h.plannedClosingCost ?? 0);
     const expectedProfit = h.plannedSalePrice != null && cost > 0 ? Number(h.plannedSalePrice) - cost : null;
     const drawable = h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null;
-    const buildPct = h.coDate ? 100 : drawable && drawable > 0 ? Math.min(100, (drawn / drawable) * 100) : 0;
+    const mp = mPctOf(h.milestones);
+    const buildPct = h.coDate ? 100 : mp != null ? mp : drawable && drawable > 0 ? Math.min(100, (drawn / drawable) * 100) : 0;
     return {
       ownCapital: Number(h.ownCapital ?? 0),
       bankDrawn: drawn,
@@ -543,13 +551,14 @@ export default async function PoolDetailPage({
       id: h.id,
       address: h.address,
       status: h.status as string,
-      // % de obra pelos draws (pedido A): CO = 100%; sem loan = sem régua
+      // % de obra: marcos quando existirem (#73); senão draws (pedido A); CO = 100%
       buildPct:
         h.coDate != null
           ? 100
-          : h.bankLoanAmount != null && Number(h.bankLoanAmount) > 0
-            ? Math.min(100, Math.round((drawsCredited / Number(h.bankLoanAmount)) * 100))
-            : null,
+          : mPctOf(h.milestones) ??
+            (h.bankLoanAmount != null && Number(h.bankLoanAmount) > 0
+              ? Math.min(100, Math.round((drawsCredited / Number(h.bankLoanAmount)) * 100))
+              : null),
       model: h.catalogModel?.name ?? null,
       location: h.catalogLocation?.name ?? null,
       bank: h.loan?.bankProfile?.name ?? h.bankName ?? null,
