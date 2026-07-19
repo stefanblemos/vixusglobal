@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import { D } from "@/lib/money";
-import { capTable, position } from "@/lib/pools/math";
+import { capTable, memberName, position } from "@/lib/pools/math";
+import { logInvestmentAudit } from "@/lib/audit";
 import {
   contributionSchema,
   distributionSchema,
@@ -17,6 +18,16 @@ import {
 import type { PoolHouseStatus, PoolStatus } from "@prisma/client";
 
 export type FormState = { error?: string; ok?: number } | undefined;
+
+// nome legível do sócio (party OU company) para os resumos de auditoria
+async function auditMemberName(memberId: string): Promise<string> {
+  const m = await prisma.poolMember.findUnique({
+    where: { id: memberId },
+    include: { party: true, company: true },
+  });
+  return m ? memberName(m) : memberId;
+}
+const auditMoney = (v: unknown) => "$" + Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
 // ── Pool ─────────────────────────────────────────────────────
 // Status do pool é DERIVADO dos fatos (16/07) — o stepper virou indicador; a derivação
@@ -184,12 +195,19 @@ export async function addMember(
   });
   if (dup) return { error: "This investor is already a member of the pool." };
 
-  await prisma.poolMember.create({
+  const created = await prisma.poolMember.create({
     data: {
       poolId,
       role,
       ...(kind === "party" ? { partyId: id } : { companyId: id }),
     },
+  });
+  await logInvestmentAudit({
+    poolId,
+    entity: "MEMBER",
+    entityId: created.id,
+    action: "CREATE",
+    summary: `Novo sócio (${role === "MANAGER" ? "Manager" : "Investidor"}): ${await auditMemberName(created.id)}`,
   });
   revalidatePath(`/pools/${poolId}`);
   return undefined;
@@ -200,7 +218,15 @@ export async function deleteMember(formData: FormData): Promise<void> {
   if (!id) return;
   const entries = await prisma.poolContribution.count({ where: { memberId: id } });
   if (entries > 0) return; // com lançamentos não apaga — trilha de auditoria
+  const name = await auditMemberName(id);
   const member = await prisma.poolMember.delete({ where: { id } });
+  await logInvestmentAudit({
+    poolId: member.poolId,
+    entity: "MEMBER",
+    entityId: id,
+    action: "DELETE",
+    summary: `Removeu sócio: ${name}`,
+  });
   revalidatePath(`/pools/${member.poolId}`);
 }
 
@@ -229,7 +255,7 @@ export async function addContribution(
     return { error: "Escolha a distribuição reusada." };
 
   const units = D(d.amount).div(pool.unitPrice);
-  await prisma.poolContribution.create({
+  const entry = await prisma.poolContribution.create({
     data: {
       memberId: d.memberId,
       kind: "CONTRIBUTION",
@@ -240,6 +266,13 @@ export async function addContribution(
       rolloverOfDistributionId,
       newMoneyOverride: classification === "NEW",
     },
+  });
+  await logInvestmentAudit({
+    poolId,
+    entity: "CONTRIBUTION",
+    entityId: entry.id,
+    action: "CREATE",
+    summary: `Aporte de ${auditMoney(d.amount)} · ${await auditMemberName(d.memberId)}${classification !== "AUTO" ? ` (${classification === "NEW" ? "dinheiro novo" : "rollover"})` : ""}`,
   });
   revalidatePath(`/pools/${poolId}`);
   return undefined;
@@ -294,6 +327,12 @@ export async function transferUnits(
       },
     }),
   ]);
+  await logInvestmentAudit({
+    poolId,
+    entity: "TRANSFER",
+    action: "CREATE",
+    summary: `Transferência de ${auditMoney(d.amount)} · ${await auditMemberName(d.fromMemberId)} → ${await auditMemberName(d.toMemberId)}`,
+  });
   revalidatePath(`/pools/${poolId}`);
   return undefined;
 }
@@ -310,6 +349,13 @@ export async function deleteContribution(formData: FormData): Promise<void> {
   } else {
     await prisma.poolContribution.delete({ where: { id } });
   }
+  await logInvestmentAudit({
+    poolId: poolId || entry.memberId,
+    entity: entry.transferGroupId ? "TRANSFER" : "CONTRIBUTION",
+    entityId: id,
+    action: "DELETE",
+    summary: `Removeu ${entry.transferGroupId ? "transferência" : "aporte"} de ${auditMoney(entry.amount)} · ${await auditMemberName(entry.memberId)}`,
+  });
   if (poolId) revalidatePath(`/pools/${poolId}`);
 }
 
@@ -432,6 +478,13 @@ export async function createCapitalCall(
       lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
     },
   });
+  await logInvestmentAudit({
+    poolId,
+    entity: "CAPITAL_CALL",
+    entityId: call.id,
+    action: "CREATE",
+    summary: `Capital call de ${auditMoney(total)} · ${reason} · ${lines.length} sócio(s)`,
+  });
   revalidatePath(`/pools/${poolId}`);
   redirect(`/pools/${poolId}/calls/${call.id}`);
 }
@@ -478,6 +531,13 @@ export async function registerCallPayment(formData: FormData): Promise<void> {
       data: { paid: true, contributionId: contribution.id },
     });
   });
+  await logInvestmentAudit({
+    poolId: line.call.poolId,
+    entity: "CAPITAL_CALL",
+    entityId: line.callId,
+    action: "PAYMENT",
+    summary: `Recebeu ${auditMoney(line.amount)} de capital call · ${await auditMemberName(line.memberId)}`,
+  });
   revalidatePath(`/pools/${line.call.poolId}`);
   revalidatePath(`/pools/${line.call.poolId}/calls/${line.callId}`);
 }
@@ -515,7 +575,7 @@ export async function addDistribution(
     biggest.amount = biggest.amount.add(residue);
   }
 
-  await prisma.poolDistribution.create({
+  const dist = await prisma.poolDistribution.create({
     data: {
       poolId,
       kind: d.kind,
@@ -525,6 +585,13 @@ export async function addDistribution(
       memo: d.memo,
       lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
     },
+  });
+  await logInvestmentAudit({
+    poolId,
+    entity: "DISTRIBUTION",
+    entityId: dist.id,
+    action: "CREATE",
+    summary: `Distribuição de ${auditMoney(d.totalAmount)} (${d.kind === "PROFIT" ? "lucro" : "capital"}) · ${lines.length} sócio(s)`,
   });
   // distribuição é gatilho de CLOSED (lucro distribuído + caixa devolvido)
   {
@@ -539,6 +606,13 @@ export async function deleteDistribution(formData: FormData): Promise<void> {
   const id = String(formData.get("distributionId") ?? "");
   if (!id) return;
   const dist = await prisma.poolDistribution.delete({ where: { id } });
+  await logInvestmentAudit({
+    poolId: dist.poolId,
+    entity: "DISTRIBUTION",
+    entityId: id,
+    action: "DELETE",
+    summary: `Removeu distribuição de ${auditMoney(dist.totalAmount)}`,
+  });
   const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
   await recomputePoolStatuses(dist.poolId);
   revalidatePath(`/pools/${dist.poolId}`);

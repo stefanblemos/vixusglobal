@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { logInvestmentAudit } from "@/lib/audit";
 
 // Data room do pool (Fase 3, 18/07): upload por categoria + visibilidade Interno|Portal.
 // Docs dos loans são agregados read-only — aqui só o toggle de visibilidade deles.
@@ -132,6 +133,13 @@ export async function publishMonthlyReport(
   };
   if (existing) await prisma.poolDocument.update({ where: { id: existing.id }, data: doc });
   else await prisma.poolDocument.create({ data: { poolId, ...doc } });
+  await logInvestmentAudit({
+    poolId,
+    entity: "REPORT",
+    entityId: month,
+    action: "PUBLISH",
+    summary: `${existing ? "Republicou" : "Publicou"} report mensal ${month}${preflight.blockers > 0 ? ` (com ${preflight.blockers} pendência forçada)` : ""}`,
+  });
   revalidatePath(`/pools/${poolId}`);
   revalidatePath(`/pools/${poolId}/report/${month}`);
   return { ok: true };

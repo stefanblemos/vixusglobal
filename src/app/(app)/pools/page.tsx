@@ -39,6 +39,12 @@ export default async function PoolsPage() {
         </div>
         <div className="flex gap-2">
           <Link
+            href="/pools/audit"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
+          >
+            Audit log
+          </Link>
+          <Link
             href="/pools/catalog"
             className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100"
           >

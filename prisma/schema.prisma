@@ -1602,6 +1602,25 @@ model PoolSubscription {
   @@index([poolId])
 }
 
+// Audit log do módulo Investments (#65, Leva 1) — trilha de QUEM alterou o quê nas
+// ações sensíveis (aporte, distribuição, transferência, sócio, capital call, subscrição,
+// publicação de report, edição de casa). Diferente do Feed (Fase 0, voltado ao investidor):
+// este é admin-facing e registra o ator + resumo legível. Espelha CatalogChangeLog.
+model InvestmentAudit {
+  id        String   @id @default(cuid())
+  poolId    String? // null = ação cross-pool
+  entity    String // MEMBER | CONTRIBUTION | TRANSFER | DISTRIBUTION | CAPITAL_CALL | SUBSCRIPTION | REPORT | HOUSE | POOL
+  entityId  String?
+  action    String // CREATE | UPDATE | DELETE | PUBLISH | ACCEPT | REJECT | PAYMENT
+  summary   String // linha legível ("Aporte de $50.000 · Kerax America LLC")
+  changedBy String // e-mail do usuário logado
+  meta      Json? // detalhes opcionais
+  createdAt DateTime @default(now())
+
+  @@index([poolId])
+  @@index([createdAt])
+}
+
 model PoolDocument {
   id     String         @id @default(cuid())
   poolId String

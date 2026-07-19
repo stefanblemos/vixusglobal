@@ -9,6 +9,7 @@ import { headers } from "next/headers";
 import { prisma } from "@/lib/db";
 import { buildJoinderDocx, buildSubscriptionDocx, type SubscriptionDocInput } from "@/lib/subscription/package-docx";
 import { MANAGER_NAME, missingForSignature, POOL_COUNTY, type WizardData } from "@/lib/subscription/types";
+import { logInvestmentAudit } from "@/lib/audit";
 import type { Jurisdiction, PartyKind } from "@prisma/client";
 
 export type SubFormState = { error?: string; ok?: boolean } | undefined;
@@ -213,15 +214,32 @@ export async function acceptSubscription(_prev: SubFormState, formData: FormData
       create: { companyId, data: profileData as object },
       update: { data: profileData as object },
     });
+  await logInvestmentAudit({
+    poolId: sub.poolId,
+    entity: "SUBSCRIPTION",
+    entityId: sub.id,
+    action: "ACCEPT",
+    summary: `Aceitou subscrição de ${data.legalName ?? "investidor"}${sub.units ? ` · ${Number(sub.units)} units` : ""} · admitido como sócio`,
+  });
   revalidatePath(`/pools/${sub.poolId}`);
   return { ok: true };
 }
 
 export async function rejectSubscription(formData: FormData): Promise<void> {
   const id = String(formData.get("subscriptionId") ?? "");
-  const sub = await prisma.poolSubscription.findUnique({ where: { id }, select: { poolId: true, status: true } });
+  const sub = await prisma.poolSubscription.findUnique({
+    where: { id },
+    select: { poolId: true, status: true, data: true, email: true },
+  });
   if (!sub || sub.status === "ACCEPTED") return;
   await prisma.poolSubscription.update({ where: { id }, data: { status: "REJECTED", decidedAt: new Date() } });
+  await logInvestmentAudit({
+    poolId: sub.poolId,
+    entity: "SUBSCRIPTION",
+    entityId: id,
+    action: "REJECT",
+    summary: `Rejeitou subscrição de ${(sub.data as { legalName?: string } | null)?.legalName ?? sub.email ?? "investidor"}`,
+  });
   revalidatePath(`/pools/${sub.poolId}`);
 }
 
