@@ -8,8 +8,10 @@ export const dynamic = "force-dynamic";
 
 const ROLE_LABEL: Record<string, string> = {
   ADMIN: "Admin",
+  OPERATOR: "Operator",
   BOOKKEEPER: "Bookkeeper",
   VIEWER: "Viewer",
+  INVESTOR: "Investor",
 };
 
 export default async function UsersPage() {
@@ -66,8 +68,10 @@ export default async function UsersPage() {
                         className="rounded border border-slate-200 px-2 py-1 text-xs"
                       >
                         <option value="ADMIN">Admin</option>
+                        <option value="OPERATOR">Operator</option>
                         <option value="BOOKKEEPER">Bookkeeper</option>
                         <option value="VIEWER">Viewer</option>
+                        <option value="INVESTOR">Investor</option>
                       </select>
                       <button className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 hover:bg-slate-100">
                         set

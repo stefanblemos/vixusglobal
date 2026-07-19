@@ -22,13 +22,24 @@ export const authConfig = {
       }
       if (!isLoggedIn) return false;
 
-      // Gestão de usuários: só ADMIN.
+      const method = request.method.toUpperCase();
+      const isMutation = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+
+      // INVESTOR (#67, Leva 2): sandbox no portal do investidor — só /pools/investors*
+      // (a vinculação sessão→entidade vem no portal, #68). Read-only e sem o resto do app.
+      if (role === "INVESTOR") {
+        const inPortal = nextUrl.pathname.startsWith("/pools/investors");
+        if (!inPortal) return Response.redirect(new URL("/pools/investors", nextUrl));
+        if (isMutation) return false;
+        return true;
+      }
+
+      // Gestão de usuários: só ADMIN (OPERATOR opera pools mas não mexe em usuários).
       if (nextUrl.pathname.startsWith("/admin") && role !== "ADMIN") {
         return Response.redirect(new URL("/", nextUrl));
       }
       // VIEWER = somente leitura: bloqueia mutações (server actions e uploads são POST).
-      const method = request.method.toUpperCase();
-      if (role === "VIEWER" && method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
+      if (role === "VIEWER" && isMutation) {
         return false;
       }
       return true;

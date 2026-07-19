@@ -8,7 +8,7 @@ import { UserRole } from "@prisma/client";
 
 export type UserFormState = { error?: string } | undefined;
 
-const ROLES = ["ADMIN", "BOOKKEEPER", "VIEWER"];
+const ROLES = ["ADMIN", "OPERATOR", "BOOKKEEPER", "VIEWER", "INVESTOR"];
 
 async function requireAdmin() {
   const session = await auth();

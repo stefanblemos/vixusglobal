@@ -22,6 +22,9 @@ enum UserRole {
   ADMIN
   BOOKKEEPER
   VIEWER
+  // #67 (Leva 2): papéis do módulo Investments/portal.
+  OPERATOR // opera pools/investimentos (muta), sem gestão de usuários (/admin)
+  INVESTOR // sandbox no portal do investidor — só /pools/investors (groundwork p/ #68)
 }
 
 model User {

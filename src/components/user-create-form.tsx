@@ -17,8 +17,10 @@ export function UserCreateForm() {
         <input name="name" placeholder="Name (optional)" className={input} />
         <select name="role" defaultValue="VIEWER" className={input}>
           <option value="ADMIN">Admin — full access + users</option>
+          <option value="OPERATOR">Operator — operate pools/investments</option>
           <option value="BOOKKEEPER">Bookkeeper — view &amp; edit data</option>
           <option value="VIEWER">Viewer — read only</option>
+          <option value="INVESTOR">Investor — investor portal only</option>
         </select>
         <input
           name="password"
