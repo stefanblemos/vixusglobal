@@ -923,6 +923,7 @@ model PoolHouse {
   distributions PoolDistribution[]
   loanEntries   PoolLoanEntry[]
   changeOrders  HouseChangeOrder[]
+  budgetLines   LoanBudgetLine[]
 
   @@index([poolId])
   @@index([loanId])
@@ -1545,7 +1546,6 @@ model PoolLoan {
   entries     PoolLoanEntry[]
   houses      PoolHouse[]
   documents   PoolLoanDocument[]
-  budgetLines LoanBudgetLine[]
 
   @@index([poolId])
 }
@@ -1553,19 +1553,25 @@ model PoolLoan {
 // Schedule of Values / budget do banco (leva 2 dos marcos). Cada linha do orçamento do
 // banco com $ e o MARCO nosso a que corresponde (mapa M-para-N: vários itens do banco
 // podem apontar p/ o mesmo marco). Marcar o marco → libera o $ das linhas mapeadas.
+// Schedule of Values POR CASA (não por loan): num loan multi-casa (ex.: FCI, 6 casas de
+// modelos diferentes) cada casa tem seu próprio orçamento e valores. O leitor de budget
+// pergunta a quais casas do loan aquele orçamento se aplica. Retainage/nº de draws ficam
+// no PoolLoan (termos do credor, iguais p/ todas as casas). pct = % do total do budget da
+// casa que a linha libera → drawable = pct × loan da casa. amount = $ original do banco.
 model LoanBudgetLine {
-  id            String   @id @default(cuid())
-  loanId        String
-  loan          PoolLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  id            String    @id @default(cuid())
+  houseId       String
+  house         PoolHouse @relation(fields: [houseId], references: [id], onDelete: Cascade)
   label         String // nome da linha no budget do banco ("Foundation", "Framing"…)
-  pct           Decimal  @db.Decimal(6, 3) // % do loan da casa que esta linha libera
+  pct           Decimal   @db.Decimal(6, 3) // % do budget da casa que esta linha libera
+  amount        Decimal?  @db.Decimal(20, 2) // $ original da linha no doc do banco (exibição/auditoria)
   milestoneKey  String? // marco nosso (CatalogBuildMilestone.key); null = não mapeado
-  sortOrder     Int      @default(0)
-  source        String   @default("MANUAL") // MANUAL | AI
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  sortOrder     Int       @default(0)
+  source        String    @default("MANUAL") // MANUAL | AI
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  @@index([loanId])
+  @@index([houseId])
 }
 
 model PoolLoanEntry {

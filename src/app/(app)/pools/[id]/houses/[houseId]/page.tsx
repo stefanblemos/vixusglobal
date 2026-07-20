@@ -24,7 +24,8 @@ export default async function PoolHousePage({
       pool: { include: { loans: { orderBy: { createdAt: "asc" }, include: { bankProfile: true } } } },
       changeOrders: { orderBy: { date: "asc" } },
       loanEntries: { where: { type: "DRAW" } },
-      loan: { select: { retainagePct: true, budgetLines: { select: { milestoneKey: true, pct: true } } } },
+      loan: { select: { retainagePct: true } },
+      budgetLines: { select: { milestoneKey: true, pct: true } },
     },
   });
   if (!house || house.poolId !== id) notFound();
@@ -53,7 +54,7 @@ export default async function PoolHousePage({
   );
   const estimate = estimatedDrawable({ pct: mPct, loanAmount, alreadyDrawn });
   // drawable REAL do budget do banco (leva 2), quando mapeado; senão a estimativa
-  const budget: BudgetLine[] = (house.loan?.budgetLines ?? []).map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
+  const budget: BudgetLine[] = house.budgetLines.map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
   const real = drawableFromBudget({
     done: doneMilestones, budget, loanAmount,
     retainagePct: house.loan?.retainagePct != null ? Number(house.loan.retainagePct) : null,

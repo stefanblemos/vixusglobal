@@ -26,7 +26,7 @@ import { LoanSufficiencyPanel, PoolSufficiencySummary } from "@/components/pool-
 import { computeSuffAggs, rawChargeCandidatesOf } from "@/lib/pools/loan-sufficiency";
 import { DrawHousesPanel, type HouseAvailability } from "@/components/pool-draw-houses";
 import { DrawList, type DrawRow } from "@/components/pool-draw-list";
-import { LoanBudgetEditor } from "@/components/loan-budget-editor";
+import { HouseBudgetManager } from "@/components/house-budget-manager";
 import { byAddressNumber } from "@/lib/pools/math";
 import { PoolLoanDocs } from "@/components/pool-loan-docs";
 import type { LoanDocProposalItem } from "@/lib/pools/loan-doc-apply";
@@ -66,7 +66,10 @@ export default async function PoolLoanPage({
   const pool = await prisma.investmentPool.findUnique({
     where: { id },
     include: {
-      houses: { orderBy: { createdAt: "asc" }, include: { catalogModel: true, catalogLocation: true } },
+      houses: {
+        orderBy: { createdAt: "asc" },
+        include: { catalogModel: true, catalogLocation: true, budgetLines: { orderBy: { sortOrder: "asc" } } },
+      },
       loans: {
         orderBy: { createdAt: "asc" },
         include: {
@@ -87,7 +90,6 @@ export default async function PoolLoanPage({
               createdAt: true,
             },
           },
-          budgetLines: { orderBy: { sortOrder: "asc" } },
         },
       },
       expenses: { select: { amount: true } },
@@ -797,15 +799,22 @@ export default async function PoolLoanPage({
               </p>
             </section>
           )}
-          <LoanBudgetEditor
+          <HouseBudgetManager
             loanId={loan.id}
             milestones={milestoneCatalogForBudget}
             retainagePct={loan.retainagePct != null ? loan.retainagePct.toString() : ""}
             expectedDraws={loan.expectedDraws != null ? String(loan.expectedDraws) : ""}
-            initial={loan.budgetLines.map((b) => ({
-              label: b.label,
-              pct: Number(b.pct),
-              milestoneKey: b.milestoneKey,
+            houses={linkedHouses.map((h) => ({
+              id: h.id,
+              address: h.address,
+              model: h.catalogModel?.name ?? null,
+              loanAmount: h.bankLoanAmount != null ? Number(h.bankLoanAmount) : 0,
+              budget: h.budgetLines.map((b) => ({
+                label: b.label,
+                pct: Number(b.pct),
+                amount: b.amount != null ? Number(b.amount) : null,
+                milestoneKey: b.milestoneKey,
+              })),
             }))}
           />
           <DrawHousesPanel

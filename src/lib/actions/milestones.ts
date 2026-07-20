@@ -8,7 +8,7 @@ import { logInvestmentAudit } from "@/lib/audit";
 import { drawableFromBudget, estimatedDrawable, milestonePct, type BudgetLine, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
 import { nextDrawNumber } from "@/lib/pools/draws";
 
-export type MilestoneFormState = { error?: string; ok?: boolean } | undefined;
+export type MilestoneFormState = { error?: string; ok?: boolean; message?: string } | undefined;
 
 // catálogo de marcos com weightPct já como number (Prisma devolve Decimal)
 async function loadMilestoneCatalog(): Promise<MilestoneCatalog[]> {
@@ -94,7 +94,8 @@ async function drawableForHouse(
     select: {
       poolId: true, loanId: true, address: true, bankLoanAmount: true, milestones: true, coDate: true,
       loanEntries: { where: { type: "DRAW" }, select: { amount: true, requestedAmount: true, pending: true } },
-      loan: { select: { retainagePct: true, budgetLines: { select: { milestoneKey: true, pct: true } } } },
+      loan: { select: { retainagePct: true } },
+      budgetLines: { select: { milestoneKey: true, pct: true } },
     },
   });
   if (!house) return null;
@@ -106,7 +107,7 @@ async function drawableForHouse(
     0,
   );
   // budget do banco (leva 2) tem prioridade: drawable REAL; senão estimativa % × loan
-  const budget: BudgetLine[] = (house.loan?.budgetLines ?? []).map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
+  const budget: BudgetLine[] = house.budgetLines.map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
   const real = drawableFromBudget({
     done, budget, loanAmount, retainagePct: house.loan?.retainagePct != null ? Number(house.loan.retainagePct) : null,
     alreadyDrawn, coDone: house.coDate != null,
@@ -195,18 +196,17 @@ export async function requestBatchDraw(_prev: MilestoneFormState, formData: Form
   return { ok: true };
 }
 
-// ── Budget do banco (Schedule of Values, leva 2) ─────────────
-// Salva as linhas do SOV do loan (label, % do loan, marco mapeado) + retainage + nº de
-// draws esperado. As linhas não precisam somar 100 (banco pode reter/ter outros itens).
-export async function saveLoanBudget(_prev: MilestoneFormState, formData: FormData): Promise<MilestoneFormState> {
-  const loanId = String(formData.get("loanId") ?? "").trim();
-  if (!loanId) return { error: "Loan inválido." };
-  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, select: { poolId: true } });
-  if (!loan) return { error: "Loan não encontrado." };
+// ── Budget do banco (Schedule of Values, leva 2) — POR CASA ─────────────
+// Num loan multi-casa (ex.: FCI, 6 casas de modelos diferentes) cada casa tem seu próprio
+// budget/valores. O orçamento é armazenado por CASA; retainage e nº de draws ficam no loan
+// (termos do credor). As linhas não precisam somar 100 (banco pode reter/ter itens não-obra).
 
-  let rows: Array<{ label: string; pct: number; milestoneKey: string | null }>;
+export type BudgetRowInput = { label: string; pct: number; amount?: number | null; milestoneKey: string | null };
+
+function parseBudgetRows(raw: string): BudgetRowInput[] | { error: string } {
+  let rows: BudgetRowInput[];
   try {
-    rows = JSON.parse(String(formData.get("rows") ?? "[]"));
+    rows = JSON.parse(raw);
   } catch {
     return { error: "Dados inválidos." };
   }
@@ -214,32 +214,175 @@ export async function saveLoanBudget(_prev: MilestoneFormState, formData: FormDa
     if (!r.label?.trim()) return { error: "Cada linha precisa de um nome." };
     if (!Number.isFinite(r.pct) || r.pct < 0) return { error: `% inválido em "${r.label}".` };
   }
+  return rows;
+}
+
+// grava (substitui) o budget de UMA casa + atualiza retainage/draws do loan pai
+async function writeHouseBudget(
+  houseId: string,
+  loanId: string | null,
+  rows: BudgetRowInput[],
+  source: string,
+  retainagePct: number | null,
+  expectedDraws: number | null,
+) {
+  await prisma.$transaction([
+    prisma.loanBudgetLine.deleteMany({ where: { houseId } }),
+    ...rows.map((r, i) =>
+      prisma.loanBudgetLine.create({
+        data: {
+          houseId,
+          label: r.label.trim(),
+          pct: r.pct,
+          amount: r.amount != null && Number.isFinite(r.amount) ? r.amount : null,
+          milestoneKey: r.milestoneKey || null,
+          sortOrder: i,
+          source,
+        },
+      }),
+    ),
+    ...(loanId
+      ? [
+          prisma.poolLoan.update({
+            where: { id: loanId },
+            data: {
+              retainagePct: retainagePct != null && Number.isFinite(retainagePct) ? retainagePct : undefined,
+              expectedDraws: expectedDraws != null && Number.isFinite(expectedDraws) ? expectedDraws : undefined,
+            },
+          }),
+        ]
+      : []),
+  ]);
+}
+
+// Editor manual: salva o budget de uma casa.
+export async function saveHouseBudget(_prev: MilestoneFormState, formData: FormData): Promise<MilestoneFormState> {
+  const houseId = String(formData.get("houseId") ?? "").trim();
+  if (!houseId) return { error: "Casa inválida." };
+  const house = await prisma.poolHouse.findUnique({
+    where: { id: houseId },
+    select: { poolId: true, loanId: true, address: true },
+  });
+  if (!house) return { error: "Casa não encontrada." };
+
+  const parsed = parseBudgetRows(String(formData.get("rows") ?? "[]"));
+  if ("error" in parsed) return parsed;
   const retainagePct = formData.get("retainagePct") ? Number(formData.get("retainagePct")) : null;
   const expectedDraws = formData.get("expectedDraws") ? Math.round(Number(formData.get("expectedDraws"))) : null;
 
-  await prisma.$transaction([
-    prisma.loanBudgetLine.deleteMany({ where: { loanId } }),
-    ...rows.map((r, i) =>
-      prisma.loanBudgetLine.create({
-        data: { loanId, label: r.label.trim(), pct: r.pct, milestoneKey: r.milestoneKey || null, sortOrder: i, source: "MANUAL" },
-      }),
-    ),
-    prisma.poolLoan.update({
-      where: { id: loanId },
-      data: {
-        retainagePct: retainagePct != null && Number.isFinite(retainagePct) ? retainagePct : null,
-        expectedDraws: expectedDraws != null && Number.isFinite(expectedDraws) ? expectedDraws : null,
-      },
-    }),
-  ]);
+  await writeHouseBudget(houseId, house.loanId, parsed, "MANUAL", retainagePct, expectedDraws);
+  await logInvestmentAudit({
+    poolId: house.poolId,
+    entity: "HOUSE",
+    entityId: houseId,
+    action: "UPDATE",
+    summary: `Budget do banco (${house.address}): ${parsed.length} linha(s)${retainagePct ? ` · retainage ${retainagePct}%` : ""}`,
+  });
+  revalidatePath(`/pools/${house.poolId}/loan`);
+  revalidatePath(`/pools/${house.poolId}`);
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+  return { ok: true };
+}
+
+// Leitor de budget: aplica o MESMO orçamento a várias casas do loan de uma vez (mesmo modelo).
+export async function applyBudgetToHouses(_prev: MilestoneFormState, formData: FormData): Promise<MilestoneFormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, select: { poolId: true } });
+  if (!loan) return { error: "Loan não encontrado." };
+
+  let houseIds: string[];
+  try {
+    houseIds = JSON.parse(String(formData.get("houseIds") ?? "[]"));
+  } catch {
+    return { error: "Casas inválidas." };
+  }
+  if (!Array.isArray(houseIds) || houseIds.length === 0) return { error: "Marque ao menos uma casa para aplicar o orçamento." };
+
+  const parsed = parseBudgetRows(String(formData.get("rows") ?? "[]"));
+  if ("error" in parsed) return parsed;
+  const source = String(formData.get("source") ?? "AI") === "MANUAL" ? "MANUAL" : "AI";
+  const retainagePct = formData.get("retainagePct") ? Number(formData.get("retainagePct")) : null;
+  const expectedDraws = formData.get("expectedDraws") ? Math.round(Number(formData.get("expectedDraws"))) : null;
+
+  // confirma que as casas pertencem ao loan (evita aplicar em casa errada)
+  const houses = await prisma.poolHouse.findMany({
+    where: { id: { in: houseIds }, loanId },
+    select: { id: true, loanId: true, address: true },
+  });
+  if (houses.length === 0) return { error: "Nenhuma casa válida deste financiamento foi marcada." };
+
+  for (const h of houses) {
+    await writeHouseBudget(h.id, h.loanId, parsed, source, retainagePct, expectedDraws);
+  }
   await logInvestmentAudit({
     poolId: loan.poolId,
     entity: "POOL",
     entityId: loanId,
     action: "UPDATE",
-    summary: `Budget do banco atualizado: ${rows.length} linha(s)${retainagePct ? ` · retainage ${retainagePct}%` : ""}`,
+    summary: `Budget do banco aplicado a ${houses.length} casa(s): ${houses.map((h) => h.address).join(", ")} (${parsed.length} linha(s), ${source === "AI" ? "leitura por IA" : "manual"})`,
   });
   revalidatePath(`/pools/${loan.poolId}/loan`);
   revalidatePath(`/pools/${loan.poolId}`);
-  return { ok: true };
+  return { ok: true, message: `Orçamento aplicado a ${houses.length} casa(s).` };
+}
+
+// ── Leitor de budget por IA (leva 2b) ────────────────────────────────
+// Recebe um doc de budget (PDF do banco OU planilha xlsx/xlsm), extrai as linhas com valor e
+// mapeia cada uma a um marco NOSSO. Devolve uma proposta revisável (não grava nada) — o
+// operador confere o mapeamento e marca a quais casas do loan aplicar (applyBudgetToHouses).
+export type BudgetReadResult =
+  | {
+      ok: true;
+      rows: Array<{ label: string; pct: number; amount: number; milestoneKey: string | null }>;
+      total: number;
+      retainagePct: number | null;
+      expectedDraws: number | null;
+      currency: string;
+      summary: string;
+    }
+  | { error: string };
+
+export async function readBudgetDoc(formData: FormData): Promise<BudgetReadResult> {
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { error: "Envie um arquivo de budget (PDF ou Excel)." };
+  const name = (file.name || "").toLowerCase();
+  const isPdf = name.endsWith(".pdf") || file.type === "application/pdf";
+  const isXlsx = /\.(xlsx|xlsm|xls)$/.test(name) || file.type.includes("sheet") || file.type.includes("excel");
+  if (!isPdf && !isXlsx) return { error: "Formato não suportado — envie PDF ou Excel (.xlsx/.xlsm)." };
+
+  const buf = Buffer.from(await file.arrayBuffer());
+  const catalog = (
+    await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" }, select: { key: true, name: true, detail: true } })
+  );
+  const { analyzeBudgetPdf, analyzeBudgetText, toBudgetRows } = await import("@/lib/pools/budget-analyze");
+
+  try {
+    let ex;
+    if (isPdf) {
+      ex = await analyzeBudgetPdf(buf.toString("base64"), catalog);
+    } else {
+      const XLSX = await import("xlsx");
+      const wb = XLSX.read(buf, { type: "buffer" });
+      let text = "";
+      for (const sn of wb.SheetNames) {
+        text += `## ${sn}\n${XLSX.utils.sheet_to_csv(wb.Sheets[sn], { FS: "\t", blankrows: false })}\n\n`;
+      }
+      if (!text.trim()) return { error: "A planilha parece vazia." };
+      if (text.length > 60000) text = text.slice(0, 60000);
+      ex = await analyzeBudgetText(text, catalog);
+    }
+    const { rows, total } = toBudgetRows(ex);
+    if (rows.length === 0) return { error: "Não encontrei linhas de budget com valor no documento." };
+    return {
+      ok: true,
+      rows,
+      total,
+      retainagePct: ex.retainagePct > 0 ? ex.retainagePct : null,
+      expectedDraws: ex.expectedDraws > 0 ? Math.round(ex.expectedDraws) : null,
+      currency: ex.currency || "",
+      summary: ex.summary || "",
+    };
+  } catch (e) {
+    return { error: `Falha ao ler o budget: ${(e as Error).message}` };
+  }
 }
