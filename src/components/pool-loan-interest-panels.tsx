@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { launchLoanCharge, payLoanInterest, type FormState } from "@/lib/actions/pool-loan";
+import { useActionState, useEffect, useState } from "react";
+import { addMonthlyInterest, launchLoanCharge, payLoanInterest, type FormState } from "@/lib/actions/pool-loan";
 
 /**
  * Painéis do Statement (mock aprovado 17/07):
@@ -30,8 +30,10 @@ export type InterestRow = {
   paidFmt: string | null; // pagamentos alocados a este período
   dueDate: string; // MM/DD/YYYY
   dDays: number | null; // dias até o vencimento (negativo = passou)
-  status: "pago" | "devido" | "vencido" | "corrente" | "previsto";
-  owed: number; // o que FALTA pagar do período (owed − paid)
+  status: "pago" | "devido" | "vencido" | "aguardando" | "corrente" | "previsto";
+  owed: number; // o que FALTA pagar do período (cobrado − pago)
+  end: string; // yyyy-mm-dd — fim do período (default da data ao registrar/pagar)
+  expected: number; // accrual previsto do período (placeholder ao registrar a cobrança)
 };
 
 const th = "px-3 py-2 text-left text-[10px] font-medium uppercase tracking-wide text-slate-400";
@@ -134,26 +136,111 @@ export function LoanChargesPanel({
   );
 }
 
-function PayButton({ poolId, loanId, amount, memo }: { poolId: string; loanId: string; amount: number; memo: string }) {
-  const [state, action, pending] = useActionState<FormState, FormData>(
-    payLoanInterest.bind(null, poolId),
-    undefined,
-  );
+const mInput =
+  "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20";
+const mLabel = "mb-1 block text-xs font-medium text-slate-500";
+const today = () => new Date().toISOString().slice(0, 10);
+
+function ModalShell({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <form action={action} className="inline">
-      <input type="hidden" name="loanId" value={loanId} />
-      <input type="hidden" name="amount" value={amount} />
-      <input type="hidden" name="memo" value={memo} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-800">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600">✕</button>
+        </div>
+        {subtitle && <p className="mb-4 text-xs text-slate-500">{subtitle}</p>}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Baixa do pagamento (com DATA real) — só para períodos COBRADOS pelo banco em aberto.
+function PayInterestModal({ poolId, loanId, row }: { poolId: string; loanId: string; row: InterestRow }) {
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useActionState<FormState, FormData>(payLoanInterest.bind(null, poolId), undefined);
+  useEffect(() => { if (state?.ok) setOpen(false); }, [state]);
+  return (
+    <>
       <button
-        type="submit"
-        disabled={pending}
-        className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-[#1f3a5f] hover:border-slate-400 disabled:opacity-50"
-        title="Cria o INTEREST_PAYMENT no statement (sai do caixa do pool)"
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-[#1f3a5f] hover:border-slate-400"
       >
-        {pending ? "pagando…" : `pagar $${amount.toLocaleString("en-US")}`}
+        dar baixa
       </button>
-      {state?.error && <span className="ml-1 text-[10px] text-red-600">{state.error}</span>}
-    </form>
+      {open && (
+        <ModalShell title="Dar baixa no pagamento" subtitle={`${row.label} · cobrado pelo banco`} onClose={() => setOpen(false)}>
+          <div className="mb-3 flex items-baseline justify-between rounded-lg bg-slate-50 px-3 py-2">
+            <span className="text-xs text-slate-500">Em aberto (cobrado − pago)</span>
+            <span className="text-base font-semibold text-slate-800">${row.owed.toLocaleString("en-US")}</span>
+          </div>
+          <form action={action} className="space-y-3">
+            <input type="hidden" name="loanId" value={loanId} />
+            <input type="hidden" name="memo" value={`Pagamento de juros — ${row.label}`} />
+            <div>
+              <label className={mLabel}>Valor pago</label>
+              <input name="amount" defaultValue={row.owed} required className={mInput} />
+            </div>
+            <div>
+              <label className={mLabel}>Data do pagamento</label>
+              <input name="date" type="date" defaultValue={today()} required className={mInput} />
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600">Cancelar</button>
+              <button type="submit" disabled={pending} className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#16304f] disabled:opacity-60">
+                {pending ? "Registrando…" : "Registrar baixa"}
+              </button>
+            </div>
+            {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
+          </form>
+        </ModalShell>
+      )}
+    </>
+  );
+}
+
+// Registrar a cobrança do banco (extrato) num período "aguardando" — vira dívida real e habilita a baixa.
+function RegisterChargeModal({ poolId, loanId, row, hasReserve }: { poolId: string; loanId: string; row: InterestRow; hasReserve: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [state, action, pending] = useActionState<FormState, FormData>(addMonthlyInterest.bind(null, poolId), undefined);
+  useEffect(() => { if (state?.ok) setOpen(false); }, [state]);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500 hover:border-slate-300 hover:text-slate-700"
+      >
+        registrar cobrança
+      </button>
+      {open && (
+        <ModalShell title="Registrar cobrança do banco" subtitle={`${row.label} · valor do extrato (previsto ${row.expectedFmt})`} onClose={() => setOpen(false)}>
+          <form action={action} className="space-y-3">
+            <input type="hidden" name="loanId" value={loanId} />
+            <div>
+              <label className={mLabel}>Juro cobrado $ (do extrato)</label>
+              <input name="amount" required autoFocus className={mInput} placeholder={row.expectedFmt} />
+            </div>
+            <div>
+              <label className={mLabel}>Data da cobrança</label>
+              <input name="date" type="date" defaultValue={row.end} required className={mInput} />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" name="fromReserve" defaultChecked={hasReserve} /> pago da interest reserve (cria a baixa espelhada)
+            </label>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600">Cancelar</button>
+              <button type="submit" disabled={pending} className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-semibold text-white hover:bg-[#16304f] disabled:opacity-60">
+                {pending ? "Registrando…" : "Registrar cobrança"}
+              </button>
+            </div>
+            {state?.error && <p className="text-sm text-red-600">{state.error}</p>}
+          </form>
+        </ModalShell>
+      )}
+    </>
   );
 }
 
@@ -163,12 +250,14 @@ export function LoanInterestPanel({
   rows,
   ruleText,
   footNote,
+  hasReserve = false,
 }: {
   poolId: string;
   loanId: string;
   rows: InterestRow[];
   ruleText: string;
   footNote: string | null;
+  hasReserve?: boolean;
 }) {
   if (rows.length === 0) return null;
   const chip = (s: InterestRow["status"]) =>
@@ -178,6 +267,8 @@ export function LoanInterestPanel({
       <span className="rounded-full bg-red-50 px-2 py-0.5 text-[10.5px] font-semibold text-red-700">vencido ⚠</span>
     ) : s === "devido" ? (
       <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-semibold text-amber-700">devido</span>
+    ) : s === "aguardando" ? (
+      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10.5px] text-slate-500" title="Período fechado que o banco ainda não cobrou — é previsão, não dívida.">aguardando extrato</span>
     ) : s === "corrente" ? (
       <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10.5px] text-blue-700">corrente</span>
     ) : (
@@ -221,9 +312,11 @@ export function LoanInterestPanel({
                 </td>
                 <td className="px-3 py-2">{chip(r.status)}</td>
                 <td className="px-3 py-2 text-right">
-                  {(r.status === "devido" || r.status === "vencido") && r.owed > 0 && (
-                    <PayButton poolId={poolId} loanId={loanId} amount={r.owed} memo={`Pagamento de juros — ${r.label}`} />
-                  )}
+                  {(r.status === "devido" || r.status === "vencido") && r.owed > 0 ? (
+                    <PayInterestModal poolId={poolId} loanId={loanId} row={r} />
+                  ) : r.status === "aguardando" ? (
+                    <RegisterChargeModal poolId={poolId} loanId={loanId} row={r} hasReserve={hasReserve} />
+                  ) : null}
                 </td>
               </tr>
             ))}

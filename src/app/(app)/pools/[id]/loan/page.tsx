@@ -371,7 +371,9 @@ export default async function PoolLoanPage({
     dueDate: `${p.dueDate.slice(5, 7)}/${p.dueDate.slice(8, 10)}/${p.dueDate.slice(0, 4)}`,
     dDays: Math.ceil((new Date(p.dueDate).getTime() - Date.now()) / dayMs0),
     status: p.status,
-    owed: Math.max(0, Math.round((p.owed - p.paid) * 100) / 100),
+    owed: Math.max(0, Math.round((p.charged - p.paid) * 100) / 100),
+    end: p.end,
+    expected: p.expected,
   }));
   const interestRule = loan
     ? `Vencimento: dia ${loan.interestDueDay ?? 1} do mês seguinte${loan.graceDays ? ` · grace ${loan.graceDays} dias` : ""}${loan.lateFeePct ? ` · multa ${Number(loan.lateFeePct)}%` : ""} — ${loan.interestDueDay ? "lido do contrato (editável nos Termos)" : "padrão (a leitura do contrato preenche; editável nos Termos)"}. Esperado = accrual diário APR/360 sobre o saldo; cobrado vem do extrato do banco.`
@@ -874,23 +876,28 @@ export default async function PoolLoanPage({
             <Card
               label="Devido agora"
               value={formatMoney(interestView?.dueNow ?? 0, pool.currency)}
-              hint={interestView && interestView.dueNow > 0 ? "períodos fechados não cobertos" : "nada vencido"}
+              hint={interestView && interestView.dueNow > 0 ? "cobrado − pago (só real)" : "nada cobrado em aberto"}
             />
             <Card
-              label="Próximo vencimento"
-              value={interestView?.nextDue ? fmtUS(interestView.nextDue.date) : "—"}
-              hint={
-                interestView?.nextDue
-                  ? `${(() => {
-                      const dd = Math.ceil((new Date(interestView.nextDue.date).getTime() - Date.now()) / dayMs0);
-                      return dd < 0 ? `vencido há ${-dd}d` : `D-${dd}`;
-                    })()}${loan.graceDays ? ` · grace ${loan.graceDays}d` : ""}${loan.lateFeePct ? ` · multa ${Number(loan.lateFeePct)}%` : ""}`
-                  : loan.closingDate
-                    ? "sem juros em aberto"
-                    : "sem juros até o closing"
-              }
+              label="A provisionar (prev.)"
+              value={formatMoney(interestView?.currentAccrual ?? 0, pool.currency)}
+              hint="accrual do mês — reserva, não dívida"
             />
           </div>
+          {interestView?.nextDue && (
+            <p className="text-xs text-slate-400">
+              Próximo vencimento {fmtUS(interestView.nextDue.date)}
+              {(() => {
+                const dd = Math.ceil((new Date(interestView.nextDue.date).getTime() - Date.now()) / dayMs0);
+                return dd < 0 ? ` · vencido há ${-dd}d` : ` · D-${dd}`;
+              })()}
+              {interestView.nextDue.estimated
+                ? ` · ${formatMoney(interestView.nextDue.amount, pool.currency)} (previsto — banco ainda não cobrou)`
+                : ` · ${formatMoney(interestView.nextDue.amount, pool.currency)} cobrado`}
+              {loan.graceDays ? ` · grace ${loan.graceDays}d` : ""}
+              {loan.lateFeePct ? ` · multa ${Number(loan.lateFeePct)}%` : ""}
+            </p>
+          )}
           <div className="flex items-center justify-between">
             {loan.bankProfile && !loan.bankProfile.hasInterestReserve ? (
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-800">
@@ -912,6 +919,7 @@ export default async function PoolLoanPage({
               rows={interestRows}
               ruleText={interestRule}
               footNote={null}
+              hasReserve={loan.bankProfile?.hasInterestReserve ?? false}
             />
           ) : (
             <p className="rounded-xl border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-400">

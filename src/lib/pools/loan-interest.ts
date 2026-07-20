@@ -18,15 +18,17 @@ export type InterestPeriod = {
   owed: number; // cobrado quando existe, senão esperado
   paid: number; // pagamentos ALOCADOS a este período (na ordem cronológica)
   dueDate: string; // vencimento do pagamento
-  status: "pago" | "devido" | "vencido" | "corrente" | "previsto";
+  // aguardando = período fechado que o banco AINDA NÃO cobrou (não é dívida, só previsão)
+  status: "pago" | "devido" | "vencido" | "aguardando" | "corrente" | "previsto";
 };
 
 export type LoanInterestView = {
   periods: InterestPeriod[];
   paidTotal: number; // Σ |INTEREST_PAYMENT|
   chargedTotal: number;
-  dueNow: number; // períodos fechados ainda não cobertos pelos pagamentos
-  nextDue: { date: string; amount: number } | null;
+  dueNow: number; // só o que o banco COBROU e ainda não foi pago (nunca a previsão)
+  nextDue: { date: string; amount: number; estimated: boolean } | null;
+  currentAccrual: number; // accrual do mês corrente — quanto PROVISIONAR (não é dívida)
   monthlyEst: number | null; // saldo atual × APR/12
   balance: number;
 };
@@ -88,7 +90,6 @@ export function computeLoanInterest(opts: {
   const periods: InterestPeriod[] = [];
   const cur = new Date(Date.UTC(closingDate.getUTCFullYear(), closingDate.getUTCMonth(), 1));
   const lastMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1));
-  let cumOwed = 0;
   let first = true;
   while (cur.getTime() <= lastMonth.getTime()) {
     const mStart = first ? closingDate : cur;
@@ -117,17 +118,16 @@ export function computeLoanInterest(opts: {
         )
         .reduce((s, e) => s + e.amount, 0),
     );
-    const owed = charged > 0 ? charged : expected;
+    // REAL × PREVISÃO: a dívida é SÓ o que o banco cobrou. expected fica como referência de
+    // provisão e nunca vira devido/vencido. Período fechado sem cobrança = "aguardando extrato".
+    const owed = charged;
 
     // vencimento: dia X do mês SEGUINTE ao período
     const due = new Date(Date.UTC(cur.getUTCFullYear(), cur.getUTCMonth() + 1, Math.min(dueDay, 28)));
     let status: InterestPeriod["status"];
     if (isFuture) status = "previsto";
-    else if (isCurrent) status = "corrente";
-    else {
-      cumOwed = round2(cumOwed + owed);
-      status = "devido"; // resolvido abaixo, após alocar os pagamentos na ordem
-    }
+    else if (charged <= 0) status = isCurrent ? "corrente" : "aguardando";
+    else status = "devido"; // com cobrança: refinado após alocar os pagamentos
     periods.push({
       start: iso(mStart),
       end: iso(mEnd),
@@ -144,29 +144,34 @@ export function computeLoanInterest(opts: {
     cur.setUTCMonth(cur.getUTCMonth() + 1);
   }
 
-  // pagamentos ALOCADOS na ordem cronológica: fecham os períodos antigos primeiro; o que
-  // sobrar antecipa o período corrente
+  // pagamentos ALOCADOS só contra períodos COBRADOS (real), na ordem cronológica — fecham os
+  // antigos primeiro. Períodos "aguardando"/"corrente" sem cobrança não recebem baixa.
   let paidRemaining = paidTotal;
   for (const p of periods) {
-    if (p.status === "previsto") continue;
-    const alloc = Math.min(p.owed, paidRemaining);
+    if (p.charged <= 0) continue;
+    const alloc = Math.min(p.charged, paidRemaining);
     p.paid = round2(alloc);
     paidRemaining = round2(paidRemaining - alloc);
-    if (p.status !== "corrente") {
-      if (p.paid >= p.owed - 0.01) p.status = "pago";
-      else
-        p.status =
-          today.getTime() > new Date(p.dueDate).getTime() + grace * DAY_MS ? "vencido" : "devido";
-    }
+    if (p.paid >= p.charged - 0.01) p.status = "pago";
+    else
+      p.status =
+        today.getTime() > new Date(p.dueDate).getTime() + grace * DAY_MS ? "vencido" : "devido";
   }
 
-  const dueNow = round2(Math.max(0, cumOwed - paidTotal));
+  // devido agora = só cobrado − pago dos períodos com cobrança real (nunca a previsão)
+  const dueNow = round2(
+    periods.reduce((s, p) => (p.charged > 0 ? s + Math.max(0, round2(p.charged - p.paid)) : s), 0),
+  );
   const firstUnpaid = periods.find((p) => p.status === "devido" || p.status === "vencido");
   const current = periods.find((p) => p.status === "corrente");
+  const currentAccrual = round2(
+    current?.expected ?? (aprPct != null && balance > 0 ? (balance * (aprPct / 100)) / 12 : 0),
+  );
+  // próximo vencimento: 1º período cobrado em aberto (real); senão o corrente (previsão, estimated)
   const nextDue = firstUnpaid
-    ? { date: firstUnpaid.dueDate, amount: dueNow }
-    : current && current.owed > 0
-      ? { date: current.dueDate, amount: current.owed }
+    ? { date: firstUnpaid.dueDate, amount: round2(firstUnpaid.charged - firstUnpaid.paid), estimated: false }
+    : current
+      ? { date: current.dueDate, amount: currentAccrual, estimated: true }
       : null;
 
   return {
@@ -175,6 +180,7 @@ export function computeLoanInterest(opts: {
     chargedTotal,
     dueNow,
     nextDue,
+    currentAccrual,
     monthlyEst: aprPct != null && balance > 0 ? round2((balance * (aprPct / 100)) / 12) : null,
     balance,
   };
