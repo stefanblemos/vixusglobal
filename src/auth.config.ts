@@ -14,6 +14,8 @@ export const authConfig = {
       const role = (auth?.user as { role?: string } | undefined)?.role;
       // Wizard público de subscrição (o token cuid do link é o segredo; mock 19/07).
       if (nextUrl.pathname.startsWith("/subscribe")) return true;
+      // Portal do investidor (#68): login e magic-link são públicos (o token é o segredo).
+      if (nextUrl.pathname.startsWith("/portal/login") || nextUrl.pathname.startsWith("/portal/enter")) return true;
       const isOnLogin = nextUrl.pathname.startsWith("/login");
       if (isOnLogin) {
         // já logado tentando ver /login → manda para o dashboard
@@ -25,12 +27,12 @@ export const authConfig = {
       const method = request.method.toUpperCase();
       const isMutation = method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
 
-      // INVESTOR (#67, Leva 2): sandbox no portal do investidor — só /pools/investors*
-      // (a vinculação sessão→entidade vem no portal, #68). Read-only e sem o resto do app.
+      // INVESTOR (#68): sandbox no portal — só /portal*, read-only e sem o resto do app.
+      // O escopo por entidade é resolvido nas páginas do portal (InvestorAccess).
       if (role === "INVESTOR") {
-        const inPortal = nextUrl.pathname.startsWith("/pools/investors");
-        if (!inPortal) return Response.redirect(new URL("/pools/investors", nextUrl));
-        if (isMutation) return false;
+        const inPortal = nextUrl.pathname.startsWith("/portal");
+        if (!inPortal) return Response.redirect(new URL("/portal", nextUrl));
+        // troca de entidade e logout do portal são POSTs legítimos; demais mutações barradas
         return true;
       }
 

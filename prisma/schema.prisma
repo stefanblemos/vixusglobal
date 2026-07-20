@@ -40,6 +40,37 @@ model User {
 
   accounts Account[]
   sessions Session[]
+  investorAccess InvestorAccess[]
+}
+
+// Portal do investidor (#68): vincula um User INVESTOR às ENTIDADES que ele pode ver
+// (multi-entidade — PF numa LLC, holding noutra). Os pools do investidor = PoolMembers
+// cujo party/company está no access set. Um dos dois (partyId|companyId) é preenchido.
+model InvestorAccess {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partyId   String?
+  party     Party?   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, partyId])
+  @@unique([userId, companyId])
+  @@index([userId])
+}
+
+// Magic-link do portal: token de uso único, curto (~15 min). Guardamos só o hash.
+model PortalLoginToken {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([email])
 }
 
 model Account {
@@ -141,6 +172,7 @@ model Party {
   poolMemberships PoolMember[] @relation("PoolMemberParty")
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
+  investorAccess  InvestorAccess[]
 }
 
 model Company {
@@ -192,6 +224,7 @@ model Company {
   poolMemberships PoolMember[]       @relation("PoolMemberCompany")
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
+  investorAccess  InvestorAccess[]
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o

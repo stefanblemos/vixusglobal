@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { authConfig } from "./auth.config";
+import { consumePortalToken } from "@/lib/portal/access";
 
 /**
  * Auth.js — acesso interno da equipe Vixus (login por e-mail + senha).
@@ -30,6 +31,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const ok = await bcrypt.compare(password, user.passwordHash);
         if (!ok) return null;
 
+        return { id: user.id, email: user.email, name: user.name, role: user.role };
+      },
+    }),
+    // Portal do investidor (#68): login por magic-link — a "senha" é o token do e-mail.
+    Credentials({
+      id: "portal-token",
+      name: "Portal (magic-link)",
+      credentials: { token: { label: "Token", type: "text" } },
+      async authorize(credentials) {
+        const token = typeof credentials?.token === "string" ? credentials.token : "";
+        const res = await consumePortalToken(token);
+        if (!res) return null;
+        const user = await prisma.user.findUnique({ where: { id: res.userId } });
+        if (!user || user.role !== "INVESTOR") return null;
         return { id: user.id, email: user.email, name: user.name, role: user.role };
       },
     }),

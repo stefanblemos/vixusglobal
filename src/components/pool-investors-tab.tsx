@@ -12,6 +12,7 @@ import {
 } from "@/components/pool-investor-forms";
 import { CreateCapitalCallForm } from "@/components/pool-capital-forms";
 import { PoolSubscriptionsPanel, type SubscriptionRow } from "@/components/pool-subscriptions-panel";
+import { PortalAccessButton } from "@/components/portal-access-button";
 
 // Aba Investidores (mock UX 2/6 aprovado): captação no topo, UMA ação por vez em painel,
 // cap table com % visual + atalho "+ aporte" por sócio, saída de sócio legível.
@@ -283,6 +284,7 @@ export function PoolInvestorsTab({
                         >
                           + aporte
                         </button>
+                        {r.role === "INVESTOR" && <PortalAccessButton memberId={r.memberId} />}
                         {r.units === 0 && !r.hasEntries && (
                           <form action={deleteMember}>
                             <input type="hidden" name="memberId" value={r.memberId} />
