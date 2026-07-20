@@ -42,6 +42,36 @@ export function estimatedDrawable(args: {
   return { expectedCumulative, toRequest };
 }
 
+// Drawable REAL a partir do budget do banco (leva 2). Cada linha do SOV tem um % do loan
+// e aponta p/ um marco nosso. Marcos concluídos liberam o % das linhas mapeadas; retainage
+// (retenção do banco) segura até o CO. Sem SOV mapeado, use estimatedDrawable (% × loan).
+export type BudgetLine = { milestoneKey: string | null; pct: number };
+
+export function drawableFromBudget(args: {
+  done: HouseMilestones | null | undefined;
+  budget: BudgetLine[];
+  loanAmount: number;
+  retainagePct?: number | null;
+  alreadyDrawn: number;
+  coDone: boolean; // CO emitido → libera a retenção
+}): { hasBudget: boolean; releasedPct: number; expectedCumulative: number; toRequest: number; retained: number } {
+  const mapped = args.budget.filter((b) => b.milestoneKey && b.pct > 0);
+  if (mapped.length === 0)
+    return { hasBudget: false, releasedPct: 0, expectedCumulative: 0, toRequest: 0, retained: 0 };
+  const done = args.done ?? {};
+  const releasedPct = mapped.reduce((s, b) => (done[b.milestoneKey!] ? s + Number(b.pct) : s), 0);
+  const gross = (args.loanAmount * releasedPct) / 100;
+  const ret = args.coDone ? 0 : (gross * Number(args.retainagePct ?? 0)) / 100;
+  const expectedCumulative = Math.round(gross - ret);
+  return {
+    hasBudget: true,
+    releasedPct: Math.round(releasedPct * 10) / 10,
+    expectedCumulative,
+    toRequest: Math.max(0, expectedCumulative - args.alreadyDrawn),
+    retained: Math.round(ret),
+  };
+}
+
 // resumo por marco p/ a UI: nome, peso, acumulado e se está concluído (+ data)
 export function milestoneRows(catalog: MilestoneCatalog[], done: HouseMilestones | null | undefined) {
   const d = done ?? {};

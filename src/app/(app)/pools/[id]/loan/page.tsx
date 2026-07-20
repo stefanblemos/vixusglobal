@@ -26,6 +26,7 @@ import { LoanSufficiencyPanel, PoolSufficiencySummary } from "@/components/pool-
 import { computeSuffAggs, rawChargeCandidatesOf } from "@/lib/pools/loan-sufficiency";
 import { DrawHousesPanel, type HouseAvailability } from "@/components/pool-draw-houses";
 import { DrawList, type DrawRow } from "@/components/pool-draw-list";
+import { LoanBudgetEditor } from "@/components/loan-budget-editor";
 import { byAddressNumber } from "@/lib/pools/math";
 import { PoolLoanDocs } from "@/components/pool-loan-docs";
 import type { LoanDocProposalItem } from "@/lib/pools/loan-doc-apply";
@@ -86,6 +87,7 @@ export default async function PoolLoanPage({
               createdAt: true,
             },
           },
+          budgetLines: { orderBy: { sortOrder: "asc" } },
         },
       },
       expenses: { select: { amount: true } },
@@ -95,6 +97,10 @@ export default async function PoolLoanPage({
   // seletor: ?loan=<id> | "new" (formulário vazio p/ criar) | default = primeiro loan
   const creatingNew = rawLoan === "new" || pool.loans.length === 0;
   const loan = creatingNew ? null : (pool.loans.find((l) => l.id === rawLoan) ?? pool.loans[0]);
+  // catálogo de marcos p/ o dropdown do budget do banco (leva 2 dos marcos)
+  const milestoneCatalogForBudget = (
+    await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" }, select: { key: true, name: true } })
+  ).map((m) => ({ key: m.key, name: m.name }));
   // sub-abas internas (17/07): Statement | Juros | Documentos | Termos | Casas | Draws
   const stab = ["interest", "docs", "terms", "houses", "draws"].includes(rawStab ?? "")
     ? rawStab!
@@ -791,6 +797,17 @@ export default async function PoolLoanPage({
               </p>
             </section>
           )}
+          <LoanBudgetEditor
+            loanId={loan.id}
+            milestones={milestoneCatalogForBudget}
+            retainagePct={loan.retainagePct != null ? loan.retainagePct.toString() : ""}
+            expectedDraws={loan.expectedDraws != null ? String(loan.expectedDraws) : ""}
+            initial={loan.budgetLines.map((b) => ({
+              label: b.label,
+              pct: Number(b.pct),
+              milestoneKey: b.milestoneKey,
+            }))}
+          />
           <DrawHousesPanel
             poolId={pool.id}
             loanId={loan.id}
@@ -800,7 +817,19 @@ export default async function PoolLoanPage({
           />
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
-              <h2 className="text-base font-medium text-slate-800">Ledger de draws</h2>
+              <div className="flex items-center justify-between">
+                <h2 className="text-base font-medium text-slate-800">Ledger de draws</h2>
+                {(() => {
+                  const maxDraw = drawEntries.reduce((m, e) => Math.max(m, e.drawNumber ?? 0), 0);
+                  if (maxDraw === 0) return null;
+                  return (
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                      Draw #{maxDraw}
+                      {loan.expectedDraws ? ` de ~${loan.expectedDraws}` : ""}
+                    </span>
+                  );
+                })()}
+              </div>
               <p className="text-xs text-slate-400">
                 Pendentes primeiro. Clique na linha para editar / registrar a liberação — o
                 DRAW entra no statement na data da liberação{feesHint ? ` (${feesHint.toLowerCase()})` : ""}. ✓ =

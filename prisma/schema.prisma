@@ -1534,15 +1534,38 @@ model PoolLoan {
   feesInEnvelope Boolean?
   expectedClosingDate DateTime? @db.Date // closing PREVISTO (regra dos 80% dos permits)
   closingDate   DateTime? @db.Date // closing REAL
+  // Leva 2 dos marcos: retainage (retenção) que o banco segura por draw até o CO — só se
+  // estiver no LOI/contrato (regra do Stefan); nº de draws esperado (contador "N de M").
+  retainagePct  Decimal? @db.Decimal(6, 3)
+  expectedDraws Int?
   notes         String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  entries   PoolLoanEntry[]
-  houses    PoolHouse[]
-  documents PoolLoanDocument[]
+  entries     PoolLoanEntry[]
+  houses      PoolHouse[]
+  documents   PoolLoanDocument[]
+  budgetLines LoanBudgetLine[]
 
   @@index([poolId])
+}
+
+// Schedule of Values / budget do banco (leva 2 dos marcos). Cada linha do orçamento do
+// banco com $ e o MARCO nosso a que corresponde (mapa M-para-N: vários itens do banco
+// podem apontar p/ o mesmo marco). Marcar o marco → libera o $ das linhas mapeadas.
+model LoanBudgetLine {
+  id            String   @id @default(cuid())
+  loanId        String
+  loan          PoolLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  label         String // nome da linha no budget do banco ("Foundation", "Framing"…)
+  pct           Decimal  @db.Decimal(6, 3) // % do loan da casa que esta linha libera
+  milestoneKey  String? // marco nosso (CatalogBuildMilestone.key); null = não mapeado
+  sortOrder     Int      @default(0)
+  source        String   @default("MANUAL") // MANUAL | AI
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([loanId])
 }
 
 model PoolLoanEntry {

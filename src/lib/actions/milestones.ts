@@ -5,7 +5,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { logInvestmentAudit } from "@/lib/audit";
-import { estimatedDrawable, milestonePct, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
+import { drawableFromBudget, estimatedDrawable, milestonePct, type BudgetLine, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
 import { nextDrawNumber } from "@/lib/pools/draws";
 
 export type MilestoneFormState = { error?: string; ok?: boolean } | undefined;
@@ -92,18 +92,26 @@ async function drawableForHouse(
   const house = await prisma.poolHouse.findUnique({
     where: { id: houseId },
     select: {
-      poolId: true, loanId: true, address: true, bankLoanAmount: true, milestones: true,
+      poolId: true, loanId: true, address: true, bankLoanAmount: true, milestones: true, coDate: true,
       loanEntries: { where: { type: "DRAW" }, select: { amount: true, requestedAmount: true, pending: true } },
+      loan: { select: { retainagePct: true, budgetLines: { select: { milestoneKey: true, pct: true } } } },
     },
   });
   if (!house) return null;
-  const pct = milestonePct(catalog, house.milestones as HouseMilestones | null);
+  const done = house.milestones as HouseMilestones | null;
+  const pct = milestonePct(catalog, done);
   const loanAmount = house.bankLoanAmount != null ? Number(house.bankLoanAmount) : 0;
   const alreadyDrawn = house.loanEntries.reduce(
     (s, e) => s + (e.pending ? Number(e.requestedAmount ?? 0) : Number(e.amount)),
     0,
   );
-  const { toRequest } = estimatedDrawable({ pct, loanAmount, alreadyDrawn });
+  // budget do banco (leva 2) tem prioridade: drawable REAL; senão estimativa % × loan
+  const budget: BudgetLine[] = (house.loan?.budgetLines ?? []).map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
+  const real = drawableFromBudget({
+    done, budget, loanAmount, retainagePct: house.loan?.retainagePct != null ? Number(house.loan.retainagePct) : null,
+    alreadyDrawn, coDone: house.coDate != null,
+  });
+  const toRequest = real.hasBudget ? real.toRequest : estimatedDrawable({ pct, loanAmount, alreadyDrawn }).toRequest;
   return { poolId: house.poolId, loanId: house.loanId, address: house.address, toRequest: Math.round(toRequest), pct: pct ?? 0 };
 }
 
@@ -184,5 +192,54 @@ export async function requestBatchDraw(_prev: MilestoneFormState, formData: Form
     summary: `Requisitou draw em lote: $${total.toLocaleString("en-US")} em ${count} casa(s)`,
   });
   revalidatePath(`/pools/${poolId}`);
+  return { ok: true };
+}
+
+// ── Budget do banco (Schedule of Values, leva 2) ─────────────
+// Salva as linhas do SOV do loan (label, % do loan, marco mapeado) + retainage + nº de
+// draws esperado. As linhas não precisam somar 100 (banco pode reter/ter outros itens).
+export async function saveLoanBudget(_prev: MilestoneFormState, formData: FormData): Promise<MilestoneFormState> {
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  if (!loanId) return { error: "Loan inválido." };
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, select: { poolId: true } });
+  if (!loan) return { error: "Loan não encontrado." };
+
+  let rows: Array<{ label: string; pct: number; milestoneKey: string | null }>;
+  try {
+    rows = JSON.parse(String(formData.get("rows") ?? "[]"));
+  } catch {
+    return { error: "Dados inválidos." };
+  }
+  for (const r of rows) {
+    if (!r.label?.trim()) return { error: "Cada linha precisa de um nome." };
+    if (!Number.isFinite(r.pct) || r.pct < 0) return { error: `% inválido em "${r.label}".` };
+  }
+  const retainagePct = formData.get("retainagePct") ? Number(formData.get("retainagePct")) : null;
+  const expectedDraws = formData.get("expectedDraws") ? Math.round(Number(formData.get("expectedDraws"))) : null;
+
+  await prisma.$transaction([
+    prisma.loanBudgetLine.deleteMany({ where: { loanId } }),
+    ...rows.map((r, i) =>
+      prisma.loanBudgetLine.create({
+        data: { loanId, label: r.label.trim(), pct: r.pct, milestoneKey: r.milestoneKey || null, sortOrder: i, source: "MANUAL" },
+      }),
+    ),
+    prisma.poolLoan.update({
+      where: { id: loanId },
+      data: {
+        retainagePct: retainagePct != null && Number.isFinite(retainagePct) ? retainagePct : null,
+        expectedDraws: expectedDraws != null && Number.isFinite(expectedDraws) ? expectedDraws : null,
+      },
+    }),
+  ]);
+  await logInvestmentAudit({
+    poolId: loan.poolId,
+    entity: "POOL",
+    entityId: loanId,
+    action: "UPDATE",
+    summary: `Budget do banco atualizado: ${rows.length} linha(s)${retainagePct ? ` · retainage ${retainagePct}%` : ""}`,
+  });
+  revalidatePath(`/pools/${loan.poolId}/loan`);
+  revalidatePath(`/pools/${loan.poolId}`);
   return { ok: true };
 }

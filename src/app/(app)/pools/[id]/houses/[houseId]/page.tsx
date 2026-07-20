@@ -5,7 +5,7 @@ import { PoolHouseFicha } from "@/components/pool-house-ficha";
 import { AddChangeOrderForm } from "@/components/pool-capital-forms";
 import { deleteChangeOrder, deleteHouse } from "@/lib/actions/pools";
 import { HouseMilestonesPanel } from "@/components/house-milestones-panel";
-import { estimatedDrawable, milestonePct, milestoneRows, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
+import { drawableFromBudget, estimatedDrawable, milestonePct, milestoneRows, type BudgetLine, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +24,7 @@ export default async function PoolHousePage({
       pool: { include: { loans: { orderBy: { createdAt: "asc" }, include: { bankProfile: true } } } },
       changeOrders: { orderBy: { date: "asc" } },
       loanEntries: { where: { type: "DRAW" } },
+      loan: { select: { retainagePct: true, budgetLines: { select: { milestoneKey: true, pct: true } } } },
     },
   });
   if (!house || house.poolId !== id) notFound();
@@ -50,7 +51,17 @@ export default async function PoolHousePage({
     (s, e) => s + (e.pending ? Number(e.requestedAmount ?? 0) : Number(e.amount)),
     0,
   );
-  const drawEst = estimatedDrawable({ pct: mPct, loanAmount, alreadyDrawn });
+  const estimate = estimatedDrawable({ pct: mPct, loanAmount, alreadyDrawn });
+  // drawable REAL do budget do banco (leva 2), quando mapeado; senão a estimativa
+  const budget: BudgetLine[] = (house.loan?.budgetLines ?? []).map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
+  const real = drawableFromBudget({
+    done: doneMilestones, budget, loanAmount,
+    retainagePct: house.loan?.retainagePct != null ? Number(house.loan.retainagePct) : null,
+    alreadyDrawn, coDone: house.coDate != null,
+  });
+  const drawEst = real.hasBudget
+    ? { expectedCumulative: real.expectedCumulative, toRequest: real.toRequest }
+    : estimate;
 
   return (
     <div className="max-w-4xl">
@@ -119,6 +130,8 @@ export default async function PoolHousePage({
             expectedCumulative={drawEst.expectedCumulative}
             toRequest={drawEst.toRequest}
             alreadyDrawn={alreadyDrawn}
+            usingBudget={real.hasBudget}
+            retained={real.retained}
           />
         }
         changeOrders={

@@ -27,6 +27,8 @@ export function HouseMilestonesPanel({
   expectedCumulative,
   toRequest,
   alreadyDrawn,
+  usingBudget = false,
+  retained = 0,
 }: {
   houseId: string;
   rows: MilestoneRow[];
@@ -36,6 +38,8 @@ export function HouseMilestonesPanel({
   expectedCumulative: number;
   toRequest: number;
   alreadyDrawn: number;
+  usingBudget?: boolean;
+  retained?: number;
 }) {
   const [pending, start] = useTransition();
   const [drawState, setDrawState] = useState<{ error?: string; ok?: boolean } | null>(null);
@@ -103,15 +107,26 @@ export function HouseMilestonesPanel({
 
       {/* draw */}
       <div className="m-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[#1f3a5f]">Draw esperado × sacado</h3>
+        <h3 className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[#1f3a5f]">
+          Draw esperado × sacado
+          <span className={`rounded-full px-2 py-0.5 text-[9px] ${usingBudget ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+            {usingBudget ? "budget do banco" : "estimativa"}
+          </span>
+        </h3>
         {!hasLoan ? (
           <p className="text-xs text-slate-500">A casa não tem financiamento vinculado — vincule na aba Financiamento para estimar o draw.</p>
         ) : (
           <>
             <div className="flex justify-between py-0.5 text-[13px]">
-              <span>Draw esperado ({pct}% × loan de {money(loanAmount)})</span>
+              <span>{usingBudget ? "Draw esperado (linhas do budget concluídas)" : `Draw esperado (${pct}% × loan de ${money(loanAmount)})`}</span>
               <b>{money(expectedCumulative)}</b>
             </div>
+            {usingBudget && retained > 0 && (
+              <div className="flex justify-between py-0.5 text-[12px] text-slate-400">
+                <span>Retido pelo banco (libera no CO)</span>
+                <b>−{money(retained)}</b>
+              </div>
+            )}
             <div className="flex justify-between py-0.5 text-[13px]">
               <span>Já sacado / pedido</span>
               <b>{money(alreadyDrawn)}</b>
