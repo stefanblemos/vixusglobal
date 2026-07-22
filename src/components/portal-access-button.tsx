@@ -79,18 +79,32 @@ export function PortalAccessButton({
             </p>
             {state?.link ? (
               <div className="space-y-3">
-                <p className="text-sm text-emerald-700">✓ {state.message}</p>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                  <input readOnly value={state.link} className="flex-1 bg-transparent text-xs text-slate-600 outline-none" />
-                  <button
-                    type="button"
-                    onClick={() => { navigator.clipboard?.writeText(state.link!); setCopied(true); }}
-                    className="rounded-md bg-[#1f3a5f] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#16304f]"
-                  >
-                    {copied ? "copiado" : "copiar"}
-                  </button>
-                </div>
-                <p className="text-[11px] text-slate-400">Envie ao investidor — vale por 15 minutos. (O envio por e-mail entra na próxima leva.)</p>
+                <p className="text-sm text-emerald-700">{state.sentTo ? "📧" : "✓"} {state.message}</p>
+                {state.mailError && (
+                  <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
+                    O envio automático falhou ({state.mailError}). Use o link abaixo.
+                  </p>
+                )}
+                <details open={!state.sentTo} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <summary className="cursor-pointer text-[11px] font-semibold text-[#1f3a5f]">
+                    {state.sentTo ? "ver o link (caso precise enviar manualmente)" : "link de acesso"}
+                  </summary>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input readOnly value={state.link} className="flex-1 bg-transparent text-xs text-slate-600 outline-none" />
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard?.writeText(state.link!); setCopied(true); }}
+                      className="rounded-md bg-[#1f3a5f] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#16304f]"
+                    >
+                      {copied ? "copiado" : "copiar"}
+                    </button>
+                  </div>
+                </details>
+                <p className="text-[11px] text-slate-400">
+                  {state.sentTo
+                    ? "O investidor recebe um e-mail com o botão de acesso. O link vale 15 minutos e é de uso único."
+                    : "Envio automático por e-mail ainda não configurado — envie o link acima. Vale por 15 minutos."}
+                </p>
               </div>
             ) : (
               <form action={submit} className="space-y-3">

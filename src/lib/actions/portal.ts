@@ -8,6 +8,8 @@ import { prisma } from "@/lib/db";
 import { auth, signIn, signOut } from "@/auth";
 import { createPortalToken } from "@/lib/portal/access";
 import { logInvestmentAudit } from "@/lib/audit";
+import { sendMail } from "@/lib/mail/send";
+import { portalInviteEmail } from "@/lib/mail/templates";
 
 /**
  * Portal do investidor (#68) — geração de acesso por magic-link.
@@ -16,7 +18,9 @@ import { logInvestmentAudit } from "@/lib/audit";
  * Sem mailer ainda (#69): o operador copia o link e envia; a tela pública responde genérico.
  */
 
-export type PortalFormState = { error?: string; ok?: boolean; link?: string; message?: string } | undefined;
+export type PortalFormState =
+  | { error?: string; ok?: boolean; link?: string; message?: string; sentTo?: string; mailError?: string }
+  | undefined;
 
 const norm = (e: string) => e.trim().toLowerCase();
 
@@ -37,16 +41,27 @@ async function baseUrl(): Promise<string> {
 }
 
 // Público: o investidor pede o link na tela de login. Resposta SEMPRE genérica (não vaza
-// quais e-mails têm conta). Quando #69 fiar o e-mail, o link é enviado de verdade.
+// quais e-mails têm conta) — o envio só acontece de fato se houver acesso.
 export async function requestPortalLink(_prev: PortalFormState, formData: FormData): Promise<PortalFormState> {
   const email = norm(String(formData.get("email") ?? ""));
   if (!email || !email.includes("@")) return { error: "Informe um e-mail válido." };
   const user = await prisma.user.findFirst({
     where: { email, role: "INVESTOR" },
-    select: { id: true, investorAccess: { select: { id: true }, take: 1 } },
+    select: {
+      id: true,
+      investorAccess: {
+        select: { party: { select: { name: true } }, company: { select: { legalName: true, tradeName: true } } },
+        take: 1,
+      },
+    },
   });
   if (user && user.investorAccess.length > 0) {
-    await createPortalToken(email); // TODO(#69): enviar por e-mail
+    const a = user.investorAccess[0];
+    const entityName = a.party?.name || a.company?.tradeName || a.company?.legalName || "sua entidade";
+    const raw = await createPortalToken(email);
+    const link = `${await baseUrl()}/portal/enter/${raw}`;
+    const mail = portalInviteEmail({ entityName, link, expiresMin: 15, returning: true });
+    await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text });
   }
   return { ok: true, message: "Se este e-mail tiver acesso, enviamos um link para entrar. Verifique sua caixa de entrada." };
 }
@@ -101,6 +116,10 @@ export async function grantPortalAccess(_prev: PortalFormState, formData: FormDa
   }
 
   // 2) InvestorAccess → entidade do sócio (idempotente)
+  const alreadyHadAccess = !!(await prisma.investorAccess.findFirst({
+    where: member.partyId ? { userId: user.id, partyId: member.partyId } : { userId: user.id, companyId: member.companyId },
+    select: { id: true },
+  }));
   await prisma.investorAccess.upsert({
     where: member.partyId
       ? { userId_partyId: { userId: user.id, partyId: member.partyId } }
@@ -112,14 +131,28 @@ export async function grantPortalAccess(_prev: PortalFormState, formData: FormDa
   // 3) token + link
   const raw = await createPortalToken(email);
   const link = `${await baseUrl()}/portal/enter/${raw}`;
+  const entityName = member.party?.name || member.company?.tradeName || member.company?.legalName || "sua entidade";
+
+  // 4) envia por e-mail se o mailer estiver configurado (#69); senão, devolve o link
+  const mail = portalInviteEmail({ entityName, link, expiresMin: 15, returning: alreadyHadAccess });
+  const sent = await sendMail({ to: email, subject: mail.subject, html: mail.html, text: mail.text });
 
   await logInvestmentAudit({
     poolId: member.poolId,
     entity: "POOL",
     entityId: member.id,
     action: "UPDATE",
-    summary: `Acesso ao portal concedido a ${email} (${member.party?.name || member.company?.tradeName || member.company?.legalName || "entidade"})`,
+    summary: `Convite do portal ${sent.sent ? `ENVIADO por e-mail a ${email}` : `gerado para ${email} (link manual)`} — ${entityName}`,
   });
   revalidatePath(`/pools/${member.poolId}`);
-  return { ok: true, link, message: "Acesso criado. Copie o link e envie ao investidor (válido por 15 min)." };
+
+  if (sent.sent) {
+    return { ok: true, link, sentTo: email, message: `Convite enviado para ${email}. O link vale 15 minutos.` };
+  }
+  return {
+    ok: true,
+    link,
+    message: "Acesso criado. Copie o link e envie ao investidor (válido por 15 min).",
+    mailError: sent.reason === "not-configured" ? undefined : sent.reason,
+  };
 }
