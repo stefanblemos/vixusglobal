@@ -280,7 +280,7 @@ export function InvestorPortfolioView({
                 </thead>
                 <tbody>
                   {p.statement.rows.map((r, i) => (
-                    <tr key={i} className={`border-b border-slate-50 ${r.kind === "OPENING" ? "bg-slate-50/60" : ""}`}>
+                    <tr key={i} className={`border-b border-slate-50 ${r.legacy ? "bg-slate-50/60" : ""}`}>
                       <td className={`${sTd} tabular-nums`}>{fmtFull(r.date)}</td>
                       <td className={sTd}>{t(`st.ev.${r.kind}` as "st.ev.CONTRIBUTION")}</td>
                       <td className={sTd}>{r.poolCode}</td>
@@ -295,18 +295,20 @@ export function InvestorPortfolioView({
                       </td>
                       <td className={sTdR}>{formatMoney(r.investedAfter, cur)}</td>
                       <td className="px-3 py-1.5">
+                        <span className="flex flex-wrap items-center gap-1">
                         {r.rollover && <Tag tone="navy">{t("st.tag.rollover")}</Tag>}
                         {r.override && <Tag tone="amber">{t("st.tag.override")}</Tag>}
-                        {r.kind === "OPENING" && <Tag tone="slate">{t("st.tag.opening")}</Tag>}
-                        {r.kind !== "OPENING" && !r.rollover && !r.override && r.outNew > 0 && r.outReused > 0 && (
+                        {r.legacy && <Tag tone="slate">{t("st.tag.opening")}</Tag>}
+                        {!r.rollover && !r.override && r.outNew > 0 && r.outReused > 0 && (
                           <Tag tone="navy">{`${t("st.tag.reuse")} + ${t("st.tag.new")}`}</Tag>
                         )}
-                        {r.kind !== "OPENING" && !r.rollover && !r.override && r.outNew > 0 && r.outReused === 0 && (
+                        {!r.rollover && !r.override && r.outNew > 0 && r.outReused === 0 && (
                           <Tag tone="navy">{t("st.tag.new")}</Tag>
                         )}
-                        {r.kind !== "OPENING" && !r.rollover && !r.override && r.outNew === 0 && r.outReused > 0 && (
+                        {!r.rollover && !r.override && r.outNew === 0 && r.outReused > 0 && (
                           <Tag tone="green">{t("st.tag.reuse")}</Tag>
                         )}
+                        </span>
                       </td>
                     </tr>
                   ))}

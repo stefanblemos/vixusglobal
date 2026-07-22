@@ -75,13 +75,28 @@ model InvestorLegacy {
   party     Party?    @relation(fields: [partyId], references: [id], onDelete: Cascade)
   companyId String?   @unique
   company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  invested  Decimal   @default(0) @db.Decimal(20, 2) // aportado antes (do bolso)
-  returned  Decimal   @default(0) @db.Decimal(20, 2) // devolvido antes (capital + lucro)
-  since     DateTime? @db.Date // 1º investimento com a 4U
-  note      String? // ex.: "PH-1 e PH-2, encerrados"
+  note      String? // observação geral (ex.: "reconstituído a partir dos extratos de 2023-24")
   lockedAt  DateTime? // travado após salvar; destravar é ação explícita e auditada
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+
+  entries InvestorLegacyEntry[]
+}
+
+// Um LANÇAMENTO antigo (projeto encerrado): data + tipo + valor + o projeto/nota. Entra na
+// linha do tempo do extrato como qualquer outro movimento — a regra da carteira roda sozinha
+// na ordem cronológica. Tipos espelham os do extrato (StmtMovement).
+model InvestorLegacyEntry {
+  id       String         @id @default(cuid())
+  legacyId String
+  legacy   InvestorLegacy @relation(fields: [legacyId], references: [id], onDelete: Cascade)
+  date     DateTime       @db.Date
+  kind     String // CONTRIBUTION | DIST_CAPITAL | DIST_PROFIT
+  amount   Decimal        @db.Decimal(20, 2) // sempre positivo
+  label    String? // projeto/origem, ex.: "PH-1"
+  sortOrder Int           @default(0)
+
+  @@index([legacyId])
 }
 
 // Magic-link do portal: token de uso único, curto (~15 min). Guardamos só o hash.

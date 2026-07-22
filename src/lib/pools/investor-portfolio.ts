@@ -100,16 +100,16 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
   const [kind, id] = [key.slice(0, 1), key.slice(2)];
   if ((kind !== "c" && kind !== "p") || !id) return null;
   const where = kind === "c" ? { companyId: id } : { partyId: id };
-  // saldo de abertura (projetos anteriores encerrados) — credita a carteira
-  const legacy = await prisma.investorLegacy.findFirst({ where });
-  const opening = legacy
-    ? {
-        invested: Number(legacy.invested),
-        returned: Number(legacy.returned),
-        date: legacy.since,
-        note: legacy.note,
-      }
-    : null;
+  // lançamentos de projetos ANTERIORES (encerrados) informados pelo admin: entram na
+  // linha do tempo como movimentos normais — a regra da carteira roda na ordem correta.
+  const legacy = await prisma.investorLegacy.findFirst({ where, include: { entries: true } });
+  const legacyMovements: StmtMovement[] = (legacy?.entries ?? []).map((e) => ({
+    type: e.kind as StmtMovement["type"],
+    date: e.date,
+    amount: Number(e.amount),
+    poolCode: e.label || "anterior",
+    legacy: true,
+  }));
 
   const pools = await prisma.investmentPool.findMany({
     where: { members: { some: where } },
@@ -405,7 +405,7 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     tvpiProjected: invested > 0 ? round2((endNetTotal + distributedTotal) / invested) : null,
     nextDist: nextDist?.nextDist ? { ...nextDist.nextDist, poolCode: nextDist.code } : null,
     feed: { events: feedAll.slice(0, 12), total: feedTotal },
-    statement: buildInvestorStatement(movements, opening),
+    statement: buildInvestorStatement([...legacyMovements, ...movements]),
     memberIds,
   };
 }

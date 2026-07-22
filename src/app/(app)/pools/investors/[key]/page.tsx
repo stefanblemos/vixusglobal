@@ -57,17 +57,20 @@ export default async function InvestorPortfolioPage({
     const id = key.slice(2);
     const legacy = await prisma.investorLegacy.findFirst({
       where: kind === "c" ? { companyId: id } : { partyId: id },
+      include: { entries: { orderBy: { date: "asc" } } },
     });
     legacyPanel = (
       <InvestorLegacyPanel
         entityKey={key}
         values={{
-          invested: legacy ? Number(legacy.invested) : 0,
-          returned: legacy ? Number(legacy.returned) : 0,
-          since: legacy?.since ? legacy.since.toISOString().slice(0, 10) : null,
+          rows: (legacy?.entries ?? []).map((e) => ({
+            date: e.date.toISOString().slice(0, 10),
+            kind: e.kind,
+            amount: Number(e.amount),
+            label: e.label,
+          })),
           note: legacy?.note ?? null,
           locked: !!legacy?.lockedAt,
-          exists: !!legacy,
         }}
       />
     );

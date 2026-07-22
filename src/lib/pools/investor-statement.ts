@@ -17,22 +17,15 @@ export type StmtMovement = {
   poolCode: string;
   rollover?: boolean; // vínculo explícito com uma distribuição (só débitos)
   newMoneyOverride?: boolean; // só débitos
+  legacy?: boolean; // lançamento de projeto ANTERIOR (informado pelo admin)
   memo?: string | null;
-};
-
-// Saldo de ABERTURA: agregado dos projetos anteriores (encerrados) informado pelo ADMIN.
-// Credita a carteira — o próximo aporte consome e vira REUSO (narrativa do juro composto).
-export type StmtOpening = {
-  invested: number; // aportado antes (do bolso)
-  returned: number; // devolvido antes (capital + lucro)
-  date: Date | null; // 1º investimento com a 4U
-  note?: string | null;
 };
 
 export type StmtRow = {
   date: Date;
   poolCode: string;
-  kind: StmtMovement["type"] | "OPENING";
+  kind: StmtMovement["type"];
+  legacy: boolean;
   outNew: number; // saiu do bolso (dinheiro novo)
   outReused: number; // reuso da carteira
   received: number; // devoluções/vendas de participação
@@ -58,10 +51,7 @@ export type StmtResult = {
 const rank = (t: StmtMovement["type"]) =>
   t === "DIST_CAPITAL" || t === "DIST_PROFIT" || t === "TRANSFER_OUT" ? 0 : 1;
 
-export function buildInvestorStatement(
-  movements: StmtMovement[],
-  opening?: StmtOpening | null,
-): StmtResult {
+export function buildInvestorStatement(movements: StmtMovement[]): StmtResult {
   const evs = [...movements].sort(
     (a, b) => a.date.getTime() - b.date.getTime() || rank(a.type) - rank(b.type),
   );
@@ -73,28 +63,6 @@ export function buildInvestorStatement(
   let realizedProfit = 0;
   const rows: StmtRow[] = [];
 
-  // abertura: o que já saiu do bolso e o que já voltou nos projetos ANTERIORES. O devolvido
-  // credita a carteira (próximo aporte = reuso); o resultado líquido entra no lucro realizado.
-  // `invested` (principal HOJE) segue 0 — aqueles projetos estão encerrados.
-  if (opening && (opening.invested > 0 || opening.returned > 0)) {
-    newCapital = round2(opening.invested);
-    returned = round2(opening.returned);
-    wallet = round2(opening.returned);
-    realizedProfit = round2(opening.returned - opening.invested);
-    rows.push({
-      date: opening.date ?? evs[0]?.date ?? new Date(),
-      poolCode: "—",
-      kind: "OPENING",
-      outNew: round2(opening.invested),
-      outReused: 0,
-      received: round2(opening.returned),
-      investedAfter: 0,
-      walletAfter: wallet,
-      rollover: false,
-      override: false,
-      memo: opening.note ?? null,
-    });
-  }
 
   for (const e of evs) {
     const a = Math.abs(e.amount);
@@ -114,6 +82,7 @@ export function buildInvestorStatement(
         walletAfter: wallet,
         rollover: false,
         override: false,
+        legacy: e.legacy ?? false,
         memo: e.memo,
       });
     } else {
@@ -136,6 +105,7 @@ export function buildInvestorStatement(
         walletAfter: wallet,
         rollover: e.rollover ?? false,
         override,
+        legacy: e.legacy ?? false,
         memo: e.memo,
       });
     }
