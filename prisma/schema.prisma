@@ -515,6 +515,19 @@ model TaxReturn {
   pdfSize      Int?
   status       TaxReturnStatus @default(ANALYZED)
   createdAt    DateTime        @default(now())
+
+  // RETIFICAÇÃO: quando o contador revisa o IR, a declaração ANTIGA aponta para a nova e sai
+  // dos cálculos — mas fica no histórico com o PDF original (foi o que se protocolou).
+  // "Vigente" = supersededById null. ATENÇÃO: duas declarações ativas no mesmo ano podem ser
+  // LEGÍTIMAS (períodos curtos de conversão, ex.: 1120-S final + 1065) — por isso a
+  // substituição é declarada pelo usuário, nunca inferida de empresa+ano.
+  supersededById String?
+  supersededBy   TaxReturn?  @relation("Amendment", fields: [supersededById], references: [id], onDelete: SetNull)
+  amends         TaxReturn[] @relation("Amendment")
+  supersededAt   DateTime?
+  amendmentNote  String?
+
+  @@index([companyId, year])
 }
 
 // Forma de tributação (independe do tipo legal — ex.: LLC tributada como S-corp).

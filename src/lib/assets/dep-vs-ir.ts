@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildAssetRegister } from "./depreciation";
 import { effectiveFiguresOf } from "@/lib/ir/figures";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 // Compara a depreciação CALCULADA (MACRS, a partir das datas de aquisição) com a
 // depreciação reportada no IR (figura DEPRECIATION extraída do retorno) — por empresa/ano.
@@ -33,7 +34,7 @@ export async function buildDepreciationVsIR(year: number): Promise<DepVsIr> {
   const [reg, returns, companies] = await Promise.all([
     buildAssetRegister(year, undefined, { pureMacrs: true }), // "Computed (MACRS)" = MACRS legal pura
     prisma.taxReturn.findMany({
-      where: { companyId: { not: null } },
+      where: { companyId: { not: null }, ...ACTIVE_RETURN },
       select: { companyId: true, year: true, figures: true, manualFigures: true },
     }),
     prisma.company.findMany({ select: { id: true, legalName: true } }),

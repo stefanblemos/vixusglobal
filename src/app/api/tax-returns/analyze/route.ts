@@ -14,7 +14,7 @@ async function finalize(fileName: string, buf: Buffer): Promise<Response> {
   if (res.error) return Response.json({ error: res.error }, { status: 400 });
   revalidatePath("/tax");
   if (res.companyId) revalidatePath(`/companies/${res.companyId}`);
-  return Response.json({ id: res.id });
+  return Response.json({ id: res.id, companyId: res.companyId, conflicts: res.conflicts ?? [] });
 }
 
 export async function POST(req: Request): Promise<Response> {

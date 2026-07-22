@@ -7,6 +7,7 @@ import {
   type K1Status,
   type K1Return,
 } from "@/lib/ir/k1-reconcile";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 export const dynamic = "force-dynamic";
 
@@ -74,7 +75,7 @@ function Badge({ status }: { status: K1Status }) {
 export default async function K1ReconcilePage() {
   const [returns, companies] = await Promise.all([
     prisma.taxReturn.findMany({
-      where: { companyId: { not: null } },
+      where: { companyId: { not: null }, ...ACTIVE_RETURN },
       select: {
         companyId: true,
         year: true,

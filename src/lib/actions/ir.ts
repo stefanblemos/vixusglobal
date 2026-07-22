@@ -8,7 +8,9 @@ import { rebuildOwnershipFromIRs } from "@/lib/ir/rebuild-ownership";
 import { ALL_ENTITY_TYPE_VALUES, ALL_TAX_TREATMENT_VALUES } from "@/lib/catalog";
 import { EntityType, TaxTreatment } from "@prisma/client";
 
-export type IrState = { error?: string; id?: string } | undefined;
+export type IrState =
+  | { error?: string; id?: string; conflicts?: import("@/lib/ir/ingest").IngestConflict[]; companyId?: string | null }
+  | undefined;
 
 export async function analyzeAndStoreTaxReturn(
   _prev: IrState,
@@ -23,7 +25,7 @@ export async function analyzeAndStoreTaxReturn(
   if (res.error) return { error: res.error };
   revalidatePath("/tax");
   if (res.companyId) revalidatePath(`/companies/${res.companyId}`);
-  return { id: res.id };
+  return { id: res.id, conflicts: res.conflicts, companyId: res.companyId };
 }
 
 // Cria ownership (carimbado pelo ano do IR) a partir dos sócios extraídos — casa
@@ -135,4 +137,62 @@ export async function applyTaxReturnClassification(formData: FormData): Promise<
   revalidatePath("/tax");
   revalidatePath(`/companies/${tr.companyId}`);
   redirect(`/tax?msg=class-${tr.year}`);
+}
+
+// ── Retificação de IR ────────────────────────────────────────────────────────
+// Quando o contador revisa um IR já subido, o app pergunta o que fazer (modal). As três
+// saídas possíveis. NADA aqui mexe nos LIVROS (QBO) — o IR é base de comparação; ajuste de
+// depreciação nos livros/ativos é sempre manual.
+export type AmendState = { error?: string; ok?: boolean; message?: string } | undefined;
+
+export async function resolveTaxReturnUpload(_prev: AmendState, formData: FormData): Promise<AmendState> {
+  const newId = String(formData.get("newId") ?? "").trim();
+  const mode = String(formData.get("mode") ?? "");
+  const note = String(formData.get("note") ?? "").trim() || null;
+  const fresh = await prisma.taxReturn.findUnique({
+    where: { id: newId },
+    select: { id: true, companyId: true, year: true, fileName: true },
+  });
+  if (!fresh) return { error: "Declaração não encontrada." };
+
+  if (mode === "DUPLICATE") {
+    await prisma.taxReturn.delete({ where: { id: newId } });
+    if (fresh.companyId) revalidatePath(`/companies/${fresh.companyId}`);
+    revalidatePath("/tax");
+    return { ok: true, message: "Upload descartado — nada mudou." };
+  }
+
+  if (mode === "SEPARATE") {
+    return { ok: true, message: "Mantidas as duas declarações do ano (períodos curtos)." };
+  }
+
+  if (mode === "AMENDMENT") {
+    const oldId = String(formData.get("oldId") ?? "").trim();
+    const prev = await prisma.taxReturn.findUnique({ where: { id: oldId }, select: { id: true, supersededById: true } });
+    if (!prev) return { error: "Declaração original não encontrada." };
+    if (prev.supersededById) return { error: "Essa declaração já foi substituída." };
+    await prisma.taxReturn.update({
+      where: { id: oldId },
+      data: { supersededById: newId, supersededAt: new Date(), amendmentNote: note },
+    });
+    if (fresh.companyId) revalidatePath(`/companies/${fresh.companyId}`);
+    revalidatePath("/tax");
+    revalidatePath("/tax/k1");
+    return {
+      ok: true,
+      message:
+        "Retificadora em vigor. A anterior ficou arquivada no histórico. Atenção: os LIVROS não foram alterados — se a depreciação mudou, ajuste manualmente no cadastro de ativos.",
+    };
+  }
+
+  return { error: "Opção inválida." };
+}
+
+// Desfaz a substituição (a antiga volta a valer junto com a nova) — para corrigir um engano.
+export async function undoTaxReturnAmendment(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "").trim();
+  const r = await prisma.taxReturn.findUnique({ where: { id }, select: { companyId: true } });
+  await prisma.taxReturn.update({ where: { id }, data: { supersededById: null, supersededAt: null } });
+  if (r?.companyId) revalidatePath(`/companies/${r.companyId}`);
+  revalidatePath("/tax");
 }

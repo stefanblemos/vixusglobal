@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { buildTaxPreview } from "@/lib/tax/preview";
 import { figuresByCompany, type IrFigure } from "@/lib/ir/figures";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 // Auditoria QBO × IR: confronta o que o app CALCULA (tax preview, a partir do QBO) com o que o
 // contador DECLAROU (as figuras do IR). Cada métrica bate, diverge, é divergência esperada (holding:
@@ -78,7 +79,7 @@ export async function irTaxableConfidence(
   rows: { id: string; kind: string; entityType: string; taxable: number; hasPnl: boolean }[],
 ): Promise<Record<string, IrConfidence>> {
   const rets = await prisma.taxReturn.findMany({
-    where: { companyId: { not: null }, year },
+    where: { companyId: { not: null }, year, ...ACTIVE_RETURN },
     select: { companyId: true, figures: true, manualFigures: true },
   });
   const figsByCo = figuresByCompany(rets);
@@ -95,7 +96,7 @@ export async function irTaxableConfidence(
 export async function buildIrReconciliation(year: number): Promise<IrReconciliation> {
   const preview = await buildTaxPreview(year);
   const rets = await prisma.taxReturn.findMany({
-    where: { companyId: { not: null }, year },
+    where: { companyId: { not: null }, year, ...ACTIVE_RETURN },
     select: { companyId: true, figures: true, manualFigures: true, company: { select: { legalName: true } } },
   });
   const irByCo = figuresByCompany(rets);

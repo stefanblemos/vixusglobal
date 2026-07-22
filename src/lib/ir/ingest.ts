@@ -4,7 +4,21 @@ import { clampPdfPages } from "@/lib/ir/pdf";
 import { matchCompany } from "@/lib/qbo/match";
 import { rebuildOwnershipFromIRs } from "@/lib/ir/rebuild-ownership";
 
-export type IngestResult = { id?: string; companyId?: string | null; error?: string };
+export type IngestConflict = {
+  id: string;
+  fileName: string;
+  taxForm: string | null;
+  netIncome: number | null;
+  createdAt: string;
+};
+export type IngestResult = {
+  id?: string;
+  companyId?: string | null;
+  error?: string;
+  // Já existe declaração VIGENTE da mesma empresa/ano? Pode ser retificação, período curto
+  // legítimo (conversão) ou duplicata — quem decide é o usuário, no modal.
+  conflicts?: IngestConflict[];
+};
 
 // Núcleo da ingestão de IR: extrai com a Claude, casa a empresa, guarda tudo + o PDF.
 // Reutilizado pelo endpoint de upload, pela server action e por scripts.
@@ -110,7 +124,24 @@ export async function ingestTaxReturn(fileName: string, buf: Buffer): Promise<In
     }
   }
 
-  return { id: created.id, companyId };
+  // conflito: outras declarações VIGENTES da mesma empresa/ano (a recém-criada fica de fora)
+  let conflicts: IngestConflict[] = [];
+  if (companyId && created.year != null) {
+    const others = await prisma.taxReturn.findMany({
+      where: { companyId, year: created.year, supersededById: null, id: { not: created.id } },
+      select: { id: true, fileName: true, taxForm: true, netIncome: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+    conflicts = others.map((o) => ({
+      id: o.id,
+      fileName: o.fileName,
+      taxForm: o.taxForm,
+      netIncome: o.netIncome != null ? Number(o.netIncome) : null,
+      createdAt: o.createdAt.toISOString().slice(0, 10),
+    }));
+  }
+
+  return { id: created.id, companyId, conflicts };
 }
 
 // Mantém só os últimos 4 dígitos de um SSN/CPF/EIN (dado sensível).

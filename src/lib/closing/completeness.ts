@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 // Matriz de completude por empresa, para um ano: o que está NA BASE para fechar o período —
 // IR, P&L, Balance Sheet, General Ledger e extrato bancário. Vermelho = falta.
@@ -38,7 +39,7 @@ export async function buildCompleteness(year: number): Promise<{
       orderBy: { legalName: "asc" },
     }),
     prisma.taxReturn.findMany({
-      where: { companyId: { not: null } },
+      where: { companyId: { not: null }, ...ACTIVE_RETURN },
       select: { companyId: true, year: true, isFinalReturn: true },
     }),
     prisma.qboImport.findMany({

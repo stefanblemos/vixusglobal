@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { IrAmendmentModal, type ConflictReturn } from "@/components/ir-amendment-modal";
 
 // 4 MB por pedaço: abaixo do limite de ~10 MiB do dev server E do ~4,5 MB do Vercel
 // (serverless functions). Mantém o upload de IRs grandes funcionando nos dois ambientes.
 const CHUNK = 4 * 1024 * 1024;
 const ENDPOINT = "/api/tax-returns/analyze";
 
-type UploadResult = { id?: string; error?: string };
+type UploadResult = { id?: string; error?: string; conflicts?: ConflictReturn[] };
 
 async function uploadFile(
   file: File,
@@ -50,6 +51,8 @@ export function IrUpload() {
   const [pending, setPending] = useState(false);
   const [progress, setProgress] = useState<{ sent: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // IR já existente p/ a mesma empresa/ano → modal decide (retificadora | outra | duplicata)
+  const [conflict, setConflict] = useState<{ id: string; fileName: string; list: ConflictReturn[] } | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -68,6 +71,9 @@ export function IrUpload() {
       if (res.error) {
         setError(res.error);
       } else {
+        if (res.conflicts?.length && res.id) {
+          setConflict({ id: res.id, fileName: file.name, list: res.conflicts });
+        }
         form.reset();
         router.refresh();
       }
@@ -112,6 +118,17 @@ export function IrUpload() {
         </p>
       )}
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+      {conflict && (
+        <IrAmendmentModal
+          newId={conflict.id}
+          newFileName={conflict.fileName}
+          conflicts={conflict.list}
+          onDone={() => {
+            setConflict(null);
+            router.refresh();
+          }}
+        />
+      )}
     </form>
   );
 }

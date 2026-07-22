@@ -312,7 +312,7 @@ export default async function CompanyYearPage({
       prisma.company.findMany(),
       // Todos os IRs do MESMO ano (p/ validar os K-1 recebidos contra o IR do emissor).
       prisma.taxReturn.findMany({
-        where: { year, companyId: { not: null } },
+        where: { year, companyId: { not: null }, supersededById: null },
         select: { companyId: true, owners: true, taxForm: true },
       }),
     ]);
@@ -679,11 +679,20 @@ export default async function CompanyYearPage({
           const totalTaxVal = figVal("TOTAL_TAX");
           const depIr = figVal("DEPRECIATION");
           return (
-            <section key={r.id} className="space-y-4">
+            <section key={r.id} className={`space-y-4 ${r.supersededById ? "opacity-60" : ""}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-lg font-medium text-slate-800">
                   Income tax return — {r.taxForm ?? r.fileName}
                 </h2>
+                {/* Retificada: fica no histórico (foi o que se protocolou) mas SAI dos cálculos */}
+                {r.supersededById && (
+                  <span
+                    className="rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold text-amber-800"
+                    title={`Substituída por uma retificadora${r.amendmentNote ? ` — ${r.amendmentNote}` : ""}. Fora dos cálculos.`}
+                  >
+                    substituída — fora dos cálculos
+                  </span>
+                )}
                 {r.pdfSize != null && (
                   <a
                     href={`/api/tax-returns/${r.id}/pdf`}

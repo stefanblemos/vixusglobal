@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { PersonalUpload } from "@/components/personal-upload";
 import { deletePersonalReturn } from "@/lib/actions/personal";
 import { crossCheckPersonalReturn } from "@/lib/personal/reconcile";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function PersonalReturnsPage() {
       include: { party: { select: { name: true } } },
     }),
     prisma.taxReturn.findMany({
-      where: { companyId: { not: null } },
+      where: { companyId: { not: null }, ...ACTIVE_RETURN },
       select: { companyId: true, year: true, taxTreatment: true, owners: true },
     }),
     prisma.company.findMany({ select: { id: true, legalName: true } }),

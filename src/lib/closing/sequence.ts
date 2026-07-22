@@ -3,6 +3,7 @@ import { edgesFromOwnerships } from "@/lib/ownership/effective";
 import { entityNames, ownerNameMatches } from "@/lib/ownership/reconcile";
 import { looseNameMatch } from "@/lib/personal/reconcile";
 import { buildTreatmentResolver, isCorpTreatment } from "@/lib/tax/treatment";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 const SUFFIX = /^(llc|l\.l\.c|inc|corp|co|ltd|lp|llp|pa|the|and|of)$/i;
 // Acrônimo curto p/ caber na tela (token com dígito é o mais identificador; sigla em CAIXA
@@ -90,7 +91,7 @@ export async function buildClosingSequence(year: number): Promise<ClosingSequenc
         },
       }),
       prisma.taxReturn.findMany({
-        where: { companyId: { not: null } },
+        where: { companyId: { not: null }, ...ACTIVE_RETURN },
         select: { companyId: true, year: true, taxTreatment: true, taxForm: true, k1sReceived: true, createdAt: true },
       }),
       prisma.personalReturn.findMany({ select: { partyId: true, year: true, matchedName: true } }),

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { buildTaxPreview } from "@/lib/tax/preview";
 import { baselineFig } from "@/lib/tax/audit-vs-ir";
 import { figuresByCompany } from "@/lib/ir/figures";
+import { ACTIVE_RETURN } from "@/lib/ir/amendment";
 
 // PONTE M-1 (livro → imposto), por entidade, nas LINHAS reais do Schedule M-1: começa no lucro por
 // livro (QBO) e reconstrói cada ajuste até o taxable income — o mesmo caminho do tax preview, agora
@@ -39,7 +40,7 @@ const within = (a: number, b: number) => Math.abs(a - b) <= Math.max(1000, 0.08 
 export async function buildM1Bridge(year: number): Promise<M1Bridge> {
   const preview = await buildTaxPreview(year);
   const rets = await prisma.taxReturn.findMany({
-    where: { companyId: { not: null }, year },
+    where: { companyId: { not: null }, year, ...ACTIVE_RETURN },
     select: { companyId: true, figures: true, manualFigures: true },
   });
   const figsByCo = figuresByCompany(rets);
