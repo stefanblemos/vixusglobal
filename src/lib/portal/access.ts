@@ -42,10 +42,11 @@ export async function investorEntities(userId: string) {
   });
   const entities = access
     .map((a) =>
+      // key no MESMO formato do app interno (c_<id> / p_<id>) — é a chave do loadInvestorPortfolio
       a.party
-        ? { key: `p:${a.party.id}`, kind: "PARTY" as const, id: a.party.id, name: a.party.name }
+        ? { key: `p_${a.party.id}`, kind: "PARTY" as const, id: a.party.id, name: a.party.name }
         : a.company
-          ? { key: `c:${a.company.id}`, kind: "COMPANY" as const, id: a.company.id, name: a.company.tradeName || a.company.legalName }
+          ? { key: `c_${a.company.id}`, kind: "COMPANY" as const, id: a.company.id, name: a.company.tradeName || a.company.legalName }
           : null,
     )
     .filter((e): e is NonNullable<typeof e> => e != null)
