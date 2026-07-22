@@ -392,6 +392,20 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     .sort((a, b) => a.nextDist!.date.getTime() - b.nextDist!.date.getTime())[0];
   feedAll.sort((a, b) => b.date.getTime() - a.date.getTime());
 
+  // ── VIDA TODA × CICLO ATUAL ────────────────────────────────────────────────
+  // NAV, projeção e próxima distribuição são dos pools ATUAIS (misturar projeto encerrado
+  // ali não faz sentido). Já "quanto recebi", TIR e TVPI são perguntas da VIDA do investidor:
+  // incluem os projetos encerrados informados no histórico (que agora têm data real).
+  const stmt = buildInvestorStatement([...legacyMovements, ...movements]);
+  const legacyFlows = legacyMovements.map((m) => ({
+    date: m.date,
+    amount: m.type === "CONTRIBUTION" ? -Math.abs(m.amount) : Math.abs(m.amount),
+  }));
+  const returnedTotal = round2(stmt.returned); // tudo que a 4U devolveu (atuais + encerrados)
+  const outOfPocket = round2(stmt.newCapital); // dinheiro que saiu do bolso na vida inteira
+  // TVPI da vida: para cada $1 do BOLSO, quanto já voltou + quanto ainda está trabalhando.
+  const tvpiBase = outOfPocket > 0 ? outOfPocket : invested;
+
   return {
     key,
     name: investorName,
@@ -399,13 +413,13 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     invested,
     valueToday,
     endNet: endNetTotal,
-    distributed: round2(distributedTotal),
-    irr: xirr(flows),
-    tvpiToday: invested > 0 ? round2((valueToday + distributedTotal) / invested) : null,
-    tvpiProjected: invested > 0 ? round2((endNetTotal + distributedTotal) / invested) : null,
+    distributed: returnedTotal,
+    irr: xirr([...legacyFlows, ...flows]),
+    tvpiToday: tvpiBase > 0 ? round2((valueToday + returnedTotal) / tvpiBase) : null,
+    tvpiProjected: tvpiBase > 0 ? round2((endNetTotal + returnedTotal) / tvpiBase) : null,
     nextDist: nextDist?.nextDist ? { ...nextDist.nextDist, poolCode: nextDist.code } : null,
     feed: { events: feedAll.slice(0, 12), total: feedTotal },
-    statement: buildInvestorStatement([...legacyMovements, ...movements]),
+    statement: stmt,
     memberIds,
   };
 }

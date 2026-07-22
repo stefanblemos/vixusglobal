@@ -95,7 +95,7 @@ export function InvestorPortfolioView({
       value: formatMoney(p.distributed, cur),
       hint: p.nextDist
         ? `${t("iv.k.next")}: ${fmtDate(p.nextDist.date)} ≈ ${compact(p.nextDist.share)} (${p.nextDist.poolCode})`
-        : "—",
+        : t("iv.k.dist.h"),
       hero: false,
     },
     {
