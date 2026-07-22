@@ -103,6 +103,9 @@ const NAV: Entry[] = [
     icon: Home,
     items: [
       { href: "/pools", label: "Pools", icon: Home },
+      // Visão consolidada por entidade investidora + "ver como investidor" (o que o sócio
+      // enxerga no portal). Acesso direto p/ operador/admin — pedido do Stefan.
+      { href: "/pools/investors", label: "Investidores", icon: PieChart },
       { href: "/pools/interest", label: "Juros", icon: PiggyBank },
       { href: "/pools/draws", label: "Draws", icon: HandCoins },
       { href: "/pools/simulator", label: "Simulator", icon: Calculator },
