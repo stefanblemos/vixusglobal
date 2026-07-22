@@ -15,7 +15,8 @@ import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
-import { computeNav, liveIrr, type NavHouse } from "@/lib/pools/nav";
+import { computeNav, liveIrr, xirr, type NavHouse } from "@/lib/pools/nav";
+import { computeEndNet } from "@/lib/pools/investor-value";
 import { milestonePct, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
 import { buildRisk, mesAno } from "@/lib/pools/risk";
 import { ncStatsForLocation } from "@/lib/pools/benchmark";
@@ -86,7 +87,7 @@ export default async function PoolDetailPage({
       houses: {
         include: {
           changeOrders: true,
-          catalogModel: { select: { name: true } },
+          catalogModel: { select: { name: true, sqft: true } },
           catalogLocation: { select: { name: true } },
           loan: { include: { bankProfile: { select: { name: true } } } },
           // draws creditados → % de conclusão da obra (pedido A)
@@ -404,6 +405,51 @@ export default async function PoolDetailPage({
     distributed: Number(distributed),
     projectedProfitNet: live.profitNet,
   });
+  // FIM LÍQUIDO ao investidor — MESMA conta da tela do investidor (fonte única): usa a dívida
+  // REAL do pool (por isso acerta a casa cujo loan já foi quitado pelo sweep) e desconta a
+  // performance da 4U e o promote da Vixus. Sem isto o Overview mostrava valor bruto/inflado.
+  const endNetPool = computeEndNet({
+    freeCash: Number(available),
+    houses: pool.houses.map((h) => ({
+      addr: h.address.split(",")[0],
+      sold: h.saleDate != null,
+      plannedLotCost: h.plannedLotCost != null ? Number(h.plannedLotCost) : null,
+      plannedBuildCost: h.plannedBuildCost != null ? Number(h.plannedBuildCost) : null,
+      plannedClosingCost: h.plannedClosingCost != null ? Number(h.plannedClosingCost) : null,
+      plannedSalePrice: h.plannedSalePrice != null ? Number(h.plannedSalePrice) : null,
+      ownCapital: Number(h.ownCapital ?? 0),
+      bankDrawn: h.loanEntries.reduce((s2, e) => s2 + Number(e.amount), 0),
+      drawable: h.bankLoanAmount != null ? Number(h.bankLoanAmount) : null,
+      locationName: h.catalogLocation?.name ?? null,
+      sqft: h.catalogModel?.sqft ?? null,
+    })),
+    debt: poolDebt,
+    financingComing: financingProjected,
+    provisionedExpenses: Number(expensesProvisioned),
+    hasEntity: pool.companyId != null,
+    hasWindDownProvision: pool.expenses.some((e) => e.category === "DISSOLUTION"),
+    raised: raisedN,
+    distributed: Number(distributed),
+    investorProfitSharePct: pool.profitSharePct != null ? Number(pool.profitSharePct) : null,
+    promotePlan: simKpis?.promoteTotal ?? null,
+    vehicleCostPlan: simKpis?.vehicleCostTotal ?? null,
+    expensesPaid: Number(expensesPaid),
+    unitsTotal: Number(table.totalUnits),
+  });
+  const poolEndDate = pool.effectiveEndDate ?? pool.plannedEndDate ?? null;
+  // TIR do investidor: aportes (−), distribuições já pagas (+) e o FIM LÍQUIDO no encerramento.
+  const endIrrDate = (() => {
+    const floor = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    return poolEndDate && poolEndDate.getTime() > floor.getTime() ? poolEndDate : floor;
+  })();
+  const liveIrrNet = xirr([
+    ...contribs.map((e) => ({ date: e.date, amount: -Math.abs(Number(e.amount)) })),
+    ...pool.distributions.map((d) => ({
+      date: d.date,
+      amount: d.lines.reduce((s2, l) => s2 + Number(l.amount), 0),
+    })),
+    ...(endNetPool.endValueNet > 0 ? [{ date: endIrrDate, amount: endNetPool.endValueNet }] : []),
+  ]);
   const planIrr = simKpis?.irrAnnual != null ? Number(simKpis.irrAnnual) : null;
   const planMultiple = simKpis?.equityMultiple != null ? Number(simKpis.equityMultiple) : null;
   const tvpi = raisedN > 0 ? (navR.nav + Number(distributed)) / raisedN : null;
@@ -648,15 +694,15 @@ export default async function PoolDetailPage({
               label: "NAV / unit",
               hero: true,
               value: navR.navPerUnit != null ? formatMoney(navR.navPerUnit, pool.currency) : "—",
-              up: navR.navPerUnit != null && navR.endPerUnit != null && navR.endPerUnit > navR.navPerUnit,
+              up: navR.navPerUnit != null && endNetPool.endPerUnitNet != null && endNetPool.endPerUnitNet > navR.navPerUnit,
               hint: `NAV ${fmtCompact(navR.nav)} · fim ${
-                navR.endPerUnit != null ? formatMoney(navR.endPerUnit, pool.currency) : "—"
+                endNetPool.endPerUnitNet != null ? formatMoney(endNetPool.endPerUnitNet, pool.currency) : "—"
               }`,
             },
             {
               label: "TIR viva",
               hero: true,
-              value: live.irr != null ? `${(live.irr * 100).toFixed(1)}%` : "—",
+              value: liveIrrNet != null ? `${(liveIrrNet * 100).toFixed(1)}%` : "—",
               up: false,
               hint: planIrr != null ? `plano ${(planIrr * 100).toFixed(1)}%` : "XIRR real + plano",
             },
@@ -855,7 +901,7 @@ export default async function PoolDetailPage({
                 curva J: par {formatMoney(unitPar, pool.currency)} &rarr; hoje{" "}
                 {navR.navPerUnit != null ? formatMoney(navR.navPerUnit, pool.currency) : "\u2014"} &rarr; fim{" "}
                 {navR.endPerUnit != null ? formatMoney(navR.endPerUnit, pool.currency) : "\u2014"}
-                {navR.navPerUnit != null && navR.endPerUnit != null && navR.endPerUnit > navR.navPerUnit
+                {navR.navPerUnit != null && endNetPool.endPerUnitNet != null && endNetPool.endPerUnitNet > navR.navPerUnit
                   ? " \u2934"
                   : ""}
                 {planIrr != null || planMultiple != null
