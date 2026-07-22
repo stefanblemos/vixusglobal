@@ -222,6 +222,8 @@ function metricsAt(poolRaw: any, asOf: Date, mCatalog: MilestoneCatalog[] = []) 
     })),
     houses: navHouses,
     financingDrag: risk.financingDrag,
+    freeCash: available,
+    endDate: pool.effectiveEndDate ?? pool.plannedEndDate ?? null,
     today: asOf,
   });
   const navR = computeNav({

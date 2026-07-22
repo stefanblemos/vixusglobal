@@ -392,6 +392,8 @@ export default async function PoolDetailPage({
     houses: navHouses,
     financingDrag: financingIncurred + financingProjected,
     today: new Date(),
+    freeCash: Number(freeToReturn), // caixa das vendas já fechadas volta no encerramento
+    endDate: pool.effectiveEndDate ?? pool.plannedEndDate ?? null,
   });
   const navR = computeNav({
     freeCash: Number(freeToReturn),

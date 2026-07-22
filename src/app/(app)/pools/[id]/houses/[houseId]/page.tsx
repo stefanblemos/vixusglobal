@@ -46,12 +46,19 @@ export default async function PoolHousePage({
     await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" } })
   ).map((r) => ({ key: r.key, name: r.name, detail: r.detail, weightPct: Number(r.weightPct), sortOrder: r.sortOrder }));
   const doneMilestones = house.milestones as HouseMilestones | null;
-  const mPct = milestonePct(milestoneCatalog, doneMilestones);
+  const mPctRaw = milestonePct(milestoneCatalog, doneMilestones);
   const loanAmount = house.bankLoanAmount != null ? Number(house.bankLoanAmount) : 0;
   const alreadyDrawn = house.loanEntries.reduce(
     (s, e) => s + (e.pending ? Number(e.requestedAmount ?? 0) : Number(e.amount)),
     0,
   );
+  // Casas ANTIGAS (o % vinha dos statements do banco e o loan já foi quitado) não têm marco
+  // marcado — e marcar retroativamente não faz sentido, pois não há draw a requisitar. Nesse
+  // caso o % de obra cai para o mesmo fallback do status: CO = 100%, senão sacado ÷ aprovado.
+  const drawnPct = loanAmount > 0 ? Math.min(100, Math.round((alreadyDrawn / loanAmount) * 100)) : 0;
+  const mPctSource: "MILESTONES" | "DRAWS" | "CO" =
+    mPctRaw != null ? "MILESTONES" : house.coDate != null ? "CO" : "DRAWS";
+  const mPct = mPctRaw ?? (house.coDate != null ? 100 : drawnPct);
   const estimate = estimatedDrawable({ pct: mPct, loanAmount, alreadyDrawn });
   // drawable REAL do budget do banco (leva 2), quando mapeado; senão a estimativa
   const budget: BudgetLine[] = house.budgetLines.map((b) => ({ milestoneKey: b.milestoneKey, pct: Number(b.pct) }));
@@ -133,6 +140,8 @@ export default async function PoolHousePage({
             alreadyDrawn={alreadyDrawn}
             usingBudget={real.hasBudget}
             retained={real.retained}
+            pctSource={mPctSource}
+            loanSettled={loanAmount > 0 && alreadyDrawn >= loanAmount - 0.01}
           />
         }
         changeOrders={

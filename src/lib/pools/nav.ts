@@ -89,6 +89,11 @@ export function liveIrr(opts: {
   houses: NavHouse[];
   financingDrag: number; // custos de financiamento (incorridos + projetados) a abater do lucro
   today: Date;
+  // Caixa JÁ recebido e ainda no pool (vendas fechadas, não distribuído). Sem isto a TIR de um
+  // pool que vendeu mas ainda não distribuiu fica absurdamente negativa: o modelo via o dinheiro
+  // saindo e nada voltando. Entra como retorno na data de encerramento prevista.
+  freeCash?: number;
+  endDate?: Date | null;
 }): { irr: number | null; projectedInflow: number; profitNet: number } {
   const unsold = opts.houses.filter((h) => !h.sold);
   const grossProfit = unsold.reduce((s, h) => s + (h.expectedProfit ?? 0), 0);
@@ -104,6 +109,17 @@ export function liveIrr(opts: {
       amount: h.ownCapital + (h.expectedProfit ?? 0) * scale,
     })),
   ];
+  // o caixa em conta volta ao investidor no encerramento (ou na última venda projetada)
+  const cash = Math.max(0, opts.freeCash ?? 0);
+  if (cash > 0.01) {
+    const lastProjected = flows.reduce<Date | null>(
+      (acc, f) => (f.amount > 0 && (!acc || f.date > acc) ? f.date : acc),
+      null,
+    );
+    const cashDate =
+      opts.endDate && opts.endDate.getTime() > floor.getTime() ? opts.endDate : (lastProjected ?? floor);
+    flows.push({ date: cashDate, amount: cash });
+  }
   const projectedInflow = round2(unsold.reduce((s, h) => s + h.ownCapital + (h.expectedProfit ?? 0) * scale, 0));
   return { irr: xirr(flows), projectedInflow, profitNet: round2(profitNet) };
 }

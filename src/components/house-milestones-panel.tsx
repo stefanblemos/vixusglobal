@@ -29,6 +29,8 @@ export function HouseMilestonesPanel({
   alreadyDrawn,
   usingBudget = false,
   retained = 0,
+  pctSource = "MILESTONES",
+  loanSettled = false,
 }: {
   houseId: string;
   rows: MilestoneRow[];
@@ -40,6 +42,10 @@ export function HouseMilestonesPanel({
   alreadyDrawn: number;
   usingBudget?: boolean;
   retained?: number;
+  /** de onde veio o % de obra: marcos marcados, CO emitido ou os draws (casa antiga) */
+  pctSource?: "MILESTONES" | "DRAWS" | "CO";
+  /** loan já totalmente sacado/quitado — não há draw a requisitar (casa antiga) */
+  loanSettled?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [drawState, setDrawState] = useState<{ error?: string; ok?: boolean } | null>(null);
@@ -70,11 +76,19 @@ export function HouseMilestonesPanel({
       <div className="flex flex-wrap items-center gap-3 border-b border-slate-100 px-5 py-4">
         <div>
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">Marcos de construção</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Marque as fases concluídas — o % de obra e o draw esperado saem daqui.</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            {pctSource === "MILESTONES"
+              ? "Marque as fases concluídas — o % de obra e o draw esperado saem daqui."
+              : pctSource === "CO"
+                ? "CO emitido: obra 100%. Marcar as fases é opcional (histórico)."
+                : "Casa antiga: nenhuma fase marcada, então o % vem dos draws já sacados. Marcar as fases aqui é só histórico — não muda o financiamento."}
+          </p>
         </div>
         <div className="ml-auto text-right">
           <div className="text-2xl font-extrabold tabular-nums text-[#1f3a5f]">{pct}%</div>
-          <div className="text-[11px] text-slate-400">obra concluída</div>
+          <div className="text-[11px] text-slate-400">
+            obra concluída{pctSource === "DRAWS" ? " · pelos draws" : pctSource === "CO" ? " · CO emitido" : ""}
+          </div>
         </div>
       </div>
       <div className="h-2.5 bg-slate-100">
@@ -115,6 +129,17 @@ export function HouseMilestonesPanel({
         </h3>
         {!hasLoan ? (
           <p className="text-xs text-slate-500">A casa não tem financiamento vinculado — vincule na aba Financiamento para estimar o draw.</p>
+        ) : loanSettled ? (
+          <>
+            <div className="flex justify-between py-0.5 text-[13px]">
+              <span>Já sacado / pedido</span>
+              <b>{money(alreadyDrawn)}</b>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              Loan totalmente sacado ({money(loanAmount)}) — não há draw a requisitar. Casa antiga: o financiamento já
+              foi consumido (e possivelmente quitado na venda).
+            </p>
+          </>
         ) : (
           <>
             <div className="flex justify-between py-0.5 text-[13px]">

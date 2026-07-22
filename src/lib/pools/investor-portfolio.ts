@@ -224,6 +224,8 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
       houses: navHouses,
       financingDrag: risk.financingDrag, // incorrido + por vir (mesma conta da Fase 2)
       today,
+      freeCash: available,
+      endDate: pool.effectiveEndDate ?? pool.plannedEndDate ?? null,
     });
     const navR = computeNav({
       freeCash: available - provisioned,
