@@ -64,6 +64,26 @@ model InvestorAccess {
   @@index([userId])
 }
 
+// Saldo de ABERTURA do investidor: o que ele já aportou/recebeu em projetos ANTERIORES que
+// não entram no sistema (encerrados). Agregado informado pelo ADMIN, não é lançamento
+// rastreado. Credita a carteira (o próximo aporte vira reuso) e entra em capital novo/
+// devolvido/"na 4U desde"; NÃO entra em TIR, NAV, units nem no valor projetado — esses
+// dependem de fluxos datados dos pools atuais. Travado após salvar (lockedAt).
+model InvestorLegacy {
+  id        String    @id @default(cuid())
+  partyId   String?   @unique
+  party     Party?    @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  companyId String?   @unique
+  company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invested  Decimal   @default(0) @db.Decimal(20, 2) // aportado antes (do bolso)
+  returned  Decimal   @default(0) @db.Decimal(20, 2) // devolvido antes (capital + lucro)
+  since     DateTime? @db.Date // 1º investimento com a 4U
+  note      String? // ex.: "PH-1 e PH-2, encerrados"
+  lockedAt  DateTime? // travado após salvar; destravar é ação explícita e auditada
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 // Magic-link do portal: token de uso único, curto (~15 min). Guardamos só o hash.
 model PortalLoginToken {
   id        String    @id @default(cuid())
@@ -176,6 +196,7 @@ model Party {
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
+  investorLegacy  InvestorLegacy?
 }
 
 model Company {
@@ -228,6 +249,7 @@ model Company {
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
+  investorLegacy  InvestorLegacy?
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o

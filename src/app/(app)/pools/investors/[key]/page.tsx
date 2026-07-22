@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { cookies, headers } from "next/headers";
 import { prisma } from "@/lib/db";
+import { auth } from "@/auth";
 import { loadInvestorPortfolio } from "@/lib/pools/investor-portfolio";
 import { INV_LANG_COOKIE, langFromCookie } from "@/lib/pools/i18n";
 import { InvestorPortfolioView } from "@/components/investor-portfolio-view";
+import { InvestorLegacyPanel } from "@/components/investor-legacy-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,31 @@ export default async function InvestorPortfolioPage({
         })
       : [];
 
+  // Saldo de abertura (projetos anteriores) — painel exclusivo de ADMIN, só na aba Extrato.
+  // Nunca vai para o portal do investidor: quem passa este slot é apenas esta página.
+  const role = ((await auth())?.user as { role?: string } | undefined)?.role;
+  let legacyPanel: React.ReactNode = null;
+  if (role === "ADMIN" && vtab === "statement") {
+    const kind = key.slice(0, 1);
+    const id = key.slice(2);
+    const legacy = await prisma.investorLegacy.findFirst({
+      where: kind === "c" ? { companyId: id } : { partyId: id },
+    });
+    legacyPanel = (
+      <InvestorLegacyPanel
+        entityKey={key}
+        values={{
+          invested: legacy ? Number(legacy.invested) : 0,
+          returned: legacy ? Number(legacy.returned) : 0,
+          since: legacy?.since ? legacy.since.toISOString().slice(0, 10) : null,
+          note: legacy?.note ?? null,
+          locked: !!legacy?.lockedAt,
+          exists: !!legacy,
+        }}
+      />
+    );
+  }
+
   return (
     <InvestorPortfolioView
       p={p}
@@ -56,6 +83,7 @@ export default async function InvestorPortfolioPage({
       backHref="/pools/investors"
       tabHref={(tb) => `/pools/investors/${key}?tab=${tb}`}
       showProjectLink
+      legacyPanel={legacyPanel}
     />
   );
 }

@@ -39,6 +39,7 @@ export function InvestorPortfolioView({
   backHref,
   tabHref,
   showProjectLink = true,
+  legacyPanel = null,
 }: {
   p: InvestorPortfolio;
   lang: Lang;
@@ -48,6 +49,8 @@ export function InvestorPortfolioView({
   backHref: string | null;
   tabHref: (tab: string) => string;
   showProjectLink?: boolean;
+  /** painel admin do saldo de abertura — só a tela interna passa (nunca o portal) */
+  legacyPanel?: React.ReactNode;
 }) {
   const t = tOf(lang);
   const cur = p.positions[0]?.currency ?? "USD";
@@ -277,7 +280,7 @@ export function InvestorPortfolioView({
                 </thead>
                 <tbody>
                   {p.statement.rows.map((r, i) => (
-                    <tr key={i} className="border-b border-slate-50">
+                    <tr key={i} className={`border-b border-slate-50 ${r.kind === "OPENING" ? "bg-slate-50/60" : ""}`}>
                       <td className={`${sTd} tabular-nums`}>{fmtFull(r.date)}</td>
                       <td className={sTd}>{t(`st.ev.${r.kind}` as "st.ev.CONTRIBUTION")}</td>
                       <td className={sTd}>{r.poolCode}</td>
@@ -294,13 +297,14 @@ export function InvestorPortfolioView({
                       <td className="px-3 py-1.5">
                         {r.rollover && <Tag tone="navy">{t("st.tag.rollover")}</Tag>}
                         {r.override && <Tag tone="amber">{t("st.tag.override")}</Tag>}
-                        {!r.rollover && !r.override && r.outNew > 0 && r.outReused > 0 && (
+                        {r.kind === "OPENING" && <Tag tone="slate">{t("st.tag.opening")}</Tag>}
+                        {r.kind !== "OPENING" && !r.rollover && !r.override && r.outNew > 0 && r.outReused > 0 && (
                           <Tag tone="navy">{`${t("st.tag.reuse")} + ${t("st.tag.new")}`}</Tag>
                         )}
-                        {!r.rollover && !r.override && r.outNew > 0 && r.outReused === 0 && (
+                        {r.kind !== "OPENING" && !r.rollover && !r.override && r.outNew > 0 && r.outReused === 0 && (
                           <Tag tone="navy">{t("st.tag.new")}</Tag>
                         )}
-                        {!r.rollover && !r.override && r.outNew === 0 && r.outReused > 0 && (
+                        {r.kind !== "OPENING" && !r.rollover && !r.override && r.outNew === 0 && r.outReused > 0 && (
                           <Tag tone="green">{t("st.tag.reuse")}</Tag>
                         )}
                       </td>
@@ -344,6 +348,7 @@ export function InvestorPortfolioView({
             </div>
             <p className="mt-2 text-[10.5px] text-slate-400">{t("st.rule")}</p>
           </section>
+          {legacyPanel}
         </>
       )}
 
