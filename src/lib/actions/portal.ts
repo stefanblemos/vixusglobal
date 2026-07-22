@@ -105,8 +105,8 @@ export async function grantPortalAccess(_prev: PortalFormState, formData: FormDa
     where: member.partyId
       ? { userId_partyId: { userId: user.id, partyId: member.partyId } }
       : { userId_companyId: { userId: user.id, companyId: member.companyId! } },
-    create: { userId: user.id, partyId: member.partyId, companyId: member.companyId },
-    update: {},
+    create: { userId: user.id, partyId: member.partyId, companyId: member.companyId, invitedAt: new Date() },
+    update: { invitedAt: new Date() }, // reenvio atualiza a data do convite
   });
 
   // 3) token + link

@@ -3,14 +3,34 @@
 import { useState, useTransition } from "react";
 import { grantPortalAccess, type PortalFormState } from "@/lib/actions/portal";
 
-// Botão do operador (aba Investidores) para conceder acesso ao portal de um sócio (#68):
-// informa o e-mail → cria/vincula o login INVESTOR à entidade → devolve o magic-link p/ copiar.
-// Enquanto o e-mail automático (#69) não existe, o operador copia o link e envia.
-export function PortalAccessButton({ memberId, defaultEmail }: { memberId: string; defaultEmail?: string }) {
+// Convite ao portal por sócio (aba Investidores, #68). Mostra o ESTADO — sem acesso →
+// convidado → ativo (assim que o investidor entra pela 1ª vez) — e o botão de convidar/
+// reenviar. Enquanto o envio por e-mail (#69) não existe, devolve o link p/ o operador enviar.
+export type PortalStatus = {
+  status: "NONE" | "INVITED" | "ACTIVE";
+  email: string | null;
+  invitedAt: Date | string | null;
+  lastLoginAt: Date | string | null;
+};
+
+const fmtWhen = (d: Date | string | null) => {
+  if (!d) return "";
+  const dt = typeof d === "string" ? new Date(d) : d;
+  return dt.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" });
+};
+
+export function PortalAccessButton({
+  memberId,
+  portal,
+}: {
+  memberId: string;
+  portal: PortalStatus;
+}) {
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [state, setState] = useState<PortalFormState>(undefined);
   const [copied, setCopied] = useState(false);
+  const defaultEmail = portal.email ?? undefined;
 
   const submit = (fd: FormData) => {
     fd.set("memberId", memberId);
@@ -20,13 +40,32 @@ export function PortalAccessButton({ memberId, defaultEmail }: { memberId: strin
 
   return (
     <>
+      {portal.status === "ACTIVE" ? (
+        <span
+          className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] font-bold text-emerald-700"
+          title={`Entrou no portal em ${fmtWhen(portal.lastLoginAt)}${portal.email ? ` · ${portal.email}` : ""}`}
+        >
+          portal ativo ✓
+        </span>
+      ) : portal.status === "INVITED" ? (
+        <span
+          className="rounded-full bg-amber-50 px-2 py-0.5 text-[10.5px] font-bold text-amber-700"
+          title={`Convidado em ${fmtWhen(portal.invitedAt)}${portal.email ? ` · ${portal.email}` : ""} — ainda não entrou`}
+        >
+          convidado
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={() => { setOpen(true); setState(undefined); }}
-        className="rounded-md border border-slate-200 px-2 py-0.5 text-[11px] font-medium text-slate-500 hover:bg-slate-50"
-        title="Gerar acesso ao portal do investidor"
+        className={`rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+          portal.status === "NONE"
+            ? "border-[#1f3a5f]/30 bg-[#e8eef7] text-[#1f3a5f] hover:bg-[#dbe6f3]"
+            : "border-slate-200 text-slate-400 hover:bg-slate-50"
+        }`}
+        title={portal.status === "NONE" ? "Enviar convite de acesso ao portal" : "Gerar um novo link de acesso"}
       >
-        portal
+        {portal.status === "NONE" ? "convidar" : "reenviar"}
       </button>
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onClick={() => setOpen(false)}>

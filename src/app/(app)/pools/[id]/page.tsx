@@ -8,6 +8,7 @@ import { PoolHousesTab } from "@/components/pool-houses-tab";
 import { PoolLedgerTab } from "@/components/pool-ledger-tab";
 import { PoolDistributionsTab } from "@/components/pool-distributions-tab";
 import { PoolInvestorsTab } from "@/components/pool-investors-tab";
+import { portalStatusByMember } from "@/lib/portal/access";
 import { PoolStatusStepper } from "@/components/pool-status-stepper";
 import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
@@ -230,6 +231,10 @@ export default async function PoolDetailPage({
 
   // Aba Investidores (mock 2/6): linhas com saída legível — sócio que zerou via transferência
   // mostra a data e, quando o par TRANSFER_IN (mesma data e valor) é único, quem comprou.
+  // Portal (#68): estado do convite por sócio — sem acesso / convidado / ativo (1º login)
+  const portalByMember = await portalStatusByMember(
+    pool.members.map((m) => ({ id: m.id, partyId: m.partyId, companyId: m.companyId })),
+  );
   const investorRows = table.rows.map((r) => {
     const m = pool.members.find((mm) => mm.id === r.memberId)!;
     const hasEntries = m.entries.length > 0;
@@ -262,6 +267,7 @@ export default async function PoolDetailPage({
       pct: Number(r.pct),
       exited,
       hasEntries,
+      portal: portalByMember[r.memberId] ?? { status: "NONE" as const, email: null, invitedAt: null, lastLoginAt: null },
     };
   });
   const contribs = entries.filter((e) => e.kind === "CONTRIBUTION" || e.kind === "CAPITAL_CALL");

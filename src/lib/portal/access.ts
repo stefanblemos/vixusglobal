@@ -27,8 +27,58 @@ export async function consumePortalToken(raw: string): Promise<{ userId: string;
   if (!rec || rec.usedAt || rec.expiresAt < new Date()) return null;
   const user = await prisma.user.findFirst({ where: { email: rec.email, role: "INVESTOR" } });
   if (!user) return null;
-  await prisma.portalLoginToken.update({ where: { id: rec.id }, data: { usedAt: new Date() } });
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.portalLoginToken.update({ where: { id: rec.id }, data: { usedAt: now } }),
+    // 1º acesso efetivo → o investidor passa a contar como ATIVO na aba Investidores
+    prisma.user.update({ where: { id: user.id }, data: { lastPortalLoginAt: now } }),
+  ]);
   return { userId: user.id, email: rec.email };
+}
+
+// Estado do portal por SÓCIO (aba Investidores): sem acesso → convidado → ativo.
+// "ativo" = já entrou pelo menos uma vez (lastPortalLoginAt do User do e-mail vinculado).
+export type PortalMemberStatus = {
+  status: "NONE" | "INVITED" | "ACTIVE";
+  email: string | null;
+  invitedAt: Date | null;
+  lastLoginAt: Date | null;
+};
+
+export async function portalStatusByMember(
+  members: Array<{ id: string; partyId: string | null; companyId: string | null }>,
+): Promise<Record<string, PortalMemberStatus>> {
+  const partyIds = members.map((m) => m.partyId).filter((x): x is string => !!x);
+  const companyIds = members.map((m) => m.companyId).filter((x): x is string => !!x);
+  const out: Record<string, PortalMemberStatus> = {};
+  for (const m of members) out[m.id] = { status: "NONE", email: null, invitedAt: null, lastLoginAt: null };
+  if (partyIds.length === 0 && companyIds.length === 0) return out;
+
+  const access = await prisma.investorAccess.findMany({
+    where: {
+      OR: [
+        ...(partyIds.length ? [{ partyId: { in: partyIds } }] : []),
+        ...(companyIds.length ? [{ companyId: { in: companyIds } }] : []),
+      ],
+    },
+    select: {
+      partyId: true,
+      companyId: true,
+      invitedAt: true,
+      user: { select: { email: true, lastPortalLoginAt: true } },
+    },
+  });
+  for (const m of members) {
+    const a = access.find((x) => (m.partyId && x.partyId === m.partyId) || (m.companyId && x.companyId === m.companyId));
+    if (!a) continue;
+    out[m.id] = {
+      status: a.user.lastPortalLoginAt ? "ACTIVE" : "INVITED",
+      email: a.user.email,
+      invitedAt: a.invitedAt,
+      lastLoginAt: a.user.lastPortalLoginAt,
+    };
+  }
+  return out;
 }
 
 // entidades (Party/Company) que este login pode ver

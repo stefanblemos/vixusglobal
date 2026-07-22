@@ -35,6 +35,8 @@ model User {
   image         String?
   role          UserRole  @default(VIEWER)
   passwordHash  String? // login por credenciais (equipe interna)
+  // Portal (#68): 1º acesso efetivo do investidor — vira o status "ativo" na aba Investidores
+  lastPortalLoginAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -54,6 +56,7 @@ model InvestorAccess {
   party     Party?   @relation(fields: [partyId], references: [id], onDelete: Cascade)
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invitedAt DateTime? // último convite enviado/gerado p/ esta entidade
   createdAt DateTime @default(now())
 
   @@unique([userId, partyId])

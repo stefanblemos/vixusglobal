@@ -30,6 +30,13 @@ export type InvestorRow = {
   // sócio que zerou via transferência: data e (se identificável) quem comprou as units
   exited: { date: string; toName: string | null } | null;
   hasEntries: boolean;
+  // Portal do investidor (#68): sem acesso → convidado → ativo (já entrou ao menos uma vez)
+  portal: {
+    status: "NONE" | "INVITED" | "ACTIVE";
+    email: string | null;
+    invitedAt: Date | string | null;
+    lastLoginAt: Date | string | null;
+  };
 };
 
 export type CapitalCallRow = {
@@ -284,7 +291,7 @@ export function PoolInvestorsTab({
                         >
                           + aporte
                         </button>
-                        {r.role === "INVESTOR" && <PortalAccessButton memberId={r.memberId} />}
+                        {r.role === "INVESTOR" && <PortalAccessButton memberId={r.memberId} portal={r.portal} />}
                         {r.units === 0 && !r.hasEntries && (
                           <form action={deleteMember}>
                             <input type="hidden" name="memberId" value={r.memberId} />
