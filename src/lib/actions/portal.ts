@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 import { prisma } from "@/lib/db";
 import { auth, signIn, signOut } from "@/auth";
@@ -18,10 +19,22 @@ import { logInvestmentAudit } from "@/lib/audit";
 export type PortalFormState = { error?: string; ok?: boolean; link?: string; message?: string } | undefined;
 
 const norm = (e: string) => e.trim().toLowerCase();
-const baseUrl = () =>
-  process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
-  process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
-  "http://localhost:3005";
+
+// Base do link do magic-link: vem do PRÓPRIO request (host/proto), então funciona em
+// produção, preview e local sem depender de env — a Vercel não tem NEXTAUTH_URL setada.
+async function baseUrl(): Promise<string> {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  if (host) {
+    const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+    return `${proto}://${host}`;
+  }
+  return (
+    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ||
+    process.env.NEXTAUTH_URL?.replace(/\/$/, "") ||
+    "http://localhost:3005"
+  );
+}
 
 // Público: o investidor pede o link na tela de login. Resposta SEMPRE genérica (não vaza
 // quais e-mails têm conta). Quando #69 fiar o e-mail, o link é enviado de verdade.
@@ -98,7 +111,7 @@ export async function grantPortalAccess(_prev: PortalFormState, formData: FormDa
 
   // 3) token + link
   const raw = await createPortalToken(email);
-  const link = `${baseUrl()}/portal/enter/${raw}`;
+  const link = `${await baseUrl()}/portal/enter/${raw}`;
 
   await logInvestmentAudit({
     poolId: member.poolId,
