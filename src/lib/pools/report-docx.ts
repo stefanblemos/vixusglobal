@@ -896,7 +896,9 @@ export function buildReportDocx(
     h1(tr("Investment Highlights", "Destaques do Investimento", "Aspectos Destacados de la Inversión")),
     body(
       [
-        t(tr(`Why invest in ${d.simName}?`, `Por que investir no ${d.simName}?`, `¿Por qué invertir en ${d.simName}?`), {
+        // O histórico/experiência é da 4U — o veículo (d.simName) é só o instrumento daquele
+        // grupo. O título ancora na 4U, não no nome do veículo (correção Stefan 23/07).
+        t(tr(`Why invest in this 4U program?`, `Por que investir neste programa da 4U?`, `¿Por qué invertir en este programa de 4U?`), {
           bold: true,
           size: 24,
           color: NAVY,
