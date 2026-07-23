@@ -2774,13 +2774,21 @@ export function buildReportDocx(
         tr("Net profit", "Lucro líquido", "Utilidad neta"),
       ],
       [
-        ...d.base.units.map((u) => [
-          u.label,
-          money0(u.adjLot),
-          money0(u.adjBuild),
-          money0(u.adjSaleNet),
-          money0(u.profit),
-        ]),
+        ...[...d.base.units]
+          .sort(
+            (a, b) =>
+              ((a.cycle ?? 1) as number) - ((b.cycle ?? 1) as number) ||
+              a.tLotClose - b.tLotClose ||
+              a.tBuildStart - b.tBuildStart ||
+              a.tCashIn - b.tCashIn,
+          )
+          .map((u) => [
+            u.label,
+            money0(u.adjLot),
+            money0(u.adjBuild),
+            money0(u.adjSaleNet),
+            money0(u.profit),
+          ]),
         [
           tr("Program total", "Total do programa", "Total del programa"),
           money0(d.closing.lots),

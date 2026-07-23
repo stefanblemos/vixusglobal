@@ -301,6 +301,13 @@ export default async function SimulationPage({
   const comparison = r?.comparison ?? null;
   const isBank = sim.fundingMode === "BANK";
   const isCycled = (r?.units ?? []).some((u) => (u.cycle ?? 1) > 1);
+  // Ordem de EXIBIÇÃO das casas: por ciclo e, dentro do ciclo, pela sequência real (compra do
+  // lote → início da obra). O motor guarda na ordem de inserção, então casas adicionadas depois
+  // ficavam no fim; isto as recoloca na sequência. Só apresentação — os cálculos independem da ordem.
+  const unitsSorted = [...(r?.units ?? [])].sort(
+    (a, b) =>
+      (a.cycle ?? 1) - (b.cycle ?? 1) || a.tLotClose - b.tLotClose || a.tBuildStart - b.tBuildStart || a.tCashIn - b.tCashIn,
+  );
   // dias que precisaram de aporte — usado p/ marcar contas pagas do caixa (verde)
   const injectionDays = new Set(
     (r?.events ?? []).filter((e) => e.kind === "INJECTION").map((e) => e.day),
@@ -1413,7 +1420,7 @@ export default async function SimulationPage({
                   </tr>
                 </thead>
                 <tbody>
-                  {r.units.map((u, i) => (
+                  {unitsSorted.map((u, i) => (
                     <tr key={i} className="border-b border-slate-50">
                       <td className={td}>{i + 1}</td>
                       {isCycled && <td className={td}>C{u.cycle ?? 1}</td>}
