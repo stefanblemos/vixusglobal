@@ -67,11 +67,19 @@ function Card({ label, value, hint }: { label: string; value: string; hint?: str
   );
 }
 
+// Base 30 dias/mês, 12 meses/ano — a MESMA convenção do ledger (mês = floor(dia/30)+1), para
+// os dois números conversarem. Carrega o excedente de meses em anos (nada de "12m"). Formato
+// "X anos, Y meses, Z dias", omitindo as partes zeradas.
 function fmtDuration(days: number): string {
-  const y = Math.floor(days / 365);
-  const m = Math.floor((days % 365) / 30);
-  const d = Math.round((days % 365) % 30);
-  return [y ? `${y}y` : null, m ? `${m}m` : null, `${d}d`].filter(Boolean).join(" ");
+  const totalMonths = Math.floor(days / 30);
+  const d = days - totalMonths * 30;
+  const y = Math.floor(totalMonths / 12);
+  const m = totalMonths % 12;
+  const parts: string[] = [];
+  if (y) parts.push(`${y} ${y === 1 ? "ano" : "anos"}`);
+  if (m) parts.push(`${m} ${m === 1 ? "mês" : "meses"}`);
+  if (d || parts.length === 0) parts.push(`${d} ${d === 1 ? "dia" : "dias"}`);
+  return parts.join(", ");
 }
 
 type CompareRow = {
