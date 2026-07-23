@@ -84,6 +84,7 @@ export async function saveLocation(
     lotLeadDays: Math.round(num(formData.get("lotLeadDays"), 30)),
     saleDays: Math.round(num(formData.get("saleDays"), 60)),
     lotCostEstimate: optNum(formData.get("lotCostEstimate")),
+    absorptionPerYear: optInt(formData.get("absorptionPerYear")),
     notes: String(formData.get("notes") ?? "").trim() || null,
   };
 
@@ -100,6 +101,7 @@ export async function saveLocation(
         lotLeadDays: before.lotLeadDays,
         saleDays: before.saleDays,
         lotCostEstimate: before.lotCostEstimate,
+        absorptionPerYear: before.absorptionPerYear,
         notes: before.notes,
       },
       data,

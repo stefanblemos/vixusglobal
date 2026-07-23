@@ -17,6 +17,7 @@ export type LocationRow = {
   lotLeadDays: number;
   saleDays: number;
   lotCostEstimate: string | null;
+  absorptionPerYear: number | null;
   notes: string | null;
   models: Array<{ name: string; salePrice: string; costPerformance: string | null }>;
 };
@@ -35,6 +36,7 @@ const FIELD_LABEL: Record<string, string> = {
   lotLeadDays: "Lot lead days",
   saleDays: "Sale days",
   lotCostEstimate: "Lot cost (est.)",
+  absorptionPerYear: "Absorção (casas/ano)",
   notes: "Notes",
 };
 
@@ -98,6 +100,20 @@ function LocationModal({
             <div>
               <label htmlFor="loc-lotcost" className={labelClass}>Lot cost (est.)</label>
               <input id="loc-lotcost" name="lotCostEstimate" defaultValue={location?.lotCostEstimate ?? ""} className={inputClass} />
+            </div>
+            <div>
+              <label htmlFor="loc-absorption" className={labelClass}>Absorção (casas/ano)</label>
+              <input
+                id="loc-absorption"
+                name="absorptionPerYear"
+                defaultValue={location?.absorptionPerYear ?? ""}
+                className={inputClass}
+                placeholder="ATTOM quando houver"
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                Casas novas vendidas/ano. Onde há ATTOM, o feed prevalece; preencha para
+                locais fora do feed (ex.: Orlando, Port Charlotte).
+              </p>
             </div>
             <div className="col-span-2 md:col-span-1">
               <label htmlFor="loc-notes" className={labelClass}>Notes</label>
@@ -233,13 +249,14 @@ export function CatalogLocations({
               <th className={th}>Lot lead</th>
               <th className={th}>Sale days</th>
               <th className={th}>Lot cost (est.)</th>
+              <th className={th}>Absorção/ano</th>
               <th className={th}>Models</th>
             </tr>
           </thead>
           <tbody>
             {locations.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-5 py-6 text-center text-sm text-slate-400">
+                <td colSpan={7} className="px-5 py-6 text-center text-sm text-slate-400">
                   No locations yet.
                 </td>
               </tr>
@@ -255,6 +272,13 @@ export function CatalogLocations({
                 <td className={td}>{l.lotLeadDays}</td>
                 <td className={td}>{l.saleDays}</td>
                 <td className={td}>{money(l.lotCostEstimate)}</td>
+                <td className={td}>
+                  {l.absorptionPerYear != null ? (
+                    <span>{l.absorptionPerYear}</span>
+                  ) : (
+                    <span className="text-xs text-slate-300">ATTOM/—</span>
+                  )}
+                </td>
                 <td className={td}>
                   {l.models.length === 0 ? (
                     <span className="text-xs text-slate-300">none</span>

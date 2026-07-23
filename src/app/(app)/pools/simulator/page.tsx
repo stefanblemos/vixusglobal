@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
+import { ProgramOptimizerModal } from "@/components/program-optimizer-modal";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +16,16 @@ export default async function SimulatorListPage({
   searchParams: Promise<{ convertidas?: string }>;
 }) {
   const showConverted = (await searchParams).convertidas === "1";
-  const [sims, convertedCount] = await Promise.all([
+  const [sims, convertedCount, locations, banks, scenarios] = await Promise.all([
     prisma.poolSimulation.findMany({
       where: showConverted ? {} : { poolId: null },
       orderBy: { createdAt: "desc" },
       include: { scenario: true, bankProfile: true, pool: true },
     }),
     prisma.poolSimulation.count({ where: { poolId: { not: null } } }),
+    prisma.catalogLocation.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.bankProfile.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.bufferScenario.findMany({ orderBy: { name: "asc" }, select: { code: true, name: true } }),
   ]);
 
   return (
@@ -52,6 +56,12 @@ export default async function SimulatorListPage({
               {showConverted ? "✓ " : ""}Mostrar convertidas ({convertedCount})
             </Link>
           )}
+          <ProgramOptimizerModal
+            locations={locations}
+            banks={banks}
+            scenarios={scenarios}
+            defaultBankId={banks[0]?.id ?? null}
+          />
           <Link
             href="/pools/simulator/new"
             className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]"

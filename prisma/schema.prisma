@@ -1215,6 +1215,10 @@ model CatalogLocation {
   lotLeadDays     Int // dias até fechar a compra do lote
   saleDays        Int // dias para vender após CO
   lotCostEstimate Decimal? @db.Decimal(20, 2) // valor estimado de lote na região
+  // Absorção de mercado (NC vendidas/ano) — usada pelo otimizador p/ não encharcar um
+  // modelo num local. Onde há ATTOM, o feed manda; onde não há (Orlando, Port Charlotte),
+  // esse número manual é a fonte. Mesma unidade do ATTOM (casas novas vendidas por ano).
+  absorptionPerYear Int?
   notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt

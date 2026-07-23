@@ -143,6 +143,7 @@ export default async function PoolCatalogPage({
             lotLeadDays: l.lotLeadDays,
             saleDays: l.saleDays,
             lotCostEstimate: l.lotCostEstimate?.toString() ?? null,
+            absorptionPerYear: l.absorptionPerYear ?? null,
             notes: l.notes,
             models: l.models.map((ml) => ({
               name: ml.model.name,
