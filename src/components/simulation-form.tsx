@@ -37,19 +37,21 @@ export function AddHouseModal({
   catalog,
   modelsFor,
   allowCycles,
+  defaultCycle,
   onAdd,
   onClose,
 }: {
   catalog: SimCatalog;
   modelsFor: Map<string, SimCatalog["modelLocations"]>;
   allowCycles: boolean; // esteira de ciclos é só para equity
+  defaultCycle?: number; // ciclo pré-selecionado (ex.: "+ modelo neste ciclo")
   onAdd: (locationId: string, modelId: string, qty: number, cycle: number) => void;
   onClose: () => void;
 }) {
   const [locationId, setLocationId] = useState("");
   const [modelId, setModelId] = useState("");
   const [qty, setQty] = useState("1");
-  const [cycle, setCycle] = useState("1");
+  const [cycle, setCycle] = useState(String(defaultCycle ?? 1));
   const models = modelsFor.get(locationId) ?? [];
   const sel = models.find((m) => m.modelId === modelId);
 
