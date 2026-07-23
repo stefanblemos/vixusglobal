@@ -49,6 +49,21 @@ export function SimulationUnitsEditor({
 
   const cycles = [...new Set(units.map((u) => u.cycle || 1))].sort((a, b) => a - b);
 
+  // Exibe ORDENADO por ciclo → local → modelo (o array cru vem agrupado por combo, então
+  // casas/ciclos adicionados ficavam no fim). Guarda o índice original p/ editar/remover.
+  const nameOf = (u: UnitRow) => ({
+    loc: catalog.locations.find((l) => l.id === u.locationId)?.name ?? "?",
+    model: (modelsFor.get(u.locationId) ?? []).find((m) => m.modelId === u.modelId)?.modelName ?? "?",
+  });
+  const sortedUnits = units
+    .map((u, idx) => ({ u, idx, ...nameOf(u) }))
+    .sort(
+      (a, b) =>
+        (a.u.cycle || 1) - (b.u.cycle || 1) ||
+        a.loc.localeCompare(b.loc) ||
+        a.model.localeCompare(b.model),
+    );
+
   return (
     <>
       <button
@@ -122,15 +137,9 @@ export function SimulationUnitsEditor({
                         </td>
                       </tr>
                     )}
-                    {units.map((u, i) => {
-                      const sel = (modelsFor.get(u.locationId) ?? []).find(
-                        (m) => m.modelId === u.modelId,
-                      );
-                      const locName =
-                        catalog.locations.find((l) => l.id === u.locationId)?.name ?? "?";
-                      return (
-                        <tr key={i} className="border-b border-slate-50">
-                          <td className="px-3 py-2 text-xs text-slate-400">{i + 1}</td>
+                    {sortedUnits.map(({ u, idx, loc, model }, displayI) => (
+                        <tr key={idx} className="border-b border-slate-50">
+                          <td className="px-3 py-2 text-xs text-slate-400">{displayI + 1}</td>
                           {isEquity && (
                             <td className="px-3 py-2 text-sm text-slate-600">
                               <select
@@ -138,7 +147,7 @@ export function SimulationUnitsEditor({
                                 onChange={(e) =>
                                   setUnits((rows) =>
                                     rows.map((r, j) =>
-                                      j === i ? { ...r, cycle: Number(e.target.value) } : r,
+                                      j === idx ? { ...r, cycle: Number(e.target.value) } : r,
                                     ),
                                   )
                                 }
@@ -155,22 +164,21 @@ export function SimulationUnitsEditor({
                               </select>
                             </td>
                           )}
-                          <td className="px-3 py-2 text-sm text-slate-600">{locName}</td>
+                          <td className="px-3 py-2 text-sm text-slate-600">{loc}</td>
                           <td className="px-3 py-2 text-sm font-medium text-slate-800">
-                            {sel?.modelName ?? "?"}
+                            {model}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <button
                               type="button"
-                              onClick={() => setUnits((rows) => rows.filter((_, j) => j !== i))}
+                              onClick={() => setUnits((rows) => rows.filter((_, j) => j !== idx))}
                               className="text-xs text-slate-300 hover:text-red-500"
                             >
                               ✕
                             </button>
                           </td>
                         </tr>
-                      );
-                    })}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -183,7 +191,8 @@ export function SimulationUnitsEditor({
                 className="flex justify-end gap-2 pt-1"
               >
                 <input type="hidden" name="simulationId" value={simulationId} />
-                <input type="hidden" name="units" value={JSON.stringify(units)} />
+                {/* salva já ordenado por ciclo → local → modelo (array cru fica limpo) */}
+                <input type="hidden" name="units" value={JSON.stringify(sortedUnits.map((s) => s.u))} />
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
