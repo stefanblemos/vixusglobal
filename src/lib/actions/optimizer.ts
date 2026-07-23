@@ -13,8 +13,57 @@ import {
   type OptimizerResult,
   type OptimizerSettings,
   type ProgramEval,
+  type ProgramKpis,
 } from "@/lib/pools/optimizer";
+import { generateProgramRationale, type ProgramGrounding, type ProgramRationale } from "@/lib/pools/program-ai";
 import { BuilderCompMode, SimFundingMode } from "@prisma/client";
+
+const cycleQty = (cycle1: number, cycle: number, growth: number) =>
+  Math.max(0, Math.round(cycle1 * Math.pow(growth, cycle - 1)));
+
+// Justificativa por IA: monta o grounding com os números REAIS e chama a Claude.
+export async function explainProgramAction(input: {
+  lines: BasketLine[];
+  growth: number;
+  kpis: ProgramKpis;
+  peak: number;
+  durationMonths: number;
+  equityTarget: number;
+  horizonMonths: number;
+  fundingMode: "EQUITY" | "BANK";
+  diversity: Diversity;
+}): Promise<ProgramRationale | { error: string }> {
+  const kept = input.lines.filter((l) => l.cycle1 > 0);
+  if (kept.length === 0) return { error: "Cesta vazia." };
+  const grounding: ProgramGrounding = {
+    equityTarget: input.equityTarget,
+    horizonMonths: input.horizonMonths,
+    fundingMode: input.fundingMode,
+    diversity: input.diversity,
+    growth: input.growth,
+    kpis: {
+      irrAnnual: input.kpis.irrAnnual,
+      profit: Math.round(input.kpis.profit),
+      equityMultiple: input.kpis.equityMultiple,
+      peakCapital: Math.round(input.peak),
+      durationMonths: input.durationMonths,
+    },
+    basket: kept.map((l) => ({
+      location: l.locationName,
+      model: l.modelName,
+      housesPerCycle: Array.from({ length: l.cycles }, (_, c) => cycleQty(l.cycle1, c + 1, input.growth)),
+      equityPerUnit: Math.round(l.eqUnit),
+      marginPerUnit: Math.round(l.profitUnit),
+      cycleDays: l.cycleDays,
+      absorptionPerYear: l.perYear,
+      absorptionSource: l.source,
+      capConcurrent: l.cap,
+      overAbsorption: l.over,
+    })),
+  };
+  const r = await generateProgramRationale(grounding);
+  return r ?? { error: "A IA não retornou a justificativa (verifique a chave da API)." };
+}
 
 // Settings comuns aos três fluxos (o cliente manda como objeto simples, JSON-serializável)
 export type OptimizerPayloadSettings = {
@@ -58,6 +107,7 @@ export async function optimizeProgramAction(input: {
   locationIds: string[];
   sharePct?: number;
   diversity?: Diversity;
+  reinvest?: boolean;
   settings: OptimizerPayloadSettings;
 }): Promise<OptimizerResult | { error: string }> {
   if (!(input.equityTarget > 0)) return { error: "Informe o volume de equity do grupo." };
@@ -85,6 +135,7 @@ export async function optimizeProgramAction(input: {
     locationIds: input.locationIds,
     sharePct: input.sharePct,
     diversity: input.diversity,
+    reinvest: input.reinvest,
     absorptionByLocation,
     settings,
   });
@@ -93,6 +144,7 @@ export async function optimizeProgramAction(input: {
 // 2 · Recalcula uma cesta editada (troca de modelo / quantidade no modal)
 export async function evaluateProgramAction(input: {
   lines: BasketLine[];
+  growth?: number;
   settings: OptimizerPayloadSettings;
 }): Promise<ProgramEval> {
   const settings = toSettings(input.settings);
@@ -102,7 +154,7 @@ export async function evaluateProgramAction(input: {
     return { kpis: emptyEvalKpis(), peak: 0, bankCommitted: 0, durationMonths: 0, cycles: [], error: catalog.error };
   // Re-flag da absorção nas linhas editadas (cap conhecido no cliente, reconfirmado aqui)
   const lines = input.lines.map((l) => ({ ...l, over: l.cap != null && l.cycle1 > l.cap }));
-  return evaluateProgram(catalog, settings, lines);
+  return evaluateProgram(catalog, settings, lines, input.growth ?? 1);
 }
 
 // 3 · Fecha o modal → grava uma PoolSimulation NORMAL (alimenta report/cronograma/tudo)
@@ -111,6 +163,7 @@ export async function saveOptimizedSimulation(input: {
   poolId: string | null;
   units: UnitRef[];
   settings: OptimizerPayloadSettings;
+  rationale?: ProgramRationale | null;
 }): Promise<{ error: string } | void> {
   const name = input.name.trim();
   if (!name) return { error: "Dê um nome ao programa." };
@@ -159,6 +212,9 @@ export async function saveOptimizedSimulation(input: {
       waiveFormationCost: s.waiveFormationCost,
       units: input.units as object[],
       result: JSON.parse(JSON.stringify(result)),
+      // justificativa por IA guardada junto (flui p/ o report); namespaced p/ não colidir
+      // com a prosa do report ({en,pt,es})
+      reportAi: input.rationale ? { programRationale: JSON.parse(JSON.stringify(input.rationale)) } : undefined,
     },
   });
   revalidatePath("/pools/simulator");

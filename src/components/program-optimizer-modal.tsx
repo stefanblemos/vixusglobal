@@ -5,9 +5,11 @@ import {
   optimizeProgramAction,
   evaluateProgramAction,
   saveOptimizedSimulation,
+  explainProgramAction,
   type OptimizerPayloadSettings,
 } from "@/lib/actions/optimizer";
 import type { BasketLine, ComboEcon, CycleBreakdown, ProgramKpis } from "@/lib/pools/optimizer";
+import type { ProgramRationale } from "@/lib/pools/program-ai";
 
 type Loc = { id: string; name: string };
 type Bank = { id: string; name: string };
@@ -76,6 +78,8 @@ function Modal({
   const [horizon, setHorizon] = useState(30);
   const [share, setShare] = useState(8);
   const [diversity, setDiversity] = useState<"CONCENTRATE" | "BALANCE" | "SPREAD">("BALANCE");
+  const [reinvest, setReinvest] = useState(true); // reinvestir o lucro (ondas crescentes)
+  const [growth, setGrowth] = useState(1); // fator de crescimento buscado pelo motor
   const [picked, setPicked] = useState<Record<string, boolean>>(
     Object.fromEntries(locations.map((l) => [l.id, true])),
   );
@@ -99,6 +103,8 @@ function Modal({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [recalcing, setRecalcing] = useState(false);
+  const [rationale, setRationale] = useState<ProgramRationale | null>(null);
+  const [genPending, startGen] = useTransition();
 
   const settings = (): OptimizerPayloadSettings => ({
     fundingMode,
@@ -126,6 +132,7 @@ function Modal({
         locationIds,
         sharePct: share,
         diversity,
+        reinvest: true, // sempre busca o crescimento ótimo; o toggle abaixo aplica ou não
         settings: settings(),
       });
       if (!("lines" in r)) {
@@ -134,22 +141,25 @@ function Modal({
       }
       setLines(r.lines);
       setEcon(r.econ);
+      setGrowth(r.growth);
       setKpis(r.kpis);
       setCycles(r.cycles);
       setPeak(r.peak);
       setBankCommitted(r.bankCommitted);
       setDurationMonths(r.durationMonths);
       setWarnings(r.warnings);
+      setRationale(null);
     });
   }
 
   // Recalcula a cesta editada pelo motor real (mantendo as premissas)
-  function recalc(next: BasketLine[]) {
+  function recalc(next: BasketLine[], g: number = reinvest ? growth : 1) {
     const reflagged = next.map((l) => ({ ...l, over: l.cap != null && l.cycle1 > l.cap }));
     setLines(reflagged);
+    setRationale(null); // a cesta mudou → a justificativa antiga não vale mais
     setRecalcing(true);
     startTransition(async () => {
-      const r = await evaluateProgramAction({ lines: reflagged, settings: settings() });
+      const r = await evaluateProgramAction({ lines: reflagged, growth: g, settings: settings() });
       setRecalcing(false);
       if (r.error) {
         setError(r.error ?? "Erro ao recalcular.");
@@ -160,6 +170,31 @@ function Modal({
       setPeak(r.peak);
       setBankCommitted(r.bankCommitted);
       setDurationMonths(r.durationMonths);
+    });
+  }
+
+  function toggleReinvest(v: boolean) {
+    setReinvest(v);
+    setRationale(null);
+    if (lines) recalc(lines, v ? growth : 1);
+  }
+
+  function explain() {
+    if (!lines || !kpis) return;
+    startGen(async () => {
+      const r = await explainProgramAction({
+        lines,
+        growth: reinvest ? growth : 1,
+        kpis,
+        peak,
+        durationMonths,
+        equityTarget: equity,
+        horizonMonths: horizon,
+        fundingMode,
+        diversity,
+      });
+      if ("error" in r) setError(r.error);
+      else setRationale(r);
     });
   }
 
@@ -186,12 +221,14 @@ function Modal({
 
   function save() {
     if (!lines) return;
+    const g = reinvest ? growth : 1;
     const units = lines.flatMap((l) =>
       l.cycle1 <= 0
         ? []
-        : Array.from({ length: l.cycles }, (_, c) =>
-            Array.from({ length: l.cycle1 }, () => ({ locationId: l.locationId, modelId: l.modelId, cycle: c + 1 })),
-          ).flat(),
+        : Array.from({ length: l.cycles }, (_, c) => {
+            const n = Math.max(0, Math.round(l.cycle1 * Math.pow(g, c))); // c=0 → ciclo 1
+            return Array.from({ length: n }, () => ({ locationId: l.locationId, modelId: l.modelId, cycle: c + 1 }));
+          }).flat(),
     );
     startTransition(async () => {
       const r = await saveOptimizedSimulation({
@@ -199,6 +236,7 @@ function Modal({
         poolId,
         units,
         settings: settings(),
+        rationale,
       });
       if (r && "error" in r) setError(r.error);
       // sucesso → a action redireciona para a simulação criada
@@ -303,6 +341,32 @@ function Modal({
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
+            </Field>
+          )}
+          {fundingMode === "EQUITY" && (
+            <Field
+              label="Lucro"
+              hint={
+                reinvest
+                  ? growth > 1
+                    ? `reinveste — ondas crescem ~${growth.toFixed(2)}×`
+                    : "reinveste (sem folga p/ crescer)"
+                  : "distribui a cada ciclo"
+              }
+            >
+              <div className="flex overflow-hidden rounded-lg border border-slate-300">
+                {([[true, "Reinvestir"], [false, "Distribuir"]] as const).map(([v, lbl]) => (
+                  <button
+                    key={lbl}
+                    onClick={() => toggleReinvest(v)}
+                    className={`flex-1 px-1.5 py-2 text-xs ${
+                      reinvest === v ? "bg-[#1f3a5f] text-white" : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
             </Field>
           )}
           <Field label="Cenário">
@@ -461,6 +525,50 @@ function Modal({
                   })}
                 </div>
               </div>
+            </div>
+
+            {/* Justificativa por IA */}
+            <div className="border-t border-slate-100 px-6 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium uppercase tracking-wider text-[#1f3a5f]">
+                  Justificativa do programa
+                </span>
+                <button
+                  onClick={explain}
+                  disabled={genPending}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100 disabled:opacity-60"
+                >
+                  {genPending ? "Gerando…" : rationale ? "↻ Refazer com IA" : "✨ Gerar com IA"}
+                </button>
+              </div>
+              {rationale && (
+                <div className="mt-2 space-y-2 text-sm text-slate-700">
+                  <p>{rationale.resumo}</p>
+                  {rationale.mix.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500">Mix de modelos e locais</p>
+                      <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-[13px]">
+                        {rationale.mix.map((m, i) => <li key={i}>{m}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs font-medium text-slate-500">Ritmo dos ciclos</p>
+                    <p className="text-[13px]">{rationale.crescimento}</p>
+                  </div>
+                  {rationale.riscos.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500">Riscos e mitigantes</p>
+                      <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-[13px]">
+                        {rationale.riscos.map((m, i) => <li key={i}>{m}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  <p className="text-[11px] text-slate-400">
+                    Gerada por IA a partir dos números do motor · será salva com a simulação.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Rodapé */}

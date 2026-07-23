@@ -53,6 +53,7 @@ export type OptimizerInput = {
   locationIds: string[];
   sharePct?: number; // participação de mercado tolerada do mesmo modelo (default 8%)
   diversity?: Diversity; // quanto distribuir modelos/locais (default BALANCE)
+  reinvest?: boolean; // reinvestir o lucro em ondas crescentes (só EQUITY multi-ciclo)
   absorptionByLocation: Record<string, number | null>; // manual do Catalog por locationId
   settings: OptimizerSettings;
 };
@@ -115,6 +116,7 @@ export type OptimizerResult = ProgramEval & {
   lines: BasketLine[];
   econ: ComboEcon[]; // TODOS os combos elegíveis sondados (p/ trocar modelo no modal)
   units: UnitRef[];
+  growth: number; // fator de crescimento das ondas (1 = iguais; >1 = reinvestir o lucro)
   idleEquity: number; // max(0, alvo − pico)
   overSpend: number; // max(0, pico − alvo)
   warnings: string[];
@@ -148,13 +150,18 @@ function runSim(catalog: CatalogData, s: OptimizerSettings, units: UnitRef[]): S
   return simulate(input);
 }
 
-// UnitRefs de uma cesta: por linha, cycle1 casas em cada uma das K ondas.
-function linesToUnits(lines: BasketLine[]): UnitRef[] {
+// Casas de uma linha no ciclo c, com o crescimento do reinvestimento (g^(c-1)).
+const cycleQty = (l: BasketLine, cycle: number, growth: number) =>
+  Math.max(0, Math.round(l.cycle1 * Math.pow(growth, cycle - 1)));
+
+// UnitRefs de uma cesta: por linha, as casas de cada uma das K ondas (crescentes se growth>1).
+function linesToUnits(lines: BasketLine[], growth = 1): UnitRef[] {
   const units: UnitRef[] = [];
   for (const l of lines) {
     if (l.cycle1 <= 0) continue;
     for (let c = 1; c <= l.cycles; c++) {
-      for (let i = 0; i < l.cycle1; i++) {
+      const n = cycleQty(l, c, growth);
+      for (let i = 0; i < n; i++) {
         units.push({ locationId: l.locationId, modelId: l.modelId, cycle: c });
       }
     }
@@ -201,17 +208,18 @@ function probeCombo(
   };
 }
 
-function cyclesBreakdown(lines: BasketLine[]): CycleBreakdown[] {
+function cyclesBreakdown(lines: BasketLine[], growth = 1): CycleBreakdown[] {
   const K = Math.max(1, ...lines.map((l) => l.cycles));
   const out: CycleBreakdown[] = [];
   for (let c = 1; c <= K; c++) {
-    const items = lines
-      .filter((l) => l.cycle1 > 0 && l.cycles >= c)
-      .map((l) => ({ locationName: l.locationName, modelName: l.modelName, qty: l.cycle1, over: l.over }));
+    const active = lines.filter((l) => l.cycle1 > 0 && l.cycles >= c);
+    const items = active.map((l) => ({
+      locationName: l.locationName, modelName: l.modelName, qty: cycleQty(l, c, growth), over: l.over,
+    }));
     out.push({
       cycle: c,
       houses: items.reduce((s, i) => s + i.qty, 0),
-      equityWave: lines.filter((l) => l.cycles >= c).reduce((s, l) => s + l.cycle1 * l.eqUnit, 0),
+      equityWave: active.reduce((s, l) => s + cycleQty(l, c, growth) * l.eqUnit, 0),
       items,
     });
   }
@@ -223,8 +231,9 @@ export function evaluateProgram(
   catalog: CatalogData,
   settings: OptimizerSettings,
   lines: BasketLine[],
+  growth = 1,
 ): ProgramEval {
-  const units = linesToUnits(lines);
+  const units = linesToUnits(lines, growth);
   if (units.length === 0)
     return { kpis: emptyKpis(), peak: 0, bankCommitted: 0, durationMonths: 0, cycles: [] };
   const r = runSim(catalog, settings, units);
@@ -235,7 +244,7 @@ export function evaluateProgram(
     peak: r.kpis.peakCapital,
     bankCommitted: r.kpis.bankCommitted,
     durationMonths: Math.round(r.kpis.durationDays / 30),
-    cycles: cyclesBreakdown(lines),
+    cycles: cyclesBreakdown(lines, growth),
   };
 }
 
@@ -263,7 +272,7 @@ export function optimizeProgram(catalog: CatalogData, input: OptimizerInput): Op
   if (econ.length === 0) {
     return {
       ...evaluateProgram(catalog, settings, []),
-      lines: [], econ: [], units: [], idleEquity: equityTarget, overSpend: 0,
+      lines: [], econ: [], units: [], growth: 1, idleEquity: equityTarget, overSpend: 0,
       warnings: ["Nenhuma combinação elegível com custos preenchidos nos locais escolhidos."],
     };
   }
@@ -364,6 +373,24 @@ export function optimizeProgram(catalog: CatalogData, input: OptimizerInput): Op
   }
   if (kChanged) evalr = calibrate();
 
+  // 4b. REINVESTIR O LUCRO (só EQUITY multi-ciclo): busca o ritmo de crescimento das ondas
+  //     que MAXIMIZA o lucro mantendo o pico do investidor ≤ alvo×1.10. As casas extras dos
+  //     ciclos seguintes são financiadas pelo caixa reciclado (o pico não sobe até saturar).
+  let growth = 1;
+  if ((input.reinvest ?? false) && !isBank && K > 1) {
+    // O crescimento não pode passar do pico da versão PLANA (o comprometimento do grupo já
+    // fixado) — a promessa é "mesmo capital, mais lucro". Pequena folga de 2%.
+    const peakCap = Math.max(evalr.peak, equityTarget) * 1.02;
+    let best = { g: 1, ev: evalr };
+    for (const g of [1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4]) {
+      const ev = evaluateProgram(catalog, settings, lines, g);
+      if (ev.peak > peakCap) break; // monotônico: passou do teto, não adianta crescer mais
+      if (ev.kpis.profit > best.ev.kpis.profit) best = { g, ev };
+    }
+    growth = best.g;
+    evalr = best.ev;
+  }
+
   // 5. Flags de absorção + avisos
   for (const l of lines) l.over = l.cap != null && l.cycle1 > l.cap;
   const kept = lines.filter((l) => l.cycle1 > 0);
@@ -385,7 +412,8 @@ export function optimizeProgram(catalog: CatalogData, input: OptimizerInput): Op
     ...evalr,
     lines: kept,
     econ,
-    units: linesToUnits(kept),
+    units: linesToUnits(kept, growth),
+    growth,
     idleEquity,
     overSpend: Math.max(0, evalr.peak - equityTarget),
     warnings,
