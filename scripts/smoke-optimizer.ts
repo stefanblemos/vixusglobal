@@ -29,18 +29,19 @@ async function main() {
   const absorptionByLocation: Record<string, number | null> = {};
   for (const l of locations) absorptionByLocation[l.id] = l.absorptionPerYear;
 
-  const runs: Array<{ target: number; mode: "EQUITY" | "BANK" }> = [
-    { target: 5_000_000, mode: "EQUITY" },
-    { target: 5_000_000, mode: "BANK" },
-    { target: 2_000_000, mode: "EQUITY" },
+  const runs: Array<{ target: number; mode: "EQUITY" | "BANK"; div: "CONCENTRATE" | "BALANCE" | "SPREAD" }> = [
+    { target: 5_000_000, mode: "EQUITY", div: "CONCENTRATE" },
+    { target: 5_000_000, mode: "EQUITY", div: "BALANCE" },
+    { target: 5_000_000, mode: "EQUITY", div: "SPREAD" },
+    { target: 5_000_000, mode: "BANK", div: "BALANCE" },
   ];
-  for (const { target, mode } of runs) {
+  for (const { target, mode, div } of runs) {
     const settings: OptimizerSettings = { ...base, fundingMode: mode };
     const t0 = Date.now();
     const r = optimizeProgram(catalog, {
-      equityTarget: target, horizonMonths: 30, locationIds, sharePct: 8, absorptionByLocation, settings,
+      equityTarget: target, horizonMonths: 30, locationIds, sharePct: 8, diversity: div, absorptionByLocation, settings,
     });
-    console.log(`\n===== ALVO ${money(target)} / 30m · ${mode} (${Date.now() - t0}ms) =====`);
+    console.log(`\n===== ALVO ${money(target)} / 30m · ${mode} · ${div} (${Date.now() - t0}ms) =====`);
     console.log(`pico equity ${money(r.peak)} (${((r.peak / target) * 100).toFixed(0)}% do alvo) · banco ${money(r.bankCommitted)} · ocioso ${money(r.idleEquity)}`);
     console.log(`TIR ${r.kpis.irrAnnual != null ? (r.kpis.irrAnnual * 100).toFixed(1) + "%" : "n/s"} · lucro ${money(r.kpis.profit)} · prazo ${r.durationMonths}m · casas ${r.units.length}`);
     console.log("Cesta (ciclo 1 concorrente):");

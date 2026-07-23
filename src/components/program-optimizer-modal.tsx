@@ -75,6 +75,7 @@ function Modal({
   const [equity, setEquity] = useState(5_000_000);
   const [horizon, setHorizon] = useState(30);
   const [share, setShare] = useState(8);
+  const [diversity, setDiversity] = useState<"CONCENTRATE" | "BALANCE" | "SPREAD">("BALANCE");
   const [picked, setPicked] = useState<Record<string, boolean>>(
     Object.fromEntries(locations.map((l) => [l.id, true])),
   );
@@ -124,6 +125,7 @@ function Modal({
         horizonMonths: horizon,
         locationIds,
         sharePct: share,
+        diversity,
         settings: settings(),
       });
       if (!("lines" in r)) {
@@ -251,6 +253,30 @@ function Modal({
               onChange={(e) => setPerfPct(Number(e.target.value) || 0)}
               className={input}
             />
+          </Field>
+          <Field
+            label="Distribuição"
+            hint={
+              diversity === "CONCENTRATE" ? "máx TIR — pode concentrar num modelo"
+                : diversity === "SPREAD" ? "espalha modelos e locais (menos TIR)"
+                : "equilibra mix e retorno"
+            }
+          >
+            <div className="flex overflow-hidden rounded-lg border border-slate-300">
+              {([["CONCENTRATE", "Concentrar"], ["BALANCE", "Equilibrar"], ["SPREAD", "Espalhar"]] as const).map(
+                ([v, lbl]) => (
+                  <button
+                    key={v}
+                    onClick={() => setDiversity(v)}
+                    className={`flex-1 px-1.5 py-2 text-xs ${
+                      diversity === v ? "bg-[#1f3a5f] text-white" : "text-slate-600 hover:bg-slate-100"
+                    }`}
+                  >
+                    {lbl}
+                  </button>
+                ),
+              )}
+            </div>
           </Field>
           <Field
             label="Capital"

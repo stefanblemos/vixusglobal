@@ -9,6 +9,7 @@ import {
   evaluateProgram,
   optimizeProgram,
   type BasketLine,
+  type Diversity,
   type OptimizerResult,
   type OptimizerSettings,
   type ProgramEval,
@@ -56,6 +57,7 @@ export async function optimizeProgramAction(input: {
   horizonMonths: number;
   locationIds: string[];
   sharePct?: number;
+  diversity?: Diversity;
   settings: OptimizerPayloadSettings;
 }): Promise<OptimizerResult | { error: string }> {
   if (!(input.equityTarget > 0)) return { error: "Informe o volume de equity do grupo." };
@@ -82,6 +84,7 @@ export async function optimizeProgramAction(input: {
     horizonMonths: input.horizonMonths,
     locationIds: input.locationIds,
     sharePct: input.sharePct,
+    diversity: input.diversity,
     absorptionByLocation,
     settings,
   });

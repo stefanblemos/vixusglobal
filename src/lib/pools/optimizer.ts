@@ -45,14 +45,21 @@ export type OptimizerSettings = {
   waiveFormationCost: boolean;
 };
 
+export type Diversity = "CONCENTRATE" | "BALANCE" | "SPREAD";
+
 export type OptimizerInput = {
   equityTarget: number;
   horizonMonths: number;
   locationIds: string[];
   sharePct?: number; // participação de mercado tolerada do mesmo modelo (default 8%)
+  diversity?: Diversity; // quanto distribuir modelos/locais (default BALANCE)
   absorptionByLocation: Record<string, number | null>; // manual do Catalog por locationId
   settings: OptimizerSettings;
 };
+
+// Teto de participação de UMA combinação no total de casas — o freio da diversificação.
+// Concentrar = sem teto (máx TIR); Espalhar = no máx ~18% por combo (força o mix).
+const MAX_SHARE: Record<Diversity, number> = { CONCENTRATE: 1, BALANCE: 0.3, SPREAD: 0.18 };
 
 export type ComboEcon = {
   locationId: string;
@@ -275,53 +282,87 @@ export function optimizeProgram(catalog: CatalogData, input: OptimizerInput): Op
     eqUnit: e.eqUnit, bankUnit: e.bankUnit, profitUnit: e.profitUnit, cycleDays: e.cycleDays,
   }));
 
-  // 2. Preenchimento inicial (estimativa por eqUnit): dentro do cap por eficiência…
-  const clampCap = (l: BasketLine, n: number) =>
-    // BANCO = UMA leva: a absorção é teto firme (não se vende N iguais ao mesmo tempo).
-    // EQUITY = esteira: o excesso se dilui pelos ciclos/tempo, então pode passar do cap.
-    isBank && l.cap != null ? Math.min(n, l.cap) : n;
+  // 2. Preenchimento por PASSO (rodízio por eficiência), com dois freios:
+  //    - absorção: teto firme no BANCO (uma leva); no EQUITY dilui pelos ciclos;
+  //    - diversidade: nenhum combo passa de MAX_SHARE do total (força o mix de modelos/locais).
+  //    Mantém a diversidade o máximo possível e só a relaxa em último caso p/ gastar o alvo.
+  const maxShare = MAX_SHARE[input.diversity ?? "BALANCE"];
   let estPeak = 0;
-  for (const l of lines) {
-    while ((l.cap == null || l.cycle1 < l.cap) && estPeak + l.eqUnit <= equityTarget) {
-      l.cycle1++; estPeak += l.eqUnit;
+  let total = 0;
+  // Combo SEM absorção (cap null): no BANCO ganha um teto conservador (não se enche uma leva
+  // de um produto sem dado de mercado); no EQUITY fica livre (dilui pelos ciclos).
+  const NONE_CAP_BANK = 5;
+  const capBlocked = (l: BasketLine, relaxCap: boolean) => {
+    const ec = l.cap != null ? l.cap : isBank ? NONE_CAP_BANK : null;
+    return ec != null && l.cycle1 >= ec && (isBank || !relaxCap);
+  };
+  const shareBlocked = (l: BasketLine, relaxShare: boolean) =>
+    !relaxShare && maxShare < 1 && l.cycle1 + 1 > Math.max(1, maxShare * (total + 1));
+  const fillPass = (relaxShare: boolean, relaxCap: boolean) => {
+    let guard = 0;
+    while (estPeak < equityTarget && guard++ < 8000) {
+      // lines já ordenado por eficiência desc → o 1º elegível é o melhor
+      const pick = lines.find((l) => !capBlocked(l, relaxCap) && !shareBlocked(l, relaxShare));
+      if (!pick) return;
+      pick.cycle1++; total++; estPeak += pick.eqUnit;
     }
-  }
-  // …e, se faltou p/ gastar o alvo: no EQUITY espalha o excesso (resp. 1a) round-robin por
-  // eficiência; no BANCO respeita os caps (o ocioso é reportado, não forçado).
-  let guard = 0;
-  while (estPeak < equityTarget && guard++ < 2000) {
-    let added = false;
-    for (const l of lines) {
-      if (estPeak >= equityTarget) break;
-      const next = clampCap(l, l.cycle1 + 1);
-      if (next > l.cycle1) { l.cycle1 = next; estPeak += l.eqUnit; added = true; }
-    }
-    if (!added) break; // BANCO: todos no cap e ainda abaixo do alvo → para (ocioso)
-  }
-
-  // 3. Calibra as contagens contra o PICO real do motor (o alvo tem que ser gasto)
-  let evalr = evaluateProgram(catalog, settings, lines);
-  for (let iter = 0; iter < 5; iter++) {
-    const peak = evalr.peak;
-    if (peak > 0 && peak >= equityTarget * 0.98 && peak <= equityTarget * 1.06) break;
-    const scale = peak > 0 ? equityTarget / peak : 1;
-    if (scale > 1 && isBank && lines.every((l) => l.cap != null && l.cycle1 >= l.cap)) break; // no cap, não força
-    let changed = false;
-    for (const l of lines) {
-      const next = clampCap(l, Math.max(0, Math.round(l.cycle1 * scale)));
-      if (next !== l.cycle1) { l.cycle1 = next; changed = true; }
-    }
-    if (!changed) break;
-    evalr = evaluateProgram(catalog, settings, lines);
+  };
+  fillPass(false, false); // estrito: dentro do cap e da diversidade
+  if (isBank) {
+    fillPass(true, false); // banco: absorção é teto → concentra dentro dos caps p/ usar capacidade
+  } else {
+    fillPass(false, true); // equity: espalha o excesso pelos ciclos, mantendo a diversidade
+    fillPass(true, true); // último caso: relaxa a diversidade só p/ consumir o alvo
   }
 
-  // 4. Ajusta K se a duração estourar demais o horizonte (folga, mas não muito)
+  // 3. Calibra contra o PICO REAL do motor adicionando/removendo casas por eficiência
+  //    (o estimador por eqUnit superestima o pico — a esteira recicla). Adicionar mantém a
+  //    diversidade (respeita o share) e só relaxa em último caso p/ consumir o alvo.
+  const calibrate = (): ProgramEval => {
+    let ev = evaluateProgram(catalog, settings, lines);
+    for (let iter = 0; iter < 7; iter++) {
+      const peak = ev.peak;
+      if (peak > 0 && peak >= equityTarget * 0.98 && peak <= equityTarget * 1.08) break;
+      if (peak < equityTarget) {
+        let need = equityTarget - peak;
+        const before = total;
+        const addBatch = (relaxShare: boolean, relaxCap: boolean) => {
+          let g = 0;
+          while (need > 0 && g++ < 8000) {
+            const pick = lines.find((l) => !capBlocked(l, relaxCap) && !shareBlocked(l, relaxShare));
+            if (!pick) return;
+            pick.cycle1++; total++; need -= pick.eqUnit;
+          }
+        };
+        addBatch(false, !isBank); // mantém diversidade; equity pode passar do cap (esteira)
+        if (need > 0 && !isBank) addBatch(true, true); // último caso: relaxa p/ gastar o alvo
+        if (total === before) break; // banco no cap → não força (ocioso reportado)
+      } else {
+        let excess = peak - equityTarget;
+        for (let i = lines.length - 1; i >= 0 && excess > 0; i--) {
+          const l = lines[i]; // menor eficiência primeiro
+          while (l.cycle1 > 0 && excess > 0) { l.cycle1--; total--; excess -= l.eqUnit; }
+        }
+      }
+      ev = evaluateProgram(catalog, settings, lines);
+    }
+    return ev;
+  };
+  // BANCO = uma leva: a absorção é o teto natural — enche até os caps e reporta o ocioso,
+  // sem forçar o alvo (isso é papel do EQUITY multi-ciclo). EQUITY calibra p/ gastar o alvo.
+  let evalr = isBank ? evaluateProgram(catalog, settings, lines) : calibrate();
+
+  // 4. Ajusta K se a duração estourar demais o horizonte (folga, mas não muito). Cortar K
+  //    derruba o pico (menos sobreposição de ciclos) → RECALIBRA depois p/ voltar ao alvo.
   let kGuard = 0;
+  let kChanged = false;
   while (evalr.durationMonths > horizonMonths * 1.2 && K > 1 && kGuard++ < 6) {
     K--;
     for (const l of lines) l.cycles = K;
+    kChanged = true;
     evalr = evaluateProgram(catalog, settings, lines);
   }
+  if (kChanged) evalr = calibrate();
 
   // 5. Flags de absorção + avisos
   for (const l of lines) l.over = l.cap != null && l.cycle1 > l.cap;
