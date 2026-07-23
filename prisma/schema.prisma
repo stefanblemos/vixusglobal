@@ -212,6 +212,7 @@ model Party {
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
   investorLegacy  InvestorLegacy?
+  payoutAccount   PayoutAccount?
 }
 
 model Company {
@@ -265,6 +266,7 @@ model Company {
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
   investorLegacy  InvestorLegacy?
+  payoutAccount   PayoutAccount?
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o
@@ -1151,6 +1153,14 @@ model PoolDistributionLine {
   memberId       String
   member         PoolMember       @relation(fields: [memberId], references: [id], onDelete: Cascade)
   amount         Decimal          @db.Decimal(20, 2)
+
+  // Pagamento por sócio (#69): o rateio é fato contábil (accrual); o WIRE de cada sócio é
+  // travado até a conta de recebimento estar CONFIRMED (ver PayoutAccount). Marcar pago é
+  // ação do operador, com trilha de quem/quando.
+  paidStatus  String    @default("UNPAID") // UNPAID | PAID
+  paidAt      DateTime?
+  paidByEmail String?
+  paidRef     String? // referência do wire (opcional)
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1715,6 +1725,41 @@ model InvestorProfile {
   companyId String?  @unique
   company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
   data      Json // respostas do wizard (identidade, credenciamento, UBO, fiscal, origem)
+  updatedAt DateTime @updatedAt
+}
+
+// Conta de recebimento das distribuições, por entidade investidora (#69, saída de dinheiro).
+// Reutilizável entre pools (como InvestorProfile). Ciclo de vida anti-fraude (BEC):
+//   - status DRAFT quando o OPERADOR preenche (veio por telefone/papel) ou quando o sócio
+//     edita qualquer campo bancário (troca de instrução re-exige confirmação);
+//   - status CONFIRMED só quando o PRÓPRIO sócio atesta no portal (click-wrap: hash do
+//     payload + IP + e-mail + data, mesmo padrão do signHash da subscrição).
+// O operador só consegue marcar o wire de uma linha como enviado se a conta estiver CONFIRMED.
+model PayoutAccount {
+  id        String   @id @default(cuid())
+  partyId   String?  @unique
+  party     Party?   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  companyId String?  @unique
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  beneficiaryName String
+  bankName        String
+  routingNumber   String? // ABA (wire doméstico US)
+  accountNumber   String
+  accountType     String? // checking | savings
+  swift           String? // internacional
+  iban            String?
+  bankAddress     String?
+
+  status           String    @default("DRAFT") // DRAFT | CONFIRMED
+  enteredByEmail   String? // operador que preencheu (fallback)
+  confirmedAt      DateTime?
+  confirmedByEmail String? // e-mail da sessão do portal que atestou
+  confirmIp        String?
+  confirmHash      String? // sha256 do payload assinado (trilha click-wrap)
+  keyHash          String? // sha256 só dos campos bancários — detecta troca de instrução
+
+  createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 

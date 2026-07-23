@@ -13,6 +13,7 @@ import {
 import { CreateCapitalCallForm } from "@/components/pool-capital-forms";
 import { PoolSubscriptionsPanel, type SubscriptionRow } from "@/components/pool-subscriptions-panel";
 import { PortalAccessButton } from "@/components/portal-access-button";
+import { PayoutAccountEditor, type OperatorPayout } from "@/components/payout-account-editor";
 
 // Aba Investidores (mock UX 2/6 aprovado): captação no topo, UMA ação por vez em painel,
 // cap table com % visual + atalho "+ aporte" por sócio, saída de sócio legível.
@@ -37,6 +38,8 @@ export type InvestorRow = {
     invitedAt: Date | string | null;
     lastLoginAt: Date | string | null;
   };
+  // Conta de recebimento (#69): status + dados p/ o operador editar (fallback telefone/papel)
+  payout: OperatorPayout;
 };
 
 export type CapitalCallRow = {
@@ -291,6 +294,7 @@ export function PoolInvestorsTab({
                         >
                           + aporte
                         </button>
+                        <PayoutAccountEditor memberId={r.memberId} memberName={r.name} payout={r.payout} />
                         {r.role === "INVESTOR" && <PortalAccessButton memberId={r.memberId} portal={r.portal} />}
                         {r.units === 0 && !r.hasEntries && (
                           <form action={deleteMember}>

@@ -9,6 +9,7 @@ import { PoolLedgerTab } from "@/components/pool-ledger-tab";
 import { PoolDistributionsTab } from "@/components/pool-distributions-tab";
 import { PoolInvestorsTab } from "@/components/pool-investors-tab";
 import { portalStatusByMember } from "@/lib/portal/access";
+import { payoutByMember } from "@/lib/pools/payout-data";
 import { PoolStatusStepper } from "@/components/pool-status-stepper";
 import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
@@ -236,6 +237,10 @@ export default async function PoolDetailPage({
   const portalByMember = await portalStatusByMember(
     pool.members.map((m) => ({ id: m.id, partyId: m.partyId, companyId: m.companyId })),
   );
+  // Conta de recebimento por sócio (#69): status + dados p/ o operador editar/pagar.
+  const payoutMap = await payoutByMember(
+    pool.members.map((m) => ({ id: m.id, partyId: m.partyId, companyId: m.companyId })),
+  );
   const investorRows = table.rows.map((r) => {
     const m = pool.members.find((mm) => mm.id === r.memberId)!;
     const hasEntries = m.entries.length > 0;
@@ -269,6 +274,21 @@ export default async function PoolDetailPage({
       exited,
       hasEntries,
       portal: portalByMember[r.memberId] ?? { status: "NONE" as const, email: null, invitedAt: null, lastLoginAt: null },
+      payout: (() => {
+        const mp = payoutMap[r.memberId];
+        return {
+          status: mp?.status ?? ("NONE" as const),
+          beneficiaryName: mp?.beneficiaryName ?? "",
+          bankName: mp?.bankName ?? "",
+          routingNumber: mp?.routingNumber ?? null,
+          accountNumber: mp?.accountNumber ?? "",
+          accountType: mp?.accountType ?? null,
+          swift: mp?.swift ?? null,
+          iban: mp?.iban ?? null,
+          bankAddress: mp?.bankAddress ?? null,
+          confirmedAt: mp?.confirmedAt ? fmtDate(mp.confirmedAt) : null,
+        };
+      })(),
     };
   });
   const contribs = entries.filter((e) => e.kind === "CONTRIBUTION" || e.kind === "CAPITAL_CALL");
@@ -587,7 +607,19 @@ export default async function PoolDetailPage({
     total: Number(d.totalAmount),
     house: d.house ? { id: d.house.id, address: d.house.address } : null,
     memo: d.memo,
-    lines: d.lines.map((l) => ({ name: memberById.get(l.memberId) ?? "", amount: Number(l.amount) })),
+    lines: d.lines.map((l) => {
+      const mp = payoutMap[l.memberId];
+      return {
+        lineId: l.id,
+        name: memberById.get(l.memberId) ?? "",
+        amount: Number(l.amount),
+        payoutStatus: mp?.status ?? ("NONE" as const),
+        mask: mp?.mask ?? "—",
+        bankName: mp?.bankName ?? "",
+        paidStatus: (l.paidStatus === "PAID" ? "PAID" : "UNPAID") as "UNPAID" | "PAID",
+        paidAt: l.paidAt ? fmtDate(l.paidAt) : null,
+      };
+    }),
   }));
   const distMembers = table.rows
     .filter((r) => r.units.gt(0))

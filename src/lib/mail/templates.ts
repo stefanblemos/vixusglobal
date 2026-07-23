@@ -79,3 +79,77 @@ export function portalInviteEmail(args: {
 
   return { subject, html, text };
 }
+
+// Distribuição registrada (#69). NUNCA traz instrução de wire — leva ao portal. Quando a
+// conta ainda não foi confirmada, a cópia vira um lembrete para confirmar e poder receber.
+export function distributionEmail(args: {
+  entityName: string;
+  poolName: string;
+  kind: "RETURN_OF_CAPITAL" | "PROFIT";
+  portalUrl: string;
+  needsAccount: boolean; // conta não confirmada (pendente/sem conta)
+}): { subject: string; html: string; text: string } {
+  const kindLabel = args.kind === "PROFIT" ? "lucro" : "retorno de capital";
+  const subject = args.needsAccount
+    ? `Confirme seus dados para receber — ${args.poolName}`
+    : `Há uma distribuição na sua posição — ${args.poolName}`;
+
+  const lead = `Registramos uma distribuição de <b>${kindLabel}</b> referente à <b>${args.poolName}</b>. O valor da sua posição já está no seu extrato no portal.`;
+  const cta = args.needsAccount
+    ? `Para <b>receber o pagamento</b>, confirme seus dados de recebimento no portal (leva 1 minuto). Por segurança, <b>nunca</b> enviamos ou alteramos instruções bancárias por e-mail.`
+    : `Você pode acompanhar o pagamento pelo portal. Por segurança, <b>nunca</b> enviamos ou alteramos instruções bancárias por e-mail.`;
+
+  const html = shell(
+    args.needsAccount ? "Confirme seus dados de recebimento" : "Uma distribuição foi registrada",
+    `<p style="margin:0;font-size:14.5px;line-height:1.65;color:#334155;">Olá, ${args.entityName}.</p>
+     <p style="margin:10px 0 0;font-size:14.5px;line-height:1.65;color:#334155;">${lead}</p>
+     <p style="margin:10px 0 0;font-size:14.5px;line-height:1.65;color:#334155;">${cta}</p>
+     ${button(args.portalUrl, args.needsAccount ? "Confirmar no portal" : "Abrir o portal")}`,
+    `Instruções de pagamento existem apenas dentro do portal, após login. Se você não reconhece este e-mail, ignore-o.`,
+  );
+
+  const text = [
+    args.needsAccount ? "Confirme seus dados de recebimento — Vixus" : "Uma distribuição foi registrada — Vixus",
+    "",
+    `Olá, ${args.entityName}.`,
+    `Registramos uma distribuição de ${kindLabel} referente à ${args.poolName}.`,
+    "",
+    args.needsAccount
+      ? "Para receber o pagamento, confirme seus dados de recebimento no portal:"
+      : "Acompanhe pelo portal:",
+    args.portalUrl,
+    "",
+    "Por segurança, nunca enviamos ou alteramos instruções bancárias por e-mail.",
+  ].join("\n");
+
+  return { subject, html, text };
+}
+
+// Report mensal publicado (#69).
+export function reportPublishedEmail(args: {
+  entityName: string;
+  poolName: string;
+  period: string; // "julho de 2026" etc. (já formatado)
+  portalUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Novo relatório — ${args.poolName} (${args.period})`;
+  const html = shell(
+    "Seu relatório mensal está disponível",
+    `<p style="margin:0;font-size:14.5px;line-height:1.65;color:#334155;">Olá, ${args.entityName}.</p>
+     <p style="margin:10px 0 0;font-size:14.5px;line-height:1.65;color:#334155;">
+       O relatório de <b>${args.period}</b> da <b>${args.poolName}</b> já está disponível no portal, com a sua
+       posição, o andamento do projeto e os documentos.
+     </p>
+     ${button(args.portalUrl, "Ver relatório")}`,
+    `Somente leitura. Você vê apenas a sua posição — nunca outros sócios ou números internos da gestão.`,
+  );
+  const text = [
+    "Seu relatório mensal está disponível — Vixus",
+    "",
+    `Olá, ${args.entityName}.`,
+    `O relatório de ${args.period} da ${args.poolName} já está no portal.`,
+    "",
+    args.portalUrl,
+  ].join("\n");
+  return { subject, html, text };
+}

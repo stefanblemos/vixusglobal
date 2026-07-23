@@ -140,6 +140,13 @@ export async function publishMonthlyReport(
     action: "PUBLISH",
     summary: `${existing ? "Republicou" : "Publicou"} report mensal ${month}${preflight.blockers > 0 ? ` (com ${preflight.blockers} pendência forçada)` : ""}`,
   });
+  // #69 — avisa os sócios do relatório novo (dormente sem RESEND_API_KEY).
+  {
+    const [y, m] = month.split("-").map(Number);
+    const period = new Date(y!, (m ?? 1) - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    const { notifyReportPublished } = await import("@/lib/mail/notify");
+    await notifyReportPublished(poolId, period);
+  }
   revalidatePath(`/pools/${poolId}`);
   revalidatePath(`/pools/${poolId}/report/${month}`);
   return { ok: true };

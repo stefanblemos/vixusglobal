@@ -599,6 +599,11 @@ export async function addDistribution(
     const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
     await recomputePoolStatuses(poolId);
   }
+  // #69 — avisa os sócios (com acesso ao portal) por e-mail; dormente sem RESEND_API_KEY.
+  {
+    const { notifyDistribution } = await import("@/lib/mail/notify");
+    await notifyDistribution(dist.id);
+  }
   revalidatePath(`/pools/${poolId}`);
   return undefined;
 }

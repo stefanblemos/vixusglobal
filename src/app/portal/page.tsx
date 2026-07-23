@@ -9,6 +9,9 @@ import { INV_LANG_COOKIE, langFromCookie } from "@/lib/pools/i18n";
 import { InvestorPortfolioView } from "@/components/investor-portfolio-view";
 import { leavePortal } from "@/lib/actions/portal";
 import { PortalEntitySwitcher } from "@/components/portal-entity-switcher";
+import { PortalPayoutCard } from "@/components/portal-payout-card";
+import { payoutForEntityKey } from "@/lib/pools/payout-data";
+import { payoutStatus } from "@/lib/pools/payout";
 
 export const dynamic = "force-dynamic";
 
@@ -37,6 +40,24 @@ export default async function PortalHome({
   const current = entities.find((x) => x.key === rawEntity) ?? entities[0];
 
   const p = current ? await loadInvestorPortfolio(current.key) : null;
+  // Conta de recebimento (#69): o próprio sócio confirma aqui.
+  const payoutAcc = current ? await payoutForEntityKey(current.key) : null;
+  const payoutCard = current
+    ? {
+        status: payoutStatus(payoutAcc),
+        beneficiaryName: payoutAcc?.beneficiaryName ?? "",
+        bankName: payoutAcc?.bankName ?? "",
+        routingNumber: payoutAcc?.routingNumber ?? null,
+        accountNumber: payoutAcc?.accountNumber ?? "",
+        accountType: payoutAcc?.accountType ?? null,
+        swift: payoutAcc?.swift ?? null,
+        iban: payoutAcc?.iban ?? null,
+        bankAddress: payoutAcc?.bankAddress ?? null,
+        confirmedAt: payoutAcc?.confirmedAt
+          ? payoutAcc.confirmedAt.toLocaleDateString(dateLocale, { day: "2-digit", month: "short", year: "numeric" })
+          : null,
+      }
+    : null;
   const taxDocs =
     p && vtab === "tax"
       ? await prisma.poolDocument.findMany({
@@ -73,6 +94,9 @@ export default async function PortalHome({
       </header>
 
       <div className="mx-auto max-w-6xl px-5 py-5">
+        {current && payoutCard && (
+          <PortalPayoutCard entityKey={current.key} entityName={current.name} account={payoutCard} />
+        )}
         {p ? (
           <InvestorPortfolioView
             p={p}
