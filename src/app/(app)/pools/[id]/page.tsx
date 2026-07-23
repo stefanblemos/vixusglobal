@@ -702,9 +702,17 @@ export default async function PoolDetailPage({
             {
               label: "TIR viva",
               hero: true,
-              value: liveIrrNet != null ? `${(liveIrrNet * 100).toFixed(1)}%` : "—",
+              // TIR "não significativa": solver sem raiz (perda além do piso de −95%) ou muito
+              // negativa cedo demais na curva J — o número enganaria (parece cálculo, é o limite
+              // da busca / projeção instável). Mostra o TVPI/ROI ao lado como leitura confiável.
+              value: liveIrrNet != null && liveIrrNet > -0.5 ? `${(liveIrrNet * 100).toFixed(1)}%` : "n/s",
               up: false,
-              hint: planIrr != null ? `plano ${(planIrr * 100).toFixed(1)}%` : "XIRR real + plano",
+              hint:
+                liveIrrNet != null && liveIrrNet > -0.5
+                  ? planIrr != null
+                    ? `plano ${(planIrr * 100).toFixed(1)}%`
+                    : "XIRR real + plano"
+                  : "ainda não significativa — veja o TVPI",
             },
             {
               label: "TVPI · DPI",
