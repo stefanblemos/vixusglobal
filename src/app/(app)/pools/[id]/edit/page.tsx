@@ -134,7 +134,7 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
           unitPrice: pool.unitPrice.toString(),
           targetAmount: pool.targetAmount?.toString() ?? "",
           profitSharePct:
-            pool.profitSharePct == null ? "" : (Number(pool.profitSharePct) * 100).toString(),
+            pool.profitSharePct == null ? "" : ((1 - Number(pool.profitSharePct)) * 100).toString(),
           profitShareTiming: pool.profitShareTiming ?? "",
           fundingDeadline: d(pool.fundingDeadline),
           startDate: d(pool.startDate),

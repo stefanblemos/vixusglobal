@@ -48,7 +48,8 @@ export async function createPool(_prev: FormState, formData: FormData): Promise<
       alias: d.alias,
       unitPrice: d.unitPrice,
       targetAmount: d.targetAmount,
-      profitSharePct: d.profitSharePct == null ? null : d.profitSharePct / 100,
+      // UI pergunta a PERFORMANCE DA 4U (% do lucro); o banco guarda a fração do INVESTIDOR
+      profitSharePct: d.profitSharePct == null ? null : 1 - d.profitSharePct / 100,
       profitShareTiming: d.profitShareTiming,
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,

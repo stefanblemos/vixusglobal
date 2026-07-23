@@ -16,7 +16,7 @@ export type PoolFormValues = {
   status?: string;
   unitPrice: string;
   targetAmount: string;
-  profitSharePct: string; // % na UI (35), fração no banco
+  profitSharePct: string; // performance da 4U em % na UI (35); banco guarda a fração do investidor (0.65)
   profitShareTiming: string;
   fundingDeadline: string; // yyyy-mm-dd
   startDate: string;
@@ -104,7 +104,7 @@ export function PoolForm({
         </div>
         <div>
           <label htmlFor="profitSharePct" className={labelClass}>
-            Investor profit share %
+            Performance da 4U (% do lucro)
           </label>
           <input
             id="profitSharePct"
@@ -113,6 +113,10 @@ export function PoolForm({
             placeholder="35"
             className={inputClass}
           />
+          <p className="mt-1 text-[11px] text-slate-400">
+            Fatia do LUCRO que fica com a 4U. O restante vai aos investidores — é o que o app
+            desconta na projeção de fim. Renegociou para menos? Baixe aqui e o retorno sobe.
+          </p>
         </div>
         <div>
           <label htmlFor="profitShareTiming" className={labelClass}>
