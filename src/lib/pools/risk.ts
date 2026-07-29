@@ -12,6 +12,7 @@ import {
   type SuffHouseInput,
   type SuffLoanInput,
 } from "./loan-sufficiency";
+import { loanAwaitingClosing } from "./draws";
 
 type Dec = unknown;
 const n = (v: Dec) => (v == null ? 0 : Number(v));
@@ -113,7 +114,7 @@ export function buildRisk(pool: RiskPoolInput, today: Date): RiskResult {
     return {
       label: l.bankProfile?.name?.split(" ")[0] ?? "Banco",
       quitado,
-      awaitingClosing: !l.closingDate,
+      awaitingClosing: loanAwaitingClosing(l),
       houses: lHouses.length,
       balance: round2(balance),
       aprPct: apr,

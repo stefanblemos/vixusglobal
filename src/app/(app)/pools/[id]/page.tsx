@@ -10,6 +10,7 @@ import { PoolDistributionsTab } from "@/components/pool-distributions-tab";
 import { PoolInvestorsTab } from "@/components/pool-investors-tab";
 import { portalStatusByMember } from "@/lib/portal/access";
 import { payoutByMember } from "@/lib/pools/payout-data";
+import { loanAwaitingClosing } from "@/lib/pools/draws";
 import { PoolStatusStepper } from "@/components/pool-status-stepper";
 import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
@@ -325,7 +326,7 @@ export default async function PoolDetailPage({
       ? [{ text: "janela de captação sem data → Edit pool", href: `/pools/${pool.id}/edit` }]
       : []),
     ...pool.loans
-      .filter((l) => !l.closingDate)
+      .filter((l) => loanAwaitingClosing(l))
       .map((l) => ({
         text: `registrar closing — ${l.bankProfile?.name?.split(" ")[0] ?? "banco"} → Termos`,
         href: `/pools/${pool.id}/loan?loan=${l.id}&stab=terms`,

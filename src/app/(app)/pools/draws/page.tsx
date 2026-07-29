@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { loanAwaitingClosing } from "@/lib/pools/draws";
 import { prisma } from "@/lib/db";
 import { formatMoney } from "@/lib/money";
 
@@ -65,7 +66,7 @@ export default async function DrawsDashboardPage() {
     const real = loan.entries.filter((e) => !e.pending);
     const balance = real.reduce((s, e) => s + Number(e.amount), 0);
     const paidOff = real.some((e) => e.type === "PAYOFF") && balance <= 0.01;
-    const awaitingClosing = !paidOff && loan.closingDate == null;
+    const awaitingClosing = !paidOff && loanAwaitingClosing(loan);
     return {
       loan,
       p,

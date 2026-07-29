@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
-import { effectiveDrawStatus } from "@/lib/pools/draws";
+import { effectiveDrawStatus, loanAwaitingClosing } from "@/lib/pools/draws";
 import { formatMoney } from "@/lib/money";
 import { buildStatement, ENTRY_TYPE_LABEL } from "@/lib/pools/loan-statement";
 import {
@@ -825,6 +825,7 @@ export default async function PoolLoanPage({
             poolLabel={loanLabel(loan)}
             feesHint={feesHint}
             houses={drawHouses}
+            awaitingClosing={loanAwaitingClosing(loan)}
           />
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">

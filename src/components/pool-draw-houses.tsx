@@ -142,12 +142,14 @@ export function DrawHousesPanel({
   poolLabel,
   feesHint,
   houses,
+  awaitingClosing = false,
 }: {
   poolId: string;
   loanId: string;
   poolLabel: string;
   feesHint: string;
   houses: HouseAvailability[];
+  awaitingClosing?: boolean; // loan ainda não fechou → draws travados (fonte única loanAwaitingClosing)
 }) {
   const [selected, setSelected] = useState<HouseAvailability | null>(null);
   const totals = houses.reduce(
@@ -167,6 +169,13 @@ export function DrawHousesPanel({
           Clique na casa para solicitar um draw. Disponível = aprovado (d=0) − creditado −
           aguardando.
         </p>
+        {awaitingClosing && (
+          <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            Este financiamento ainda não fechou — o banco só credita draws após o closing. A obra
+            pode andar com capital próprio, mas as solicitações ficam travadas até você registrar o{" "}
+            <b>Closing real</b> na aba Termos.
+          </p>
+        )}
       </div>
       <div className="overflow-x-auto">
         <table className="w-full">
@@ -184,8 +193,10 @@ export function DrawHousesPanel({
             {houses.map((h, i) => (
               <tr
                 key={h.id ?? `none-${i}`}
-                onClick={() => setSelected(h)}
-                className="cursor-pointer border-b border-slate-50 hover:bg-slate-50/70"
+                onClick={awaitingClosing ? undefined : () => setSelected(h)}
+                className={`border-b border-slate-50 ${
+                  awaitingClosing ? "" : "cursor-pointer hover:bg-slate-50/70"
+                }`}
               >
                 <td className={`${td} font-medium text-slate-800`}>{h.address}</td>
                 <td className={`${td} text-slate-500`}>
@@ -196,19 +207,23 @@ export function DrawHousesPanel({
                 <td className={`${tdRight} ${h.pendingAmount > 0 ? "text-blue-700" : "text-slate-400"}`}>
                   {h.pendingAmount > 0 ? money(h.pendingAmount) : "—"}
                 </td>
-                <td
-                  className={`${tdRight} font-semibold ${
-                    h.available == null
-                      ? "text-slate-400"
-                      : h.available < 0
-                        ? "text-red-600"
-                        : h.available === 0
-                          ? "text-slate-400"
-                          : "text-emerald-700"
-                  }`}
-                >
-                  {money(h.available)}
-                </td>
+                {awaitingClosing ? (
+                  <td className={`${tdRight} text-xs text-amber-700`}>— até o closing</td>
+                ) : (
+                  <td
+                    className={`${tdRight} font-semibold ${
+                      h.available == null
+                        ? "text-slate-400"
+                        : h.available < 0
+                          ? "text-red-600"
+                          : h.available === 0
+                            ? "text-slate-400"
+                            : "text-emerald-700"
+                    }`}
+                  >
+                    {money(h.available)}
+                  </td>
+                )}
               </tr>
             ))}
             <tr className="bg-slate-50/60">

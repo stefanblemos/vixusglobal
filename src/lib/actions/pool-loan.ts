@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { Prisma, type PoolLoanEntryType } from "@prisma/client";
-import { nextDrawNumber } from "@/lib/pools/draws";
+import { nextDrawNumber, loanAwaitingClosing } from "@/lib/pools/draws";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
 
@@ -506,6 +506,10 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
     include: { bankProfile: { include: { customFees: true } } },
   });
   if (!loan) return { error: "Loan not found." };
+  // GATE (fonte única): sem closing (contrato não fechou) o banco não credita nem aceita
+  // solicitação — a obra pode andar com equity, mas draws só depois de registrar o Closing real.
+  if (loanAwaitingClosing(loan))
+    return { error: "Este financiamento ainda não fechou — registre o Closing real na aba Termos antes de solicitar draws." };
   const memo = String(formData.get("memo") ?? "").trim() || null;
 
   const drawNumber = await nextDrawNumber(loan.id);
@@ -577,6 +581,10 @@ export async function editDraw(_prev: FormState, formData: FormData): Promise<Fo
   const memo = String(formData.get("memo") ?? "").trim() || null;
 
   const releasing = entry.pending && released != null;
+  // Creditar um draw entra no saldo do loan — mesma regra do addDraw: exige o loan fechado.
+  // (Editar metadados de um pendente segue livre; o pedido indevido deve ser negado/cancelado.)
+  if (releasing && loanAwaitingClosing(entry.loan))
+    return { error: "Este financiamento ainda não fechou — registre o Closing real na aba Termos antes de creditar draws." };
   if (releasing && !creditDateRaw) return { error: "Informe a data do crédito." };
   if (!entry.pending && released != null && released <= 0)
     return { error: "Released amount must be greater than 0." };

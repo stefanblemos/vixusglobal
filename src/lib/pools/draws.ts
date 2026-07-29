@@ -18,6 +18,15 @@ export function effectiveDrawStatus(e: { drawStatus?: string | null; pending: bo
   return e.pending ? "REQUESTED" : "APPROVED";
 }
 
+// Loan só libera draws depois de FECHAR (closingDate). Antes disso está em LOI/documentação:
+// a obra pode andar com equity, mas o banco não credita nem aceita solicitação de draw. FONTE
+// ÚNICA — draws page, risk, aba do loan e a ação addDraw usam isto em vez de recomputar
+// `!closingDate` cada um por conta (era a origem do scatter: a mesma casa "pode" numa tela e
+// "não pode" noutra). Não considera quitação — o chamador combina com `paidOff` p/ o rótulo.
+export function loanAwaitingClosing(loan: { closingDate: Date | string | null }): boolean {
+  return loan.closingDate == null;
+}
+
 // próximo número de draw do loan (max + 1)
 export async function nextDrawNumber(loanId: string): Promise<number> {
   const max = await prisma.poolLoanEntry.aggregate({

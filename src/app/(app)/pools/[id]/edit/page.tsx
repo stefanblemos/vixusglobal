@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { loanAwaitingClosing } from "@/lib/pools/draws";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { PoolForm } from "@/components/pool-form";
@@ -62,7 +63,7 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
       closing,
       closingReal: l.closingDate,
       closingPrev: l.expectedClosingDate,
-      usesExpected: !l.closingDate && !!l.expectedClosingDate,
+      usesExpected: loanAwaitingClosing(l) && !!l.expectedClosingDate,
       term,
       maturity,
       ext,
