@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { editDraw, resolveDrawOutcome, toggleLoanEntryReconciled, type FormState } from "@/lib/actions/pool-loan";
+import { deleteDraw, editDraw, resolveDrawOutcome, toggleLoanEntryReconciled, type FormState } from "@/lib/actions/pool-loan";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20";
@@ -246,6 +246,21 @@ export function DrawList({
                     <button type="button" onClick={() => setOpenId(openId === d.id ? null : d.id)} className="ml-2 text-[#1f3a5f]">
                       {openId === d.id ? "fechar" : d.pending ? "registrar liberação" : "editar"}
                     </button>
+                    {/* TEMPORÁRIO (correção de lançamentos indevidos) — remover quando terminar */}
+                    <form action={deleteDraw} className="ml-2 inline">
+                      <input type="hidden" name="entryId" value={d.id} />
+                      <button
+                        type="submit"
+                        onClick={(e) => {
+                          if (!confirm(`Apagar o Draw #${d.drawNumber ?? ""} de vez? Não fica na trilha (é uma correção, não um "negado/cancelado").`))
+                            e.preventDefault();
+                        }}
+                        className="ml-1 text-slate-300 hover:text-red-600"
+                        title="Apagar este draw de vez (temporário — correção)"
+                      >
+                        apagar
+                      </button>
+                    </form>
                   </td>
                 </tr>
                 {openId === d.id && (

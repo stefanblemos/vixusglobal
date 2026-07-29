@@ -662,6 +662,31 @@ export async function resolveDrawOutcome(formData: FormData): Promise<void> {
   revalidatePath("/pools/draws");
 }
 
+// TEMPORÁRIO (a pedido do Stefan, 24/07/2026): apaga um draw de vez (hard delete) para
+// corrigir lançamentos indevidos — diferente de negar/cancelar, NÃO fica na trilha. Remover
+// esta ação e o botão do ledger quando a limpeza terminar.
+export async function deleteDraw(formData: FormData): Promise<void> {
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) return;
+  const entry = await prisma.poolLoanEntry.findUnique({
+    where: { id: entryId },
+    include: { loan: { select: { poolId: true } } },
+  });
+  if (!entry || entry.type !== "DRAW") return;
+  await prisma.poolLoanEntry.delete({ where: { id: entryId } });
+  const { logInvestmentAudit } = await import("@/lib/audit");
+  await logInvestmentAudit({
+    poolId: entry.loan.poolId,
+    entity: "HOUSE",
+    entityId: entry.houseId,
+    action: "DELETE",
+    summary: `Draw #${entry.drawNumber ?? "?"} APAGADO (correção manual)`,
+  });
+  await recompute(entry.loan.poolId);
+  revalidatePath(`/pools/${entry.loan.poolId}/loan`);
+  revalidatePath("/pools/draws");
+}
+
 // Lança o juro REAL do mês (aba Juros do loan): cria INTEREST e, se "pago da reserve",
 // o INTEREST_PAYMENT espelhado na mesma data (padrão Builders Capital — saldo não compõe).
 export async function addMonthlyInterest(
