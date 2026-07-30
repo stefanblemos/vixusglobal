@@ -95,6 +95,8 @@ export default async function PoolHousePage({
           id: house.id,
           poolId: house.poolId,
           address: house.address,
+          pinLocation: house.pinLocation ?? "",
+          lockboxCode: house.lockboxCode ?? "",
           status: house.status,
           catalogModelId: house.catalogModelId ?? "",
           catalogLocationId: house.catalogLocationId ?? "",

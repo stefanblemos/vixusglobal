@@ -951,6 +951,10 @@ model PoolHouse {
   address String
   status  PoolHouseStatus @default(PLANNED)
 
+  // Logística de acesso à obra (#draws): usadas ao solicitar draw ao banco (mensagem pronta).
+  pinLocation String? // link/pin do mapa (colado uma vez, reaproveitado em toda solicitação)
+  lockboxCode String? // código do lockbox da casa
+
   // Toda casa nasce de um MODELO do simulador numa LOCALIZAÇÃO (regra inicial); o endereço
   // vem depois do lote. Pode ser trocado (raro — gera variação simulado × real, ok).
   catalogModelId    String?
@@ -1376,6 +1380,10 @@ model BankProfile {
   drawProcessingFee    Decimal @default(0) @db.Decimal(20, 2)
   achFeePerBatch       Decimal @default(0) @db.Decimal(20, 2) // por LOTE de draws (mesma data)
 
+  // Template da mensagem de solicitação de draw (#draws): texto padrão editável por banco,
+  // com tokens {bank}{pool}{address}{pin}{lockbox}{drawNumber}{amount}{loanNumber}. null = usa o default.
+  drawRequestTemplate String?
+
   // Interest reserve: financiada no closing (capitaliza), o juro mensal consome a reserve
   // (sem compor), e o NÃO USADO é creditado na reconciliação final (reduz o último payoff).
   hasInterestReserve Boolean @default(false)
@@ -1688,6 +1696,9 @@ model PoolLoanEntry {
   // Só para DRAW: o que foi SOLICITADO ao banco e quando (liberado pode diferir)
   requestedAmount Decimal?  @db.Decimal(20, 2)
   requestDate     DateTime? @db.Date
+  // Data REAL em que o pedido foi comunicado ao banco (SMS/WhatsApp/e-mail) — distinta da
+  // criação do lançamento no sistema. null = ainda não comunicado. Alimenta o badge do card.
+  bankNotifiedAt  DateTime? @db.Date
   // Draw AGUARDANDO resposta do banco: não entra no saldo nem gera fees até a liberação
   pending         Boolean   @default(false)
   // Ciclo de vida do DRAW: REQUESTED (pendente) → APPROVED | DENIED | CANCELLED. Negado/

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { Prisma, type PoolLoanEntryType } from "@prisma/client";
+import { auth } from "@/auth";
 import { nextDrawNumber, loanAwaitingClosing } from "@/lib/pools/draws";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
@@ -685,6 +686,63 @@ export async function deleteDraw(formData: FormData): Promise<void> {
   await recompute(entry.loan.poolId);
   revalidatePath(`/pools/${entry.loan.poolId}/loan`);
   revalidatePath("/pools/draws");
+}
+
+// #draws — marca a data REAL em que o draw foi comunicado ao banco (SMS/WhatsApp/e-mail).
+// Distinta da criação do lançamento. Alimenta o badge "comunicado" nos cards.
+export async function markDrawCommunicated(formData: FormData): Promise<void> {
+  const entryId = String(formData.get("entryId") ?? "");
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  if (!entryId) return;
+  const entry = await prisma.poolLoanEntry.findUnique({
+    where: { id: entryId },
+    include: { loan: { select: { poolId: true } } },
+  });
+  if (!entry || entry.type !== "DRAW") return;
+  await prisma.poolLoanEntry.update({
+    where: { id: entryId },
+    data: { bankNotifiedAt: dateRaw ? new Date(dateRaw) : new Date() },
+  });
+  const { logInvestmentAudit } = await import("@/lib/audit");
+  await logInvestmentAudit({
+    poolId: entry.loan.poolId,
+    entity: "HOUSE",
+    entityId: entry.houseId,
+    action: "UPDATE",
+    summary: `Draw #${entry.drawNumber ?? "?"} comunicado ao banco${dateRaw ? ` em ${dateRaw}` : ""}`,
+  });
+  revalidatePath(`/pools/${entry.loan.poolId}/loan`);
+  revalidatePath("/pools/draws");
+}
+
+// Desfaz a marcação (comunicado por engano).
+export async function unmarkDrawCommunicated(formData: FormData): Promise<void> {
+  const entryId = String(formData.get("entryId") ?? "");
+  if (!entryId) return;
+  const entry = await prisma.poolLoanEntry.findUnique({
+    where: { id: entryId },
+    include: { loan: { select: { poolId: true } } },
+  });
+  if (!entry || entry.type !== "DRAW") return;
+  await prisma.poolLoanEntry.update({ where: { id: entryId }, data: { bankNotifiedAt: null } });
+  revalidatePath(`/pools/${entry.loan.poolId}/loan`);
+  revalidatePath("/pools/draws");
+}
+
+// Salva o template de solicitação de draw do BANCO (editável por credor; tokens no texto).
+export async function saveBankTemplate(formData: FormData): Promise<void> {
+  const session = await auth();
+  const su = session?.user as { role?: string } | undefined;
+  if (su?.role !== "ADMIN" && su?.role !== "OPERATOR") return;
+  const bankProfileId = String(formData.get("bankProfileId") ?? "").trim();
+  const template = String(formData.get("template") ?? "");
+  const poolId = String(formData.get("poolId") ?? "").trim();
+  if (!bankProfileId) return;
+  await prisma.bankProfile.update({
+    where: { id: bankProfileId },
+    data: { drawRequestTemplate: template.trim() || null },
+  });
+  if (poolId) revalidatePath(`/pools/${poolId}/loan`);
 }
 
 // Lança o juro REAL do mês (aba Juros do loan): cria INTEREST e, se "pago da reserve",

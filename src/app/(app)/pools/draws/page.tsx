@@ -28,7 +28,7 @@ export default async function DrawsDashboardPage() {
       pool: { select: { id: true, code: true, alias: true, currency: true } },
       bankProfile: true,
       entries: {
-        select: { amount: true, requestedAmount: true, requestDate: true, pending: true, type: true, date: true },
+        select: { amount: true, requestedAmount: true, requestDate: true, bankNotifiedAt: true, pending: true, type: true, date: true },
       },
       houses: { select: { bankLoanAmount: true } },
     },
@@ -56,10 +56,16 @@ export default async function DrawsDashboardPage() {
     const descoberto =
       loan.committed != null ? budget + (inEnv ? consumed : 0) - Number(loan.committed) : null;
     const available = envelopeRest ?? budget - credited - awaiting;
-    const pendingCount = draws.filter((e) => e.pending).length;
-    const oldestPending = draws
-      .filter((e) => e.pending && e.requestDate)
+    const pendingDraws = draws.filter((e) => e.pending);
+    const pendingCount = pendingDraws.length;
+    const oldestPending = pendingDraws
+      .filter((e) => e.requestDate)
       .reduce<Date | null>((m, e) => (m == null || e.requestDate! < m ? e.requestDate! : m), null);
+    // #draws — comunicação ao banco: quantos pendentes ainda não foram avisados + data mais antiga
+    const notCommunicated = pendingDraws.filter((e) => e.bankNotifiedAt == null).length;
+    const oldestCommunicated = pendingDraws
+      .filter((e) => e.bankNotifiedAt)
+      .reduce<Date | null>((m, e) => (m == null || e.bankNotifiedAt! < m ? e.bankNotifiedAt! : m), null);
     const creditedYear = draws
       .filter((e) => !e.pending && e.date.getUTCFullYear() === year)
       .reduce((s, e) => s + Number(e.amount), 0);
@@ -77,6 +83,8 @@ export default async function DrawsDashboardPage() {
       descoberto,
       pendingCount,
       oldestPending,
+      notCommunicated,
+      oldestCommunicated,
       creditedYear,
       paidOff,
       awaitingClosing,
@@ -159,6 +167,22 @@ export default async function DrawsDashboardPage() {
                 {c.loan.bankProfile?.name ?? "Banco a definir"}
                 {c.loan.loanNumber ? ` · ${c.loan.loanNumber}` : ""}
               </div>
+              {!c.paidOff && c.pendingCount > 0 && (
+                <div className="mt-1">
+                  {c.notCommunicated > 0 ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+                      ⚠ a comunicar ao banco ({c.notCommunicated})
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                      ✓ comunicado ao banco
+                      {c.oldestCommunicated
+                        ? ` · ${c.oldestCommunicated.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}`
+                        : ""}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-xs text-slate-400">Aprovado (casas)</div>

@@ -26,6 +26,8 @@ export type FichaValues = {
   id: string;
   poolId: string;
   address: string;
+  pinLocation: string;
+  lockboxCode: string;
   status: string;
   catalogModelId: string;
   catalogLocationId: string;
@@ -575,6 +577,35 @@ export function PoolHouseFicha({
                 Loan statement
               </Link>
             </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">Acesso à obra</h2>
+            <p className="mt-0.5 text-[11px] text-slate-400">
+              Usados ao solicitar draw ao banco — entram na mensagem pronta pra enviar.
+            </p>
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className={labelClass}>Pin location (link/pin do mapa)</label>
+                <input
+                  name="pinLocation"
+                  value={form.pinLocation}
+                  onChange={set("pinLocation")}
+                  placeholder="https://maps.google.com/?q=…"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Lockbox code</label>
+                <input
+                  name="lockboxCode"
+                  value={form.lockboxCode}
+                  onChange={set("lockboxCode")}
+                  placeholder="ex.: 4729"
+                  className={inputClass}
+                />
+              </div>
+            </div>
           </div>
 
           <div className="rounded-xl border border-slate-200 bg-white px-5 py-4">

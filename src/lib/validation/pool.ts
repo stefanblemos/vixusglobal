@@ -47,6 +47,8 @@ export const poolStatusSchema = z.enum(["FUNDING", "ACTIVE", "CLOSING", "CLOSED"
 
 export const houseSchema = z.object({
   address: z.string().trim().min(1, "Address is required."),
+  pinLocation: z.preprocess(emptyToNull, z.string().trim().nullable()),
+  lockboxCode: z.preprocess(emptyToNull, z.string().trim().nullable()),
   catalogModelId: z.preprocess(emptyToNull, z.string().nullable()),
   catalogLocationId: z.preprocess(emptyToNull, z.string().nullable()),
   loanId: z.preprocess(emptyToNull, z.string().nullable()), // loan que financia a casa (null = equity)

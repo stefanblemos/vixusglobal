@@ -475,6 +475,9 @@ export default async function PoolLoanPage({
       date: fmtDate(d.date),
       reconciled: d.reconciled,
       memo: d.memo,
+      bankNotifiedAt: d.bankNotifiedAt ? fmtDate(d.bankNotifiedAt) : null,
+      pinLocation: d.house?.pinLocation ?? null,
+      lockboxCode: d.house?.lockboxCode ?? null,
     }));
   // ── envelope do loan (17/07): a trava real é o teto — na modalidade "por dentro" os
   // fees consumidos roubam espaço da obra; o DESCOBERTO = orçamentos + consumido − teto
@@ -851,6 +854,18 @@ export default async function PoolLoanPage({
             <DrawList
               draws={drawRows}
               housesByPool={{ [pool.id]: pool.houses.map((h) => ({ id: h.id, address: h.address })) }}
+              bank={
+                loan.bankProfile
+                  ? {
+                      name: loan.bankProfile.name,
+                      loanNumber: loan.loanNumber,
+                      profileId: loan.bankProfileId,
+                      template: loan.bankProfile.drawRequestTemplate,
+                      poolName: pool.name,
+                      poolId: pool.id,
+                    }
+                  : undefined
+              }
             />
           </section>
         </>

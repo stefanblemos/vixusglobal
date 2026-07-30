@@ -3,7 +3,17 @@
 import { useEffect, useState } from "react";
 import { useActionState } from "react";
 import Link from "next/link";
-import { deleteDraw, editDraw, resolveDrawOutcome, toggleLoanEntryReconciled, type FormState } from "@/lib/actions/pool-loan";
+import {
+  deleteDraw,
+  editDraw,
+  markDrawCommunicated,
+  resolveDrawOutcome,
+  saveBankTemplate,
+  toggleLoanEntryReconciled,
+  unmarkDrawCommunicated,
+  type FormState,
+} from "@/lib/actions/pool-loan";
+import { DEFAULT_DRAW_TEMPLATE, fillDrawTemplate } from "@/lib/pools/draw-message";
 
 const inputClass =
   "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20";
@@ -24,11 +34,25 @@ export type DrawRow = {
   drawStatus: "REQUESTED" | "APPROVED" | "DENIED" | "CANCELLED";
   denyReason: string | null;
   requestedAmount: string | null;
-  requestDate: string | null; // yyyy-mm-dd
+  requestDate: string | null; // yyyy-mm-dd (data de CRIAÇÃO do lançamento)
   amount: string; // liberado (0 se pendente)
   date: string; // data do crédito (ou da solicitação, se pendente)
   reconciled: boolean;
   memo: string | null;
+  // #draws — comunicação ao banco
+  bankNotifiedAt: string | null; // yyyy-mm-dd (data REAL do pedido ao banco); null = não comunicado
+  pinLocation: string | null;
+  lockboxCode: string | null;
+};
+
+// Contexto do banco/loan (a lista roda por 1 loan) para montar a mensagem de solicitação.
+export type DrawBank = {
+  name: string;
+  loanNumber: string | null;
+  profileId: string | null;
+  template: string | null;
+  poolName: string;
+  poolId: string;
 };
 
 const STATUS_BADGE: Record<DrawRow["drawStatus"], { label: string; cls: string }> = {
@@ -158,11 +182,14 @@ function DenyDrawButton({ entryId, drawNumber }: { entryId: string; drawNumber: 
 export function DrawList({
   draws,
   housesByPool,
+  bank,
 }: {
   draws: DrawRow[];
   housesByPool: Record<string, Array<{ id: string; address: string }>>;
+  bank?: DrawBank; // contexto p/ a mensagem de solicitação (a lista roda por 1 loan)
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
+  const [requestFor, setRequestFor] = useState<DrawRow | null>(null);
 
   return (
     <div className="overflow-x-auto">
@@ -173,6 +200,7 @@ export function DrawList({
             <th className={th}>Draw</th>
             <th className={th}>Casa</th>
             <th className={th}>Status</th>
+            <th className={th}>Comunicado ao banco</th>
             <th className={th}>Solicitado em</th>
             <th className={thRight}>Solicitado</th>
             <th className={th}>Creditado em</th>
@@ -185,7 +213,7 @@ export function DrawList({
         <tbody>
           {draws.length === 0 && (
             <tr>
-              <td colSpan={11} className="px-5 py-6 text-center text-sm text-slate-400">
+              <td colSpan={12} className="px-5 py-6 text-center text-sm text-slate-400">
                 Nenhum draw lançado ainda.
               </td>
             </tr>
@@ -196,7 +224,7 @@ export function DrawList({
                 ? Number(d.amount) - Number(d.requestedAmount)
                 : null;
             return (
-              <DrawRowGroup key={d.id} colSpan={11} open={openId === d.id}>
+              <DrawRowGroup key={d.id} colSpan={12} open={openId === d.id}>
                 <tr
                   className={`cursor-pointer border-b border-slate-50 ${
                     d.pending ? "bg-blue-50/40" : d.reconciled ? "" : "bg-amber-50/30"
@@ -219,6 +247,28 @@ export function DrawList({
                       {STATUS_BADGE[d.drawStatus].label}
                     </span>
                     {d.denyReason && <div className="mt-0.5 text-[10px] text-slate-400">{d.denyReason}</div>}
+                  </td>
+                  <td className={td} onClick={(e) => e.stopPropagation()}>
+                    {d.bankNotifiedAt ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="font-medium text-emerald-700">{usDate(d.bankNotifiedAt)}</span>
+                        {bank && (
+                          <button type="button" onClick={() => setRequestFor(d)} className="text-[10.5px] text-[#1f3a5f] hover:underline">
+                            ver
+                          </button>
+                        )}
+                      </span>
+                    ) : bank ? (
+                      <button
+                        type="button"
+                        onClick={() => setRequestFor(d)}
+                        className="rounded-md border border-[#1f3a5f]/30 bg-[#e8eef7] px-2 py-0.5 text-[11px] font-medium text-[#1f3a5f] hover:bg-[#dbe6f3]"
+                      >
+                        solicitar ao banco ▸
+                      </button>
+                    ) : (
+                      <span className="text-[11px] text-slate-300">— a comunicar</span>
+                    )}
                   </td>
                   <td className={td}>{usDate(d.requestDate)}</td>
                   <td className={tdRight}>{d.requestedAmount != null ? money(d.requestedAmount) : "—"}</td>
@@ -265,7 +315,7 @@ export function DrawList({
                 </tr>
                 {openId === d.id && (
                   <tr>
-                    <td colSpan={11} className="px-3 pb-3">
+                    <td colSpan={12} className="px-3 pb-3">
                       <EditDrawForm
                         draw={d}
                         houses={housesByPool[d.poolId] ?? []}
@@ -279,6 +329,9 @@ export function DrawList({
           })}
         </tbody>
       </table>
+      {requestFor && bank && (
+        <RequestDrawModal draw={requestFor} bank={bank} onClose={() => setRequestFor(null)} />
+      )}
     </div>
   );
 }
@@ -286,4 +339,135 @@ export function DrawList({
 // Wrapper para agrupar linha + edição sem quebrar a tabela
 function DrawRowGroup({ children }: { children: React.ReactNode; colSpan: number; open: boolean }) {
   return <>{children}</>;
+}
+
+// #draws — modal "Solicitar ao banco": mensagem pronta (pin/lockbox da casa + valor), copiar,
+// marcar comunicado (data real) e editar o template do banco (com tokens).
+function RequestDrawModal({ draw, bank, onClose }: { draw: DrawRow; bank: DrawBank; onClose: () => void }) {
+  const amount = draw.requestedAmount ?? draw.amount;
+  const tokens = {
+    bank: bank.name,
+    pool: bank.poolName,
+    address: draw.houseAddress ?? "—",
+    pin: draw.pinLocation || "—",
+    lockbox: draw.lockboxCode || "—",
+    drawNumber: String(draw.drawNumber ?? ""),
+    amount: money(amount),
+    loanNumber: bank.loanNumber ?? "—",
+  };
+  const [tpl, setTpl] = useState(bank.template || DEFAULT_DRAW_TEMPLATE);
+  const [msg, setMsg] = useState(() => fillDrawTemplate(bank.template, tokens));
+  const [copied, setCopied] = useState(false);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const copy = () => {
+    try {
+      navigator.clipboard?.writeText(msg);
+    } catch {
+      /* ignore */
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2200);
+  };
+
+  const missing: string[] = [];
+  if (!draw.pinLocation) missing.push("pin location");
+  if (!draw.lockboxCode) missing.push("lockbox");
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/40 p-6" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-slate-100 px-6 py-4">
+          <h3 className="text-base font-semibold text-slate-800">
+            Solicitar Draw #{draw.drawNumber ?? ""} ao {bank.name}
+          </h3>
+          <p className="text-xs text-slate-400">
+            {draw.houseAddress ?? "—"} · {money(amount)}
+            {bank.loanNumber ? ` · loan ${bank.loanNumber}` : ""}
+          </p>
+        </div>
+        <div className="px-6 py-4">
+          {missing.length > 0 && (
+            <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800">
+              Faltou {missing.join(" e ")} no cadastro da casa — preencha na ficha para a mensagem sair completa.
+            </p>
+          )}
+          <label className={labelClass}>Mensagem (edite se quiser antes de copiar)</label>
+          <textarea
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            className="h-52 w-full rounded-lg border border-slate-300 bg-slate-50 p-3 font-mono text-[12.5px] leading-relaxed text-slate-800 outline-none focus:border-[#1f3a5f] focus:ring-2 focus:ring-[#1f3a5f]/20"
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button type="button" onClick={copy} className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f]">
+              Copiar mensagem
+            </button>
+            {copied && <span className="text-xs font-semibold text-emerald-600">✓ copiado — cole no WhatsApp/SMS/e-mail</span>}
+          </div>
+
+          {/* marcar comunicado — data real do pedido ao banco */}
+          <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-4">
+            <form action={markDrawCommunicated} className="flex flex-wrap items-end gap-2">
+              <input type="hidden" name="entryId" value={draw.id} />
+              <div>
+                <label className={labelClass}>Data em que comuniquei ao banco</label>
+                <input name="date" type="date" defaultValue={draw.bankNotifiedAt ?? today} className={`${inputClass} w-40`} />
+              </div>
+              <button type="submit" onClick={onClose} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                {draw.bankNotifiedAt ? "Atualizar data" : "Marcar como comunicado"}
+              </button>
+            </form>
+            {draw.bankNotifiedAt && (
+              <form action={unmarkDrawCommunicated}>
+                <input type="hidden" name="entryId" value={draw.id} />
+                <button type="submit" onClick={onClose} className="pb-2 text-xs text-slate-400 underline hover:text-red-600">
+                  desmarcar
+                </button>
+              </form>
+            )}
+          </div>
+
+          {/* editar o template deste banco (tokens) */}
+          <details className="mt-4">
+            <summary className="cursor-pointer text-[11px] font-semibold text-[#1f3a5f]">✎ editar template do {bank.name}</summary>
+            <div className="mt-2">
+              <textarea
+                value={tpl}
+                onChange={(e) => setTpl(e.target.value)}
+                className="h-40 w-full rounded-lg border border-slate-300 bg-white p-3 font-mono text-[12px] leading-relaxed text-slate-700 outline-none focus:border-[#1f3a5f]"
+              />
+              <p className="mt-1 text-[10.5px] text-slate-400">
+                Tokens: <code>{"{bank} {pool} {address} {pin} {lockbox} {drawNumber} {amount} {loanNumber}"}</code>
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMsg(fillDrawTemplate(tpl, tokens))}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-50"
+                >
+                  Aplicar ao texto acima
+                </button>
+                {bank.profileId && (
+                  <form action={saveBankTemplate}>
+                    <input type="hidden" name="bankProfileId" value={bank.profileId} />
+                    <input type="hidden" name="poolId" value={bank.poolId} />
+                    <input type="hidden" name="template" value={tpl} />
+                    <button type="submit" className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#16304f]">
+                      Salvar template do banco
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </details>
+
+          <div className="mt-5 flex justify-end">
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">
+              Fechar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
