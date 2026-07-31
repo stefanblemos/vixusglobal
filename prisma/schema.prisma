@@ -1379,6 +1379,9 @@ model BankProfile {
   inspectionFeePerDraw Decimal @default(0) @db.Decimal(20, 2)
   drawProcessingFee    Decimal @default(0) @db.Decimal(20, 2)
   achFeePerBatch       Decimal @default(0) @db.Decimal(20, 2) // por LOTE de draws (mesma data)
+  // Este banco cobra a inspeção À PARTE (invoice depois), não descontada do draw. Quando true,
+  // a baixa do draw NÃO lança a inspection automática e ALERTA — perguntando se já foi descontada.
+  inspectionBilledSeparately Boolean @default(false)
 
   // Template da mensagem de solicitação de draw (#draws): texto padrão editável por banco,
   // com tokens {bank}{pool}{address}{pin}{lockbox}{drawNumber}{amount}{loanNumber}. null = usa o default.

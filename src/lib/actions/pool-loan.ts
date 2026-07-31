@@ -445,6 +445,7 @@ async function predictedDrawFees(
   bank: {
     drawProcessingFee: unknown;
     inspectionFeePerDraw: unknown;
+    inspectionBilledSeparately?: boolean;
     achFeePerBatch: unknown;
     customFees: Array<{ timing: string; kind: string; amount: unknown; name: string }>;
   } | null,
@@ -455,7 +456,8 @@ async function predictedDrawFees(
   const fees: Array<{ amount: number; memo: string }> = [];
   if (Number(bank.drawProcessingFee) > 0)
     fees.push({ amount: Number(bank.drawProcessingFee), memo: "Draw processing fee (previsto — contrato)" });
-  if (Number(bank.inspectionFeePerDraw) > 0)
+  // Banco que cobra a inspeção à parte (invoice) não lança a inspection automática aqui.
+  if (Number(bank.inspectionFeePerDraw) > 0 && !bank.inspectionBilledSeparately)
     fees.push({ amount: Number(bank.inspectionFeePerDraw), memo: "Inspection fee (previsto — contrato)" });
   const drawsSameDay = await prisma.poolLoanEntry.count({
     where: {
@@ -747,6 +749,127 @@ export async function saveBankTemplate(formData: FormData): Promise<void> {
   if (poolId) revalidatePath(`/pools/${poolId}/loan`);
 }
 
+// #draws — registra a liberação de TODAS as casas de um Draw # (leva) de uma vez. O released
+// por casa vem montado na UI (proporcional ou manual); casa sem valor > 0 fica PENDENTE
+// (liberação parcial). creditedNet < released → a diferença vira fee retido na fonte da casa.
+// Fees do LOTE (processing/inspection/ACH/custom) lançados uma única vez.
+export async function registerBatchRelease(_prev: FormState, formData: FormData): Promise<FormState> {
+  const session = await auth();
+  const su = session?.user as { role?: string } | undefined;
+  if (su?.role !== "ADMIN" && su?.role !== "OPERATOR") return { error: "Sem permissão." };
+
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const drawNumber = Number(formData.get("drawNumber"));
+  const creditDateRaw = String(formData.get("creditDate") ?? "").trim();
+  const inspectionDeducted = formData.get("inspectionDeducted") === "on";
+  if (!loanId || !Number.isFinite(drawNumber)) return { error: "Draw inválido." };
+  if (!creditDateRaw) return { error: "Informe a data do crédito." };
+
+  const loan = await prisma.poolLoan.findUnique({
+    where: { id: loanId },
+    include: { bankProfile: { include: { customFees: true } } },
+  });
+  if (!loan) return { error: "Loan não encontrado." };
+  if (loanAwaitingClosing(loan))
+    return { error: "Este financiamento ainda não fechou — registre o Closing real na aba Termos." };
+
+  const creditDate = new Date(creditDateRaw);
+  const entries = await prisma.poolLoanEntry.findMany({
+    where: { loanId, type: "DRAW", drawNumber, pending: true },
+    select: { id: true, houseId: true },
+  });
+  if (entries.length === 0) return { error: "Nenhuma casa pendente neste Draw." };
+
+  const rels: Array<{ id: string; houseId: string | null; released: number; retained: number }> = [];
+  for (const e of entries) {
+    const released = optNum(formData.get(`rel_${e.id}`));
+    if (released == null || released <= 0) continue; // parcial: casa não liberada fica pendente
+    const net = optNum(formData.get(`net_${e.id}`));
+    const retained = net != null && net < released - 0.01 ? Math.round((released - net) * 100) / 100 : 0;
+    rels.push({ id: e.id, houseId: e.houseId, released: Math.abs(released), retained });
+  }
+  if (rels.length === 0) return { error: "Informe ao menos uma casa liberada (valor > 0)." };
+
+  // Fees do LOTE (uma vez), anexados à 1ª casa liberada com memo do Draw #.
+  const firstHouse = rels[0]!.houseId;
+  const batchFees: Array<{ amount: number; memo: string }> = [];
+  const bp = loan.bankProfile;
+  if (bp) {
+    if (Number(bp.drawProcessingFee) > 0)
+      batchFees.push({ amount: Number(bp.drawProcessingFee), memo: `Draw processing fee (Draw #${drawNumber})` });
+    // inspection: só se o banco NÃO cobra à parte, ou se o operador confirmou que já foi descontada.
+    if (Number(bp.inspectionFeePerDraw) > 0 && (!bp.inspectionBilledSeparately || inspectionDeducted))
+      batchFees.push({ amount: Number(bp.inspectionFeePerDraw), memo: `Inspection fee (Draw #${drawNumber})` });
+    const otherSameDay = await prisma.poolLoanEntry.count({
+      where: { loanId, type: "DRAW", date: creditDate, pending: false, id: { notIn: rels.map((r) => r.id) } },
+    });
+    if (otherSameDay === 0 && Number(bp.achFeePerBatch) > 0)
+      batchFees.push({ amount: Number(bp.achFeePerBatch), memo: `ACH fee (Draw #${drawNumber}, lote)` });
+    for (const f of bp.customFees.filter((cf) => cf.timing === "PER_DRAW" && cf.kind === "FLAT"))
+      batchFees.push({ amount: Number(f.amount), memo: `${f.name} (Draw #${drawNumber})` });
+  }
+
+  await prisma.$transaction([
+    ...rels.map((r) =>
+      prisma.poolLoanEntry.update({
+        where: { id: r.id },
+        data: { amount: r.released, date: creditDate, pending: false, drawStatus: "APPROVED" },
+      }),
+    ),
+    ...rels
+      .filter((r) => r.retained > 0)
+      .map((r) =>
+        prisma.poolLoanEntry.create({
+          data: { loanId, houseId: r.houseId, type: "DRAW_FEE", date: creditDate, amount: r.retained, memo: `Fees retidos na fonte (Draw #${drawNumber})` },
+        }),
+      ),
+    ...batchFees.map((f) =>
+      prisma.poolLoanEntry.create({
+        data: { loanId, houseId: firstHouse, type: "DRAW_FEE", date: creditDate, amount: f.amount, memo: f.memo },
+      }),
+    ),
+  ]);
+
+  const total = rels.reduce((s, r) => s + r.released, 0);
+  const { logInvestmentAudit } = await import("@/lib/audit");
+  await logInvestmentAudit({
+    poolId: loan.poolId,
+    entity: "HOUSE",
+    action: "PAYMENT",
+    summary: `Liberação Draw #${drawNumber}: ${rels.length} casa(s) · $${total.toLocaleString("en-US", { maximumFractionDigits: 0 })}`,
+  });
+  await recompute(loan.poolId);
+  revalidatePath(`/pools/${loan.poolId}/loan`);
+  revalidatePath("/pools/draws");
+  return { ok: true };
+}
+
+// #draws — marca o comunicado ao banco de TODAS as casas pendentes de um Draw # (leva) com uma data.
+export async function markBatchCommunicated(formData: FormData): Promise<void> {
+  const session = await auth();
+  const su = session?.user as { role?: string } | undefined;
+  if (su?.role !== "ADMIN" && su?.role !== "OPERATOR") return;
+  const loanId = String(formData.get("loanId") ?? "").trim();
+  const drawNumber = Number(formData.get("drawNumber"));
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  if (!loanId || !Number.isFinite(drawNumber)) return;
+  const loan = await prisma.poolLoan.findUnique({ where: { id: loanId }, select: { poolId: true } });
+  if (!loan) return;
+  await prisma.poolLoanEntry.updateMany({
+    where: { loanId, type: "DRAW", drawNumber, pending: true },
+    data: { bankNotifiedAt: dateRaw ? new Date(dateRaw) : new Date() },
+  });
+  const { logInvestmentAudit } = await import("@/lib/audit");
+  await logInvestmentAudit({
+    poolId: loan.poolId,
+    entity: "HOUSE",
+    action: "UPDATE",
+    summary: `Draw #${drawNumber} comunicado ao banco (lote)${dateRaw ? ` em ${dateRaw}` : ""}`,
+  });
+  revalidatePath(`/pools/${loan.poolId}/loan`);
+  revalidatePath("/pools/draws");
+}
+
 // Lança o juro REAL do mês (aba Juros do loan): cria INTEREST e, se "pago da reserve",
 // o INTEREST_PAYMENT espelhado na mesma data (padrão Builders Capital — saldo não compõe).
 export async function addMonthlyInterest(
@@ -910,6 +1033,8 @@ export async function saveLoanTermsFull(
     if (ext != null) bankData.extensionMonths = Math.round(ext);
     if (formData.has("bankFeesFinancedSent"))
       bankData.feesFinanced = formData.get("bankFeesFinanced") === "on";
+    if (formData.has("bankInspectionSeparateSent"))
+      bankData.inspectionBilledSeparately = formData.get("bankInspectionSeparate") === "on";
     if (Object.keys(bankData).length > 0)
       await prisma.bankProfile.update({ where: { id: bankProfileId }, data: bankData });
   }

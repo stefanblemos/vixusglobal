@@ -45,6 +45,7 @@ export type BankTermsData = {
   budgetReviewFee: string;
   inspectionFeePerDraw: string;
   feesFinanced: boolean;
+  inspectionBilledSeparately: boolean;
   reserveText: string; // "liquidez exigida (não financiada)" / "financiada (6m)"
   reserveMonths: string;
   customFees: Array<{ name: string; amount: string }>;
@@ -126,6 +127,7 @@ export function PoolLoanTermsView({
         <form action={formAction}>
           <input type="hidden" name="loanId" value={loan.loanId} />
           <input type="hidden" name="bankFeesFinancedSent" value="1" />
+          <input type="hidden" name="bankInspectionSeparateSent" value="1" />
           <div className="mb-1 flex items-center gap-2">
             <h2 className="text-base font-medium text-slate-800">Termos — modo edição</h2>
             <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10.5px] text-blue-700">
@@ -190,6 +192,12 @@ export function PoolLoanTermsView({
                   <label className="flex items-center gap-2 text-xs text-slate-600">
                     <input type="checkbox" name="bankFeesFinanced" defaultChecked={bank.feesFinanced} />
                     fees financiados no loan
+                  </label>
+                </div>
+                <div className="flex items-end pb-1.5">
+                  <label className="flex items-center gap-2 text-xs text-slate-600">
+                    <input type="checkbox" name="bankInspectionSeparate" defaultChecked={bank.inspectionBilledSeparately} />
+                    inspeção cobrada à parte (invoice)
                   </label>
                 </div>
               </div>

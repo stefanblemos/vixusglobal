@@ -26,6 +26,7 @@ import { LoanSufficiencyPanel, PoolSufficiencySummary } from "@/components/pool-
 import { computeSuffAggs, rawChargeCandidatesOf } from "@/lib/pools/loan-sufficiency";
 import { DrawHousesPanel, type HouseAvailability } from "@/components/pool-draw-houses";
 import { DrawList, type DrawRow } from "@/components/pool-draw-list";
+import { DrawBatchPanel, type DrawBatch } from "@/components/pool-draw-batch";
 import { HouseBudgetManager } from "@/components/house-budget-manager";
 import { byAddressNumber } from "@/lib/pools/math";
 import { PoolLoanDocs } from "@/components/pool-loan-docs";
@@ -216,6 +217,7 @@ export default async function PoolLoanPage({
         budgetReviewFee: num(bp.budgetReviewFee),
         inspectionFeePerDraw: num(bp.inspectionFeePerDraw),
         feesFinanced: bp.feesFinanced,
+        inspectionBilledSeparately: bp.inspectionBilledSeparately,
         reserveText: bp.hasInterestReserve
           ? `financiada (${num(bp.reserveMonths)}m${bp.reserveInEnvelope ? ", no envelope" : ""})`
           : "liquidez exigida (não financiada)",
@@ -479,6 +481,31 @@ export default async function PoolLoanPage({
       pinLocation: d.house?.pinLocation ?? null,
       lockboxCode: d.house?.lockboxCode ?? null,
     }));
+  // Levas pendentes (draws em lote): agrupa por drawNumber os pendentes → ações de lote.
+  const pendingBatches: DrawBatch[] = (() => {
+    const groups = new Map<number, (typeof drawEntries)[number][]>();
+    for (const e of drawEntries) {
+      if (!e.pending || e.drawNumber == null) continue;
+      (groups.get(e.drawNumber) ?? groups.set(e.drawNumber, []).get(e.drawNumber)!).push(e);
+    }
+    return [...groups.entries()]
+      .map(([drawNumber, es]) => {
+        const houses = es.map((e) => ({
+          entryId: e.id,
+          address: e.house?.address ?? "—",
+          requested: Number(e.requestedAmount ?? 0),
+        }));
+        const notified = es.map((e) => e.bankNotifiedAt).filter((d): d is Date => d != null);
+        return {
+          drawNumber,
+          houses,
+          totalRequested: houses.reduce((s, h) => s + h.requested, 0),
+          communicated: notified.length === es.length && es.length > 0,
+          communicatedDate: notified.length ? fmtDate(notified.reduce((a, b) => (a < b ? a : b))) : null,
+        };
+      })
+      .sort((a, b) => a.drawNumber - b.drawNumber);
+  })();
   // ── envelope do loan (17/07): a trava real é o teto — na modalidade "por dentro" os
   // fees consumidos roubam espaço da obra; o DESCOBERTO = orçamentos + consumido − teto
   // é o que faltará no FINAL (os últimos draws não cabem). Visível sempre.
@@ -829,6 +856,17 @@ export default async function PoolLoanPage({
             feesHint={feesHint}
             houses={drawHouses}
             awaitingClosing={loanAwaitingClosing(loan)}
+          />
+          <DrawBatchPanel
+            bank={{
+              loanId: loan.id,
+              poolName: pool.name,
+              loanNumber: loan.loanNumber,
+              bankName: loan.bankProfile?.name ?? "banco",
+              inspectionBilledSeparately: loan.bankProfile?.inspectionBilledSeparately ?? false,
+              inspectionFee: loan.bankProfile ? Number(loan.bankProfile.inspectionFeePerDraw) : 0,
+            }}
+            batches={pendingBatches}
           />
           <section className="rounded-xl border border-slate-200 bg-white">
             <div className="border-b border-slate-100 px-5 py-4">
