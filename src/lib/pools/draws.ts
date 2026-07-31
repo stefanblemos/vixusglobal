@@ -35,3 +35,21 @@ export async function nextDrawNumber(loanId: string): Promise<number> {
   });
   return (max._max.drawNumber ?? 0) + 1;
 }
+
+// Número do draw por LEVA: um pedido em conjunto (várias casas no MESMO DIA, no mesmo loan)
+// compartilha o número — o Draw #N é o N-ésimo pedido ao banco, não N-ésima casa. Se já existe
+// um draw do loan na mesma data de solicitação, reusa o número dele; senão, próximo. Per-loan
+// (bancos independentes têm sequências próprias). FONTE ÚNICA — addDraw/requestHouseDraw/
+// requestBatchDraw usam isto em vez de nextDrawNumber, que numerava por casa (o scatter).
+export async function drawNumberForBatch(loanId: string, batchDate: Date): Promise<number> {
+  const start = new Date(Date.UTC(batchDate.getUTCFullYear(), batchDate.getUTCMonth(), batchDate.getUTCDate()));
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  const sameDay = await prisma.poolLoanEntry.findFirst({
+    where: { loanId, type: "DRAW", requestDate: { gte: start, lt: end }, drawNumber: { not: null } },
+    orderBy: { drawNumber: "asc" },
+    select: { drawNumber: true },
+  });
+  if (sameDay?.drawNumber != null) return sameDay.drawNumber;
+  return nextDrawNumber(loanId);
+}

@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { logInvestmentAudit } from "@/lib/audit";
 import { drawableFromBudget, estimatedDrawable, milestonePct, type BudgetLine, type HouseMilestones, type MilestoneCatalog } from "@/lib/pools/milestones";
-import { nextDrawNumber } from "@/lib/pools/draws";
+import { drawNumberForBatch } from "@/lib/pools/draws";
 
 export type MilestoneFormState = { error?: string; ok?: boolean; message?: string } | undefined;
 
@@ -133,7 +133,7 @@ export async function requestHouseDraw(formData: FormData): Promise<MilestoneFor
       type: "DRAW",
       pending: true,
       drawStatus: "REQUESTED",
-      drawNumber: await nextDrawNumber(d.loanId),
+      drawNumber: await drawNumberForBatch(d.loanId, today),
       date: today,
       amount: 0,
       requestedAmount: d.toRequest,
@@ -174,7 +174,7 @@ export async function requestBatchDraw(_prev: MilestoneFormState, formData: Form
         type: "DRAW",
         pending: true,
         drawStatus: "REQUESTED",
-        drawNumber: await nextDrawNumber(d.loanId),
+        drawNumber: await drawNumberForBatch(d.loanId, today),
         date: today,
         amount: 0,
         requestedAmount: d.toRequest,

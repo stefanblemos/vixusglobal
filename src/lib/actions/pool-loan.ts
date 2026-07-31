@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { Prisma, type PoolLoanEntryType } from "@prisma/client";
 import { auth } from "@/auth";
-import { nextDrawNumber, loanAwaitingClosing } from "@/lib/pools/draws";
+import { drawNumberForBatch, loanAwaitingClosing } from "@/lib/pools/draws";
 
 export type FormState = { error?: string; ok?: boolean } | undefined;
 
@@ -513,7 +513,9 @@ export async function addDraw(_prev: FormState, formData: FormData): Promise<For
     return { error: "Este financiamento ainda não fechou — registre o Closing real na aba Termos antes de solicitar draws." };
   const memo = String(formData.get("memo") ?? "").trim() || null;
 
-  const drawNumber = await nextDrawNumber(loan.id);
+  // número por LEVA: a data da solicitação (ou do crédito, se lançado já liberado) agrupa a leva.
+  const batchDate = new Date(requestDateRaw || creditDateRaw);
+  const drawNumber = await drawNumberForBatch(loan.id, batchDate);
   if (released == null) {
     // SOLICITAÇÃO pendente: não afeta o saldo; sem fees até a liberação
     await prisma.poolLoanEntry.create({
