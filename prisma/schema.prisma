@@ -1016,9 +1016,37 @@ model PoolHouse {
   loanEntries   PoolLoanEntry[]
   changeOrders  HouseChangeOrder[]
   budgetLines   LoanBudgetLine[]
+  cashEntries   HouseCashEntry[]
 
   @@index([poolId])
   @@index([loanId])
+}
+
+// Extrato da casa (05/10/2026): o que ENTROU na casa (capital próprio do pool, draws do banco,
+// venda) e o que SAIU (lote, obra, taxas, carregamento). Draws e venda são DERIVADOS (loan
+// entries / ficha) — aqui só o que não tem outra fonte. ownCapital, actualLotCost e
+// actualBuildCost da casa viraram CACHE da soma (recomputados nos write-paths, como o status).
+enum HouseCashKind {
+  EQUITY_IN // capital próprio colocado na casa pelo pool (a "partida")
+  COST // saída: lote, obra, cash to close, taxa do banco, juros, carregamento, outro
+  RETURN_TO_POOL // excedente devolvido ao caixa do pool (banco pagou mais que a obra)
+}
+
+model HouseCashEntry {
+  id      String    @id @default(cuid())
+  houseId String
+  house   PoolHouse @relation(fields: [houseId], references: [id], onDelete: Cascade)
+
+  kind     HouseCashKind
+  category String // LOT | BUILD | CASH_TO_CLOSE | BANK_FEE | INTEREST | CARRYING | OTHER | OPENING
+  date     DateTime @db.Date
+  opening  Boolean  @default(false) // saldo de abertura da migração: valor existia sem data real
+  amount   Decimal  @db.Decimal(20, 2) // sempre positivo; o kind dá o sentido
+  memo     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([houseId])
 }
 
 // Change order (CO) da casa: despesa/crédito que altera o valor do contrato. Entra no

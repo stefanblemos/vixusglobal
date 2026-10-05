@@ -134,30 +134,214 @@ export async function addHouse(
   return undefined;
 }
 
-export async function updateHouse(
+// Atualização PARCIAL da casa (página em linha do tempo, 05/10): só os campos presentes no
+// form são gravados — cada etapa tem a sua form pequena. Capital próprio e custos reais são
+// cache do extrato (lib/pools/house-cash) e não entram por aqui; status é derivado.
+const HOUSE_CACHE_FIELDS = ["ownCapital", "actualLotCost", "actualBuildCost", "status"] as const;
+
+export async function patchHouse(
   houseId: string,
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const parsed = houseSchema.safeParse(Object.fromEntries(formData));
+  const raw = Object.fromEntries(formData);
+  for (const k of HOUSE_CACHE_FIELDS) delete raw[k];
+  const parsed = houseSchema.partial().safeParse(raw);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid data." };
-  // status é DERIVADO dos fatos (16/07) — o form não manda mais; a derivação decide
-  const { status: _ignored, ...d } = parsed.data;
-  // "O que entrou em conta" preenchido → closing cost é a diferença (venda − payoff − recebido)
-  if (d.closingCost == null && d.soldPrice != null && d.payoffAmount != null && d.netReceived != null) {
-    d.closingCost = Math.round((d.soldPrice - d.payoffAmount - d.netReceived) * 100) / 100;
-  }
+  const d = parsed.data as Record<string, unknown>;
+  for (const k of Object.keys(d)) if (d[k] === undefined) delete d[k];
   const house = await prisma.poolHouse.update({ where: { id: houseId }, data: d });
   const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
   await recomputePoolStatuses(house.poolId);
   revalidatePath(`/pools/${house.poolId}`);
   revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
-  // fica na ficha (save bar fixa) — ok muda a cada save p/ o client mostrar "Salvo ✓"
   return { ok: Date.now() };
 }
 
-// Status da casa NÃO tem caminho manual (16/07): o stepper é indicador — as fases derivam
-// dos fatos (datas na Linha do tempo, draws, payoff) via recomputePoolStatuses.
+// Carimba (ou limpa) UMA data da linha do tempo — os chips da página da casa. O status se
+// deriva dela (16/07): status da casa NÃO tem caminho manual.
+const HOUSE_DATE_FIELDS = new Set([
+  "lotContractDate", "lotPaidDate", "permitAppliedDate", "permitIssuedDate",
+  "buildStartDate", "coDate", "listedDate", "contractDate", "saleDate",
+]);
+
+export async function setHouseDate(formData: FormData): Promise<void> {
+  const houseId = String(formData.get("houseId") ?? "");
+  const field = String(formData.get("field") ?? "");
+  if (!houseId || !HOUSE_DATE_FIELDS.has(field)) return;
+  const raw = String(formData.get("date") ?? "").trim();
+  const date = raw ? new Date(raw) : null;
+  if (date && Number.isNaN(date.getTime())) return;
+  const house = await prisma.poolHouse.update({ where: { id: houseId }, data: { [field]: date } });
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(house.poolId);
+  revalidatePath(`/pools/${house.poolId}`);
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+}
+
+// ── Extrato da casa (05/10) ──────────────────────────────────
+// Lançamentos de capital próprio / custos / devolução ao pool. Depois de cada gravação o
+// cache da casa (ownCapital, lote e obra reais) é recomputado e o status do pool também.
+
+async function afterHouseCashChange(houseId: string): Promise<string> {
+  const { recomputeHouseCash } = await import("@/lib/pools/house-cash");
+  await recomputeHouseCash(houseId);
+  const house = await prisma.poolHouse.findUniqueOrThrow({ where: { id: houseId }, select: { poolId: true } });
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(house.poolId);
+  revalidatePath(`/pools/${house.poolId}`);
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+  return house.poolId;
+}
+
+export async function addHouseCashEntry(
+  houseId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const category = String(formData.get("category") ?? "").trim();
+  const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
+  if (!dateRaw || !category) return { error: "Data e tipo são obrigatórios." };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Valor deve ser maior que 0." };
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId }, select: { poolId: true, address: true } });
+  if (!house) return { error: "Casa não encontrada." };
+  const { kindForCategory, CATEGORY_LABEL } = await import("@/lib/pools/house-cash");
+  const entry = await prisma.houseCashEntry.create({
+    data: {
+      houseId,
+      kind: kindForCategory(category),
+      category,
+      date: new Date(dateRaw),
+      amount,
+      memo: String(formData.get("memo") ?? "").trim() || null,
+    },
+  });
+  await afterHouseCashChange(houseId);
+  await logInvestmentAudit({
+    poolId: house.poolId,
+    entity: "HOUSE",
+    entityId: entry.id,
+    action: "CREATE",
+    summary: `${house.address}: ${CATEGORY_LABEL[category] ?? category} ${auditMoney(amount)}`,
+  });
+  return { ok: Date.now() };
+}
+
+export async function deleteHouseCashEntry(formData: FormData): Promise<void> {
+  const id = String(formData.get("entryId") ?? "");
+  if (!id) return;
+  const entry = await prisma.houseCashEntry.findUnique({ where: { id }, include: { house: { select: { poolId: true, address: true } } } });
+  if (!entry) return;
+  await prisma.houseCashEntry.delete({ where: { id } });
+  await afterHouseCashChange(entry.houseId);
+  await logInvestmentAudit({
+    poolId: entry.house.poolId,
+    entity: "HOUSE",
+    entityId: id,
+    action: "DELETE",
+    summary: `${entry.house.address}: removeu lançamento de ${auditMoney(entry.amount)} (${entry.category})`,
+  });
+}
+
+// Devolve ao caixa do pool o saldo parado na casa (banco pagou mais que a obra). O valor é
+// o saldo do extrato na hora do clique — lançamento RETURN_TO_POOL, auditável e apagável.
+export async function returnExcessToPool(formData: FormData): Promise<void> {
+  const houseId = String(formData.get("houseId") ?? "");
+  const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
+  if (!houseId || !Number.isFinite(amount) || amount <= 0) return;
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId }, select: { poolId: true, address: true } });
+  if (!house) return;
+  const entry = await prisma.houseCashEntry.create({
+    data: { houseId, kind: "RETURN_TO_POOL", category: "RETURN_TO_POOL", date: new Date(), amount, memo: "Excedente do banco devolvido ao caixa do pool" },
+  });
+  await afterHouseCashChange(houseId);
+  await logInvestmentAudit({
+    poolId: house.poolId,
+    entity: "HOUSE",
+    entityId: entry.id,
+    action: "CREATE",
+    summary: `${house.address}: devolveu excedente de ${auditMoney(amount)} ao caixa do pool`,
+  });
+}
+
+// ── Registrar venda (05/10) ──────────────────────────────────
+// Uma ação só, em 2 estágios: CONTRACT (data + preço) e CLOSING (data, preço final, payoff,
+// líquido recebido → closing cost derivado + payoff/reconveyance lançados no loan da casa).
+// O status (Sob contrato / Vendida) e o do pool (Closing) derivam dos fatos gravados.
+export async function registerSale(
+  houseId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const stage = String(formData.get("stage") ?? "CONTRACT");
+  const money = (k: string) => {
+    const s = String(formData.get(k) ?? "").replace(/,/g, "").trim();
+    if (s === "") return null;
+    const v = Number(s);
+    return Number.isFinite(v) ? v : NaN;
+  };
+  const date = (k: string) => {
+    const s = String(formData.get(k) ?? "").trim();
+    return s ? new Date(s) : null;
+  };
+  const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
+  if (!house) return { error: "Casa não encontrada." };
+
+  const soldPrice = money("soldPrice");
+  if (soldPrice == null || Number.isNaN(soldPrice) || soldPrice <= 0) return { error: "Informe o preço de venda." };
+
+  if (stage === "CONTRACT") {
+    const contractDate = date("contractDate");
+    if (!contractDate) return { error: "Informe a data do contrato." };
+    await prisma.poolHouse.update({ where: { id: houseId }, data: { contractDate, soldPrice } });
+    const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+    await recomputePoolStatuses(house.poolId);
+    await logInvestmentAudit({
+      poolId: house.poolId, entity: "HOUSE", entityId: houseId, action: "UPDATE",
+      summary: `${house.address}: sob contrato de venda por ${auditMoney(soldPrice)}`,
+    });
+    revalidatePath(`/pools/${house.poolId}`);
+    revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+    return { ok: Date.now() };
+  }
+
+  const saleDate = date("saleDate");
+  const netReceived = money("netReceived");
+  const payoffAmount = money("payoffAmount") ?? 0;
+  if (!saleDate) return { error: "Informe a data do closing." };
+  if (netReceived == null || Number.isNaN(netReceived) || netReceived < 0) return { error: "Informe o líquido recebido em conta." };
+  if (Number.isNaN(payoffAmount) || payoffAmount < 0) return { error: "Payoff inválido." };
+  const closingCost = Math.round((soldPrice - payoffAmount - netReceived) * 100) / 100;
+  if (closingCost < 0) return { error: "Venda − payoff − recebido deu negativo: confira os valores." };
+
+  await prisma.poolHouse.update({
+    where: { id: houseId },
+    data: {
+      saleDate, soldPrice, netReceived, payoffAmount, closingCost,
+      // contrato sem data registrada → assume o closing (fato mínimo p/ a linha do tempo)
+      ...(house.contractDate == null ? { contractDate: saleDate } : {}),
+    },
+  });
+  // payoff vai para o loan DA CASA — mesma rotina do botão da página do Loan (sem duplicar)
+  if (payoffAmount > 0) {
+    const { generatePayoffFromHouse } = await import("@/lib/actions/pool-loan");
+    const fd = new FormData();
+    fd.set("poolId", house.poolId);
+    fd.set("houseId", houseId);
+    await generatePayoffFromHouse(fd);
+  }
+  const { recomputePoolStatuses } = await import("@/lib/pools/status-recompute");
+  await recomputePoolStatuses(house.poolId);
+  await logInvestmentAudit({
+    poolId: house.poolId, entity: "HOUSE", entityId: houseId, action: "UPDATE",
+    summary: `${house.address}: vendida por ${auditMoney(soldPrice)} · líquido ${auditMoney(netReceived)}${payoffAmount > 0 ? ` · payoff ${auditMoney(payoffAmount)}` : ""}`,
+  });
+  revalidatePath(`/pools/${house.poolId}`);
+  revalidatePath(`/pools/${house.poolId}/houses/${houseId}`);
+  revalidatePath(`/pools/${house.poolId}/loan`);
+  return { ok: Date.now() };
+}
 
 // Apagar casa vive na FICHA (mock 4/6 — saiu da lista p/ evitar clique acidental);
 // depois de apagar, volta para a aba Casas.
