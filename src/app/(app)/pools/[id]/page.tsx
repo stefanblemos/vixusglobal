@@ -1300,6 +1300,7 @@ export default async function PoolDetailPage({
           }))}
           memberOptions={memberOptions}
           ownerOptions={ownerOptions}
+          callMembers={table.rows.map((r) => ({ id: r.memberId, name: r.name, role: r.role, units: Number(r.units) }))}
           suggestedCallAmount={
             risk.callSufficiency != null
               ? String(Math.round(risk.callSufficiency))

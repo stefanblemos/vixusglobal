@@ -1106,7 +1106,11 @@ model PoolCapitalCallLine {
   member         PoolMember      @relation(fields: [memberId], references: [id], onDelete: Cascade)
   amount         Decimal         @db.Decimal(20, 2) // pro rata às units na data da chamada
   paid           Boolean         @default(false)
-  contributionId String?         @unique // aporte gerado no recebimento
+  // Recebido de fato (05/10): pode ser parcial, zero ("não participa") ou acima do pro rata
+  // (cobriu a diferença de outro sócio — dilui, pelo % atual). null até registrar.
+  receivedAmount Decimal?        @db.Decimal(20, 2)
+  paidAt         DateTime?       @db.Date
+  contributionId String?         @unique // aporte gerado no recebimento (null se recebeu 0)
 }
 
 // Sócio do pool — Party OU Company (exatamente um, validado na app; mesmo padrão de Ownership).

@@ -428,8 +428,10 @@ export async function addContribution(
 
   const pool = await prisma.investmentPool.findUnique({ where: { id: poolId } });
   if (!pool) return { error: "Pool not found." };
+  // regra 05/10: fora do Funding todo dinheiro novo entra por CHAMADA (fica registrado quanto
+  // cabia a cada sócio e quem cobriu o quê); transferência de units segue livre
   if (pool.status !== "FUNDING")
-    return { error: "Funding window is closed — use a unit transfer instead." };
+    return { error: "Captação encerrada — aporte novo entra por 📣 Chamada de capital (ou transferência de units)." };
 
   // classificação do dinheiro (regra da carteira, aprovada 19/07): AUTO (presunção da
   // carteira) | ROLLOVER (vincula a distribuição reusada — fato) | NEW (força novo)
@@ -618,9 +620,11 @@ export async function deletePoolExpense(formData: FormData): Promise<void> {
 
 // ── Capital calls ────────────────────────────────────────────
 
-// Cria a chamada de capital PRO RATA às units atuais e gera as linhas por sócio.
-// O relatório sai em /pools/[id]/calls/[callId]; cada recebimento vira um aporte
-// (kind CAPITAL_CALL, valor exato — sem regra de múltiplo de $1.000).
+// Cria a chamada de capital PRO RATA às units ATUAIS (regra 05/10: % atual, não o inicial) e
+// gera as linhas por sócio. Opcionalmente já registra os recebimentos (campos
+// `received:<memberId>`, quando o dinheiro já entrou): valor exato, parcial, zero ("não
+// participa") ou acima do pro rata (cobriu a diferença — dilui os demais). Cada recebido > 0
+// vira aporte CAPITAL_CALL ao preço da unit, sem regra de múltiplo (essa fica no Funding).
 export async function createCapitalCall(
   poolId: string,
   _prev: FormState,
@@ -629,15 +633,18 @@ export async function createCapitalCall(
   const dateRaw = String(formData.get("date") ?? "").trim();
   const reason = String(formData.get("reason") ?? "").trim();
   const total = Number(String(formData.get("totalAmount") ?? "").replace(/,/g, ""));
-  if (!dateRaw || !reason) return { error: "Date and reason are required." };
-  if (!Number.isFinite(total) || total <= 0) return { error: "Total must be greater than 0." };
+  if (!dateRaw || !reason) return { error: "Data e motivo são obrigatórios." };
+  if (!Number.isFinite(total) || total <= 0) return { error: "Total deve ser maior que 0." };
+  const registerNow = formData.get("registerNow") === "1";
 
+  const pool = await prisma.investmentPool.findUnique({ where: { id: poolId }, select: { unitPrice: true } });
+  if (!pool) return { error: "Pool não encontrado." };
   const members = await prisma.poolMember.findMany({
     where: { poolId },
     include: { entries: true, party: true, company: true },
   });
   const table = capTable(members);
-  if (table.totalUnits.isZero()) return { error: "No units issued — nothing to call." };
+  if (table.totalUnits.isZero()) return { error: "Sem units emitidas — nada a chamar." };
 
   const totalD = D(total);
   const lines = table.rows
@@ -645,6 +652,7 @@ export async function createCapitalCall(
     .map((r) => ({
       memberId: r.memberId,
       amount: totalD.mul(r.units).div(table.totalUnits).toDecimalPlaces(2),
+      received: null as number | null,
     }));
   const allocated = lines.reduce((s, l) => s.add(l.amount), D(0));
   const residue = totalD.sub(allocated);
@@ -652,23 +660,59 @@ export async function createCapitalCall(
     const biggest = lines.reduce((a, b) => (a.amount.gte(b.amount) ? a : b));
     biggest.amount = biggest.amount.add(residue);
   }
+  if (registerNow) {
+    for (const l of lines) {
+      const raw = String(formData.get(`received:${l.memberId}`) ?? "").replace(/,/g, "").trim();
+      const v = raw === "" ? Number(l.amount) : Number(raw);
+      if (!Number.isFinite(v) || v < 0) return { error: "Valor recebido inválido." };
+      l.received = Math.round(v * 100) / 100;
+    }
+  }
 
-  const call = await prisma.poolCapitalCall.create({
-    data: {
-      poolId,
-      date: new Date(dateRaw),
-      totalAmount: total,
-      reason,
-      memo: String(formData.get("memo") ?? "").trim() || null,
-      lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
-    },
+  const date = new Date(dateRaw);
+  const call = await prisma.$transaction(async (tx) => {
+    const created = await tx.poolCapitalCall.create({
+      data: {
+        poolId,
+        date,
+        totalAmount: total,
+        reason,
+        memo: String(formData.get("memo") ?? "").trim() || null,
+        lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
+      },
+      include: { lines: true },
+    });
+    if (registerNow) {
+      for (const line of created.lines) {
+        const received = lines.find((l) => l.memberId === line.memberId)!.received!;
+        const contribution =
+          received > 0
+            ? await tx.poolContribution.create({
+                data: {
+                  memberId: line.memberId,
+                  kind: "CAPITAL_CALL",
+                  date,
+                  amount: received,
+                  units: D(received).div(pool.unitPrice),
+                  memo: `Capital call ${dateRaw} — ${reason}`,
+                },
+              })
+            : null;
+        await tx.poolCapitalCallLine.update({
+          where: { id: line.id },
+          data: { paid: true, receivedAmount: received, paidAt: date, contributionId: contribution?.id ?? null },
+        });
+      }
+    }
+    return created;
   });
+  const receivedTotal = registerNow ? lines.reduce((s, l) => s + (l.received ?? 0), 0) : 0;
   await logInvestmentAudit({
     poolId,
     entity: "CAPITAL_CALL",
     entityId: call.id,
     action: "CREATE",
-    summary: `Capital call de ${auditMoney(total)} · ${reason} · ${lines.length} sócio(s)`,
+    summary: `Capital call de ${auditMoney(total)} · ${reason} · ${lines.length} sócio(s)${registerNow ? ` · recebido ${auditMoney(receivedTotal)} na emissão` : ""}`,
   });
   revalidatePath(`/pools/${poolId}`);
   redirect(`/pools/${poolId}/calls/${call.id}`);
@@ -687,7 +731,8 @@ export async function deleteCapitalCall(formData: FormData): Promise<void> {
   redirect(`/pools/${call.poolId}?tab=investors`);
 }
 
-// Registra o recebimento de uma linha: cria o aporte (CAPITAL_CALL) e marca como pago.
+// Registra o recebimento de uma linha: valor recebido (default = pro rata; 0 = "não
+// participa"; acima = cobriu diferença) + data do wire. Recebido > 0 vira aporte CAPITAL_CALL.
 export async function registerCallPayment(formData: FormData): Promise<void> {
   const lineId = String(formData.get("lineId") ?? "");
   if (!lineId) return;
@@ -698,30 +743,40 @@ export async function registerCallPayment(formData: FormData): Promise<void> {
   if (!line || line.paid) return;
   const dateRaw = String(formData.get("date") ?? "").trim();
   const date = dateRaw ? new Date(dateRaw) : new Date();
-  const units = D(line.amount).div(line.call.pool.unitPrice);
+  const amountRaw = String(formData.get("amount") ?? "").replace(/,/g, "").trim();
+  // "Não participa" = recebido 0 (botão `waive`, separado do input de valor)
+  const received = formData.get("waive") === "1" ? 0 : amountRaw === "" ? Number(line.amount) : Number(amountRaw);
+  if (!Number.isFinite(received) || received < 0) return;
 
   await prisma.$transaction(async (tx) => {
-    const contribution = await tx.poolContribution.create({
-      data: {
-        memberId: line.memberId,
-        kind: "CAPITAL_CALL",
-        date,
-        amount: line.amount,
-        units,
-        memo: `Capital call ${line.call.date.toISOString().slice(0, 10)} — ${line.call.reason}`,
-      },
-    });
+    const contribution =
+      received > 0
+        ? await tx.poolContribution.create({
+            data: {
+              memberId: line.memberId,
+              kind: "CAPITAL_CALL",
+              date,
+              amount: received,
+              units: D(received).div(line.call.pool.unitPrice),
+              memo: `Capital call ${line.call.date.toISOString().slice(0, 10)} — ${line.call.reason}`,
+            },
+          })
+        : null;
     await tx.poolCapitalCallLine.update({
       where: { id: lineId },
-      data: { paid: true, contributionId: contribution.id },
+      data: { paid: true, receivedAmount: received, paidAt: date, contributionId: contribution?.id ?? null },
     });
   });
+  const diff = received - Number(line.amount);
   await logInvestmentAudit({
     poolId: line.call.poolId,
     entity: "CAPITAL_CALL",
     entityId: line.callId,
     action: "PAYMENT",
-    summary: `Recebeu ${auditMoney(line.amount)} de capital call · ${await auditMemberName(line.memberId)}`,
+    summary:
+      received === 0
+        ? `Não participou da capital call (pro rata ${auditMoney(line.amount)}) · ${await auditMemberName(line.memberId)}`
+        : `Recebeu ${auditMoney(received)} de capital call${Math.abs(diff) >= 0.01 ? ` (pro rata ${auditMoney(line.amount)})` : ""} · ${await auditMemberName(line.memberId)}`,
   });
   revalidatePath(`/pools/${line.call.poolId}`);
   revalidatePath(`/pools/${line.call.poolId}/calls/${line.callId}`);

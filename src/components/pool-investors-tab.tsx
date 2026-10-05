@@ -10,7 +10,7 @@ import {
   type MemberOption,
   type OwnerOption,
 } from "@/components/pool-investor-forms";
-import { CreateCapitalCallForm } from "@/components/pool-capital-forms";
+import { CreateCapitalCallForm, type CallMember } from "@/components/pool-capital-forms";
 import { PoolSubscriptionsPanel, type SubscriptionRow } from "@/components/pool-subscriptions-panel";
 import { PortalAccessButton } from "@/components/portal-access-button";
 import { PayoutAccountEditor, type OperatorPayout } from "@/components/payout-account-editor";
@@ -66,6 +66,7 @@ export function PoolInvestorsTab({
   memberOptions,
   ownerOptions,
   suggestedCallAmount,
+  callMembers = [],
   distOptions = [],
   subscriptions = [],
   subscribeOrigin = "",
@@ -82,6 +83,8 @@ export function PoolInvestorsTab({
   memberOptions: MemberOption[];
   ownerOptions: OwnerOption[];
   suggestedCallAmount: string | null;
+  // sócios com units (p/ a prévia da chamada: pro rata pelo % atual)
+  callMembers?: CallMember[];
   // rolagem direta no aporte (regra da carteira): distribuições do pool p/ vincular
   distOptions?: Array<{ id: string; label: string }>;
   subscriptions?: SubscriptionRow[];
@@ -99,6 +102,12 @@ export function PoolInvestorsTab({
     setPanel((cur) => (cur === p ? null : p));
   };
   const aporteFor = (memberId: string) => {
+    // fora do Funding o "+ aporte" da linha leva à CHAMADA (regra 05/10), não ao aporte direto
+    if (poolStatus !== "FUNDING") {
+      setPanel("call");
+      document.getElementById("investors-actions")?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     setPresetMemberId(memberId);
     setPanel("aporte");
     // painel fica no card de captação, acima da tabela — sobe até ele
@@ -184,7 +193,19 @@ export function PoolInvestorsTab({
 
         {/* 2. ações — uma por vez, painel abre embaixo */}
         <div id="investors-actions" className="mt-3.5 flex flex-wrap gap-2">
-          {abtn("aporte", "+ Aporte", true)}
+          {/* regra 05/10: fora do Funding, dinheiro novo entra por CHAMADA (quem cobriu o quê fica registrado) */}
+          {newMemberLocked ? (
+            <button
+              type="button"
+              disabled
+              title="Captação encerrada — todo aporte novo entra por 📣 Chamada de capital, que registra quanto cabia a cada sócio e quem cobriu a diferença. Transferências de units seguem livres."
+              className="cursor-not-allowed rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-300"
+            >
+              🔒 + Aporte direto
+            </button>
+          ) : (
+            abtn("aporte", "+ Aporte", true)
+          )}
           {abtn("socio", "+ Sócio", false, newMemberLocked)}
           {abtn("transfer", "⇄ Transferência")}
           {abtn("call", "📣 Capital call")}
@@ -203,7 +224,7 @@ export function PoolInvestorsTab({
             {panel === "socio" && <AddMemberForm poolId={poolId} owners={ownerOptions} />}
             {panel === "transfer" && <TransferUnitsForm poolId={poolId} members={memberOptions} />}
             {panel === "call" && (
-              <CreateCapitalCallForm poolId={poolId} suggestedAmount={suggestedCallAmount} />
+              <CreateCapitalCallForm poolId={poolId} members={callMembers} unitPrice={unitPrice} suggestedAmount={suggestedCallAmount} />
             )}
           </div>
         )}
@@ -337,8 +358,8 @@ export function PoolInvestorsTab({
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">Capital calls</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Quando custos e change orders passam do captado, a chamada rateia pro rata às units e
-            gera o relatório para os sócios.
+            Fora da captação, todo dinheiro novo entra por aqui: rateio pelo % atual, cada sócio pode
+            pagar integral, parcial ou não participar; quem cobre a diferença recebe units a mais.
           </p>
         </div>
         {capitalCalls.length === 0 ? (
