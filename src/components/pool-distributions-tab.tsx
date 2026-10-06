@@ -251,7 +251,8 @@ function Builder({
           ))}
         </div>
         <span className="text-[11px] text-slate-400">
-          capital ainda não devolvido {money(capitalLeft)} · lucro do pool {money(profitRealized)}{profitDone ? ` (já distribuído ${money(profitDone)})` : ""}
+          capital ainda não devolvido {money(capitalLeft)} · lucro do pool {money(profitRealized)}
+          {profitDone ? <> − já distribuído {money(profitDone)} = <b>a distribuir {money(Math.max(0, r2(profitRealized - profitDone - perf.paid)))}</b></> : ""}
         </span>
       </div>
 
@@ -440,7 +441,13 @@ function Builder({
                       <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${m.invested - m.receivedCapital < -0.01 ? "text-red-700" : ""}`}>{f2(r2(m.invested - m.receivedCapital))}</td>
                     </>
                   )}
-                  <td className="px-2 py-1.5 text-right tabular-nums">{f2(pro[i])}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">
+                    {f2(pro[i])}
+                    {/* lucro: pro rata BRUTO − já recebido (adiantamento) = linha */}
+                    {isProfit && m.receivedProfit > 0 && (
+                      <div className="text-[10px] text-slate-400">{f2(pro[i] + m.receivedProfit)} − {f2(m.receivedProfit)} adiantado</div>
+                    )}
+                  </td>
                   <td className="px-2 py-1.5 text-right">
                     <input
                       name={`line:${m.id}`}

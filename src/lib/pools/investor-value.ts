@@ -110,10 +110,12 @@ export function computeEndNet(opts: {
   const windDown = windDownEstimated ? WIND_DOWN_DEFAULT : 0;
 
   // veículo restante (plano − já pago/provisionado) — aproximação marcada com ≈ na UI
-  const vehicleRemaining = Math.max(
-    0,
-    (opts.vehicleCostPlan ?? 0) - opts.expensesPaid - opts.provisionedExpenses,
-  );
+  // sem plano de veículo não há "por vir"; e receitas do pool (expensesPaid negativo) não podem
+  // virar reserva — só despesas positivas abatem o plano (06/10)
+  const vehicleRemaining =
+    opts.vehicleCostPlan == null
+      ? 0
+      : Math.max(0, opts.vehicleCostPlan - Math.max(0, opts.expensesPaid) - opts.provisionedExpenses);
 
   const subtotal =
     opts.freeCash + futureSales + excessDraw - payoffFull - equityBuild - closingCosts -
