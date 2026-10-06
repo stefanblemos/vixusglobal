@@ -20,12 +20,6 @@ export function ClosingReportSections({
   const t = tOf(lang);
   const m = (v: number) => formatMoney(v, currency);
   const c = final.cascade;
-  const delta = (plan: number | null, real: number | null, goodWhenLower: boolean) => {
-    if (plan == null || real == null) return null;
-    const d = real - plan;
-    const good = goodWhenLower ? d <= 0 : d >= 0;
-    return <span className={`ml-1 text-[10px] ${good ? "text-emerald-700" : "text-red-700"}`}>({d >= 0 ? "+" : "−"}{m(Math.abs(d))})</span>;
-  };
   return (
     <>
       {/* 2 · resultado do projeto */}
@@ -58,37 +52,74 @@ export function ClosingReportSections({
         </div>
       </div>
 
-      {/* 3 · casas */}
+      {/* 3 · casas — colunas separadas (pedido 06/10: "plan → real" na mesma célula ficava bagunçado) */}
       <h2 className={h2}>{t("rp.final.s3")}</h2>
-      <table className="w-full">
-        <thead>
-          <tr className="border-b border-slate-200 text-left text-[9.5px] uppercase tracking-wider text-slate-400">
-            <th className="py-1 font-medium">{t("rp.final.h.home")}</th>
-            <th className="py-1 text-right font-medium">{t("rp.final.h.sale")}</th>
-            <th className="py-1 text-right font-medium">{t("rp.final.h.cost")}</th>
-            <th className="py-1 text-right font-medium">{t("rp.final.h.profit")}</th>
-            <th className="py-1 text-right font-medium">{t("rp.final.h.closed")}</th>
-          </tr>
-        </thead>
-        <tbody className="text-[11.5px] text-slate-700">
-          {final.houses.map((h) => (
-            <tr key={h.address} className="border-b border-slate-100">
-              <td className="py-1 font-medium">{h.address}</td>
-              <td className="whitespace-nowrap py-1 text-right tabular-nums">{h.plannedSale != null ? m(h.plannedSale) : "—"} → <b>{h.soldPrice != null ? m(h.soldPrice) : "—"}</b>{delta(h.plannedSale, h.soldPrice, false)}</td>
-              <td className="whitespace-nowrap py-1 text-right tabular-nums">{h.plannedCost != null ? m(h.plannedCost) : "—"} → <b>{h.realCost != null ? m(h.realCost) : "—"}</b>{delta(h.plannedCost, h.realCost, true)}</td>
-              <td className={`whitespace-nowrap py-1 text-right tabular-nums ${h.profitReal != null && h.profitReal < 0 ? "text-red-700" : ""}`}>{h.profitPlanned != null ? m(h.profitPlanned) : "—"} → <b>{h.profitReal != null ? m(h.profitReal) : "—"}</b></td>
-              <td className="whitespace-nowrap py-1 text-right text-slate-500">{fmtD(h.saleDate)}</td>
-            </tr>
-          ))}
-          <tr className="font-bold text-slate-900">
-            <td className="py-1">Total</td>
-            <td className="whitespace-nowrap py-1 text-right tabular-nums">{m(final.houses.reduce((s, h) => s + (h.plannedSale ?? 0), 0))} → {m(final.houses.reduce((s, h) => s + (h.soldPrice ?? 0), 0))}</td>
-            <td className="whitespace-nowrap py-1 text-right tabular-nums">{m(final.houses.reduce((s, h) => s + (h.plannedCost ?? 0), 0))} → {m(final.houses.reduce((s, h) => s + (h.realCost ?? 0), 0))}</td>
-            <td className="whitespace-nowrap py-1 text-right tabular-nums">{m(final.houses.reduce((s, h) => s + (h.profitPlanned ?? 0), 0))} → {m(final.houses.reduce((s, h) => s + (h.profitReal ?? 0), 0))}</td>
-            <td></td>
-          </tr>
-        </tbody>
-      </table>
+      {(() => {
+        const sum = (f: (h: FinalReportData["houses"][number]) => number | null) => final.houses.reduce((s, h) => s + (f(h) ?? 0), 0);
+        const cell = (v: number | null, cls = "") => <td className={`whitespace-nowrap py-1 text-right tabular-nums ${cls}`}>{v == null ? "—" : v < 0 ? `−${m(-v)}` : m(v)}</td>;
+        const dcell = (plan: number | null, real: number | null, goodWhenLower: boolean) => {
+          if (plan == null || real == null) return <td className="py-1 text-right text-slate-300">—</td>;
+          const d = real - plan;
+          const good = goodWhenLower ? d <= 0 : d >= 0;
+          return <td className={`whitespace-nowrap py-1 text-right text-[10.5px] tabular-nums ${Math.abs(d) < 0.005 ? "text-slate-400" : good ? "text-emerald-700" : "text-red-700"}`}>{d >= 0 ? "+" : "−"}{m(Math.abs(d))}</td>;
+        };
+        const plan = lang === "pt" ? "Plan." : "Plan";
+        const real = lang === "pt" ? "Real" : "Actual";
+        const group = "border-l border-slate-200 pl-2";
+        return (
+          <table className="w-full">
+            <thead>
+              <tr className="text-left text-[9px] uppercase tracking-wider text-slate-400">
+                <th></th>
+                <th colSpan={3} className={`pb-0.5 text-center ${group}`}>{lang === "pt" ? "Venda" : "Sale"}</th>
+                <th colSpan={3} className={`pb-0.5 text-center ${group}`}>{lang === "pt" ? "Custo" : "Cost"}</th>
+                <th colSpan={2} className={`pb-0.5 text-center ${group}`}>{lang === "pt" ? "Lucro" : "Profit"}</th>
+                <th></th>
+              </tr>
+              <tr className="border-b border-slate-200 text-left text-[9.5px] uppercase tracking-wider text-slate-400">
+                <th className="py-1 font-medium">{t("rp.final.h.home")}</th>
+                <th className={`py-1 text-right font-medium ${group}`}>{plan}</th>
+                <th className="py-1 text-right font-medium">{real}</th>
+                <th className="py-1 text-right font-medium">Δ</th>
+                <th className={`py-1 text-right font-medium ${group}`}>{plan}</th>
+                <th className="py-1 text-right font-medium">{real}</th>
+                <th className="py-1 text-right font-medium">Δ</th>
+                <th className={`py-1 text-right font-medium ${group}`}>{plan}</th>
+                <th className="py-1 text-right font-medium">{real}</th>
+                <th className="py-1 text-right font-medium">{t("rp.final.h.closed")}</th>
+              </tr>
+            </thead>
+            <tbody className="text-[11px] text-slate-700">
+              {final.houses.map((h) => (
+                <tr key={h.address} className="border-b border-slate-100">
+                  <td className="py-1 font-medium">{h.address}</td>
+                  {cell(h.plannedSale, `text-slate-500 ${group}`)}
+                  {cell(h.soldPrice, "font-semibold")}
+                  {dcell(h.plannedSale, h.soldPrice, false)}
+                  {cell(h.plannedCost, `text-slate-500 ${group}`)}
+                  {cell(h.realCost, "font-semibold")}
+                  {dcell(h.plannedCost, h.realCost, true)}
+                  {cell(h.profitPlanned, `text-slate-500 ${group}`)}
+                  {cell(h.profitReal, `font-semibold ${h.profitReal != null && h.profitReal < 0 ? "text-red-700" : ""}`)}
+                  <td className="whitespace-nowrap py-1 text-right text-slate-500">{fmtD(h.saleDate)}</td>
+                </tr>
+              ))}
+              <tr className="font-bold text-slate-900">
+                <td className="py-1">Total</td>
+                {cell(sum((h) => h.plannedSale), group)}
+                {cell(sum((h) => h.soldPrice))}
+                {dcell(sum((h) => h.plannedSale), sum((h) => h.soldPrice), false)}
+                {cell(sum((h) => h.plannedCost), group)}
+                {cell(sum((h) => h.realCost))}
+                {dcell(sum((h) => h.plannedCost), sum((h) => h.realCost), true)}
+                {cell(sum((h) => h.profitPlanned), group)}
+                {cell(sum((h) => h.profitReal))}
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        );
+      })()}
       <p className="mt-1 text-[9.5px] text-slate-400">
         {lang === "pt"
           ? "Lucro por casa = venda − lote − obra − change orders − closing. Juros e fees do banco são do projeto (seção 2), não da casa."

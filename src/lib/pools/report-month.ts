@@ -429,7 +429,7 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
   const profit = round2(salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID"));
   const distributedCapital = dists.filter((d) => d.kind === "RETURN_OF_CAPITAL").reduce((s, d) => s + n(d.totalAmount), 0);
   const distributedProfit = dists.filter((d) => d.kind === "PROFIT").reduce((s, d) => s + n(d.totalAmount), 0);
-  const cashLeft = round2(raised + salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID") - distributedCapital - distributedProfit);
+  const cashLeft = round2(raised + salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID") - distributedCapital - distributedProfit) || 0; // || 0 evita "-$0.00"
 
   const totalUnits = members.reduce((s, m) => s + m.entries.reduce((x, e) => x + (e.kind === "TRANSFER_OUT" ? -1 : 1) * n(e.units), 0), 0);
   const allFlows: Array<{ date: Date; amount: number }> = [];
@@ -458,7 +458,7 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
         returnedCapital: round2(returnedCapital),
         profit: round2(profitRecv),
         total: round2(total),
-        roi: invested > 0 ? round2(total / invested - 1) : null,
+        roi: invested > 0 ? total / invested - 1 : null,
         irr: xirr(flows),
       };
     })
@@ -494,7 +494,7 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
     },
     investors,
     projectIrr: xirr(allFlows),
-    profitPct: equityToHouses > 0 ? round2(profit / equityToHouses) : null,
+    profitPct: equityToHouses > 0 ? profit / equityToHouses : null,
   };
 }
 
@@ -510,7 +510,13 @@ export async function buildMonthlyReport(
   const monthStart = new Date(Date.UTC(y, m - 1, 1));
   const monthEnd = new Date(Date.UTC(y, m, 0, 23, 59, 59));
   const now = new Date();
-  const asOf = monthEnd.getTime() < now.getTime() ? monthEnd : now;
+  // Encerramento (06/10): projeto fechado -> o corte vai ao fim do mes, para uma distribuicao
+  // datada alguns dias a frente (data do wire) entrar no relatorio em vez de sumir
+  const closingMode =
+    poolRaw.houses.length > 0 &&
+    poolRaw.houses.every((h) => h.saleDate != null) &&
+    ["CLOSING", "CLOSED"].includes(poolRaw.status);
+  const asOf = closingMode || monthEnd.getTime() < now.getTime() ? monthEnd : now;
 
   const mCatalog: MilestoneCatalog[] = (
     await prisma.catalogBuildMilestone.findMany({ orderBy: { sortOrder: "asc" } })
