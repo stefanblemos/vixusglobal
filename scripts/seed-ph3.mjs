@@ -102,7 +102,7 @@ async function main() {
       alias: "PH3",
       status: "CLOSING",
       targetAmount: 578157.57,
-      profitSharePct: 0.35,
+      performancePct: 35, // % do acordo (06/10: campo direto; profitSharePct foi removido)
       profitShareTiming: "PROJECT_COMPLETION",
       startDate: new Date("2025-05-01"),
       plannedEndDate: new Date("2026-05-01"),
