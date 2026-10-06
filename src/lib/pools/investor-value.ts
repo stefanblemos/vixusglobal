@@ -63,7 +63,11 @@ export function computeEndNet(opts: {
   hasWindDownProvision: boolean;
   raised: number;
   distributed: number;
-  investorProfitSharePct: number | null; // fração do lucro DOS INVESTIDORES (cadastro)
+  // Performance (06/10): % do LUCRO devido pelo acordo; o que já foi decidido (pago +
+  // provisionado) sai da projeção; waiveRemaining zera o que falta
+  performancePct: number | null;
+  performanceSettled?: number;
+  performanceWaiveRemaining?: boolean;
   promotePlan: number | null; // simKpis.promoteTotal (plano, ≈)
   vehicleCostPlan: number | null; // simKpis.vehicleCostTotal (plano, ≈)
   expensesPaid: number;
@@ -115,11 +119,12 @@ export function computeEndNet(opts: {
     opts.freeCash + futureSales + excessDraw - payoffFull - equityBuild - closingCosts -
     opts.financingComing - opts.provisionedExpenses - windDown - vehicleRemaining;
 
-  // performance da 4U sobre o LUCRO projetado (lucro = valor final + distribuído − captado)
-  const profitProjected = Math.max(0, subtotal + opts.distributed - opts.raised);
+  // performance sobre o LUCRO projetado (lucro = valor final + distribuído − captado), menos o
+  // que já foi pago/provisionado (já está fora do caixa ou em provisão); waiver do restante = 0
+  const profitProjected = Math.max(0, subtotal + opts.distributed - opts.raised + (opts.performanceSettled ?? 0));
   const performance =
-    opts.investorProfitSharePct != null
-      ? round2((1 - opts.investorProfitSharePct) * profitProjected)
+    opts.performancePct != null && !opts.performanceWaiveRemaining
+      ? round2(Math.max(0, (opts.performancePct / 100) * profitProjected - (opts.performanceSettled ?? 0)))
       : 0;
   const promote = opts.promotePlan ?? 0;
 

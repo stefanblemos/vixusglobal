@@ -208,6 +208,7 @@ model Party {
   ownedStakes Ownership[] @relation("OwnedParty")
   personalReturns PersonalReturn[]
   poolMemberships PoolMember[] @relation("PoolMemberParty")
+  perfPayeePools  InvestmentPool[] @relation("PoolPerfPayeeParty")
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
@@ -262,6 +263,7 @@ model Company {
   stateTaxFilings StateTaxFiling[]
   poolsAsEntity   InvestmentPool[]   @relation("PoolEntity")
   poolMemberships PoolMember[]       @relation("PoolMemberCompany")
+  perfPayeePools  InvestmentPool[]   @relation("PoolPerfPayeeCompany")
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
@@ -918,8 +920,17 @@ model InvestmentPool {
 
   unitPrice      Decimal  @default(1000) @db.Decimal(20, 4) // 1 unit = $1.000
   targetAmount   Decimal? @db.Decimal(20, 2) // orçamento de captação (own capital do pool)
-  profitSharePct Decimal? @db.Decimal(9, 6) // fração do lucro que vai aos investidores (0.35 = 35%)
-  profitShareTiming String? // PER_SALE | PROJECT_COMPLETION
+  // Performance (06/10/2026): % do LUCRO do projeto devido pelo acordo a uma entidade de
+  // performance (genérica — hoje a construtora, amanhã outra). Substitui profitSharePct
+  // (que guardava a fração do investidor e era invertido na edição). A decisão real (pagar,
+  // provisionar, reduzir, waiver) fica em cada distribuição de lucro → PoolExpense PERFORMANCE.
+  performancePct            Decimal? @db.Decimal(6, 2) // 35 = 35% do lucro
+  performancePayeeCompanyId String?
+  performancePayeeCompany   Company? @relation("PoolPerfPayeeCompany", fields: [performancePayeeCompanyId], references: [id], onDelete: SetNull)
+  performancePayeePartyId   String?
+  performancePayeeParty     Party?   @relation("PoolPerfPayeeParty", fields: [performancePayeePartyId], references: [id], onDelete: SetNull)
+  performanceWaiveRemaining Boolean  @default(false) // política p/ o que falta: não cobrar (projeção zera)
+  profitShareTiming String? // PER_SALE | PROJECT_COMPLETION (timing da performance)
 
   fundingDeadline  DateTime? @db.Date // corte da janela de captação (compra dos lotes)
   startDate        DateTime? @db.Date
@@ -1074,10 +1085,15 @@ model PoolExpense {
   poolId      String
   pool        InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
   date        DateTime       @db.Date
-  category    String // FORMATION | ANNUAL_REPORT | TAX_PREP | ACCOUNTING | OTHER
+  category    String // FORMATION | ANNUAL_REPORT | TAX_PREP | ACCOUNTING | DISSOLUTION | PERFORMANCE | OTHER
   description String
   amount      Decimal        @db.Decimal(20, 2)
-  status      String         @default("PROVISIONED") // PROVISIONED | PAID
+  status      String         @default("PROVISIONED") // PROVISIONED | PAID | WAIVED (só PERFORMANCE)
+  // PERFORMANCE (06/10): decisão tomada numa distribuição de lucro — base, % aplicado e a
+  // distribuição de origem. WAIVED guarda o valor que deixou de ser cobrado (histórico/report).
+  distributionId String?
+  basisAmount    Decimal?    @db.Decimal(20, 2)
+  pctApplied     Decimal?    @db.Decimal(6, 2)
   createdAt   DateTime       @default(now())
 
   @@index([poolId])
@@ -1178,6 +1194,8 @@ model PoolDistribution {
   houseId     String? // venda que originou a distribuição (opcional)
   house       PoolHouse?           @relation(fields: [houseId], references: [id], onDelete: SetNull)
   memo        String?
+  // Gate de distribuível (06/10): passou do seguro ou lucro antes do fim → justificativa gravada
+  overrideNote String?
   createdAt   DateTime             @default(now())
 
   lines PoolDistributionLine[]

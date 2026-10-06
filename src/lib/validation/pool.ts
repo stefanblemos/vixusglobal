@@ -31,10 +31,13 @@ export const poolSchema = z.object({
     return s === "" || !Number.isFinite(n) ? undefined : n;
   }, z.number().gt(0).default(1000)),
   targetAmount: optMoney,
-  profitSharePct: z.preprocess(
+  // performance (06/10): % do LUCRO do acordo + entidade que recebe (company:<id> | party:<id>)
+  performancePct: z.preprocess(
     (v) => (v == null || String(v).trim() === "" ? null : v),
     z.coerce.number().min(0).max(100).nullable(),
   ),
+  performancePayee: z.preprocess(emptyToNull, z.string().nullable()),
+  performanceWaiveRemaining: z.preprocess((v) => v === "1" || v === "on" || v === true, z.boolean()),
   profitShareTiming: z.enum(["PER_SALE", "PROJECT_COMPLETION"]).nullable().default(null).or(z.literal("").transform(() => null)),
   fundingDeadline: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   startDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),

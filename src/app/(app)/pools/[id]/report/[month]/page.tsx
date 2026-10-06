@@ -414,6 +414,38 @@ export default async function MonthlyReportPage({
               {formatMoney(data.dist.inMonth, cur)} / {formatMoney(data.dist.cumulative, cur)}
             </b>
           </div>
+          {data.dist.capitalReturned != null && data.dist.raised != null && (
+            <div className="flex justify-between">
+              <span>{t("rp.dist.capitalBack")}</span>
+              <b className="tabular-nums">
+                {formatMoney(data.dist.capitalReturned, cur)} / {formatMoney(data.dist.raised, cur)}
+                {data.dist.raised > 0 ? ` (${Math.round((data.dist.capitalReturned / data.dist.raised) * 100)}%)` : ""}
+              </b>
+            </div>
+          )}
+          {/* performance (06/10): acordo × o que foi decidido — pago, provisionado, waiver */}
+          {data.dist.perf && (
+            <div className="flex justify-between">
+              <span>
+                {data.dist.perf.agreedPct != null ? t("rp.dist.perf", { pct: data.dist.perf.agreedPct }) : t("rp.dist.perfNone")}
+                {data.dist.perf.payee ? ` → ${data.dist.perf.payee}` : ""}
+              </span>
+              <b className="tabular-nums">
+                {t("rp.dist.perfVal", {
+                  paid: compact(data.dist.perf.paid),
+                  prov: compact(data.dist.perf.provisioned),
+                  waived: compact(data.dist.perf.waived),
+                })}
+                {data.dist.perf.waiveRemaining ? ` · ${t("rp.dist.perfWaiveRemaining")}` : ""}
+              </b>
+            </div>
+          )}
+          {data.dist.safeDistributable != null && (
+            <div className="flex justify-between">
+              <span>{t("rp.dist.safe")}</span>
+              <b className="tabular-nums">{formatMoney(Math.max(0, data.dist.safeDistributable), cur)}</b>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>{t("rp.dist.queue")}</span>
             <b className="tabular-nums">

@@ -43,12 +43,13 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
   });
   if (!pool) notFound();
   // entidade + nota participativa (17/07): os badges de pendência do Overview apontam p/ cá
-  const [companies, noteLoans] = await Promise.all([
+  const [companies, noteLoans, payeeParties] = await Promise.all([
     prisma.company.findMany({ orderBy: { legalName: "asc" }, select: { id: true, legalName: true } }),
     prisma.intercompanyLoan.findMany({
       orderBy: { createdAt: "desc" },
       select: { id: true, lender: { select: { legalName: true } }, borrower: { select: { legalName: true } } },
     }),
+    prisma.party.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
   ]);
 
   const loanTerms = pool.loans.map((l) => {
@@ -134,8 +135,13 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
           status: pool.status,
           unitPrice: pool.unitPrice.toString(),
           targetAmount: pool.targetAmount?.toString() ?? "",
-          profitSharePct:
-            pool.profitSharePct == null ? "" : ((1 - Number(pool.profitSharePct)) * 100).toString(),
+          performancePct: pool.performancePct == null ? "" : Number(pool.performancePct).toString(),
+          performancePayee: pool.performancePayeeCompanyId
+            ? `company:${pool.performancePayeeCompanyId}`
+            : pool.performancePayeePartyId
+              ? `party:${pool.performancePayeePartyId}`
+              : "",
+          performanceWaiveRemaining: pool.performanceWaiveRemaining,
           profitShareTiming: pool.profitShareTiming ?? "",
           fundingDeadline: d(pool.fundingDeadline),
           startDate: d(pool.startDate),
@@ -146,6 +152,10 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
           notes: pool.notes ?? "",
         }}
         companies={companies.map((c) => ({ id: c.id, name: c.legalName }))}
+        payees={[
+          ...companies.map((c) => ({ value: `company:${c.id}`, label: c.legalName })),
+          ...payeeParties.map((p) => ({ value: `party:${p.id}`, label: `${p.name} (pessoa)` })),
+        ]}
         noteLoans={noteLoans.map((n) => ({
           id: n.id,
           label: `${n.lender.legalName} → ${n.borrower.legalName}`,

@@ -16,7 +16,9 @@ export type PoolFormValues = {
   status?: string;
   unitPrice: string;
   targetAmount: string;
-  profitSharePct: string; // performance da 4U em % na UI (35); banco guarda a fração do investidor (0.65)
+  performancePct: string; // % do LUCRO do acordo (35) — guardado direto (06/10)
+  performancePayee: string; // "company:<id>" | "party:<id>" | ""
+  performanceWaiveRemaining: boolean;
   profitShareTiming: string;
   fundingDeadline: string; // yyyy-mm-dd
   startDate: string;
@@ -32,10 +34,13 @@ export function PoolForm({
   values,
   companies = [],
   noteLoans = [],
+  payees = [],
 }: {
   values: PoolFormValues;
   companies?: Array<{ id: string; name: string }>;
   noteLoans?: Array<{ id: string; label: string }>;
+  // entidade de performance (genérica): empresas e pessoas do cadastro
+  payees?: Array<{ value: string; label: string }>;
 }) {
   const action = values.id ? updatePool.bind(null, values.id) : createPool;
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, undefined);
@@ -103,24 +108,41 @@ export function PoolForm({
           />
         </div>
         <div>
-          <label htmlFor="profitSharePct" className={labelClass}>
-            Performance da 4U (% do lucro)
+          <label htmlFor="performancePct" className={labelClass}>
+            Performance (% do lucro, acordo)
           </label>
           <input
-            id="profitSharePct"
-            name="profitSharePct"
-            defaultValue={values.profitSharePct}
+            id="performancePct"
+            name="performancePct"
+            defaultValue={values.performancePct}
             placeholder="35"
             className={inputClass}
           />
           <p className="mt-1 text-[11px] text-slate-400">
-            Fatia do LUCRO que fica com a 4U. O restante vai aos investidores — é o que o app
-            desconta na projeção de fim. Renegociou para menos? Baixe aqui e o retorno sobe.
+            % do LUCRO do projeto devido pelo acordo. A decisão real (cobrar, reduzir, provisionar
+            ou waiver) é tomada em cada distribuição de lucro e fica registrada lá.
           </p>
         </div>
         <div>
+          <label htmlFor="performancePayee" className={labelClass}>
+            Performance paga a
+          </label>
+          <select id="performancePayee" name="performancePayee" defaultValue={values.performancePayee} className={inputClass}>
+            <option value="">—</option>
+            {payees.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
+            <input type="checkbox" name="performanceWaiveRemaining" value="1" defaultChecked={values.performanceWaiveRemaining} />
+            Waiver do que falta (projeção não desconta mais performance)
+          </label>
+        </div>
+        <div>
           <label htmlFor="profitShareTiming" className={labelClass}>
-            Profit paid at
+            Performance paga em
           </label>
           <select
             id="profitShareTiming"

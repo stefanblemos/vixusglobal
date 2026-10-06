@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
-import { D } from "@/lib/money";
+import { D, type Decimal } from "@/lib/money";
 import { capTable, memberName, position } from "@/lib/pools/math";
 import { logInvestmentAudit } from "@/lib/audit";
 import {
@@ -29,6 +29,15 @@ async function auditMemberName(memberId: string): Promise<string> {
 }
 const auditMoney = (v: unknown) => "$" + Number(v).toLocaleString("en-US", { maximumFractionDigits: 0 });
 
+// "company:<id>" | "party:<id>" | null → campos da entidade de performance (um dos dois)
+function performancePayeeData(v: string | null | undefined) {
+  const [kind, id] = String(v ?? "").split(":");
+  return {
+    performancePayeeCompanyId: kind === "company" && id ? id : null,
+    performancePayeePartyId: kind === "party" && id ? id : null,
+  };
+}
+
 // ── Pool ─────────────────────────────────────────────────────
 // Status do pool é DERIVADO dos fatos (16/07) — o stepper virou indicador; a derivação
 // vive em lib/pools/status-derive + status-recompute, chamada nos write-paths.
@@ -48,8 +57,10 @@ export async function createPool(_prev: FormState, formData: FormData): Promise<
       alias: d.alias,
       unitPrice: d.unitPrice,
       targetAmount: d.targetAmount,
-      // UI pergunta a PERFORMANCE DA 4U (% do lucro); o banco guarda a fração do INVESTIDOR
-      profitSharePct: d.profitSharePct == null ? null : 1 - d.profitSharePct / 100,
+      // performance (06/10): % do acordo guardado direto + entidade genérica que recebe
+      performancePct: d.performancePct,
+      ...performancePayeeData(d.performancePayee),
+      performanceWaiveRemaining: d.performanceWaiveRemaining,
       profitShareTiming: d.profitShareTiming,
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,
@@ -83,7 +94,9 @@ export async function updatePool(
       alias: d.alias,
       unitPrice: d.unitPrice,
       targetAmount: d.targetAmount,
-      profitSharePct: d.profitSharePct == null ? null : d.profitSharePct / 100,
+      performancePct: d.performancePct,
+      ...performancePayeeData(d.performancePayee),
+      performanceWaiveRemaining: d.performanceWaiveRemaining,
       profitShareTiming: d.profitShareTiming,
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,
@@ -857,6 +870,14 @@ export async function registerCallPayment(formData: FormData): Promise<void> {
 
 // ── Distribuições ────────────────────────────────────────────
 
+// Distribuição (reformulada 06/10, mock aprovado):
+// - linhas por sócio vêm do form (`line:<memberId>`); ausentes → pro rata às units. Sócio "fora"
+//   = 0; a soma das linhas tem que fechar com o total (capital) ou com total − performance (lucro).
+// - LUCRO: bloco de performance → perfMode PROVISION | PAY | WAIVE | NONE com % aplicado e nota;
+//   vira despesa PERFORMANCE (provisionada/paga/waived) ligada à distribuição. Acerto do que já
+//   estava provisionado: settleProvisioned PAY | WAIVE | KEEP.
+// - GATE: capital acima do distribuível seguro, ou lucro antes de todas vendidas/loans quitados,
+//   exige overrideNote (gravado + auditado).
 export async function addDistribution(
   poolId: string,
   _prev: FormState,
@@ -865,46 +886,119 @@ export async function addDistribution(
   const parsed = distributionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid data." };
   const d = parsed.data;
+  const money = (k: string): number | null => {
+    const s = String(formData.get(k) ?? "").replace(/,/g, "").trim();
+    if (s === "") return null;
+    const v = Number(s);
+    return Number.isFinite(v) ? Math.round(v * 100) / 100 : NaN;
+  };
+  const overrideNote = String(formData.get("overrideNote") ?? "").trim() || null;
 
-  const members = await prisma.poolMember.findMany({
-    where: { poolId },
-    include: { entries: true, party: true, company: true },
-  });
+  const [members, poolRow] = await Promise.all([
+    prisma.poolMember.findMany({ where: { poolId }, include: { entries: true, party: true, company: true } }),
+    prisma.investmentPool.findUnique({ where: { id: poolId }, select: { performancePct: true, currency: true } }),
+  ]);
   const table = capTable(members);
-  if (table.totalUnits.isZero()) return { error: "No units issued yet — nothing to distribute." };
+  if (table.totalUnits.isZero()) return { error: "Sem units emitidas — nada a distribuir." };
 
-  // Rateio pro rata por units; o resíduo de arredondamento vai para a maior posição.
-  const total = D(d.totalAmount);
-  const lines = table.rows
-    .filter((r) => r.units.gt(0))
-    .map((r) => ({
-      memberId: r.memberId,
-      amount: total.mul(r.units).div(table.totalUnits).toDecimalPlaces(2),
-    }));
-  const allocated = lines.reduce((s, l) => s.add(l.amount), D(0));
-  const residue = total.sub(allocated);
-  if (!residue.isZero() && lines.length > 0) {
-    const biggest = lines.reduce((a, b) => (a.amount.gte(b.amount) ? a : b));
-    biggest.amount = biggest.amount.add(residue);
+  // ── gate de distribuível / lucro antes do fim ──
+  const { loadDistributable } = await import("@/lib/pools/distributable-load");
+  const gate = await loadDistributable(poolId);
+  const over = d.totalAmount - gate.distributable.safe;
+  if (d.kind === "PROFIT" && !gate.distributable.profitAllowed && !overrideNote)
+    return { error: `Lucro só com todas as casas vendidas e loans quitados (${gate.distributable.unsoldCount} casa(s) aberta(s), ${gate.distributable.openLoans} loan(s) em aberto). Para distribuir mesmo assim, justifique em "override".` };
+  if (over > 0.01 && !overrideNote)
+    return { error: `Passa do distribuível seguro em ${auditMoney(over)} (seguro: ${auditMoney(gate.distributable.safe)}). Reduza o total ou justifique em "override".` };
+
+  // ── performance (só LUCRO) ──
+  const perfMode = d.kind === "PROFIT" ? String(formData.get("perfMode") ?? "NONE") : "NONE";
+  const perfPctRaw = money("perfPct");
+  const perfPct = perfPctRaw == null || Number.isNaN(perfPctRaw) ? (poolRow?.performancePct != null ? Number(poolRow.performancePct) : 0) : perfPctRaw;
+  const perfBasis = d.totalAmount; // lucro informado nesta distribuição
+  const perfAmount = perfMode === "NONE" ? 0 : Math.round(perfBasis * perfPct) / 100;
+  const perfNote = String(formData.get("perfNote") ?? "").trim() || null;
+  if (perfMode === "WAIVE" && !perfNote) return { error: "Waiver precisa de motivo (vai para o report e a auditoria)." };
+  const netToMembers = perfMode === "PROVISION" || perfMode === "PAY" ? Math.round((d.totalAmount - perfAmount) * 100) / 100 : d.totalAmount;
+  const settleProvisioned = String(formData.get("settleProvisioned") ?? "KEEP");
+
+  // ── linhas: do form ou pro rata; soma tem que fechar ──
+  const net = D(netToMembers);
+  const custom = members.some((m) => formData.has(`line:${m.id}`));
+  let lines: Array<{ memberId: string; amount: Decimal }>;
+  if (custom) {
+    lines = [];
+    for (const m of members) {
+      const v = money(`line:${m.id}`);
+      if (v == null) continue;
+      if (Number.isNaN(v) || v < 0) return { error: `Valor inválido para ${memberName(m)}.` };
+      if (v > 0) lines.push({ memberId: m.id, amount: D(v) });
+    }
+    const sum = lines.reduce((s, l) => s.add(l.amount), D(0));
+    if (sum.sub(net).abs().gt(0.011))
+      return { error: `As linhas somam ${auditMoney(sum)} e o total${perfAmount && netToMembers !== d.totalAmount ? " líquido de performance" : ""} é ${auditMoney(net)}.` };
+  } else {
+    lines = table.rows
+      .filter((r) => r.units.gt(0))
+      .map((r) => ({ memberId: r.memberId, amount: net.mul(r.units).div(table.totalUnits).toDecimalPlaces(2) }));
+    const allocated = lines.reduce((s, l) => s.add(l.amount), D(0));
+    const residue = net.sub(allocated);
+    if (!residue.isZero() && lines.length > 0) {
+      const biggest = lines.reduce((a, b) => (a.amount.gte(b.amount) ? a : b));
+      biggest.amount = biggest.amount.add(residue);
+    }
   }
+  if (lines.length === 0) return { error: "Nenhum sócio recebe nesta distribuição." };
 
-  const dist = await prisma.poolDistribution.create({
-    data: {
-      poolId,
-      kind: d.kind,
-      date: d.date,
-      totalAmount: d.totalAmount,
-      houseId: d.houseId,
-      memo: d.memo,
-      lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
-    },
+  const dist = await prisma.$transaction(async (tx) => {
+    const created = await tx.poolDistribution.create({
+      data: {
+        poolId,
+        kind: d.kind,
+        date: d.date,
+        totalAmount: netToMembers, // o que SAIU para os sócios; a performance sai como despesa
+        houseId: d.houseId,
+        memo: d.memo,
+        overrideNote,
+        lines: { create: lines.map((l) => ({ memberId: l.memberId, amount: l.amount })) },
+      },
+    });
+    if (d.kind === "PROFIT" && perfMode !== "NONE") {
+      await tx.poolExpense.create({
+        data: {
+          poolId,
+          date: d.date,
+          category: "PERFORMANCE",
+          description: `Performance ${perfPct}% sobre ${auditMoney(perfBasis)}${perfNote ? ` — ${perfNote}` : ""}`,
+          amount: perfAmount,
+          status: perfMode === "PAY" ? "PAID" : perfMode === "PROVISION" ? "PROVISIONED" : "WAIVED",
+          distributionId: created.id,
+          basisAmount: perfBasis,
+          pctApplied: perfPct,
+        },
+      });
+    }
+    // acerto do que já estava provisionado (encerramento): pagar ou waiver
+    if (d.kind === "PROFIT" && (settleProvisioned === "PAY" || settleProvisioned === "WAIVE")) {
+      await tx.poolExpense.updateMany({
+        where: { poolId, category: "PERFORMANCE", status: "PROVISIONED" },
+        data: { status: settleProvisioned === "PAY" ? "PAID" : "WAIVED" },
+      });
+    }
+    return created;
   });
   await logInvestmentAudit({
     poolId,
     entity: "DISTRIBUTION",
     entityId: dist.id,
     action: "CREATE",
-    summary: `Distribuição de ${auditMoney(d.totalAmount)} (${d.kind === "PROFIT" ? "lucro" : "capital"}) · ${lines.length} sócio(s)`,
+    summary:
+      `Distribuição de ${auditMoney(netToMembers)} (${d.kind === "PROFIT" ? "lucro" : "capital"}) · ${lines.length} sócio(s)` +
+      (custom ? " · linhas ajustadas" : "") +
+      (d.kind === "PROFIT" && perfMode !== "NONE"
+        ? ` · performance ${perfPct}% = ${auditMoney(perfAmount)} ${perfMode === "PAY" ? "paga" : perfMode === "PROVISION" ? "provisionada" : "WAIVER"}${perfNote ? ` (${perfNote})` : ""}`
+        : "") +
+      (settleProvisioned !== "KEEP" ? ` · provisão anterior ${settleProvisioned === "PAY" ? "paga" : "waiver"}` : "") +
+      (overrideNote ? ` · OVERRIDE: ${overrideNote}` : ""),
   });
   // distribuição é gatilho de CLOSED (lucro distribuído + caixa devolvido)
   {

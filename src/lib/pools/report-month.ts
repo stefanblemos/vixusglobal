@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { computeNav, liveIrr, type NavHouse } from "./nav";
 import { buildRisk } from "./risk";
 import { computeEndNet } from "./investor-value";
+import { computeDistributable, performanceSummary } from "./distributable";
 import { buildActivityFeed } from "./activity-feed";
 import { ncStatsForLocation } from "./benchmark";
 import { milestonePctAsOf, type HouseMilestones, type MilestoneCatalog } from "./milestones";
@@ -81,6 +82,11 @@ export type ReportMonthData = {
     queueTotal: number;
     queueCapital: number;
     queueProfit: number;
+    // performance (06/10): acordo × decisões gravadas + capital devolvido; snapshots antigos não têm
+    capitalReturned?: number;
+    raised?: number;
+    perf?: { agreedPct: number | null; paid: number; provisioned: number; waived: number; waiveRemaining: boolean; payee: string | null };
+    safeDistributable?: number;
   };
 };
 
@@ -133,7 +139,8 @@ function metricsAt(poolRaw: any, asOf: Date, mCatalog: MilestoneCatalog[] = []) 
     .flatMap((m) => m.entries)
     .reduce((s, e) => s + ((e as { kind: string }).kind === "TRANSFER_OUT" ? -1 : 1) * n((e as { amount: unknown }).amount), 0);
   const received = pool.houses.reduce((s, h) => {
-    const hh = h as { netReceived: unknown; soldPrice: unknown; payoffAmount: unknown; closingCost: unknown };
+    const hh = h as { saleDate: unknown; netReceived: unknown; soldPrice: unknown; payoffAmount: unknown; closingCost: unknown };
+    if (hh.saleDate == null) return s; // sem closing não entrou dinheiro (06/10)
     return (
       s +
       (hh.netReceived != null
@@ -237,6 +244,8 @@ function metricsAt(poolRaw: any, asOf: Date, mCatalog: MilestoneCatalog[] = []) 
   });
   const simKpis =
     (pool.simulations?.[0]?.result as { kpis?: Record<string, number | null> } | null)?.kpis ?? null;
+  // performance (06/10): acordo × decisões gravadas até o corte
+  const perf = performanceSummary(pool as never);
   const endNet = computeEndNet({
     freeCash: available,
     houses: pool.houses.map((h) => {
@@ -262,13 +271,15 @@ function metricsAt(poolRaw: any, asOf: Date, mCatalog: MilestoneCatalog[] = []) 
     hasWindDownProvision: pool.expenses.some((e) => (e as { category: string }).category === "DISSOLUTION"),
     raised,
     distributed,
-    investorProfitSharePct: pool.profitSharePct != null ? n(pool.profitSharePct) : null,
+    performancePct: perf.agreedPct,
+    performanceSettled: perf.settled,
+    performanceWaiveRemaining: perf.waiveRemaining,
     promotePlan: simKpis?.promoteTotal ?? null,
     vehicleCostPlan: simKpis?.vehicleCostTotal ?? null,
     expensesPaid,
     unitsTotal,
   });
-  return { pool, risk, navR, live, endNet, raised, distributed, simKpis, unitsTotal };
+  return { pool, risk, navR, live, endNet, raised, distributed, simKpis, unitsTotal, perf };
 }
 
 async function loadPool(poolId: string) {
@@ -498,6 +509,25 @@ export async function buildMonthlyReport(
       queueTotal: round2(cur.risk.queue.reduce((s, q) => s + q.total, 0)),
       queueCapital: round2(cur.risk.queue.reduce((s, q) => s + q.capital, 0)),
       queueProfit: round2(cur.risk.queue.reduce((s, q) => s + q.profit, 0)),
+      capitalReturned: round2(
+        cur.pool.distributions.filter((d) => (d as { kind: string }).kind === "RETURN_OF_CAPITAL").reduce((s, d) => s + n((d as { totalAmount: unknown }).totalAmount), 0),
+      ),
+      raised: round2(cur.raised),
+      perf: {
+        agreedPct: cur.perf.agreedPct,
+        paid: cur.perf.paid,
+        provisioned: cur.perf.provisioned,
+        waived: cur.perf.waived,
+        waiveRemaining: cur.perf.waiveRemaining,
+        payee: cur.perf.payeeName,
+      },
+      safeDistributable: computeDistributable({
+        cash: cur.risk.freeCash,
+        endNetLines: cur.endNet.lines,
+        unsoldPlannedSales: cur.pool.houses.filter((h) => (h as { saleDate: unknown }).saleDate == null).reduce((s, h) => s + n((h as { plannedSalePrice: unknown }).plannedSalePrice), 0),
+        unsoldCount: cur.pool.houses.filter((h) => (h as { saleDate: unknown }).saleDate == null).length,
+        openLoans: 0,
+      }).safe,
     },
   };
 }

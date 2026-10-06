@@ -20,6 +20,7 @@ import { PoolLaunchMenu } from "@/components/pool-launch-menu";
 import { PoolGlConference } from "@/components/pool-gl-conference";
 import { buildPoolLedger } from "@/lib/pools/pool-ledger";
 import { glReportForPool } from "@/lib/pools/gl-match";
+import { computeDistributable, performanceSummary } from "@/lib/pools/distributable";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
 import { computeNav, liveIrr, xirr, type NavHouse } from "@/lib/pools/nav";
@@ -93,6 +94,8 @@ export default async function PoolDetailPage({
     include: {
       company: true,
       noteLoan: { include: { borrower: true } },
+      performancePayeeCompany: { select: { legalName: true } },
+      performancePayeeParty: { select: { name: true } },
       houses: {
         include: {
           changeOrders: true,
@@ -155,6 +158,8 @@ export default async function PoolDetailPage({
 
   const table = capTable(pool.members);
   const memberById = new Map(pool.members.map((m) => [m.id, memberName(m)]));
+  // performance (06/10): acordo × decisões já gravadas (despesas PERFORMANCE)
+  const perfSummary = performanceSummary(pool);
 
   // Extrato único do pool (etapa 3): projeção dos fatos — aportes, capital p/ casas, vendas,
   // despesas pagas, distribuições — com saldo corrido; e a conferência com o GL da entidade
@@ -203,13 +208,16 @@ export default async function PoolDetailPage({
   // Caixa & provisões: aportado × gasto × disponível (a diferença que o Stefan quer
   // sempre visível — sobra sem previsão de gasto pode voltar aos investidores)
   const spentOnHouses = sum(pool.houses.map((h) => h.ownCapital ?? 0));
+  // (06/10) só casas com DATA de closing — preço digitado antes do closing não é caixa
   const receivedFromSales = sum(
     pool.houses.map((h) =>
-      h.netReceived != null
-        ? h.netReceived
-        : h.soldPrice != null
-          ? Number(h.soldPrice) - Number(h.payoffAmount ?? 0) - Number(h.closingCost ?? 0)
-          : 0,
+      h.saleDate == null
+        ? 0
+        : h.netReceived != null
+          ? h.netReceived
+          : h.soldPrice != null
+            ? Number(h.soldPrice) - Number(h.payoffAmount ?? 0) - Number(h.closingCost ?? 0)
+            : 0,
     ),
   );
   const expensesPaid = sum(pool.expenses.filter((e) => e.status === "PAID").map((e) => e.amount));
@@ -473,11 +481,21 @@ export default async function PoolDetailPage({
     hasWindDownProvision: pool.expenses.some((e) => e.category === "DISSOLUTION"),
     raised: raisedN,
     distributed: Number(distributed),
-    investorProfitSharePct: pool.profitSharePct != null ? Number(pool.profitSharePct) : null,
+    performancePct: perfSummary.agreedPct,
+    performanceSettled: perfSummary.settled,
+    performanceWaiveRemaining: perfSummary.waiveRemaining,
     promotePlan: simKpis?.promoteTotal ?? null,
     vehicleCostPlan: simKpis?.vehicleCostTotal ?? null,
     expensesPaid: Number(expensesPaid),
     unitsTotal: Number(table.totalUnits),
+  });
+  // teste de caixa distribuível (06/10): mesma cascata do fim líquido + colchão de stress
+  const distributable = computeDistributable({
+    cash: Number(available),
+    endNetLines: endNetPool.lines,
+    unsoldPlannedSales: pool.houses.filter((h) => h.saleDate == null).reduce((s2, h) => s2 + Number(h.plannedSalePrice ?? 0), 0),
+    unsoldCount: pool.houses.filter((h) => h.saleDate == null).length,
+    openLoans: pool.loans.filter((l) => l.entries.filter((e) => !e.pending).reduce((s2, e) => s2 + Number(e.amount), 0) > 0.01).length,
   });
   const poolEndDate = pool.effectiveEndDate ?? pool.plannedEndDate ?? null;
   // TIR do investidor: aportes (−), distribuições já pagas (+) e o FIM LÍQUIDO no encerramento.
@@ -630,6 +648,12 @@ export default async function PoolDetailPage({
     total: Number(d.totalAmount),
     house: d.house ? { id: d.house.id, address: d.house.address } : null,
     memo: d.memo,
+    overrideNote: d.overrideNote,
+    // performance decidida nesta distribuição (despesa PERFORMANCE ligada)
+    performance: (() => {
+      const e = pool.expenses.find((x) => x.category === "PERFORMANCE" && x.distributionId === d.id);
+      return e ? { status: e.status, amount: Number(e.amount), pct: e.pctApplied != null ? Number(e.pctApplied) : null, description: e.description } : null;
+    })(),
     lines: d.lines.map((l) => {
       const mp = payoutMap[l.memberId];
       return {
@@ -646,7 +670,20 @@ export default async function PoolDetailPage({
   }));
   const distMembers = table.rows
     .filter((r) => r.units.gt(0))
-    .map((r) => ({ name: r.name, units: Number(r.units) }));
+    .map((r) => ({
+      id: r.memberId,
+      name: r.name,
+      role: r.role,
+      units: Number(r.units),
+      invested: Number(r.invested),
+      // já devolvido/recebido por sócio (capital × lucro) — "já recebeu" na prévia
+      receivedCapital: pool.distributions
+        .filter((d) => d.kind === "RETURN_OF_CAPITAL")
+        .reduce((s2, d) => s2 + d.lines.filter((l) => l.memberId === r.memberId).reduce((x, l) => x + Number(l.amount), 0), 0),
+      receivedProfit: pool.distributions
+        .filter((d) => d.kind === "PROFIT")
+        .reduce((s2, d) => s2 + d.lines.filter((l) => l.memberId === r.memberId).reduce((x, l) => x + Number(l.amount), 0), 0),
+    }));
 
   // Aba Casas (mock 4/6): linhas com contexto + % do previsto + pendências
   const houseRows = pool.houses.map((h, hi) => {
@@ -1458,6 +1495,10 @@ export default async function PoolDetailPage({
               rows={distRows}
               houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
               members={distMembers}
+              perf={perfSummary}
+              gate={distributable}
+              profitRealized={Number(receivedFromSales) - Number(spentOnHouses) - Number(expensesPaid)}
+              currency={pool.currency}
             />
           )}
 
@@ -1490,7 +1531,8 @@ export default async function PoolDetailPage({
               }))}
               memberOptions={memberOptions.map((m) => ({ id: m.id, name: m.name }))}
               fees={{
-                perfPct: pool.profitSharePct != null ? Number(pool.profitSharePct) : null,
+                perfPct: perfSummary.agreedPct, // % do acordo (06/10: direto, não mais a fração do investidor)
+                perfPayee: perfSummary.payeeName,
                 perfTiming: pool.profitShareTiming,
                 perfFeeTotal: simKpis?.perfFeeTotal ?? null,
                 contractorFeeTotal: simKpis?.contractorFeeTotal ?? null,

@@ -158,7 +158,7 @@ const DICT = {
   "iv.cas.provisioned": { en: "− provisioned expenses", pt: "− despesas provisionadas" },
   "iv.cas.windDown": { en: "− SPV wind-down (estimated)", pt: "− encerramento da SPV (estimado)" },
   "iv.cas.vehicle": { en: "− vehicle costs remaining (plan)", pt: "− custos do veículo restantes (plano)" },
-  "iv.cas.performance": { en: "− 4U performance", pt: "− performance da 4U" },
+  "iv.cas.performance": { en: "− performance fee", pt: "− performance" },
   "iv.cas.promote": { en: "− Vixus promote (plan)", pt: "− promote da Vixus (plano)" },
   "iv.cas.total": { en: "Net to investors ÷ units", pt: "Líquido aos investidores ÷ units" },
   "iv.noBenchmark": {
@@ -290,6 +290,12 @@ const DICT = {
     pt: "A projeção líquida usa o preço A MERCADO — quando fica abaixo do plano, a diferença é o clamp do mercado, e volta se o mercado validar o preço planejado.",
   },
   "rp.dist.inMonth": { en: "Distributed this month / cumulative", pt: "Distribuído no mês / acumulado" },
+  "rp.dist.capitalBack": { en: "Capital returned / contributed", pt: "Capital devolvido / aportado" },
+  "rp.dist.perf": { en: "Performance fee (agreement {pct}%)", pt: "Performance (acordo {pct}%)" },
+  "rp.dist.perfNone": { en: "Performance fee", pt: "Performance" },
+  "rp.dist.perfVal": { en: "paid {paid} · provisioned {prov} · waived {waived}", pt: "paga {paid} · provisionada {prov} · waiver {waived}" },
+  "rp.dist.perfWaiveRemaining": { en: "remaining profit: waived", pt: "lucro restante: waiver" },
+  "rp.dist.safe": { en: "Safe distributable today", pt: "Distribuível seguro hoje" },
   "rp.dist.queue": { en: "Queue until wind-up", pt: "Fila até o encerramento" },
   "rp.dist.queueVal": {
     en: "{n} sales · ≈ {total} to return (capital {cap} + net profit {profit})",

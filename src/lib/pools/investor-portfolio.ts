@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db";
 import { computeNav, liveIrr, xirr, type NavHouse } from "./nav";
 import { buildRisk, type RiskResult } from "./risk";
 import { computeEndNet, type EndNetResult } from "./investor-value";
+import { performanceSummary } from "./distributable";
 import { buildActivityFeed, type FeedEvent } from "./activity-feed";
 import { buildInvestorStatement, type StmtMovement, type StmtResult } from "./investor-statement";
 
@@ -169,7 +170,9 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
     const received = pool.houses.reduce(
       (s, h) =>
         s +
-        (h.netReceived != null
+        (h.saleDate == null // sem closing não entrou dinheiro (06/10)
+          ? 0
+          : h.netReceived != null
           ? n(h.netReceived)
           : h.soldPrice != null
             ? n(h.soldPrice) - n(h.payoffAmount) - n(h.closingCost)
@@ -261,7 +264,10 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
       hasWindDownProvision: pool.expenses.some((e) => e.category === "DISSOLUTION"),
       raised,
       distributed,
-      investorProfitSharePct: pool.profitSharePct != null ? n(pool.profitSharePct) : null,
+      ...(() => {
+        const perf = performanceSummary(pool);
+        return { performancePct: perf.agreedPct, performanceSettled: perf.settled, performanceWaiveRemaining: perf.waiveRemaining };
+      })(),
       promotePlan: simKpis?.promoteTotal ?? null,
       vehicleCostPlan: simKpis?.vehicleCostTotal ?? null,
       expensesPaid,

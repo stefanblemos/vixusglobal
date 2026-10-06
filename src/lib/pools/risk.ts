@@ -88,11 +88,13 @@ export function buildRisk(pool: RiskPoolInput, today: Date): RiskResult {
   const received = pool.houses.reduce(
     (s, h) =>
       s +
-      (h.netReceived != null
-        ? n(h.netReceived)
-        : h.soldPrice != null
-          ? n(h.soldPrice) - n(h.payoffAmount) - n(h.closingCost)
-          : 0),
+      (h.saleDate == null // sem closing não entrou dinheiro (06/10)
+        ? 0
+        : h.netReceived != null
+          ? n(h.netReceived)
+          : h.soldPrice != null
+            ? n(h.soldPrice) - n(h.payoffAmount) - n(h.closingCost)
+            : 0),
     0,
   );
   const spent = pool.houses.reduce((s, h) => s + n(h.ownCapital), 0);

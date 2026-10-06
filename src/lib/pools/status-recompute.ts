@@ -61,6 +61,7 @@ export async function recomputePoolStatuses(poolId: string): Promise<{
     .reduce((s, e) => s + (e.kind === "TRANSFER_OUT" ? -1 : 1) * Number(e.amount), 0);
   const spentOnHouses = pool.houses.reduce((s, h) => s + Number(h.ownCapital ?? 0), 0);
   const receivedFromSales = pool.houses.reduce((s, h) => {
+    if (h.saleDate == null) return s; // sem closing não entrou dinheiro (06/10)
     if (h.netReceived != null) return s + Number(h.netReceived);
     if (h.soldPrice != null)
       return s + Number(h.soldPrice) - Number(h.payoffAmount ?? 0) - Number(h.closingCost ?? 0);

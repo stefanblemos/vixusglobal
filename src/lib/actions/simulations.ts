@@ -496,8 +496,9 @@ export async function convertSimulationToPool(formData: FormData): Promise<void>
       alias: sim.name,
       status: "FUNDING",
       targetAmount: result.kpis?.totalInvested ?? null,
-      profitSharePct: sim.compMode === "PERFORMANCE" ? Number(sim.perfPct) / 100 : null,
-      profitShareTiming: sim.compMode === "PERFORMANCE" ? "PROJECT_COMPLETION" : null,
+      // % do acordo (06/10): guarda o % da performance direto (35 = 35% do lucro)
+      performancePct: sim.compMode === "PERFORMANCE" ? Number(sim.perfPct) : null,
+      profitShareTiming: sim.compMode === "PERFORMANCE" ? sim.perfTiming ?? "PROJECT_COMPLETION" : null,
       notes: `Criado da simulação "${sim.name}" (cenário ${sim.scenario.name}, ${sim.fundingMode === "BANK" ? `loan ${sim.bankProfile?.name ?? ""}` : "equity"}).`,
       houses: {
         create: result.units.map((u, i) => {

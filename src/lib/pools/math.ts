@@ -80,6 +80,7 @@ type HouseLike = {
   payoffAmount: DecimalInput | null;
   netReceived: DecimalInput | null;
   closingCost: DecimalInput | null;
+  saleDate?: Date | null; // sem data de closing a venda NÃO aconteceu (preço digitado antes não conta)
 };
 
 /**
@@ -101,8 +102,12 @@ export function houseEconomics(h: HouseLike, changeOrdersTotal: DecimalInput = 0
   const plannedProfit =
     h.plannedSalePrice == null || !hasPlannedCost ? null : D(h.plannedSalePrice).sub(plannedCost);
   const ownCapitalNeeded = !hasPlannedCost ? null : plannedCost.sub(D(h.bankLoanAmount ?? 0));
-  const cashAtClosing =
-    h.netReceived != null
+  // (06/10) só conta como caixa recebido quando há DATA de closing — antes disso o preço
+  // digitado é expectativa (a casa ainda aparece como venda futura na projeção)
+  const closed = h.saleDate === undefined || h.saleDate != null;
+  const cashAtClosing = !closed
+    ? null
+    : h.netReceived != null
       ? D(h.netReceived)
       : h.soldPrice == null
         ? null

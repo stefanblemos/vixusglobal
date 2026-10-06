@@ -8,6 +8,10 @@ export const dynamic = "force-dynamic";
 export default async function NewPoolPage() {
   const count = await prisma.investmentPool.count();
   const nextCode = `VHP-${roman(count + 1)}`;
+  const [companies, parties] = await Promise.all([
+    prisma.company.findMany({ orderBy: { legalName: "asc" }, select: { id: true, legalName: true } }),
+    prisma.party.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }),
+  ]);
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -27,7 +31,9 @@ export default async function NewPoolPage() {
           alias: "",
           unitPrice: "1000",
           targetAmount: "",
-          profitSharePct: "",
+          performancePct: "",
+          performancePayee: "",
+          performanceWaiveRemaining: false,
           profitShareTiming: "",
           fundingDeadline: "",
           startDate: "",
@@ -37,6 +43,10 @@ export default async function NewPoolPage() {
           noteLoanId: "",
           notes: "",
         }}
+        payees={[
+          ...companies.map((c) => ({ value: `company:${c.id}`, label: c.legalName })),
+          ...parties.map((p) => ({ value: `party:${p.id}`, label: `${p.name} (pessoa)` })),
+        ]}
       />
     </div>
   );

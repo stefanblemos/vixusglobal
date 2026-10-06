@@ -27,7 +27,8 @@ export type PoolDocRow = {
   reportMonth?: string | null; // report mensal (Fase 5): abre a página do report, não PDF
 };
 export type FeesData = {
-  perfPct: number | null; // fração do lucro dos INVESTIDORES (cadastro do pool)
+  perfPct: number | null; // % do LUCRO do acordo (06/10: direto; antes era a fração do investidor)
+  perfPayee?: string | null; // entidade de performance (genérica)
   perfTiming: string | null;
   perfFeeTotal: number | null; // da simulação de origem (plano)
   contractorFeeTotal: number | null;
@@ -307,7 +308,8 @@ export function PoolDataRoom({
             <b className="text-right">
               {fees.perfPct == null
                 ? t("fees.perf.none")
-                : `${Math.round((1 - fees.perfPct) * 100)}% ${t("fees.perf.ofProfit")}` +
+                : `${Math.round(fees.perfPct)}% ${t("fees.perf.ofProfit")}` +
+                  (fees.perfPayee ? ` → ${fees.perfPayee}` : "") +
                   (fees.perfTiming === "PER_SALE" || fees.perfTiming === "PROJECT_COMPLETION"
                     ? ` · ${t(`fees.timing.${fees.perfTiming}` as "fees.timing.PER_SALE")}`
                     : "") +
