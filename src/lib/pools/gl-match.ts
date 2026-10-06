@@ -19,6 +19,10 @@ export type GlSuggestion = {
   amount: number;
   category: string; // sugerida pelo nome da conta
   matchesOpening: boolean; // mesmo valor de uma abertura da casa → vai só datar a abertura
+  // lançamentos existentes da casa que este GL pode COMPROVAR (reconciliar: data/origem passam p/ ele,
+  // valor do lançamento fica) — padrão quando existe abertura da mesma categoria
+  candidates: Array<{ id: string; label: string; amount: number; opening: boolean; sameAmount: boolean }>;
+  suggestedEntryId: string | null;
 };
 
 export type HouseGlReport = {
@@ -60,7 +64,7 @@ function addressTerms(address: string): string[] {
 
 export async function glReportForPool(args: {
   companyId: string | null;
-  houses: Array<{ id: string; address: string; cashEntries: Array<{ amount: unknown; opening: boolean; glTxnId: string | null; kind: string }> }>;
+  houses: Array<{ id: string; address: string; cashEntries: Array<{ id: string; amount: unknown; opening: boolean; glTxnId: string | null; kind: string; category: string; date: Date }> }>;
   loans: Array<{ loanNumber: string | null; entries: Array<{ amount: unknown; pending: boolean }> }>;
 }): Promise<{ houses: HouseGlReport[]; loans: LoanGlReport[]; hasGl: boolean; glCount: number }> {
   if (!args.companyId) return { houses: [], loans: [], hasGl: false, glCount: 0 };
@@ -98,9 +102,27 @@ export async function glReportForPool(args: {
       if (loanNumbers.some((ln) => acc.includes(ln.toLowerCase()))) continue;
       if (acc.includes(num) && acc.includes(street.toLowerCase())) continue;
       if (/\bsale\b|\bsold\b|credit of sale|venda/i.test(`${t.description ?? ""} ${t.rawName ?? ""}`)) continue;
+      // já vive na aba Banco (statement do loan) e está embutido no payoff/líquido da venda —
+      // trazer p/ a casa contaria duas vezes
+      if (/reconveyance|inspection fee|draw fee|draw processing|ach fee|\binterest\b|budget review|origination|processing fee/i.test(`${t.description ?? ""} ${t.rawName ?? ""} ${t.account}`)) continue;
       const v = Number(t.amount);
       // já existe lançamento DATADO com o mesmo valor → considerado o mesmo fato, não sugere
       if (amounts.some((a) => !a.opening && Math.abs(a.v - v) < 0.01)) continue;
+      const category = categoryForAccount(t.account);
+      const CAT_LABEL: Record<string, string> = { LOT: "Lote", BUILD: "Obra", CASH_TO_CLOSE: "Cash to close", BANK_FEE: "Taxa do banco", INTEREST: "Juros", CARRYING: "Carregamento", OTHER: "Outro" };
+      const candidates = h.cashEntries
+        .filter((e) => e.kind === "COST" && !e.glTxnId)
+        .map((e) => ({
+          id: e.id,
+          amount: r2(Number(e.amount)),
+          opening: e.opening,
+          sameAmount: Math.abs(Number(e.amount) - v) < 0.01,
+          sameCategory: e.category === category,
+          label: `${CAT_LABEL[e.category] ?? e.category} ${e.opening ? "(abertura)" : e.date.toISOString().slice(0, 10)} · $${r2(Number(e.amount)).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
+        }))
+        .sort((a, b) => Number(b.sameAmount) - Number(a.sameAmount) || Number(b.sameCategory) - Number(a.sameCategory));
+      const exact = candidates.find((c) => c.sameAmount && c.sameCategory) ?? candidates.find((c) => c.sameAmount);
+      const sameCat = candidates.filter((c) => c.sameCategory);
       suggestions.push({
         txnId: t.id,
         date: t.date.toISOString().slice(0, 10),
@@ -108,8 +130,11 @@ export async function glReportForPool(args: {
         name: t.rawName,
         description: t.description,
         amount: r2(v),
-        category: categoryForAccount(t.account),
+        category,
         matchesOpening: amounts.some((a) => a.opening && Math.abs(a.v - v) < 0.01),
+        candidates: candidates.map(({ id, label, amount, opening, sameAmount }) => ({ id, label, amount, opening, sameAmount })),
+        // padrão: par exato; senão a abertura da mesma categoria (o GL comprova data/origem do agregado)
+        suggestedEntryId: exact?.id ?? sameCat.find((c) => c.opening)?.id ?? null,
       });
     }
     houses.push({ houseId: h.id, address: h.address, suggestions, alreadyLinked: linked.size });

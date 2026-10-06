@@ -83,18 +83,31 @@ export function PoolGlConference({
                         <td className="whitespace-nowrap py-1.5 pr-2 text-slate-500">{br(s.date)}</td>
                         <td className="py-1.5 pr-2 text-slate-700">
                           <span className="text-slate-400">{s.account} · </span>{[s.name, s.description].filter(Boolean).join(" · ")}
-                          {s.matchesOpening && <span className="ml-1 rounded-full bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-700">mesmo valor da abertura → só data</span>}
+                          {s.matchesOpening ? (
+                            <span className="ml-1 rounded-full bg-emerald-50 px-1.5 text-[10px] font-semibold text-emerald-700">mesmo valor da abertura → reconcilia (só data)</span>
+                          ) : s.suggestedEntryId ? (
+                            <span className="ml-1 rounded-full bg-blue-50 px-1.5 text-[10px] font-semibold text-[#1f3a5f]">comprova a abertura (valor fica, data entra)</span>
+                          ) : (
+                            <span className="ml-1 rounded-full bg-amber-50 px-1.5 text-[10px] font-semibold text-amber-800">sem par → somar aumenta o custo em ${f2(s.amount)}</span>
+                          )}
                         </td>
                         <td className="whitespace-nowrap py-1.5 pr-2 text-right tabular-nums">{f2(s.amount)}</td>
                         <td className="py-1.5 text-right">
+                          {/* reconciliar (padrão quando há par/abertura) × somar como custo novo */}
                           <form action={importGlTxnToHouse} className="flex items-center justify-end gap-1.5">
                             <input type="hidden" name="houseId" value={h.houseId} />
                             <input type="hidden" name="txnId" value={s.txnId} />
-                            <select name="category" defaultValue={s.category} className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px]">
+                            <select name="target" defaultValue={s.suggestedEntryId ? `rec:${s.suggestedEntryId}` : "add"} className="max-w-[260px] rounded border border-slate-300 px-1.5 py-0.5 text-[11px]">
+                              {s.candidates.map((c) => (
+                                <option key={c.id} value={`rec:${c.id}`}>reconciliar com {c.label}{c.sameAmount ? " ✓" : ""}</option>
+                              ))}
+                              <option value="add">somar como custo novo (+${f2(s.amount)})</option>
+                            </select>
+                            <select name="category" defaultValue={s.category} title="categoria (só se somar)" className="rounded border border-slate-300 px-1.5 py-0.5 text-[11px]">
                               {COST_CATS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
                             <button type="submit" className="rounded bg-[#1f3a5f] px-2 py-0.5 text-[11px] font-semibold text-white hover:bg-[#16304f]">
-                              trazer
+                              aplicar
                             </button>
                           </form>
                         </td>

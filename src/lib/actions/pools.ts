@@ -334,6 +334,8 @@ export async function importGlTxnToHouse(formData: FormData): Promise<void> {
   const houseId = String(formData.get("houseId") ?? "");
   const txnId = String(formData.get("txnId") ?? "");
   const category = String(formData.get("category") ?? "OTHER");
+  // target: "add" = soma como custo novo; "rec:<entryId>" = reconcilia com lançamento existente
+  const target = String(formData.get("target") ?? "add");
   if (!houseId || !txnId) return;
   const [house, txn, dup] = await Promise.all([
     prisma.poolHouse.findUnique({ where: { id: houseId }, select: { poolId: true, address: true } }),
@@ -343,26 +345,38 @@ export async function importGlTxnToHouse(formData: FormData): Promise<void> {
   if (!house || !txn || dup) return;
   const amount = Math.abs(Number(txn.amount));
   const memo = [txn.rawName, txn.description].filter(Boolean).join(" · ") || txn.account;
-  const opening = await prisma.houseCashEntry.findFirst({
-    where: { houseId, opening: true, kind: "COST", category, amount },
-  });
-  if (opening) {
+  const dateIso = txn.date.toISOString().slice(0, 10);
+
+  if (target.startsWith("rec:")) {
+    // RECONCILIAR: o GL comprova data e origem do lançamento que já existe; o valor do
+    // lançamento fica (é a verdade da casa) — diferença, se houver, vai para o memo
+    const entry = await prisma.houseCashEntry.findUnique({ where: { id: target.slice(4) } });
+    if (!entry || entry.houseId !== houseId || entry.glTxnId) return;
+    const diff = Math.round((Number(entry.amount) - amount) * 100) / 100;
     await prisma.houseCashEntry.update({
-      where: { id: opening.id },
-      data: { date: txn.date, opening: false, memo: `GL: ${memo}`, glTxnId: txnId },
+      where: { id: entry.id },
+      data: {
+        date: txn.date,
+        opening: false,
+        glTxnId: txnId,
+        memo: `GL: ${memo}${Math.abs(diff) >= 0.01 ? ` · GL ${auditMoney(amount)} vs lançamento ${auditMoney(entry.amount)}` : ""}`,
+      },
     });
-  } else {
-    await prisma.houseCashEntry.create({
-      data: { houseId, kind: "COST", category, date: txn.date, amount, memo: `GL: ${memo}`, glTxnId: txnId },
+    await afterHouseCashChange(houseId);
+    await logInvestmentAudit({
+      poolId: house.poolId, entity: "HOUSE", entityId: houseId, action: "UPDATE",
+      summary: `${house.address}: reconciliou ${entry.category} ${auditMoney(entry.amount)} com o GL (${dateIso}${Math.abs(diff) >= 0.01 ? `, GL ${auditMoney(amount)}` : ""})`,
     });
+    return;
   }
+  // SOMAR: custo novo da casa com a data do GL (aumenta o custo real)
+  await prisma.houseCashEntry.create({
+    data: { houseId, kind: "COST", category, date: txn.date, amount, memo: `GL: ${memo}`, glTxnId: txnId },
+  });
   await afterHouseCashChange(houseId);
   await logInvestmentAudit({
-    poolId: house.poolId,
-    entity: "HOUSE",
-    entityId: houseId,
-    action: opening ? "UPDATE" : "CREATE",
-    summary: `${house.address}: ${opening ? "datou a abertura" : "trouxe do GL"} ${auditMoney(amount)} (${category}) · ${txn.date.toISOString().slice(0, 10)}`,
+    poolId: house.poolId, entity: "HOUSE", entityId: houseId, action: "CREATE",
+    summary: `${house.address}: somou do GL ${auditMoney(amount)} (${category}) · ${dateIso}`,
   });
 }
 
