@@ -61,6 +61,7 @@ export async function createPool(_prev: FormState, formData: FormData): Promise<
       performancePct: d.performancePct,
       ...performancePayeeData(d.performancePayee),
       performanceWaiveRemaining: d.performanceWaiveRemaining,
+      ownEntity: d.ownEntity,
       profitShareTiming: d.profitShareTiming,
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,
@@ -97,6 +98,7 @@ export async function updatePool(
       performancePct: d.performancePct,
       ...performancePayeeData(d.performancePayee),
       performanceWaiveRemaining: d.performanceWaiveRemaining,
+      ownEntity: d.ownEntity,
       profitShareTiming: d.profitShareTiming,
       fundingDeadline: d.fundingDeadline,
       startDate: d.startDate,
@@ -127,6 +129,19 @@ export async function linkPoolEntity(formData: FormData): Promise<void> {
   await prisma.investmentPool.update({
     where: { id: poolId },
     data: { companyId, noteLoanId },
+  });
+  revalidatePath(`/pools/${poolId}`);
+}
+
+// Atalho da lista de reservas (06/10): o pool NÃO tem LLC própria → sem provisão de encerramento
+export async function setPoolOwnEntity(formData: FormData): Promise<void> {
+  const poolId = String(formData.get("poolId") ?? "");
+  if (!poolId) return;
+  const ownEntity = formData.get("ownEntity") === "1";
+  await prisma.investmentPool.update({ where: { id: poolId }, data: { ownEntity } });
+  await logInvestmentAudit({
+    poolId, entity: "POOL", entityId: poolId, action: "UPDATE",
+    summary: ownEntity ? "Pool marcado como LLC própria (provisiona encerramento)" : "Pool marcado como dentro de outra empresa (sem provisão de encerramento)",
   });
   revalidatePath(`/pools/${poolId}`);
 }

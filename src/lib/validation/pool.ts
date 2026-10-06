@@ -38,6 +38,8 @@ export const poolSchema = z.object({
   ),
   performancePayee: z.preprocess(emptyToNull, z.string().nullable()),
   performanceWaiveRemaining: z.preprocess((v) => v === "1" || v === "on" || v === true, z.boolean()),
+  // veículo: "1" = LLC própria (default); "0" = dentro de outra empresa (sem encerramento)
+  ownEntity: z.preprocess((v) => v == null || v === "" || v === "1" || v === true, z.boolean()),
   profitShareTiming: z.enum(["PER_SALE", "PROJECT_COMPLETION"]).nullable().default(null).or(z.literal("").transform(() => null)),
   fundingDeadline: z.preprocess(emptyToNull, z.coerce.date().nullable()),
   startDate: z.preprocess(emptyToNull, z.coerce.date().nullable()),

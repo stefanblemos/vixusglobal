@@ -34,6 +34,7 @@ export default async function NewPoolPage() {
           performancePct: "",
           performancePayee: "",
           performanceWaiveRemaining: false,
+          ownEntity: true,
           profitShareTiming: "",
           fundingDeadline: "",
           startDate: "",

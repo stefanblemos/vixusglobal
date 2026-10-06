@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { addDistribution, deleteDistribution, reclassifyOverReturn, reclassifyOverReturnForMember, type FormState } from "@/lib/actions/pools";
+import { addDistribution, deleteDistribution, reclassifyOverReturn, reclassifyOverReturnForMember, setPoolOwnEntity, type FormState } from "@/lib/actions/pools";
 import { markLinePaid, unmarkLinePaid, type PayoutFormState } from "@/lib/actions/payout";
 import type { Distributable, PerformanceSummary } from "@/lib/pools/distributable";
 
@@ -239,6 +239,9 @@ function Builder({
       <input type="hidden" name="kind" value={kind} />
       <input type="hidden" name="perfMode" value={isProfit ? perfMode : "NONE"} />
       <input type="hidden" name="settleProvisioned" value={isProfit ? settle : "KEEP"} />
+      {/* usados só pelo atalho "este pool não tem LLC própria" (formAction próprio) */}
+      <input type="hidden" name="poolId" value={poolId} />
+      <input type="hidden" name="ownEntity" value="0" />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="inline-flex overflow-hidden rounded-lg border border-slate-300">
           {(["RETURN_OF_CAPITAL", "PROFIT"] as const).map((k) => (
@@ -286,7 +289,20 @@ function Builder({
             <summary className="cursor-pointer underline">ver reservas</summary>
             <ul className="mt-1 space-y-0.5">
               {gate.items.length === 0 && <li>nenhuma reserva — projeto encerrado</li>}
-              {gate.items.map((i) => <li key={i.key} className="flex justify-between gap-4"><span>{i.label}</span><b className="tabular-nums">{money(i.amount)}</b></li>)}
+              {gate.items.map((i) => (
+                <li key={i.key} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                  <span>{i.label}</span>
+                  <span className="flex items-center gap-2">
+                    <b className="tabular-nums">{money(i.amount)}</b>
+                    {/* pool sem LLC própria (ex.: PH-3 nos livros da VAI) → não há encerramento a provisionar */}
+                    {i.key === "windDown" && (
+                      <button type="submit" formAction={setPoolOwnEntity} formNoValidate className="rounded border border-amber-400 bg-white px-2 py-0.5 text-[10.5px] font-semibold text-amber-800 hover:bg-amber-100" title="Marca o pool como dentro de outra empresa: a reserva de encerramento some da projeção e do distribuível">
+                        este pool não tem LLC própria → remover
+                      </button>
+                    )}
+                  </span>
+                </li>
+              ))}
             </ul>
           </details>
         </div>

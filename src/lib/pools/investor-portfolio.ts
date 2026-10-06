@@ -260,7 +260,7 @@ export async function loadInvestorPortfolio(key: string): Promise<InvestorPortfo
       // por vir = drag total − o já incorrido (juros/fees futuros da Fase 2)
       financingComing: Math.max(0, risk.financingDrag - financingIncurred),
       provisionedExpenses: provisioned,
-      hasEntity: pool.companyId != null,
+      hasEntity: pool.companyId != null && pool.ownEntity !== false, // LLC própria → provisiona encerramento
       hasWindDownProvision: pool.expenses.some((e) => e.category === "DISSOLUTION"),
       raised,
       distributed,

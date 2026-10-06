@@ -142,6 +142,7 @@ export default async function EditPoolPage({ params }: { params: Promise<{ id: s
               ? `party:${pool.performancePayeePartyId}`
               : "",
           performanceWaiveRemaining: pool.performanceWaiveRemaining,
+          ownEntity: pool.ownEntity,
           profitShareTiming: pool.profitShareTiming ?? "",
           fundingDeadline: d(pool.fundingDeadline),
           startDate: d(pool.startDate),

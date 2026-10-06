@@ -481,7 +481,7 @@ export default async function PoolDetailPage({
     debt: poolDebt,
     financingComing: financingProjected,
     provisionedExpenses: Number(expensesProvisioned),
-    hasEntity: pool.companyId != null,
+    hasEntity: pool.companyId != null && pool.ownEntity !== false, // LLC própria → provisiona encerramento
     hasWindDownProvision: pool.expenses.some((e) => e.category === "DISSOLUTION"),
     raised: raisedN,
     distributed: Number(distributed),

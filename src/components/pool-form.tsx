@@ -19,6 +19,7 @@ export type PoolFormValues = {
   performancePct: string; // % do LUCRO do acordo (35) — guardado direto (06/10)
   performancePayee: string; // "company:<id>" | "party:<id>" | ""
   performanceWaiveRemaining: boolean;
+  ownEntity: boolean; // LLC própria (provisiona encerramento) × dentro de outra empresa
   profitShareTiming: string;
   fundingDeadline: string; // yyyy-mm-dd
   startDate: string;
@@ -138,6 +139,13 @@ export function PoolForm({
           <label className="mt-2 flex items-center gap-2 text-[11px] text-slate-500">
             <input type="checkbox" name="performanceWaiveRemaining" value="1" defaultChecked={values.performanceWaiveRemaining} />
             Waiver do que falta (projeção não desconta mais performance)
+          </label>
+          <label className="mt-1 block text-[11px] text-slate-500">
+            <span className="mb-0.5 block font-medium text-slate-600">Veículo</span>
+            <select name="ownEntity" defaultValue={values.ownEntity ? "1" : "0"} className={inputClass}>
+              <option value="1">LLC própria — provisiona encerramento (dissolução + 1065 final)</option>
+              <option value="0">Dentro de outra empresa — sem custo de encerramento</option>
+            </select>
           </label>
         </div>
         <div>

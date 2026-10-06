@@ -930,6 +930,9 @@ model InvestmentPool {
   performancePayeePartyId   String?
   performancePayeeParty     Party?   @relation("PoolPerfPayeeParty", fields: [performancePayeePartyId], references: [id], onDelete: SetNull)
   performanceWaiveRemaining Boolean  @default(false) // política p/ o que falta: não cobrar (projeção zera)
+  // Veículo (06/10): LLC própria (provisiona encerramento/dissolução) ou pool DENTRO de outra
+  // empresa (ex.: PH-3 nos livros da Vixus America) — sem custo de encerramento próprio
+  ownEntity                 Boolean  @default(true)
   profitShareTiming String? // PER_SALE | PROJECT_COMPLETION (timing da performance)
 
   fundingDeadline  DateTime? @db.Date // corte da janela de captação (compra dos lotes)

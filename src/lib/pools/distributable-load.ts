@@ -96,7 +96,7 @@ export async function loadDistributable(poolId: string, asOf?: Date): Promise<{
     debt,
     financingComing: Math.max(0, risk.financingDrag - financingIncurred),
     provisionedExpenses: provisioned,
-    hasEntity: pool.companyId != null,
+    hasEntity: pool.companyId != null && pool.ownEntity !== false, // LLC própria → provisiona encerramento
     hasWindDownProvision: pool.expenses.some((e) => e.category === "DISSOLUTION"),
     raised,
     distributed,
