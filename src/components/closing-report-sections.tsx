@@ -126,6 +126,25 @@ export function ClosingReportSections({
           : "Profit per home = sale − lot − construction − change orders − closing. Bank interest and fees belong to the project (section 2), not to the home."}
       </p>
 
+      {/* ponte casa → projeto (06/10): explica por que o lucro das casas ≠ lucro do projeto */}
+      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11.5px] text-slate-700">
+        <div className="mb-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">{t("rp.final.bridge.title")}</div>
+        <div className="flex justify-between"><span>{t("rp.final.bridge.op")}</span><b className="tabular-nums">{m(final.bridge.operatingProfit)}</b></div>
+        <div className="flex justify-between"><span>{t("rp.final.bridge.bank")}</span><b className="tabular-nums">−{m(final.bridge.bankCosts)}</b></div>
+        {Math.abs(final.bridge.uncategorized) > 0.5 && (
+          <div className="flex justify-between">
+            <span>
+              {t("rp.final.bridge.unc")}
+              <span className="ml-1 text-[9.5px] text-slate-400">{t("rp.final.bridge.unc.h", { cash: m(final.bridge.cashIntoHouses), rec: m(final.bridge.recordedCosts) })}</span>
+            </span>
+            <b className="tabular-nums">{final.bridge.uncategorized >= 0 ? "−" : "+"}{m(Math.abs(final.bridge.uncategorized))}</b>
+          </div>
+        )}
+        {c.poolIncome > 0.005 && <div className="flex justify-between"><span>{t("rp.final.bridge.income")}</span><b className="tabular-nums">{m(c.poolIncome)}</b></div>}
+        {c.poolExpenses + c.performancePaid > 0.005 && <div className="flex justify-between"><span>{t("rp.final.bridge.exp")}</span><b className="tabular-nums">−{m(c.poolExpenses + c.performancePaid)}</b></div>}
+        <div className="mt-1 flex justify-between border-t border-dashed border-slate-300 pt-1 font-extrabold text-slate-900"><span>{t("rp.final.c.profit")}</span><b className="tabular-nums">{m(c.profit)}</b></div>
+      </div>
+
       {/* 4 · sócios */}
       <h2 className={h2}>{t("rp.final.s4")}</h2>
       {c.cashLeft > Math.max(500, c.raised * 0.005) && (

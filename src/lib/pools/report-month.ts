@@ -125,6 +125,9 @@ export type FinalReportData = {
     cashLeft: number;
   };
   performance: { agreedPct: number | null; payee: string | null; decision: string | null };
+  // ponte casa → projeto (06/10): lucro operacional das casas − banco − custos nas casas fora de
+  // lote/obra (capital + draws que entraram além do registrado) + receitas − despesas − perf = lucro
+  bridge: { operatingProfit: number; bankCosts: number; uncategorized: number; cashIntoHouses: number; recordedCosts: number };
   investors: Array<{
     name: string;
     role: string;
@@ -424,9 +427,21 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
   const perfSum = (st: string) => perfRows.filter((e) => e.status === st).reduce((s, e) => s + n(e.amount), 0);
   const bankCosts = (pool.loans as unknown as Array<{ entries: Array<{ type: string; amount: unknown; pending: boolean }> }>)
     .flatMap((l) => l.entries)
-    .filter((e) => !e.pending && ["CLOSING_FEE", "RESERVE", "DRAW_FEE", "INTEREST", "RECONVEYANCE", "CREDIT"].includes(e.type))
-    .reduce((s, e) => s + n(e.amount), 0);
+    .filter((e) => !e.pending && ["CLOSING_FEE", "DRAW_FEE", "INTEREST", "RECONVEYANCE", "CREDIT"].includes(e.type))
+    .reduce((s, e) => s + n(e.amount), 0); // sem RESERVE: é retenção que pagou os juros (INTEREST_PAYMENT a anula), não custo
   const profit = round2(salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID"));
+  // ponte: o que entrou em dinheiro nas casas (capital + draws) × o que está registrado como lote/obra/CO
+  const draws = houses.reduce((s, h) => s + ((h.loanEntries as Array<{ amount: unknown }> | undefined) ?? []).reduce((x, e) => x + n(e.amount), 0), 0);
+  const recordedCosts = hRows.reduce((s, r) => s + (r.realCost ?? 0), 0) - houses.reduce((s, h) => s + n(h.closingCost), 0);
+  const operatingProfit = hRows.reduce((s, r) => s + (r.profitReal ?? 0), 0);
+  const bridge = {
+    operatingProfit: round2(operatingProfit),
+    bankCosts: round2(bankCosts),
+    cashIntoHouses: round2(equityToHouses + draws),
+    recordedCosts: round2(recordedCosts),
+    // plug: fecha a ponte ao centavo; ≈ (capital + draws) − custos registrados
+    uncategorized: round2(operatingProfit - bankCosts + poolIncome - poolExpenses - perfSum("PAID") - profit),
+  };
   const distributedCapital = dists.filter((d) => d.kind === "RETURN_OF_CAPITAL").reduce((s, d) => s + n(d.totalAmount), 0);
   const distributedProfit = dists.filter((d) => d.kind === "PROFIT").reduce((s, d) => s + n(d.totalAmount), 0);
   const cashLeft = round2(raised + salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID") - distributedCapital - distributedProfit) || 0; // || 0 evita "-$0.00"
@@ -492,6 +507,7 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
       payee: cur.perf.payeeName,
       decision: perfRows.map((e) => e.description).filter(Boolean).join(" · ") || null,
     },
+    bridge,
     investors,
     projectIrr: xirr(allFlows),
     profitPct: equityToHouses > 0 ? profit / equityToHouses : null,
