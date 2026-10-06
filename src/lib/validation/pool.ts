@@ -71,9 +71,8 @@ export const houseSchema = z.object({
   bankCashToClose: optMoney,
   bankBudgetReviewFee: optMoney,
   bankCharges: optMoney,
-  actualLotCost: optMoney,
-  actualBuildCost: optMoney,
-  ownCapital: optMoney,
+  // actualLotCost / actualBuildCost / ownCapital saíram do form (05/10): são cache do extrato
+  // da casa (HouseCashEntry) — ver lib/pools/house-cash
   soldPrice: optMoney,
   payoffAmount: optMoney,
   netReceived: optMoney,

@@ -136,7 +136,8 @@ export async function addHouse(
 
 // Atualização PARCIAL da casa (página em linha do tempo, 05/10): só os campos presentes no
 // form são gravados — cada etapa tem a sua form pequena. Capital próprio e custos reais são
-// cache do extrato (lib/pools/house-cash) e não entram por aqui; status é derivado.
+// cache do extrato (lib/pools/house-cash) e não estão mais no schema; status é derivado
+// (ignorado mesmo que algum form antigo o mande).
 const HOUSE_CACHE_FIELDS = ["ownCapital", "actualLotCost", "actualBuildCost", "status"] as const;
 
 export async function patchHouse(
