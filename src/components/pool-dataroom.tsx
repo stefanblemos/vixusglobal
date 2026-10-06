@@ -79,6 +79,7 @@ function GroupHead({ label }: { label: string }) {
 export function PoolDataRoom({
   poolId,
   lang,
+  poolClosed = false,
   dateLocale,
   currency,
   loanDocs,
@@ -88,6 +89,7 @@ export function PoolDataRoom({
 }: {
   poolId: string;
   lang: Lang;
+  poolClosed?: boolean; // todas vendidas + Closing/Closed → o botão vira "Relatório de encerramento"
   dateLocale: string;
   currency: string;
   loanDocs: LoanDocRow[];
@@ -259,13 +261,15 @@ export function PoolDataRoom({
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
             {t("dr.g.reports")}
           </span>
-          {/* report mensal (Fase 5): gerar/rever o mês corrente */}
-          <Link
-            href={`/pools/${poolId}/report/${new Date().toISOString().slice(0, 7)}`}
-            className="text-[10.5px] font-semibold text-[#1f3a5f] hover:underline"
-          >
-            {t("dr.report.new")}
-          </Link>
+          {/* report mensal (Fase 5) e, com o projeto encerrado, o relatório de encerramento (06/10) */}
+          <span className="flex items-center gap-2">
+            <Link
+              href={`/pools/${poolId}/report/${new Date().toISOString().slice(0, 7)}`}
+              className={`rounded-lg border px-3 py-1 text-[11px] font-semibold ${poolClosed ? "border-slate-300 text-slate-600 hover:bg-slate-50" : "border-[#1f3a5f] bg-[#1f3a5f] text-white hover:bg-[#16304f]"}`}
+            >
+              {poolClosed ? (lang === "pt" ? "📄 Relatório de encerramento" : "📄 Closing report") : t("dr.report.new")}
+            </Link>
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">

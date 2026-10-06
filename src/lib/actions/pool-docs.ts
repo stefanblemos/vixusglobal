@@ -126,7 +126,7 @@ export async function publishMonthlyReport(
   });
   const doc = {
     docType: "STATEMENT",
-    fileName: `Monthly Report ${data.poolCode} ${month}`,
+    fileName: data.final ? `Closing Report ${data.poolCode} ${month}` : `Monthly Report ${data.poolCode} ${month}`,
     reportMonth: month,
     data: JSON.parse(JSON.stringify(data)),
     portalVisible: true,
@@ -138,7 +138,7 @@ export async function publishMonthlyReport(
     entity: "REPORT",
     entityId: month,
     action: "PUBLISH",
-    summary: `${existing ? "Republicou" : "Publicou"} report mensal ${month}${preflight.blockers > 0 ? ` (com ${preflight.blockers} pendência forçada)` : ""}`,
+    summary: `${existing ? "Republicou" : "Publicou"} ${data.final ? "relatório de encerramento" : "report mensal"} ${month}${preflight.blockers > 0 ? ` (com ${preflight.blockers} pendência forçada)` : ""}`,
   });
   // #69 — avisa os sócios do relatório novo (dormente sem RESEND_API_KEY).
   {

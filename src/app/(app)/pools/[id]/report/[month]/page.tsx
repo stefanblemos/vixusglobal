@@ -9,6 +9,7 @@ import { INV_LANG_COOKIE, langFromCookie, mesAnoLang, tOf } from "@/lib/pools/i1
 import { LangToggle } from "@/components/lang-toggle";
 import { UnitValueChart } from "@/components/unit-value-chart";
 import { PrintButton, PublishReportForm } from "@/components/report-toolbar";
+import { ClosingReportSections } from "@/components/closing-report-sections";
 
 export const dynamic = "force-dynamic";
 
@@ -68,10 +69,22 @@ export default async function MonthlyReportPage({
   };
   const monthDate = new Date(`${month}-01T00:00:00Z`);
   const k = data.kpis;
+  // relatório de ENCERRAMENTO (06/10): todas vendidas + pool em Closing/Closed → KPIs e seções realizadas
+  const fin = data.final ?? null;
+  const title = fin ? t("rp.final.title") : t("rp.title");
   const navDelta =
     k.navPerUnit != null && k.navPerUnitPrev != null ? k.navPerUnit - k.navPerUnitPrev : null;
 
-  const kpis: Array<{ label: string; value: string; hint: string; hero: boolean }> = [
+  const kpis: Array<{ label: string; value: string; hint: string; hero: boolean }> = fin
+    ? [
+        { label: t("rp.final.k.result"), hero: true, value: `${fin.profitPct != null && fin.profitPct >= 0 ? "+" : ""}${fin.profitPct != null ? (fin.profitPct * 100).toFixed(2) + "%" : "—"}`, hint: `${compact(fin.cascade.profit)} · ${t("rp.final.k.result.h")}` },
+        { label: t("rp.final.k.irr"), hero: true, value: fin.projectIrr != null ? `${(fin.projectIrr * 100).toFixed(1)}%` : "—", hint: t("rp.final.k.irr.h") },
+        { label: t("rp.final.k.capital"), hero: false, value: fin.cascade.raised > 0 ? `${Math.round((fin.cascade.distributedCapital / fin.cascade.raised) * 100)}%` : "—", hint: `${compact(fin.cascade.distributedCapital)} / ${compact(fin.cascade.raised)}` },
+        { label: t("rp.final.k.houses"), hero: false, value: `${fin.houses.length}/${fin.houses.length}`, hint: t("rp.final.k.houses.h") },
+        { label: t("rp.final.k.duration"), hero: false, value: `${fin.months} ${lang === "pt" ? "meses" : "mo"}`, hint: `${fmtD(fin.startDate)} → ${fmtD(fin.closedAt)}` },
+        { label: t("rp.final.c.distProfit"), hero: false, value: compact(fin.cascade.distributedProfit), hint: `${t("rp.final.c.cash")} ${compact(fin.cascade.cashLeft)}` },
+      ]
+    : [
     {
       label: "NAV / unit",
       hero: true,
@@ -172,7 +185,7 @@ export default async function MonthlyReportPage({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/vixus-logo.png" alt="Vixus Global" className="h-6 w-auto" />
                   <span className="text-[9.5px] font-bold tracking-wide text-slate-600">
-                    {t("rp.title")} — {data.poolName} · {mesAnoLang(monthDate, lang)}
+                    {title} — {data.poolName} · {mesAnoLang(monthDate, lang)}
                   </span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src="/4u-homes-horizontal-orange.png" alt="4U Custom Homes" className="h-5 w-auto" />
@@ -194,7 +207,8 @@ export default async function MonthlyReportPage({
           </div>
           <div className="text-right">
             <div className="text-[15px] font-extrabold text-slate-800">
-              {t("rp.title")} — {data.poolName}
+              {title} — {data.poolName}
+              {fin && <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 align-middle text-[10px] font-bold text-emerald-700">{t("rp.final.badge")}</span>}
             </div>
             <div className="text-[11px] text-slate-400">
               {mesAnoLang(monthDate, lang)} · {t("rp.generated")} {fmtD(data.generatedAt)} ·{" "}
@@ -223,7 +237,18 @@ export default async function MonthlyReportPage({
         </div>
 
         {/* 1 · resumo */}
-        <h2 className={h2}>{t("rp.s1")}</h2>
+        <h2 className={h2}>{fin ? t("rp.final.s1") : t("rp.s1")}</h2>
+        {fin && (
+          <p className="mb-1 text-[11px] text-slate-500">
+            {[
+              fin.startDate && `${lang === "pt" ? "Início" : "Start"} ${fmtD(fin.startDate)}`,
+              fin.firstLotDate && `${lang === "pt" ? "primeiro lote" : "first lot"} ${fmtD(fin.firstLotDate)}`,
+              fin.lastSaleDate && `${lang === "pt" ? "última venda" : "last sale"} ${fmtD(fin.lastSaleDate)}`,
+              `${lang === "pt" ? "encerramento" : "closed"} ${fmtD(fin.closedAt)}`,
+              `${fin.months} ${lang === "pt" ? "meses" : "months"}`,
+            ].filter(Boolean).join(" · ")}
+          </p>
+        )}
         <p className="text-[13px] leading-relaxed text-slate-700">{data.narrative}</p>
         <div className="mt-2 space-y-0.5">
           {data.events.slice(0, 10).map((e, i) => (
@@ -235,6 +260,8 @@ export default async function MonthlyReportPage({
           ))}
         </div>
 
+        {fin && <ClosingReportSections final={fin} currency={cur} lang={lang} fmtD={fmtD} />}
+        {!fin && (<>
         {/* 2 · marcação */}
         <h2 className={h2}>{t("rp.s2")}</h2>
         <div className="grid gap-5 md:grid-cols-2">
@@ -459,6 +486,7 @@ export default async function MonthlyReportPage({
           </div>
         </div>
 
+        </>)}
         {/* glossário (pedido 19/07): página final própria no PDF (quebra antes) */}
         <h2 className={`${h2} print:break-before-page`}>{t("rp.glossary")}</h2>
         <div className="grid gap-x-6 gap-y-1.5 md:grid-cols-2">
@@ -484,9 +512,9 @@ export default async function MonthlyReportPage({
 
         <div className="mt-6 flex justify-between border-t-2 border-slate-200 pt-2 text-[9.5px] text-slate-400">
           <span>
-            Vixus Global · 4U Custom Homes — {t("rp.title")} · {data.poolName} · {mesAnoLang(monthDate, lang)}
+            Vixus Global · 4U Custom Homes — {title} · {data.poolName} · {mesAnoLang(monthDate, lang)}
           </span>
-          <span>{t("rp.footer.disclaimer")}</span>
+          <span>{fin ? t("rp.final.footer.disclaimer") : t("rp.footer.disclaimer")}</span>
         </div>
               </td>
             </tr>

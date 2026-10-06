@@ -64,6 +64,7 @@ export function PoolLaunchMenu({
           {item(`/pools/${poolId}?tab=investors&sub=ledger`, "🧾", "Despesa ou receita do pool", "LLC, contabilidade, IR/K-1 · crédito do lender, reembolso")}
           {item(`/pools/${poolId}?tab=investors&sub=distributions`, "💸", "Distribuí aos sócios", "prévia do rateio pro rata antes de confirmar")}
           {houseSubs("↩", "Devolvi excedente de uma casa ao caixa", "banco pagou mais que a obra", (id) => `/pools/${poolId}/houses/${id}#extrato`)}
+          {item(`/pools/${poolId}/report/${new Date().toISOString().slice(0, 7)}`, "📄", "Gerar report (mensal ou de encerramento)", "prévia → publicar no Data room")}
         </div>
       )}
     </div>

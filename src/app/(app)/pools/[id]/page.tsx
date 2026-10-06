@@ -1529,6 +1529,7 @@ export default async function PoolDetailPage({
             <PoolDataRoom
               poolId={pool.id}
               lang={lang}
+              poolClosed={["CLOSING", "CLOSED"].includes(pool.status) && pool.houses.every((h) => h.saleDate != null)}
               dateLocale={dateLocale}
               currency={pool.currency}
               loanDocs={pool.loans.flatMap((l) =>

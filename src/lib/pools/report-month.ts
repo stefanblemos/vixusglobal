@@ -10,7 +10,7 @@
 // glue interno: o pool com includes do Prisma passa por uma visão as-of mutada — tipagem
 // estrutural fina aqui só atrapalha; os módulos consumidores (risk/nav/endNet) são tipados.
 import { prisma } from "@/lib/db";
-import { computeNav, liveIrr, type NavHouse } from "./nav";
+import { computeNav, liveIrr, xirr, type NavHouse } from "./nav";
 import { buildRisk } from "./risk";
 import { computeEndNet } from "./investor-value";
 import { computeDistributable, performanceSummary } from "./distributable";
@@ -88,6 +88,56 @@ export type ReportMonthData = {
     perf?: { agreedPct: number | null; paid: number; provisioned: number; waived: number; waiveRemaining: boolean; payee: string | null };
     safeDistributable?: number;
   };
+  // Relatório de ENCERRAMENTO (06/10): derivado do mensal — presente quando todas as casas
+  // estão vendidas e o pool está em Closing/Closed. Substitui as seções de projeção.
+  final?: FinalReportData;
+};
+
+export type FinalReportData = {
+  startDate: string | null;
+  firstLotDate: string | null;
+  lastSaleDate: string | null;
+  closedAt: string; // última distribuição (ou o corte)
+  months: number;
+  houses: Array<{
+    address: string;
+    saleDate: string | null;
+    plannedSale: number | null;
+    soldPrice: number | null;
+    plannedCost: number | null; // lote + obra + closing (pro forma)
+    realCost: number | null; // lote + obra + change orders + closing real
+    profitPlanned: number | null;
+    profitReal: number | null;
+  }>;
+  cascade: {
+    raised: number;
+    equityToHouses: number;
+    salesNet: number;
+    bankCosts: number; // juros + fees + reserve − créditos (informativo: já dentro dos payoffs)
+    poolIncome: number;
+    poolExpenses: number;
+    profit: number; // recebido + receitas − capital − despesas
+    performancePaid: number;
+    performanceWaived: number;
+    performanceProvisioned: number;
+    distributedCapital: number;
+    distributedProfit: number;
+    cashLeft: number;
+  };
+  performance: { agreedPct: number | null; payee: string | null; decision: string | null };
+  investors: Array<{
+    name: string;
+    role: string;
+    pct: number;
+    invested: number;
+    returnedCapital: number;
+    profit: number;
+    total: number;
+    roi: number | null;
+    irr: number | null;
+  }>;
+  projectIrr: number | null; // XIRR do conjunto dos sócios (fluxos reais)
+  profitPct: number | null; // lucro ÷ capital
 };
 
 const DAY_MS = 86_400_000;
@@ -291,11 +341,14 @@ async function loadPool(poolId: string) {
           catalogModel: { select: { name: true, sqft: true } },
           catalogLocation: { select: { name: true } },
           loanEntries: { where: { type: "DRAW", pending: false }, select: { amount: true, date: true } },
+          changeOrders: { select: { amount: true } }, // encerramento: custo real da casa
         },
       },
       members: { include: { entries: true, party: true, company: true } },
       distributions: { orderBy: { date: "asc" }, include: { lines: true } },
       expenses: true,
+      performancePayeeCompany: { select: { legalName: true } },
+      performancePayeeParty: { select: { name: true } },
       loans: {
         orderBy: { createdAt: "asc" },
         include: {
@@ -320,6 +373,131 @@ const MILESTONES: Array<[string, string, string]> = [
   ["Venda", "sale", "saleDate"],
 ];
 
+// Relatório de encerramento: só quando todas as casas estão vendidas e o pool já saiu de Active.
+// Tudo REALIZADO — nada de projeção. Reusa o corte as-of do mês.
+function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportData | undefined {
+  const pool = cur.pool;
+  const houses = pool.houses as Array<Record<string, unknown>>;
+  if (houses.length === 0) return undefined;
+  if (!houses.every((h) => h.saleDate != null)) return undefined;
+  if (!["CLOSING", "CLOSED"].includes(pool.status as string)) return undefined;
+
+  const isoD = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : null);
+  const saleDates = houses.map((h) => h.saleDate as Date).filter(Boolean).sort((a, b) => a.getTime() - b.getTime());
+  const lotDates = houses
+    .map((h) => (h.lotPaidDate ?? h.lotContractDate ?? h.buildStartDate) as Date | null)
+    .filter((d): d is Date => d instanceof Date)
+    .sort((a, b) => a.getTime() - b.getTime());
+  const dists = pool.distributions as Array<{ date: Date; kind: string; totalAmount: unknown; lines: Array<{ memberId: string; amount: unknown }> }>;
+  const closedAt = dists.length ? dists[dists.length - 1].date : asOf;
+  const start = (pool.startDate as Date | null) ?? lotDates[0] ?? saleDates[0];
+  const months = start ? Math.max(1, Math.round((closedAt.getTime() - start.getTime()) / (30.44 * DAY_MS))) : 0;
+
+  const hRows = houses.map((h) => {
+    const co = ((h.changeOrders as Array<{ amount: unknown }> | undefined) ?? []).reduce((s, c) => s + n(c.amount), 0);
+    const plannedCost = h.plannedLotCost != null || h.plannedBuildCost != null ? n(h.plannedLotCost) + n(h.plannedBuildCost) + n(h.plannedClosingCost) : null;
+    const hasReal = h.actualLotCost != null || h.actualBuildCost != null;
+    const realCost = hasReal ? n(h.actualLotCost) + n(h.actualBuildCost) + co + n(h.closingCost) : null;
+    const plannedSale = h.plannedSalePrice != null ? n(h.plannedSalePrice) : null;
+    const soldPrice = h.soldPrice != null ? n(h.soldPrice) : null;
+    return {
+      address: (h.address as string).split(",")[0],
+      saleDate: isoD(h.saleDate),
+      plannedSale,
+      soldPrice,
+      plannedCost,
+      realCost,
+      profitPlanned: plannedSale != null && plannedCost != null ? round2(plannedSale - plannedCost) : null,
+      profitReal: soldPrice != null && realCost != null ? round2(soldPrice - realCost) : null,
+    };
+  });
+
+  const members = pool.members as Array<{ id: string; role: string; party: { name: string } | null; company: { legalName: string } | null; entries: Array<{ kind: string; date: Date; amount: unknown; units: unknown }> }>;
+  const raised = cur.raised;
+  const equityToHouses = houses.reduce((s, h) => s + n(h.ownCapital), 0);
+  const salesNet = houses.reduce((s, h) => s + (h.netReceived != null ? n(h.netReceived) : n(h.soldPrice) - n(h.payoffAmount) - n(h.closingCost)), 0);
+  const expenses = pool.expenses as Array<{ status: string; category: string; amount: unknown; description: string }>;
+  const paidExp = expenses.filter((e) => e.status === "PAID" && e.category !== "PERFORMANCE");
+  const poolIncome = paidExp.filter((e) => n(e.amount) < 0).reduce((s, e) => s - n(e.amount), 0);
+  const poolExpenses = paidExp.filter((e) => n(e.amount) > 0).reduce((s, e) => s + n(e.amount), 0);
+  const perfRows = expenses.filter((e) => e.category === "PERFORMANCE");
+  const perfSum = (st: string) => perfRows.filter((e) => e.status === st).reduce((s, e) => s + n(e.amount), 0);
+  const bankCosts = (pool.loans as unknown as Array<{ entries: Array<{ type: string; amount: unknown; pending: boolean }> }>)
+    .flatMap((l) => l.entries)
+    .filter((e) => !e.pending && ["CLOSING_FEE", "RESERVE", "DRAW_FEE", "INTEREST", "RECONVEYANCE", "CREDIT"].includes(e.type))
+    .reduce((s, e) => s + n(e.amount), 0);
+  const profit = round2(salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID"));
+  const distributedCapital = dists.filter((d) => d.kind === "RETURN_OF_CAPITAL").reduce((s, d) => s + n(d.totalAmount), 0);
+  const distributedProfit = dists.filter((d) => d.kind === "PROFIT").reduce((s, d) => s + n(d.totalAmount), 0);
+  const cashLeft = round2(raised + salesNet + poolIncome - equityToHouses - poolExpenses - perfSum("PAID") - distributedCapital - distributedProfit);
+
+  const totalUnits = members.reduce((s, m) => s + m.entries.reduce((x, e) => x + (e.kind === "TRANSFER_OUT" ? -1 : 1) * n(e.units), 0), 0);
+  const allFlows: Array<{ date: Date; amount: number }> = [];
+  const investors = members
+    .map((m) => {
+      const units = m.entries.reduce((x, e) => x + (e.kind === "TRANSFER_OUT" ? -1 : 1) * n(e.units), 0);
+      const invested = m.entries.reduce((x, e) => x + (e.kind === "TRANSFER_OUT" ? -1 : 1) * n(e.amount), 0);
+      const flows: Array<{ date: Date; amount: number }> = m.entries
+        .filter((e) => e.kind !== "TRANSFER_OUT")
+        .map((e) => ({ date: e.date, amount: -n(e.amount) }));
+      let returnedCapital = 0, profitRecv = 0;
+      for (const d of dists)
+        for (const l of d.lines)
+          if (l.memberId === m.id) {
+            flows.push({ date: d.date, amount: n(l.amount) });
+            if (d.kind === "RETURN_OF_CAPITAL") returnedCapital += n(l.amount);
+            else profitRecv += n(l.amount);
+          }
+      allFlows.push(...flows);
+      const total = returnedCapital + profitRecv;
+      return {
+        name: m.company?.legalName ?? m.party?.name ?? "—",
+        role: m.role,
+        pct: totalUnits > 0 ? units / totalUnits : 0,
+        invested: round2(invested),
+        returnedCapital: round2(returnedCapital),
+        profit: round2(profitRecv),
+        total: round2(total),
+        roi: invested > 0 ? round2(total / invested - 1) : null,
+        irr: xirr(flows),
+      };
+    })
+    .filter((r) => r.invested > 0)
+    .sort((a, b) => (a.role !== b.role ? (a.role === "MANAGER" ? -1 : 1) : b.invested - a.invested));
+
+  return {
+    startDate: isoD(start),
+    firstLotDate: isoD(lotDates[0] ?? null),
+    lastSaleDate: isoD(saleDates[saleDates.length - 1] ?? null),
+    closedAt: closedAt.toISOString().slice(0, 10),
+    months,
+    houses: hRows,
+    cascade: {
+      raised: round2(raised),
+      equityToHouses: round2(equityToHouses),
+      salesNet: round2(salesNet),
+      bankCosts: round2(bankCosts),
+      poolIncome: round2(poolIncome),
+      poolExpenses: round2(poolExpenses),
+      profit,
+      performancePaid: round2(perfSum("PAID")),
+      performanceWaived: round2(perfSum("WAIVED")),
+      performanceProvisioned: round2(perfSum("PROVISIONED")),
+      distributedCapital: round2(distributedCapital),
+      distributedProfit: round2(distributedProfit),
+      cashLeft,
+    },
+    performance: {
+      agreedPct: cur.perf.agreedPct,
+      payee: cur.perf.payeeName,
+      decision: perfRows.map((e) => e.description).filter(Boolean).join(" · ") || null,
+    },
+    investors,
+    projectIrr: xirr(allFlows),
+    profitPct: equityToHouses > 0 ? round2(profit / equityToHouses) : null,
+  };
+}
+
 export async function buildMonthlyReport(
   poolId: string,
   month: string, // "AAAA-MM"
@@ -339,6 +517,7 @@ export async function buildMonthlyReport(
   ).map((r) => ({ key: r.key, name: r.name, detail: r.detail, weightPct: Number(r.weightPct), sortOrder: r.sortOrder }));
   const cur = metricsAt(poolRaw, asOf, mCatalog);
   const prev = metricsAt(poolRaw, new Date(Date.UTC(y, m - 1, 0, 23, 59, 59)), mCatalog);
+  const finalData = buildFinal(cur, asOf);
 
   // eventos do mês (feed da Fase 0 na visão as-of)
   const houseAddrById = new Map(cur.pool.houses.map((h) => [(h as { id: string }).id, (h as { address: string }).address]));
@@ -477,6 +656,7 @@ export async function buildMonthlyReport(
       nextDist,
     },
     narrative,
+    final: finalData,
     events: monthEvents.map((e) => ({ date: iso(e.date), icon: e.icon, text: e.text })),
     cascade: cur.endNet.lines,
     chart: {
