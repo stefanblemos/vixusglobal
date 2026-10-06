@@ -1097,6 +1097,21 @@ export async function reclassifyOverReturn(formData: FormData): Promise<void> {
   revalidatePath(`/pools/${poolId}`);
 }
 
+// Mesmo acerto, a partir do SÓCIO (faixa na aba 1): pega a devolução mais recente dele e
+// reclassifica o excedente acumulado sobre o principal.
+export async function reclassifyOverReturnForMember(memberId: string, _formData: FormData): Promise<void> {
+  if (!memberId) return;
+  const last = await prisma.poolDistributionLine.findFirst({
+    where: { memberId, distribution: { kind: "RETURN_OF_CAPITAL" } },
+    orderBy: [{ distribution: { date: "desc" } }, { distribution: { createdAt: "desc" } }],
+    select: { id: true },
+  });
+  if (!last) return;
+  const fd = new FormData();
+  fd.set("lineId", last.id);
+  await reclassifyOverReturn(fd);
+}
+
 export async function deleteDistribution(formData: FormData): Promise<void> {
   const id = String(formData.get("distributionId") ?? "");
   if (!id) return;

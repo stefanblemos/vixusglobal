@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { addDistribution, deleteDistribution, reclassifyOverReturn, type FormState } from "@/lib/actions/pools";
+import { addDistribution, deleteDistribution, reclassifyOverReturn, reclassifyOverReturnForMember, type FormState } from "@/lib/actions/pools";
 import { markLinePaid, unmarkLinePaid, type PayoutFormState } from "@/lib/actions/payout";
 import type { Distributable, PerformanceSummary } from "@/lib/pools/distributable";
 
@@ -137,7 +137,8 @@ export function PoolDistributionsTab({
         </div>
 
         {open && (
-          <Builder poolId={poolId} houses={houses} members={members} perf={perf} gate={gate} profitRealized={profitRealized} rows={rows} />
+          // key pelos dados: depois de reclassificar/confirmar, o builder remonta com os totais novos
+          <Builder key={`${rows.length}:${totals.all}`} poolId={poolId} houses={houses} members={members} perf={perf} gate={gate} profitRealized={profitRealized} rows={rows} />
         )}
       </div>
 
@@ -359,6 +360,25 @@ function Builder({
             <div className="flex justify-between"><span>− Performance ({perfMode === "WAIVE" ? `waiver · acordo ${perf.agreedPct ?? "—"}%` : perfMode === "NONE" ? "não aplicada" : `${pct}%`})</span><b className="tabular-nums text-red-700">{perfAmount ? "−" + f2(perfAmount) : "0.00"}</b></div>
             <div className="flex justify-between font-bold"><span>= Lucro aos sócios (pro rata às units)</span><b className="tabular-nums">{f2(net)}</b></div>
           </div>
+        </div>
+      )}
+
+      {/* exceção histórica: sócio com devolução acima do principal → acerto direto daqui */}
+      {!isProfit && members.some((m) => m.invested - m.receivedCapital < -0.01) && (
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+          {members.filter((m) => m.invested - m.receivedCapital < -0.01).map((m) => (
+            // dentro do <form> do builder: sem form aninhado — o botão aponta a sua própria action
+            // (formAction) e manda o memberId como submitter
+            <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-0.5">
+              <span>
+                <b>{m.name}</b> recebeu <b>{money(m.receivedCapital - m.invested)}</b> acima do principal — esse excedente é lucro antecipado.
+              </span>
+              <button type="submit" formAction={reclassifyOverReturnForMember.bind(null, m.id)} formNoValidate className="rounded border border-red-300 bg-white px-2.5 py-1 font-semibold text-red-700 hover:bg-red-100">
+                reclassificar como adiantamento de lucro
+              </button>
+            </div>
+          ))}
+          <div className="mt-1 text-[10.5px] text-red-700/80">Divide a devolução mais recente dele: capital até o principal + distribuição de lucro do excedente na mesma data. O caixa não muda.</div>
         </div>
       )}
 
