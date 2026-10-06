@@ -11,10 +11,14 @@ import { computeDistributable, performanceSummary, type Distributable, type Perf
  */
 const n = (v: unknown) => (v == null ? 0 : Number(v));
 
-export async function loadDistributable(poolId: string): Promise<{
+// asOf (06/10): o teste é feito na DATA da distribuição — caixa com os fatos até lá (aportes,
+// vendas com closing, despesas pagas, distribuições anteriores). Reservas são as de hoje
+// (conservador). Sem asOf = hoje.
+export async function loadDistributable(poolId: string, asOf?: Date): Promise<{
   distributable: Distributable;
   perf: PerformanceSummary;
   cash: number;
+  cashAsOf: number;
   profitRealized: number; // recebido − capital nas casas − despesas pagas (base do lucro, pool fechado)
 }> {
   const pool = await prisma.investmentPool.findUniqueOrThrow({
@@ -56,6 +60,15 @@ export async function loadDistributable(poolId: string): Promise<{
   const provisioned = pool.expenses.filter((e) => e.status === "PROVISIONED").reduce((s, e) => s + n(e.amount), 0);
   const distributed = pool.distributions.reduce((s, d) => s + n(d.totalAmount), 0);
   const available = raised + received - spent - expensesPaid - distributed;
+  // caixa NA DATA (capital nas casas conta inteiro — aberturas não têm data confiável)
+  const cut = asOf ?? today;
+  const le = (d: Date) => d.getTime() <= cut.getTime();
+  const cashAsOf =
+    pool.members.flatMap((m) => m.entries).filter((e) => le(e.date)).reduce((s, e) => s + (e.kind === "TRANSFER_OUT" ? -1 : 1) * n(e.amount), 0) +
+    pool.houses.filter((h) => h.saleDate != null && le(h.saleDate)).reduce((s, h) => s + (h.netReceived != null ? n(h.netReceived) : n(h.soldPrice) - n(h.payoffAmount) - n(h.closingCost)), 0) -
+    spent -
+    pool.expenses.filter((e) => e.status === "PAID" && le(e.date)).reduce((s, e) => s + n(e.amount), 0) -
+    pool.distributions.filter((d) => le(d.date)).reduce((s, d) => s + n(d.totalAmount), 0);
 
   const risk = buildRisk(pool as never, today);
   const simKpis = (pool.simulations[0]?.result as { kpis?: Record<string, number | null> } | null)?.kpis ?? null;
@@ -97,7 +110,7 @@ export async function loadDistributable(poolId: string): Promise<{
   });
   const unsold = pool.houses.filter((h) => h.saleDate == null);
   const distributable = computeDistributable({
-    cash: available,
+    cash: asOf ? cashAsOf : available,
     endNetLines: endNet.lines,
     unsoldPlannedSales: unsold.reduce((s, h) => s + n(h.plannedSalePrice), 0),
     unsoldCount: unsold.length,
@@ -107,6 +120,7 @@ export async function loadDistributable(poolId: string): Promise<{
     distributable,
     perf,
     cash: Math.round(available * 100) / 100,
+    cashAsOf: Math.round(cashAsOf * 100) / 100,
     profitRealized: Math.round((received - spent - expensesPaid) * 100) / 100,
   };
 }

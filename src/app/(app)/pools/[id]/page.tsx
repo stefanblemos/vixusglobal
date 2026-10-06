@@ -300,6 +300,10 @@ export default async function PoolDetailPage({
       name: r.name,
       role: r.role,
       invested: Number(r.invested),
+      // principal já devolvido (06/10): saldo = investido − devolvido guia a próxima devolução
+      returnedCapital: pool.distributions
+        .filter((d) => d.kind === "RETURN_OF_CAPITAL")
+        .reduce((s2, d) => s2 + d.lines.filter((l) => l.memberId === r.memberId).reduce((x, l) => x + Number(l.amount), 0), 0),
       units: Number(r.units),
       pct: Number(r.pct),
       exited,
@@ -656,10 +660,18 @@ export default async function PoolDetailPage({
     })(),
     lines: d.lines.map((l) => {
       const mp = payoutMap[l.memberId];
+      // devolução acima do principal (06/10): devolvido acumulado até ESTA distribuição −
+      // investido, limitado à linha → botão "reclassificar como adiantamento de lucro"
+      const investedM = Number(table.rows.find((r) => r.memberId === l.memberId)?.invested ?? 0);
+      const cumRoc = pool.distributions
+        .filter((x) => x.kind === "RETURN_OF_CAPITAL" && (x.date < d.date || (x.date.getTime() === d.date.getTime() && x.createdAt <= d.createdAt)))
+        .reduce((s2, x) => s2 + x.lines.filter((y) => y.memberId === l.memberId).reduce((z, y) => z + Number(y.amount), 0), 0);
+      const overPrincipal = d.kind === "RETURN_OF_CAPITAL" ? Math.max(0, Math.min(Number(l.amount), Math.round((cumRoc - investedM) * 100) / 100)) : 0;
       return {
         lineId: l.id,
         name: memberById.get(l.memberId) ?? "",
         amount: Number(l.amount),
+        overPrincipal,
         payoutStatus: mp?.status ?? ("NONE" as const),
         mask: mp?.mask ?? "—",
         bankName: mp?.bankName ?? "",

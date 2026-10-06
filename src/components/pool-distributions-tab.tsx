@@ -2,7 +2,7 @@
 
 import { useActionState, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { addDistribution, deleteDistribution, type FormState } from "@/lib/actions/pools";
+import { addDistribution, deleteDistribution, reclassifyOverReturn, type FormState } from "@/lib/actions/pools";
 import { markLinePaid, unmarkLinePaid, type PayoutFormState } from "@/lib/actions/payout";
 import type { Distributable, PerformanceSummary } from "@/lib/pools/distributable";
 
@@ -28,6 +28,7 @@ export type DistLine = {
   lineId: string;
   name: string;
   amount: number;
+  overPrincipal?: number; // devolução acima do principal nesta linha (exceção histórica)
   payoutStatus: PayoutStatus;
   mask: string; // ••1234 | —
   bankName: string;
@@ -57,16 +58,26 @@ export type DistMember = {
   receivedProfit: number;
 };
 
-// espelha o rateio do server: pro rata por units, 2 casas, resíduo na maior posição
-function split(total: number, members: DistMember[]): number[] {
+// espelha o rateio do server (2 casas, resíduo na maior linha):
+// - capital: pro rata ao SALDO de principal (quem já está quitado não recebe)
+// - lucro: alvo acumulado pro rata às units − lucro já recebido (adiantamentos descontam)
+const saldoOf = (m: DistMember) => Math.max(0, r2(m.invested - m.receivedCapital));
+function splitCapital(total: number, members: DistMember[]): number[] {
+  const saldos = members.map(saldoOf);
+  const tot = saldos.reduce((s, v) => s + v, 0);
+  if (tot <= 0 || total <= 0) return members.map(() => 0);
+  const amounts = saldos.map((s) => r2((total * s) / tot));
+  const residue = r2(total - amounts.reduce((s, v) => s + v, 0));
+  if (residue !== 0) { const i = amounts.indexOf(Math.max(...amounts)); amounts[i] = r2(amounts[i] + residue); }
+  return amounts;
+}
+function splitProfit(total: number, members: DistMember[]): number[] {
   const totalUnits = members.reduce((s, m) => s + m.units, 0);
   if (totalUnits <= 0 || total <= 0) return members.map(() => 0);
-  const amounts = members.map((m) => r2((total * m.units) / totalUnits));
+  const before = members.reduce((s, m) => s + m.receivedProfit, 0);
+  const amounts = members.map((m) => Math.max(0, r2(((before + total) * m.units) / totalUnits - m.receivedProfit)));
   const residue = r2(total - amounts.reduce((s, v) => s + v, 0));
-  if (residue !== 0 && amounts.length) {
-    const i = amounts.indexOf(Math.max(...amounts));
-    amounts[i] = r2(amounts[i] + residue);
-  }
+  if (residue !== 0) { const i = amounts.indexOf(Math.max(...amounts)); amounts[i] = r2(amounts[i] + residue); }
   return amounts;
 }
 
@@ -175,6 +186,7 @@ function Builder({
   const [kind, setKind] = useState<"RETURN_OF_CAPITAL" | "PROFIT">("RETURN_OF_CAPITAL");
   const capitalLeft = r2(members.reduce((s, m) => s + m.invested - m.receivedCapital, 0));
   const profitDone = rows.filter((r) => r.kind === "PROFIT").reduce((s, r) => s + r.total, 0);
+  // total padrão da devolução = menor entre o principal ainda não devolvido e o distribuível seguro
   const [total, setTotal] = useState(f2(Math.max(0, Math.min(capitalLeft, gate.safe))));
   const [custom, setCustom] = useState<Record<string, number | null>>({});
   const [perfMode, setPerfMode] = useState<"PROVISION" | "PAY" | "WAIVE" | "NONE">(perf.agreedPct != null ? (gate.profitAllowed ? "PAY" : "PROVISION") : "NONE");
@@ -189,11 +201,14 @@ function Builder({
   const perfAmount = isProfit && (perfMode === "PROVISION" || perfMode === "PAY") ? r2((totalN * pct) / 100) : 0;
   const waivedAmount = isProfit && perfMode === "WAIVE" ? r2((totalN * pct) / 100) : 0;
   const net = r2(totalN - perfAmount);
-  const pro = split(net, members);
+  const pro = isProfit ? splitProfit(net, members) : splitCapital(net, members);
   const rec = members.map((m, i) => (custom[m.id] == null ? pro[i] : custom[m.id]!));
   const sumRec = r2(rec.reduce((s, v) => s + v, 0));
   const gap = r2(net - sumRec);
   const totalUnits = members.reduce((s, m) => s + m.units, 0);
+  // trava de principal (regra p/ os próximos pools): linha de capital acima do saldo
+  const overLines = !isProfit ? members.filter((m, i) => rec[i] - saldoOf(m) > 0.01) : [];
+  const overCapital = !isProfit && totalN - capitalLeft > 0.01;
 
   const overSafe = r2(totalN - gate.safe);
   const needsOverride = (isProfit && !gate.profitAllowed) || overSafe > 0.01;
@@ -262,8 +277,9 @@ function Builder({
       <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${needsOverride ? "border-amber-300 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span>
-            <b>Teste de caixa:</b> caixa {money(gate.cash)} − reservas {money(gate.cash - gate.safe)} = distribuível seguro <b>{money(Math.max(0, gate.safe))}</b>
+            <b>Teste de caixa (hoje):</b> caixa {money(gate.cash)} − reservas {money(gate.cash - gate.safe)} = distribuível seguro <b>{money(Math.max(0, gate.safe))}</b>
             {overSafe > 0.01 && <> · este total passa em <b>{money(overSafe)}</b></>}
+            <span className="text-[10.5px] opacity-70"> · ao confirmar, o servidor refaz o teste com o caixa NA DATA escolhida</span>
           </span>
           <details>
             <summary className="cursor-pointer underline">ver reservas</summary>
@@ -275,6 +291,12 @@ function Builder({
         </div>
         {isProfit && !gate.profitAllowed && (
           <div className="mt-1">Lucro antes do fim: {gate.unsoldCount} casa(s) não vendida(s), {gate.openLoans} loan(s) em aberto — só com justificativa.</div>
+        )}
+        {!isProfit && (overCapital || overLines.length > 0) && (
+          <div className="mt-1 font-semibold text-red-700">
+            Devolução acima do principal{overCapital ? ` (saldo total ${money(capitalLeft)})` : ""}
+            {overLines.length > 0 ? ` — ${overLines.map((m) => `${m.name.split(" ")[0]} passa do saldo ${money(saldoOf(m))}`).join("; ")}` : ""}. Acima do principal é lucro: use a etapa 2.
+          </div>
         )}
         {needsOverride && (
           <div className="mt-2">
@@ -347,49 +369,79 @@ function Builder({
             <tr className="border-b border-slate-100 text-left text-[10.5px] uppercase tracking-wider text-slate-400">
               <th className="px-3 py-2 font-medium">Sócio</th>
               <th className="px-2 py-2 text-right font-medium">% units</th>
-              <th className="px-2 py-2 text-right font-medium">Pro rata</th>
+              {isProfit ? (
+                <th className="px-2 py-2 text-right font-medium">Lucro já recebido</th>
+              ) : (
+                <>
+                  <th className="px-2 py-2 text-right font-medium">Principal</th>
+                  <th className="px-2 py-2 text-right font-medium">Devolvido</th>
+                  <th className="px-2 py-2 text-right font-medium">Saldo</th>
+                </>
+              )}
+              <th className="px-2 py-2 text-right font-medium">{isProfit ? "Pro rata" : "Pro rata (saldo)"}</th>
               <th className="px-2 py-2 text-right font-medium">Vai receber</th>
               <th className="px-2 py-2 font-medium"></th>
-              <th className="px-2 py-2 text-right font-medium">Já recebeu</th>
               <th className="px-2 py-2 text-right font-medium">Após esta</th>
             </tr>
           </thead>
           <tbody className="text-[12.5px]">
             {members.map((m, i) => {
-              const prior = m.receivedCapital + m.receivedProfit;
+              const saldo = saldoOf(m);
+              const settled = !isProfit && saldo <= 0.01;
+              const overLine = !isProfit && rec[i] - saldo > 0.01;
               const diff = rec[i] - pro[i];
-              const st = rec[i] === 0 ? ["fora desta", "bg-red-50 text-red-700"] : Math.abs(diff) < 0.005 ? ["pro rata", "bg-emerald-50 text-emerald-700"] : ["ajustado", "bg-amber-50 text-amber-800"];
+              const st = settled && rec[i] === 0 ? ["quitado", "bg-slate-100 text-slate-500"] : rec[i] === 0 ? ["fora desta", "bg-red-50 text-red-700"] : overLine ? ["acima do saldo", "bg-red-50 text-red-700"] : Math.abs(diff) < 0.005 ? ["pro rata", "bg-emerald-50 text-emerald-700"] : ["ajustado", "bg-amber-50 text-amber-800"];
               return (
-                <tr key={m.id} className="border-b border-slate-50">
+                <tr key={m.id} className={`border-b border-slate-50 ${settled ? "text-slate-400" : ""}`}>
                   <td className="px-3 py-1.5 text-slate-700">{m.name}{m.role === "MANAGER" && <span className="ml-1 rounded-full bg-blue-50 px-1.5 text-[10px] font-semibold text-[#1f3a5f]">Manager</span>}</td>
                   <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{((m.units / totalUnits) * 100).toFixed(2)}%</td>
+                  {isProfit ? (
+                    <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{f2(m.receivedProfit)}</td>
+                  ) : (
+                    <>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{f2(m.invested)}</td>
+                      <td className="px-2 py-1.5 text-right tabular-nums text-slate-500">{f2(m.receivedCapital)}</td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums font-semibold ${m.invested - m.receivedCapital < -0.01 ? "text-red-700" : ""}`}>{f2(r2(m.invested - m.receivedCapital))}</td>
+                    </>
+                  )}
                   <td className="px-2 py-1.5 text-right tabular-nums">{f2(pro[i])}</td>
                   <td className="px-2 py-1.5 text-right">
                     <input
                       name={`line:${m.id}`}
                       value={f2(rec[i])}
                       onChange={(e) => setCustom((c) => ({ ...c, [m.id]: parse(e.target.value) }))}
-                      className={`w-28 rounded border px-2 py-1 text-right text-[12.5px] tabular-nums outline-none focus:border-[#1f3a5f] ${Math.abs(diff) >= 0.005 ? "border-amber-400 bg-amber-50" : "border-slate-300"}`}
+                      className={`w-28 rounded border px-2 py-1 text-right text-[12.5px] tabular-nums outline-none focus:border-[#1f3a5f] ${overLine ? "border-red-400 bg-red-50" : Math.abs(diff) >= 0.005 ? "border-amber-400 bg-amber-50" : "border-slate-300"}`}
                     />
                   </td>
                   <td className="whitespace-nowrap px-2 py-1.5">
                     <span className={`rounded-full px-2 py-0.5 text-[10.5px] font-semibold ${st[1]}`}>{st[0]}</span>
-                    <button type="button" onClick={() => setCustom((c) => ({ ...c, [m.id]: 0 }))} className="ml-1 rounded border border-slate-300 px-1.5 text-[10.5px] text-slate-500 hover:bg-slate-50">fora</button>
-                    <button type="button" onClick={() => setCustom((c) => ({ ...c, [m.id]: null }))} className="ml-1 rounded border border-slate-300 px-1.5 text-[10.5px] text-slate-500 hover:bg-slate-50">pro rata</button>
+                    {!settled && (
+                      <>
+                        <button type="button" onClick={() => setCustom((c) => ({ ...c, [m.id]: 0 }))} className="ml-1 rounded border border-slate-300 px-1.5 text-[10.5px] text-slate-500 hover:bg-slate-50">fora</button>
+                        <button type="button" onClick={() => setCustom((c) => ({ ...c, [m.id]: null }))} className="ml-1 rounded border border-slate-300 px-1.5 text-[10.5px] text-slate-500 hover:bg-slate-50">pro rata</button>
+                      </>
+                    )}
                   </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-slate-400">{f2(prior)}</td>
-                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{f2(prior + rec[i])}</td>
+                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums">{f2((isProfit ? m.receivedProfit : m.receivedCapital) + rec[i])}</td>
                 </tr>
               );
             })}
             <tr className="bg-slate-50 font-semibold">
               <td className="px-3 py-1.5">Total</td>
               <td className="px-2 py-1.5 text-right">100%</td>
+              {isProfit ? (
+                <td className="px-2 py-1.5 text-right tabular-nums">{f2(members.reduce((s, m) => s + m.receivedProfit, 0))}</td>
+              ) : (
+                <>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{f2(members.reduce((s, m) => s + m.invested, 0))}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{f2(members.reduce((s, m) => s + m.receivedCapital, 0))}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{f2(capitalLeft)}</td>
+                </>
+              )}
               <td className="px-2 py-1.5 text-right tabular-nums">{f2(net)}</td>
               <td className="px-2 py-1.5 text-right tabular-nums">{f2(sumRec)}</td>
               <td></td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{f2(members.reduce((s, m) => s + m.receivedCapital + m.receivedProfit, 0))}</td>
-              <td className="px-2 py-1.5 text-right tabular-nums">{f2(members.reduce((s, m) => s + m.receivedCapital + m.receivedProfit, 0) + sumRec)}</td>
+              <td className="px-2 py-1.5 text-right tabular-nums">{f2(members.reduce((s, m) => s + (isProfit ? m.receivedProfit : m.receivedCapital), 0) + sumRec)}</td>
             </tr>
           </tbody>
         </table>
@@ -413,7 +465,7 @@ function Builder({
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={pending || totalN <= 0 || Math.abs(gap) >= 0.005 || (needsOverride && !override.trim()) || (isProfit && perfMode === "WAIVE" && !perfNote.trim())}
+          disabled={pending || totalN <= 0 || Math.abs(gap) >= 0.005 || (needsOverride && !override.trim()) || (isProfit && perfMode === "WAIVE" && !perfNote.trim()) || overCapital || overLines.length > 0}
           className="rounded-lg bg-[#1f3a5f] px-4 py-2 text-sm font-medium text-white hover:bg-[#16304f] disabled:opacity-60"
         >
           {pending ? "Distribuindo…" : "Confirmar distribuição"}
@@ -519,7 +571,18 @@ function PaymentRow({ l }: { l: DistLine }) {
   return (
     <tr className="border-b border-slate-50 last:border-0">
       <td className="px-3 py-2 text-xs text-slate-700">{l.name}</td>
-      <td className="px-3 py-2 text-right text-xs font-medium tabular-nums text-slate-800" style={{ width: 110 }}>{money(l.amount)}</td>
+      <td className="px-3 py-2 text-right text-xs font-medium tabular-nums text-slate-800" style={{ width: 110 }}>
+        {money(l.amount)}
+        {/* exceção histórica: devolvido acima do principal → vira adiantamento de lucro (mesma data) */}
+        {(l.overPrincipal ?? 0) > 0.01 && (
+          <form action={reclassifyOverReturn} className="mt-0.5">
+            <input type="hidden" name="lineId" value={l.lineId} />
+            <button type="submit" title={`${money(l.overPrincipal!)} acima do principal — divide: capital até o principal + lucro adiantado de ${money(l.overPrincipal!)} na mesma data`} className="rounded-full bg-red-50 px-2 py-0.5 text-[10px] font-semibold text-red-700 hover:bg-red-100">
+              +{money(l.overPrincipal!)} acima do principal · reclassificar como lucro
+            </button>
+          </form>
+        )}
+      </td>
       <td className="px-3 py-2" style={{ width: 150 }}>
         <div className="flex items-center gap-1.5">
           <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium ${pill.cls}`}>{pill.label}</span>

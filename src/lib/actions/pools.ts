@@ -894,21 +894,32 @@ export async function addDistribution(
   };
   const overrideNote = String(formData.get("overrideNote") ?? "").trim() || null;
 
-  const [members, poolRow] = await Promise.all([
+  const [members, poolRow, priorDists] = await Promise.all([
     prisma.poolMember.findMany({ where: { poolId }, include: { entries: true, party: true, company: true } }),
     prisma.investmentPool.findUnique({ where: { id: poolId }, select: { performancePct: true, currency: true } }),
+    prisma.poolDistribution.findMany({ where: { poolId }, include: { lines: true } }),
   ]);
   const table = capTable(members);
   if (table.totalUnits.isZero()) return { error: "Sem units emitidas — nada a distribuir." };
+  // já devolvido / já recebido de lucro por sócio (06/10): devolução rateia pelo SALDO de
+  // principal e trava no saldo; lucro desconta adiantamentos
+  const receivedBy = (memberId: string, kind: "RETURN_OF_CAPITAL" | "PROFIT") =>
+    priorDists.filter((x) => x.kind === kind).reduce((s, x) => s + x.lines.filter((l) => l.memberId === memberId).reduce((z, l) => z + Number(l.amount), 0), 0);
+  const saldoOf = (r: (typeof table.rows)[number]) => Math.max(0, Math.round((Number(r.invested) - receivedBy(r.memberId, "RETURN_OF_CAPITAL")) * 100) / 100);
 
-  // ── gate de distribuível / lucro antes do fim ──
+  // ── gate de distribuível / lucro antes do fim — NA DATA da distribuição ──
   const { loadDistributable } = await import("@/lib/pools/distributable-load");
-  const gate = await loadDistributable(poolId);
+  const gate = await loadDistributable(poolId, d.date);
   const over = d.totalAmount - gate.distributable.safe;
   if (d.kind === "PROFIT" && !gate.distributable.profitAllowed && !overrideNote)
     return { error: `Lucro só com todas as casas vendidas e loans quitados (${gate.distributable.unsoldCount} casa(s) aberta(s), ${gate.distributable.openLoans} loan(s) em aberto). Para distribuir mesmo assim, justifique em "override".` };
   if (over > 0.01 && !overrideNote)
-    return { error: `Passa do distribuível seguro em ${auditMoney(over)} (seguro: ${auditMoney(gate.distributable.safe)}). Reduza o total ou justifique em "override".` };
+    return { error: `Passa do distribuível seguro NA DATA ${d.date.toISOString().slice(0, 10)} em ${auditMoney(over)} (caixa na data ${auditMoney(gate.cashAsOf)}, seguro ${auditMoney(gate.distributable.safe)}). Reduza o total, mude a data ou justifique em "override".` };
+  if (d.kind === "RETURN_OF_CAPITAL") {
+    const saldoTotal = table.rows.reduce((s, r) => s + saldoOf(r), 0);
+    if (d.totalAmount - saldoTotal > 0.01)
+      return { error: `Devolução de ${auditMoney(d.totalAmount)} passa do principal ainda não devolvido (${auditMoney(saldoTotal)}). Acima disso é lucro — use a etapa 2.` };
+  }
 
   // ── performance (só LUCRO) ──
   const perfMode = d.kind === "PROFIT" ? String(formData.get("perfMode") ?? "NONE") : "NONE";
@@ -931,21 +942,50 @@ export async function addDistribution(
       const v = money(`line:${m.id}`);
       if (v == null) continue;
       if (Number.isNaN(v) || v < 0) return { error: `Valor inválido para ${memberName(m)}.` };
+      // trava no saldo de principal (regra p/ os próximos pools; exceções antigas ficam como estão)
+      if (d.kind === "RETURN_OF_CAPITAL") {
+        const row = table.rows.find((r) => r.memberId === m.id);
+        const saldo = row ? saldoOf(row) : 0;
+        if (v - saldo > 0.01)
+          return { error: `${memberName(m)}: ${auditMoney(v)} passa do saldo de principal (${auditMoney(saldo)}). Acima do principal é lucro — etapa 2.` };
+      }
       if (v > 0) lines.push({ memberId: m.id, amount: D(v) });
     }
     const sum = lines.reduce((s, l) => s.add(l.amount), D(0));
     if (sum.sub(net).abs().gt(0.011))
       return { error: `As linhas somam ${auditMoney(sum)} e o total${perfAmount && netToMembers !== d.totalAmount ? " líquido de performance" : ""} é ${auditMoney(net)}.` };
-  } else {
-    lines = table.rows
-      .filter((r) => r.units.gt(0))
-      .map((r) => ({ memberId: r.memberId, amount: net.mul(r.units).div(table.totalUnits).toDecimalPlaces(2) }));
+  } else if (d.kind === "RETURN_OF_CAPITAL") {
+    // pro rata ao SALDO de principal de cada sócio (quem já está quitado não recebe)
+    const saldos = table.rows.map((r) => ({ memberId: r.memberId, saldo: saldoOf(r) }));
+    const saldoTotal = saldos.reduce((s, x) => s + x.saldo, 0);
+    lines = saldos
+      .filter((x) => x.saldo > 0)
+      .map((x) => ({ memberId: x.memberId, amount: net.mul(x.saldo).div(saldoTotal).toDecimalPlaces(2) }));
     const allocated = lines.reduce((s, l) => s.add(l.amount), D(0));
     const residue = net.sub(allocated);
     if (!residue.isZero() && lines.length > 0) {
       const biggest = lines.reduce((a, b) => (a.amount.gte(b.amount) ? a : b));
       biggest.amount = biggest.amount.add(residue);
     }
+  } else {
+    // lucro: alvo acumulado pro rata às units (lucro já distribuído + este) − o que cada um já
+    // recebeu de lucro (adiantamentos entram aqui); negativo vira 0 e o resíduo vai à maior linha
+    const profitBefore = table.rows.reduce((s, r) => s + receivedBy(r.memberId, "PROFIT"), 0);
+    const cumulative = D(profitBefore).add(net);
+    lines = table.rows
+      .filter((r) => r.units.gt(0))
+      .map((r) => {
+        const target = cumulative.mul(r.units).div(table.totalUnits);
+        const line = target.sub(receivedBy(r.memberId, "PROFIT")).toDecimalPlaces(2);
+        return { memberId: r.memberId, amount: line.lt(0) ? D(0) : line };
+      });
+    const allocated = lines.reduce((s, l) => s.add(l.amount), D(0));
+    const residue = net.sub(allocated);
+    if (!residue.isZero() && lines.length > 0) {
+      const biggest = lines.reduce((a, b) => (a.amount.gte(b.amount) ? a : b));
+      biggest.amount = biggest.amount.add(residue);
+    }
+    lines = lines.filter((l) => l.amount.gt(0));
   }
   if (lines.length === 0) return { error: "Nenhum sócio recebe nesta distribuição." };
 
@@ -1012,6 +1052,49 @@ export async function addDistribution(
   }
   revalidatePath(`/pools/${poolId}`);
   return undefined;
+}
+
+// Devolução acima do principal já lançada (exceção histórica, ex.: PH-3 LR Homes +$80):
+// divide a linha — a parte até o principal fica como capital, o excedente vira uma
+// distribuição de LUCRO (adiantamento) na mesma data, só para esse sócio. Caixa não muda.
+export async function reclassifyOverReturn(formData: FormData): Promise<void> {
+  const lineId = String(formData.get("lineId") ?? "");
+  if (!lineId) return;
+  const line = await prisma.poolDistributionLine.findUnique({
+    where: { id: lineId },
+    include: { distribution: true, member: { include: { entries: true, party: true, company: true } } },
+  });
+  if (!line || line.distribution.kind !== "RETURN_OF_CAPITAL") return;
+  const poolId = line.distribution.poolId;
+  const invested = line.member.entries.reduce((s, e) => s + (e.kind === "TRANSFER_OUT" ? -1 : 1) * Number(e.amount), 0);
+  const roc = await prisma.poolDistributionLine.aggregate({
+    _sum: { amount: true },
+    where: { memberId: line.memberId, distribution: { kind: "RETURN_OF_CAPITAL" } },
+  });
+  const excess = Math.round(Math.min(Number(line.amount), Number(roc._sum.amount ?? 0) - invested) * 100) / 100;
+  if (excess <= 0) return;
+  await prisma.$transaction([
+    prisma.poolDistributionLine.update({ where: { id: lineId }, data: { amount: Number(line.amount) - excess } }),
+    prisma.poolDistribution.update({ where: { id: line.distributionId }, data: { totalAmount: Number(line.distribution.totalAmount) - excess } }),
+    prisma.poolDistribution.create({
+      data: {
+        poolId,
+        kind: "PROFIT",
+        date: line.distribution.date,
+        totalAmount: excess,
+        memo: `Adiantamento de lucro — pago junto com o principal em ${line.distribution.date.toISOString().slice(0, 10)}`,
+        lines: { create: [{ memberId: line.memberId, amount: excess, paidStatus: line.paidStatus, paidAt: line.paidAt, paidByEmail: line.paidByEmail, paidRef: line.paidRef }] },
+      },
+    }),
+  ]);
+  await logInvestmentAudit({
+    poolId,
+    entity: "DISTRIBUTION",
+    entityId: line.distributionId,
+    action: "UPDATE",
+    summary: `Reclassificou ${auditMoney(excess)} de ${memberName(line.member)} (acima do principal) como adiantamento de lucro`,
+  });
+  revalidatePath(`/pools/${poolId}`);
 }
 
 export async function deleteDistribution(formData: FormData): Promise<void> {

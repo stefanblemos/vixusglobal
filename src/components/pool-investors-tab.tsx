@@ -26,6 +26,7 @@ export type InvestorRow = {
   name: string;
   role: "MANAGER" | "INVESTOR";
   invested: number;
+  returnedCapital?: number; // principal já devolvido (06/10) — saldo = investido − devolvido
   units: number;
   pct: number; // 0–100
   // sócio que zerou via transferência: data e (se identificável) quem comprou as units
@@ -292,7 +293,20 @@ export function PoolInvestorsTab({
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">{money(r.invested)}</td>
+                    <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
+                      {money(r.invested)}
+                      {/* principal devolvido × saldo (06/10): guia a próxima devolução */}
+                      {(r.returnedCapital ?? 0) > 0 && (
+                        <div className={`text-[10.5px] ${r.invested - (r.returnedCapital ?? 0) <= 0.01 ? "text-emerald-700" : "text-slate-400"}`}>
+                          devolvido {money(r.returnedCapital ?? 0)} ·{" "}
+                          {r.invested - (r.returnedCapital ?? 0) <= 0.01
+                            ? r.invested - (r.returnedCapital ?? 0) < -0.01
+                              ? `acima do principal ${money((r.returnedCapital ?? 0) - r.invested)}`
+                              : "principal quitado"
+                            : `saldo ${money(r.invested - (r.returnedCapital ?? 0))}`}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-right text-sm tabular-nums text-slate-700">
                       {r.units.toLocaleString("en-US")}
                     </td>
