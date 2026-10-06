@@ -1043,6 +1043,9 @@ model HouseCashEntry {
   opening  Boolean  @default(false) // saldo de abertura da migração: valor existia sem data real
   amount   Decimal  @db.Decimal(20, 2) // sempre positivo; o kind dá o sentido
   memo     String?
+  // Proveniência (etapa 3): trazido do GL do QuickBooks (LedgerTxn) — não trazer duas vezes;
+  // aberturas ganham a data real por aqui
+  glTxnId  String?  @unique
 
   createdAt DateTime @default(now())
 

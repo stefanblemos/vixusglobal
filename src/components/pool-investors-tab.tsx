@@ -67,6 +67,7 @@ export function PoolInvestorsTab({
   ownerOptions,
   suggestedCallAmount,
   callMembers = [],
+  initialPanel = null,
   distOptions = [],
   subscriptions = [],
   subscribeOrigin = "",
@@ -85,12 +86,14 @@ export function PoolInvestorsTab({
   suggestedCallAmount: string | null;
   // sócios com units (p/ a prévia da chamada: pro rata pelo % atual)
   callMembers?: CallMember[];
+  // painel aberto ao chegar (ex.: botão Lançar → `?open=call`)
+  initialPanel?: Panel;
   // rolagem direta no aporte (regra da carteira): distribuições do pool p/ vincular
   distOptions?: Array<{ id: string; label: string }>;
   subscriptions?: SubscriptionRow[];
   subscribeOrigin?: string;
 }) {
-  const [panel, setPanel] = useState<Panel>(null);
+  const [panel, setPanel] = useState<Panel>(initialPanel);
   const [presetMemberId, setPresetMemberId] = useState<string | undefined>(undefined);
 
   const active = rows.filter((r) => !r.exited);

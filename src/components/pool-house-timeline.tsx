@@ -523,6 +523,7 @@ export function PoolHouseTimeline({
             <Stage n={6} title="Mercado" state={st(5)} right={h.planned.sale != null ? <span className="text-slate-400">pedido prev. {usd(h.planned.sale)}</span> : null}>
               <DateChip houseId={h.id} field="listedDate" label="anunciada" value={d.listedDate} />
             </Stage>
+            <div id="venda" />
             <Stage n={7} title="Venda" state={st(6)} right={h.status === "SOLD" ? <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">vendida</span> : cur === 6 ? <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-[#1f3a5f]">etapa atual</span> : null}>
               {h.status === "SOLD" && (
                 <div className="mb-1">
@@ -548,7 +549,7 @@ export function PoolHouseTimeline({
 
         {/* 4. extrato + planejado × real */}
         <div className="space-y-3">
-          <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+          <section id="extrato" className="rounded-xl border border-slate-200 bg-white px-5 py-4">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">Extrato da casa</h2>
               <button type="button" onClick={() => setShowCash((v) => !v)} className={ghostClass}>{showCash ? "fechar" : "+ Lançar"}</button>

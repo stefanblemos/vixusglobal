@@ -265,6 +265,45 @@ export async function returnExcessToPool(formData: FormData): Promise<void> {
   });
 }
 
+// Traz uma transação do GL do QuickBooks para o extrato da casa (conferência, etapa 3).
+// Se a casa tem uma ABERTURA da mesma categoria com o mesmo valor, a abertura ganha a data e a
+// proveniência (não duplica); senão nasce um lançamento COST novo com a data do GL.
+export async function importGlTxnToHouse(formData: FormData): Promise<void> {
+  const houseId = String(formData.get("houseId") ?? "");
+  const txnId = String(formData.get("txnId") ?? "");
+  const category = String(formData.get("category") ?? "OTHER");
+  if (!houseId || !txnId) return;
+  const [house, txn, dup] = await Promise.all([
+    prisma.poolHouse.findUnique({ where: { id: houseId }, select: { poolId: true, address: true } }),
+    prisma.ledgerTxn.findUnique({ where: { id: txnId } }),
+    prisma.houseCashEntry.findUnique({ where: { glTxnId: txnId } }),
+  ]);
+  if (!house || !txn || dup) return;
+  const amount = Math.abs(Number(txn.amount));
+  const memo = [txn.rawName, txn.description].filter(Boolean).join(" · ") || txn.account;
+  const opening = await prisma.houseCashEntry.findFirst({
+    where: { houseId, opening: true, kind: "COST", category, amount },
+  });
+  if (opening) {
+    await prisma.houseCashEntry.update({
+      where: { id: opening.id },
+      data: { date: txn.date, opening: false, memo: `GL: ${memo}`, glTxnId: txnId },
+    });
+  } else {
+    await prisma.houseCashEntry.create({
+      data: { houseId, kind: "COST", category, date: txn.date, amount, memo: `GL: ${memo}`, glTxnId: txnId },
+    });
+  }
+  await afterHouseCashChange(houseId);
+  await logInvestmentAudit({
+    poolId: house.poolId,
+    entity: "HOUSE",
+    entityId: houseId,
+    action: opening ? "UPDATE" : "CREATE",
+    summary: `${house.address}: ${opening ? "datou a abertura" : "trouxe do GL"} ${auditMoney(amount)} (${category}) · ${txn.date.toISOString().slice(0, 10)}`,
+  });
+}
+
 // ── Registrar venda (05/10) ──────────────────────────────────
 // Uma ação só, em 2 estágios: CONTRACT (data + preço) e CLOSING (data, preço final, payoff,
 // líquido recebido → closing cost derivado + payoff/reconveyance lançados no loan da casa).

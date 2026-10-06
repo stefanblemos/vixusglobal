@@ -15,6 +15,11 @@ import { PoolStatusStepper } from "@/components/pool-status-stepper";
 import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
+import { PoolCashTab } from "@/components/pool-cash-tab";
+import { PoolLaunchMenu } from "@/components/pool-launch-menu";
+import { PoolGlConference } from "@/components/pool-gl-conference";
+import { buildPoolLedger } from "@/lib/pools/pool-ledger";
+import { glReportForPool } from "@/lib/pools/gl-match";
 import { computeSuffAggs, poolLoanSurplus } from "@/lib/pools/loan-sufficiency";
 import { buildActivityFeed } from "@/lib/pools/activity-feed";
 import { computeNav, liveIrr, xirr, type NavHouse } from "@/lib/pools/nav";
@@ -31,6 +36,7 @@ export const dynamic = "force-dynamic";
 const TABS = [
   ["overview", "Overview"],
   ["houses", "Casas"],
+  ["cash", "Extrato"], // extrato único do pool (etapa 3)
   ["investors", "Investidores"],
 ] as const;
 
@@ -60,10 +66,11 @@ export default async function PoolDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ tab?: string; status?: string; sub?: string; view?: string }>;
+  searchParams: Promise<{ tab?: string; status?: string; sub?: string; view?: string; open?: string }>;
 }) {
   const { id } = await params;
-  const { tab: rawTab, status: rawStatus, sub: rawSub, view: rawView } = await searchParams;
+  // `open=call` (botão Lançar): abre a aba Investidores já com o painel da chamada
+  const { tab: rawTab, status: rawStatus, sub: rawSub, view: rawView, open: rawOpen } = await searchParams;
   // links antigos (?tab=ledger / ?tab=distributions) caem nas sub-abas de Investidores
   const legacySub = rawTab === "ledger" ? "ledger" : rawTab === "distributions" ? "distributions" : null;
   const tab = legacySub ? "investors" : TABS.some(([t]) => t === rawTab) ? (rawTab as string) : "overview";
@@ -94,6 +101,8 @@ export default async function PoolDetailPage({
           loan: { include: { bankProfile: { select: { name: true } } } },
           // draws creditados → % de conclusão da obra (pedido A)
           loanEntries: { where: { type: "DRAW", pending: false }, select: { amount: true } },
+          // extrato da casa → extrato único do pool + conferência com o GL (etapa 3)
+          cashEntries: true,
         },
       },
       members: { include: { entries: true, party: true, company: true } },
@@ -146,6 +155,19 @@ export default async function PoolDetailPage({
 
   const table = capTable(pool.members);
   const memberById = new Map(pool.members.map((m) => [m.id, memberName(m)]));
+
+  // Extrato único do pool (etapa 3): projeção dos fatos — aportes, capital p/ casas, vendas,
+  // despesas pagas, distribuições — com saldo corrido; e a conferência com o GL da entidade
+  const poolLedger = buildPoolLedger({
+    members: pool.members.map((m) => ({ name: memberName(m), role: m.role, entries: m.entries })),
+    houses: pool.houses,
+    expenses: pool.expenses,
+    distributions: pool.distributions,
+  });
+  const glReport =
+    tab === "cash"
+      ? await glReportForPool({ companyId: pool.companyId, houses: pool.houses, loans: pool.loans })
+      : null;
 
   // marcos de construção (#73): % de obra vem dos marcos quando existirem (senão draws)
   const mCatalog: MilestoneCatalog[] = (
@@ -709,6 +731,11 @@ export default async function PoolDetailPage({
         <div className={`${prazo ? "" : "ml-auto "}flex items-center gap-2`}>
           {/* seletor EN|PT (Fase 3): vale p/ o módulo todo; datas seguem o locale do Windows */}
           <LangToggle lang={lang} />
+          {/* "+ Lançar" (etapa 3): menu dos fatos → fluxo que já existe */}
+          <PoolLaunchMenu
+            poolId={pool.id}
+            openHouses={pool.houses.filter((h) => h.status !== "SOLD").map((h) => ({ id: h.id, address: h.address }))}
+          />
           <Link
             href={`/pools/${pool.id}/edit`}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100"
@@ -805,6 +832,29 @@ export default async function PoolDetailPage({
       {/* Overview (layout novo 18/07, mock aprovado): stepper fino + badges + grid 2x2 de
           cards compactos com "ver detalhe" — o painel completo mora na aba dele. Regra
           permanente: métrica nova (Fase 2+) = card compacto com drill, nunca painel inteiro. */}
+      {/* Extrato único (etapa 3): conferência com o GL em cima, extrato com saldo corrido embaixo */}
+      {tab === "cash" && glReport && (
+        <div className="space-y-3">
+          <PoolGlConference
+            poolId={pool.id}
+            companyName={pool.company?.legalName ?? null}
+            hasGl={glReport.hasGl}
+            glCount={glReport.glCount}
+            houses={glReport.houses}
+            loans={glReport.loans}
+            currency={pool.currency}
+          />
+          <PoolCashTab
+            poolId={pool.id}
+            rows={poolLedger.rows}
+            houses={pool.houses.map((h) => ({ id: h.id, address: h.address }))}
+            cash={poolLedger.cash}
+            totalIn={poolLedger.totalIn}
+            totalOut={poolLedger.totalOut}
+          />
+        </div>
+      )}
+
       {tab === "overview" && (
         <div className="space-y-3">
           <PoolStatusStepper status={pool.status} subtitles={stepSubtitles} />
@@ -831,10 +881,10 @@ export default async function PoolDetailPage({
                   Caixa &amp; aporte
                 </h2>
                 <Link
-                  href={`/pools/${pool.id}?tab=investors&sub=ledger`}
+                  href={`/pools/${pool.id}?tab=cash`}
                   className="text-[10.5px] text-slate-400 hover:text-slate-600"
                 >
-                  ver detalhe &rarr; Investidores
+                  ver detalhe &rarr; Extrato
                 </Link>
               </div>
               <div className="space-y-0.5 text-[11.5px] text-slate-600">
@@ -894,6 +944,24 @@ export default async function PoolDetailPage({
                 <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
                   Caixa em <b>{((availableN / raisedN) * 100).toFixed(1)}% do captado</b> — próximos
                   desembolsos dependem de aportes ou capital call.
+                </p>
+              )}
+              {/* conferência automática (etapa 3): capital nas casas acima do captado = aporte
+                  que entrou na obra mas ainda não foi lançado como aporte/chamada do sócio */}
+              {Math.abs(poolLedger.gap) >= 1 && (
+                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] text-amber-800">
+                  {poolLedger.gap > 0 ? (
+                    <>
+                      As casas receberam <b>{formatMoney(poolLedger.gap, pool.currency)}</b> a mais do que os sócios
+                      aportaram — falta lançar esse aporte (📣 Chamada de capital).{" "}
+                    </>
+                  ) : (
+                    <>
+                      Os sócios aportaram <b>{formatMoney(-poolLedger.gap, pool.currency)}</b> que ainda não
+                      aparecem como capital próprio em nenhuma casa.{" "}
+                    </>
+                  )}
+                  <Link href={`/pools/${pool.id}?tab=cash`} className="underline">ver extrato →</Link>
                 </p>
               )}
             </section>
@@ -1301,6 +1369,7 @@ export default async function PoolDetailPage({
           memberOptions={memberOptions}
           ownerOptions={ownerOptions}
           callMembers={table.rows.map((r) => ({ id: r.memberId, name: r.name, role: r.role, units: Number(r.units) }))}
+          initialPanel={rawOpen === "call" ? "call" : null}
           suggestedCallAmount={
             risk.callSufficiency != null
               ? String(Math.round(risk.callSufficiency))

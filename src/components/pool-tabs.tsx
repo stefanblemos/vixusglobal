@@ -7,6 +7,8 @@ import Link from "next/link";
 const TABS: Array<{ key: string; label: string; href: (poolId: string) => string }> = [
   { key: "overview", label: "Overview", href: (id) => `/pools/${id}?tab=overview` },
   { key: "houses", label: "Casas", href: (id) => `/pools/${id}?tab=houses` },
+  // Extrato único do pool (etapa 3, 05/10): todo o caixa com saldo corrido + conferência com o GL
+  { key: "cash", label: "Extrato", href: (id) => `/pools/${id}?tab=cash` },
   { key: "schedule", label: "Cronograma", href: (id) => `/pools/${id}/schedule` },
   { key: "loan", label: "Financiamento", href: (id) => `/pools/${id}/loan` },
   { key: "investors", label: "Investidores", href: (id) => `/pools/${id}?tab=investors` },
