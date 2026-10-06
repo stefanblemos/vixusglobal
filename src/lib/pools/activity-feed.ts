@@ -55,6 +55,7 @@ const LOAN_EVENT_TYPES: Record<string, string> = {
   OTHER: "Lançamento no loan",
   RECONVEYANCE: "Reconveyance (release)",
   CREDIT: "Crédito do banco",
+  REFUND: "Reembolso do banco (saldo pago a maior)",
 };
 
 export function buildActivityFeed(input: FeedInput, limit = 20): { events: FeedEvent[]; total: number } {

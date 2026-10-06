@@ -910,6 +910,51 @@ export async function addMonthlyInterest(
   return { ok: true };
 }
 
+// Reembolso do banco (06/10): loan quitado com saldo NEGATIVO = o pool pagou a maior nos payoffs
+// (dinheiro que saiu do líquido das vendas). O banco devolve por cheque → 2 lançamentos casados:
+// REFUND no statement (positivo, zera o saldo) + RECEITA do pool (entra no caixa e no lucro).
+export async function recordLoanRefund(formData: FormData): Promise<void> {
+  const loanId = String(formData.get("loanId") ?? "");
+  if (!loanId) return;
+  const loan = await prisma.poolLoan.findUnique({
+    where: { id: loanId },
+    include: { bankProfile: { select: { name: true } }, entries: { where: { pending: false }, select: { amount: true } } },
+  });
+  if (!loan) return;
+  const balance = loan.entries.reduce((s, e) => s + Number(e.amount), 0);
+  if (balance >= -0.01) return; // nada pago a maior
+  const amount = Math.round(-balance * 100) / 100;
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const date = dateRaw ? new Date(dateRaw) : new Date();
+  const label = `${loan.bankProfile?.name ?? "Banco"}${loan.loanNumber ? ` ${loan.loanNumber}` : ""}`;
+  await prisma.$transaction([
+    prisma.poolLoanEntry.create({
+      data: { loanId, type: "REFUND", date, amount, memo: "Reembolso do banco — saldo pago a maior (cheque)" },
+    }),
+    prisma.poolExpense.create({
+      data: {
+        poolId: loan.poolId,
+        date,
+        category: "REFUND",
+        description: `Reembolso do banco — saldo do loan ${label} pago a maior`,
+        amount: -amount, // receita do pool (valor negativo = entrada)
+        status: "PAID",
+      },
+    }),
+  ]);
+  const { logInvestmentAudit } = await import("@/lib/audit");
+  await logInvestmentAudit({
+    poolId: loan.poolId,
+    entity: "POOL",
+    entityId: loanId,
+    action: "CREATE",
+    summary: `Reembolso do banco ${label}: $${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} — zera o saldo do loan e entra como receita do pool`,
+  });
+  await recompute(loan.poolId);
+  revalidatePath(`/pools/${loan.poolId}`);
+  revalidatePath(`/pools/${loan.poolId}/loan`);
+}
+
 // Gera o PAYOFF (e reconveyance, se o banco cobra) a partir dos dados de venda da casa —
 // evita digitar duas vezes o que já está na ficha da casa.
 export async function generatePayoffFromHouse(formData: FormData): Promise<void> {

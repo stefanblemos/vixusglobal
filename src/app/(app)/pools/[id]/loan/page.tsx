@@ -8,6 +8,7 @@ import {
   deleteLoanEntry,
   deletePoolLoan,
   generatePayoffFromHouse,
+  recordLoanRefund,
   toggleLoanEntryReconciled,
 } from "@/lib/actions/pool-loan";
 import { Fragment } from "react";
@@ -610,6 +611,7 @@ export default async function PoolLoanPage({
 
       {/* KPIs (mock aprovado 17/07): principal × juros em aberto separados */}
       {loan && stmt && (
+        <>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <Card
             label="Total do loan"
@@ -650,6 +652,23 @@ export default async function PoolLoanPage({
             }
           />
         </div>
+        {/* saldo NEGATIVO após os payoffs = pool pagou a maior; o banco devolve por cheque (06/10) */}
+        {stmt.totalPayoffs > 0 && stmt.balance < -0.01 && (
+          <form action={recordLoanRefund} className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs text-amber-900">
+            <span>
+              O pool pagou <b>{formatMoney(-stmt.balance, pool.currency)}</b> a mais ao banco nos payoffs (saldo negativo). Quando o banco
+              devolver, lance o reembolso: zera o saldo aqui e entra como <b>receita do pool</b> (volta ao distribuível).
+            </span>
+            <span className="flex items-center gap-2">
+              <input type="hidden" name="loanId" value={loan.id} />
+              <input name="date" type="date" defaultValue={todayIso} className="rounded border border-amber-300 bg-white px-2 py-1 text-xs" />
+              <button type="submit" className="rounded-lg bg-[#1f3a5f] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#16304f]">
+                Banco reembolsou {formatMoney(-stmt.balance, pool.currency)}
+              </button>
+            </span>
+          </form>
+        )}
+        </>
       )}
       {loan && (
         <div className="flex gap-1 border-b-2 border-slate-200">

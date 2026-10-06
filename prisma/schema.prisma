@@ -1679,6 +1679,7 @@ enum PoolLoanEntryType {
   PAYOFF // principal quitado na venda — negativo
   RECONVEYANCE // fee de release por payoff
   CREDIT // créditos (LO credit, devolução de reserve) — negativo
+  REFUND // reembolso do banco do saldo pago a maior (cheque) — POSITIVO, zera o saldo negativo (06/10)
   OTHER
 }
 

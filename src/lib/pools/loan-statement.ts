@@ -17,6 +17,7 @@ export const ENTRY_TYPE_LABEL: Record<string, string> = {
   PAYOFF: "Payoff (venda)",
   RECONVEYANCE: "Reconveyance (release)",
   CREDIT: "Crédito / devolução",
+  REFUND: "Reembolso do banco (saldo pago a maior)",
   OTHER: "Outro",
 };
 
