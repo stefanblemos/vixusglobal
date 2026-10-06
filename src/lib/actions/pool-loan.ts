@@ -917,7 +917,8 @@ export async function generatePayoffFromHouse(formData: FormData): Promise<void>
   const houseId = String(formData.get("houseId") ?? "");
   if (!poolId || !houseId) return;
   const house = await prisma.poolHouse.findUnique({ where: { id: houseId } });
-  if (!house || house.payoffAmount == null || house.saleDate == null) return;
+  // payoff 0 = casa vendida com o loan já quitado: o banco não cobra reconveyance nem há payoff a lançar (06/10)
+  if (!house || house.payoffAmount == null || Number(house.payoffAmount) <= 0 || house.saleDate == null) return;
   // payoff vai para o loan DA CASA (pool pode ter vários bancos)
   const target = await resolveLoan(poolId, house.loanId);
   if (!target) return;

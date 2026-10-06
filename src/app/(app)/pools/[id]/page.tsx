@@ -957,6 +957,12 @@ export default async function PoolDetailPage({
                     <b className="tabular-nums">&minus;{formatMoney(expensesPaid, pool.currency)}</b>
                   </div>
                 )}
+                {Number(expensesPaid) < 0 && (
+                  <div className="flex justify-between">
+                    <span>+ receitas do pool (líq. de despesas)</span>
+                    <b className="tabular-nums text-emerald-700">{formatMoney(-Number(expensesPaid), pool.currency)}</b>
+                  </div>
+                )}
                 {Number(distributed) > 0 && (
                   <div className="flex justify-between">
                     <span>&minus; distribuído</span>
@@ -1452,6 +1458,7 @@ export default async function PoolDetailPage({
                 </h2>
                 <p className="mt-0.5 text-xs text-slate-400">
                   Saem do caixa antes do lucro — provisionadas seguram a devolução aos investidores.
+                  Receitas (crédito do lender, reembolso) entram aqui com sinal positivo e somam ao lucro.
                 </p>
                 {pool.expenses.length > 0 ? (
                   <div className="mt-2 divide-y divide-slate-50 border-t border-slate-100">
@@ -1459,23 +1466,28 @@ export default async function PoolDetailPage({
                       <div key={e.id} className="flex items-center justify-between py-2 text-sm">
                         <span className="text-slate-500">{fmtDate(e.date)}</span>
                         <span className="flex-1 px-4 font-medium text-slate-700">{e.description}</span>
-                        <span className="tabular-nums text-slate-800">
-                          {formatMoney(e.amount, pool.currency)}
+                        {/* receita do pool (06/10) = valor negativo: mostra em verde, sem toggle de status */}
+                        <span className={`tabular-nums ${Number(e.amount) < 0 ? "text-emerald-700" : "text-slate-800"}`}>
+                          {Number(e.amount) < 0 ? "+" : ""}{formatMoney(Math.abs(Number(e.amount)), pool.currency)}
                         </span>
-                        <form action={togglePoolExpensePaid} className="ml-3">
-                          <input type="hidden" name="expenseId" value={e.id} />
-                          <button
-                            type="submit"
-                            className={`rounded-full px-2 py-0.5 text-xs ${
-                              e.status === "PAID"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-amber-50 text-amber-700"
-                            }`}
-                            title="Clique para alternar provisionada/paga"
-                          >
-                            {e.status === "PAID" ? "Paga" : "Provisionada"}
-                          </button>
-                        </form>
+                        {Number(e.amount) < 0 ? (
+                          <span className="ml-3 rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">Receita</span>
+                        ) : (
+                          <form action={togglePoolExpensePaid} className="ml-3">
+                            <input type="hidden" name="expenseId" value={e.id} />
+                            <button
+                              type="submit"
+                              className={`rounded-full px-2 py-0.5 text-xs ${
+                                e.status === "PAID"
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}
+                              title="Clique para alternar provisionada/paga"
+                            >
+                              {e.status === "PAID" ? "Paga" : "Provisionada"}
+                            </button>
+                          </form>
+                        )}
                         <form action={deletePoolExpense} className="ml-2">
                           <input type="hidden" name="expenseId" value={e.id} />
                           <button type="submit" className="text-xs text-slate-300 hover:text-red-500">

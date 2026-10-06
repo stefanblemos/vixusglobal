@@ -89,11 +89,14 @@ export function buildPoolLedger(args: {
   }
 
   for (const e of args.expenses)
-    if (e.status === "PAID")
+    if (e.status === "PAID") {
+      const v = n(e.amount);
+      // valor negativo = RECEITA do pool (crédito do lender, reembolso): entra no caixa
       rows.push({
-        date: iso(e.date), label: `Despesa · ${e.description}`, houseId: null, house: null,
-        source: "POOL", cat: "EXPENSES", inAmount: null, outAmount: n(e.amount), opening: false,
+        date: iso(e.date), label: `${v < 0 ? "Receita" : "Despesa"} · ${e.description}`, houseId: null, house: null,
+        source: "POOL", cat: "EXPENSES", inAmount: v < 0 ? -v : null, outAmount: v < 0 ? null : v, opening: false,
       });
+    }
 
   for (const x of args.distributions)
     rows.push({

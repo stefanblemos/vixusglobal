@@ -688,11 +688,16 @@ export async function addPoolExpense(
 ): Promise<FormState> {
   const dateRaw = String(formData.get("date") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
-  const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
-  if (!dateRaw || !description) return { error: "Date and description are required." };
-  if (!Number.isFinite(amount) || amount <= 0) return { error: "Amount must be greater than 0." };
-  const category = String(formData.get("category") ?? "OTHER");
-  const status = formData.get("status") === "PAID" ? "PAID" : "PROVISIONED";
+  const raw = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
+  if (!dateRaw || !description) return { error: "Data e descrição são obrigatórias." };
+  if (!Number.isFinite(raw) || raw <= 0) return { error: "Valor deve ser maior que 0." };
+  // RECEITA do pool (06/10): crédito do lender, reembolso, juros de conta — mesmo registro das
+  // despesas com valor NEGATIVO e sempre recebida (PAID). Entra no caixa e no lucro distribuível,
+  // sem virar aporte, unit ou empréstimo.
+  const income = formData.get("direction") === "IN";
+  const category = String(formData.get("category") ?? (income ? "OTHER_INCOME" : "OTHER"));
+  const status = income ? "PAID" : formData.get("status") === "PAID" ? "PAID" : "PROVISIONED";
+  const amount = income ? -raw : raw;
   await prisma.poolExpense.create({
     data: { poolId, date: new Date(dateRaw), category, description, amount, status },
   });

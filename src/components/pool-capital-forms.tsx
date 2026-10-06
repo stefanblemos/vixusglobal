@@ -57,22 +57,40 @@ const EXPENSE_CATEGORIES = [
   ["OTHER", "Outra"],
 ] as const;
 
-// Despesa do PRÓPRIO pool (não das casas) — provisionada ou paga.
+const INCOME_CATEGORIES = [
+  ["LENDER_CREDIT", "Crédito do lender"],
+  ["REFUND", "Reembolso / estorno"],
+  ["BANK_INTEREST", "Juros de conta"],
+  ["OTHER_INCOME", "Outra receita"],
+] as const;
+
+// Despesa do PRÓPRIO pool (não das casas) — provisionada ou paga. Ou RECEITA do pool (06/10):
+// crédito do lender, reembolso, juros de conta — entra no caixa e no lucro, não é aporte.
 export function AddPoolExpenseForm({ poolId }: { poolId: string }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
     addPoolExpense.bind(null, poolId),
     undefined,
   );
+  const [direction, setDirection] = useState<"OUT" | "IN">("OUT");
+  const income = direction === "IN";
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
+      <input type="hidden" name="direction" value={direction} />
+      <div className="inline-flex overflow-hidden rounded-lg border border-slate-300">
+        {(["OUT", "IN"] as const).map((d) => (
+          <button key={d} type="button" onClick={() => setDirection(d)} className={`px-3 py-2 text-xs font-semibold ${direction === d ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
+            {d === "OUT" ? "Despesa" : "Receita"}
+          </button>
+        ))}
+      </div>
       <div className="w-40">
         <label className={labelClass}>Data</label>
         <input name="date" type="date" required className={inputClass} />
       </div>
       <div className="w-44">
         <label className={labelClass}>Categoria</label>
-        <select name="category" defaultValue="TAX_PREP" className={inputClass}>
-          {EXPENSE_CATEGORIES.map(([v, l]) => (
+        <select key={direction} name="category" defaultValue={income ? "LENDER_CREDIT" : "TAX_PREP"} className={inputClass}>
+          {(income ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(([v, l]) => (
             <option key={v} value={v}>
               {l}
             </option>
@@ -87,16 +105,24 @@ export function AddPoolExpenseForm({ poolId }: { poolId: string }) {
         <label className={labelClass}>Valor $</label>
         <input name="amount" required className={inputClass} />
       </div>
-      <div className="w-36">
-        <label className={labelClass}>Status</label>
-        <select name="status" defaultValue="PROVISIONED" className={inputClass}>
-          <option value="PROVISIONED">Provisionada</option>
-          <option value="PAID">Paga</option>
-        </select>
-      </div>
+      {!income && (
+        <div className="w-36">
+          <label className={labelClass}>Status</label>
+          <select name="status" defaultValue="PROVISIONED" className={inputClass}>
+            <option value="PROVISIONED">Provisionada</option>
+            <option value="PAID">Paga</option>
+          </select>
+        </div>
+      )}
       <button type="submit" disabled={pending} className={buttonClass}>
-        {pending ? "Adding…" : "+ Despesa"}
+        {pending ? "Lançando…" : income ? "+ Receita" : "+ Despesa"}
       </button>
+      {income && (
+        <p className="w-full text-xs text-slate-400">
+          Dinheiro que ENTROU na conta do pool sem ser aporte nem venda (ex.: crédito do lender, reembolso).
+          Soma ao caixa e ao lucro distribuível; não emite units.
+        </p>
+      )}
       {state?.error && <p className="w-full text-sm text-red-600">{state.error}</p>}
     </form>
   );

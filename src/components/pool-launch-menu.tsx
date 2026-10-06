@@ -61,7 +61,7 @@ export function PoolLaunchMenu({
           {houseSubs("🏠", "Vendi uma casa", "etapa 7 da casa: contrato → closing", (id) => `/pools/${poolId}/houses/${id}#venda`)}
           {houseSubs("🧱", "Paguei lote / obra / taxa de uma casa", "extrato da casa (+ Lançar)", (id) => `/pools/${poolId}/houses/${id}#extrato`)}
           {item(`/pools/${poolId}/loan?stab=draws`, "🏦", "Recebi draw do banco", "Financiamento › Draws (liberação)")}
-          {item(`/pools/${poolId}?tab=investors&sub=ledger`, "🧾", "Despesa do pool", "LLC, contabilidade, IR/K-1 — provisionada ou paga")}
+          {item(`/pools/${poolId}?tab=investors&sub=ledger`, "🧾", "Despesa ou receita do pool", "LLC, contabilidade, IR/K-1 · crédito do lender, reembolso")}
           {item(`/pools/${poolId}?tab=investors&sub=distributions`, "💸", "Distribuí aos sócios", "prévia do rateio pro rata antes de confirmar")}
           {houseSubs("↩", "Devolvi excedente de uma casa ao caixa", "banco pagou mais que a obra", (id) => `/pools/${poolId}/houses/${id}#extrato`)}
         </div>

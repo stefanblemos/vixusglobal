@@ -169,6 +169,7 @@ export default async function PoolLoanPage({
         (h) =>
           (h.loanId === loan.id || (h.loanId == null && pool.loans.length === 1)) &&
           h.payoffAmount != null &&
+          Number(h.payoffAmount) > 0 && // payoff 0 (loan já quitado) não gera lançamento
           h.saleDate != null &&
           !payoffLaunched.has(h.id),
       )
