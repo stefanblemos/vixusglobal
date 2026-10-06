@@ -229,6 +229,39 @@ export async function addHouseCashEntry(
   return { ok: Date.now() };
 }
 
+// Edita um lançamento do extrato da casa (data, valor, memo). Abertura que ganha data real
+// deixa de ser abertura; sem data informada continua abertura (só o valor muda).
+export async function updateHouseCashEntry(
+  entryId: string,
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const entry = await prisma.houseCashEntry.findUnique({ where: { id: entryId }, include: { house: { select: { poolId: true, address: true } } } });
+  if (!entry) return { error: "Lançamento não encontrado." };
+  const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) return { error: "Valor deve ser maior que 0." };
+  const dateRaw = String(formData.get("date") ?? "").trim();
+  const memo = String(formData.get("memo") ?? "").trim() || null;
+  const before = Number(entry.amount);
+  await prisma.houseCashEntry.update({
+    where: { id: entryId },
+    data: {
+      amount,
+      memo,
+      ...(dateRaw ? { date: new Date(dateRaw), opening: false } : {}),
+    },
+  });
+  await afterHouseCashChange(entry.houseId);
+  await logInvestmentAudit({
+    poolId: entry.house.poolId,
+    entity: "HOUSE",
+    entityId: entryId,
+    action: "UPDATE",
+    summary: `${entry.house.address}: ajustou ${entry.category} de ${auditMoney(before)} para ${auditMoney(amount)}${dateRaw && entry.opening ? ` (abertura datada ${dateRaw})` : ""}`,
+  });
+  return { ok: Date.now() };
+}
+
 export async function deleteHouseCashEntry(formData: FormData): Promise<void> {
   const id = String(formData.get("entryId") ?? "");
   if (!id) return;

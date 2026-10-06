@@ -94,6 +94,9 @@ export async function recomputeHouseCash(houseId: string): Promise<void> {
 export type LedgerRow = {
   id: string | null; // null = linha derivada (não apagável aqui)
   date: string | null; // ISO; null = abertura
+  storedDate: string | null; // data gravada (abertura tem uma, só não é real)
+  kind: "EQUITY_IN" | "COST" | "RETURN_TO_POOL" | null; // null = derivada
+  category: string | null;
   label: string;
   source: "POOL" | "BANK" | "SALE" | null;
   inAmount: number | null;
@@ -120,6 +123,9 @@ export function buildHouseLedger(args: {
     rows.push({
       id: e.id,
       date: e.opening ? null : iso(e.date),
+      storedDate: iso(e.date),
+      kind: e.kind,
+      category: e.category,
       label: CATEGORY_LABEL[e.category] ?? e.category,
       source: isIn ? "POOL" : e.kind === "RETURN_TO_POOL" ? "POOL" : null,
       inAmount: isIn ? a : null,
@@ -131,13 +137,15 @@ export function buildHouseLedger(args: {
   for (const d of args.draws) {
     if (d.pending) continue;
     rows.push({
-      id: null, date: iso(d.date), label: `Draw${d.memo ? ` · ${d.memo}` : ""}`, source: "BANK",
+      id: null, date: iso(d.date), storedDate: iso(d.date), kind: null, category: null,
+      label: `Draw${d.memo ? ` · ${d.memo}` : ""}`, source: "BANK",
       inAmount: n(d.amount), outAmount: null, memo: null, derived: true,
     });
   }
   if (args.sale.netReceived != null && args.sale.date) {
     rows.push({
-      id: null, date: iso(args.sale.date), label: "Venda · líquido recebido", source: "SALE",
+      id: null, date: iso(args.sale.date), storedDate: iso(args.sale.date), kind: null, category: null,
+      label: "Venda · líquido recebido", source: "SALE",
       inAmount: n(args.sale.netReceived), outAmount: null, memo: null, derived: true,
     });
   }

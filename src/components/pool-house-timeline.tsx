@@ -9,6 +9,7 @@ import {
   registerSale,
   returnExcessToPool,
   setHouseDate,
+  updateHouseCashEntry,
   type FormState,
 } from "@/lib/actions/pools";
 import { CASH_CATEGORIES, type LedgerRow } from "@/lib/pools/house-cash";
@@ -288,8 +289,42 @@ function SaleForm({ h }: { h: HouseView }) {
   );
 }
 
+// ── Editar um lançamento do extrato (06/10): data, valor e memo na própria linha ──────
+// Abertura: data vazia por padrão; informar uma data real tira o status de abertura.
+function EntryEditForm({ row, onDone }: { row: LedgerRow; onDone: () => void }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(
+    async (prev: FormState, fd: FormData) => {
+      const r = await updateHouseCashEntry(row.id!, prev, fd);
+      if (r?.ok) onDone();
+      return r;
+    },
+    undefined,
+  );
+  const isOpening = row.date == null;
+  return (
+    <form action={action} className="flex flex-wrap items-end gap-2 rounded-lg border border-blue-100 bg-slate-50 px-3 py-2">
+      <div>
+        <label className={labelClass}>Data{isOpening ? " real" : ""}</label>
+        <input type="date" name="date" defaultValue={isOpening ? "" : row.storedDate ?? ""} className={inputClass} />
+        {isOpening && <div className="mt-0.5 text-[10.5px] text-slate-400">vazia = continua “abertura”</div>}
+      </div>
+      <div>
+        <label className={labelClass}>Valor</label>
+        <input name="amount" inputMode="decimal" defaultValue={fmt2(row.inAmount ?? row.outAmount ?? 0)} className={inputClass} />
+      </div>
+      <div className="min-w-40 flex-1">
+        <label className={labelClass}>Memo</label>
+        <input name="memo" defaultValue={row.memo ?? ""} className={inputClass} />
+      </div>
+      <button type="submit" disabled={pending} className={btnClass + " !py-1.5"}>{pending ? "Salvando…" : "Salvar"}</button>
+      <button type="button" onClick={onDone} className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs text-slate-600 hover:bg-slate-100">Cancelar</button>
+      {state?.error && <span className="w-full text-xs text-red-600">{state.error}</span>}
+    </form>
+  );
+}
+
 // ── Lançar no extrato da casa ─────────────────────────────────────────────────
-function CashForm({ houseId, onDone }: { houseId: string; onDone: () => void }) {
+function CashForm({ houseId, onDone, presetCategory }: { houseId: string; onDone: () => void; presetCategory?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(
     async (prev: FormState, fd: FormData) => {
       const r = await addHouseCashEntry(houseId, prev, fd);
@@ -303,7 +338,7 @@ function CashForm({ houseId, onDone }: { houseId: string; onDone: () => void }) 
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className={labelClass}>O que aconteceu</label>
-          <select name="category" defaultValue="BUILD" className={inputClass}>
+          <select name="category" defaultValue={presetCategory ?? "BUILD"} className={inputClass}>
             {CASH_CATEGORIES.map(([v, l]) => (
               <option key={v} value={v}>{l}</option>
             ))}
@@ -354,6 +389,20 @@ export function PoolHouseTimeline({
   dangerZone: React.ReactNode;
 }) {
   const [showCash, setShowCash] = useState(false);
+  const [cashPreset, setCashPreset] = useState<string | undefined>(undefined);
+  const [editId, setEditId] = useState<string | null>(null);
+  // ✎ em Lote/Obra do planejado × real: um lançamento só → edita ele; senão abre "+ Lançar" na categoria
+  const adjustCategory = (cat: "LOT" | "BUILD") => {
+    const entries = h.ledger.rows.filter((r) => r.id && r.kind === "COST" && r.category === cat);
+    if (entries.length === 1) {
+      setEditId(entries[0].id);
+      setShowCash(false);
+    } else {
+      setCashPreset(cat);
+      setShowCash(true);
+    }
+    document.getElementById("extrato")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const d = h.dates;
   const statusIdx = STATUSES.findIndex(([v]) => v === h.status);
 
@@ -555,7 +604,7 @@ export function PoolHouseTimeline({
               <button type="button" onClick={() => setShowCash((v) => !v)} className={ghostClass}>{showCash ? "fechar" : "+ Lançar"}</button>
             </div>
             <p className="text-[11.5px] text-slate-400">O que entrou na casa (pool, banco, venda) e o que saiu dela. É um filtro do extrato do pool.</p>
-            {showCash && <CashForm houseId={h.id} onDone={() => setShowCash(false)} />}
+            {showCash && <CashForm key={cashPreset ?? "none"} houseId={h.id} presetCategory={cashPreset} onDone={() => { setShowCash(false); setCashPreset(undefined); }} />}
             <table className="mt-2 w-full">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-[10.5px] uppercase tracking-wider text-slate-400">
@@ -571,8 +620,15 @@ export function PoolHouseTimeline({
                 {h.ledger.rows.length === 0 && (
                   <tr><td colSpan={6} className="py-4 text-center text-slate-400">Nada lançado ainda — comece pela partida do pool (“Pool colocou capital próprio”).</td></tr>
                 )}
-                {h.ledger.rows.map((r, i) => (
-                  <tr key={r.id ?? `d${i}`} className="border-b border-slate-50">
+                {h.ledger.rows.map((r, i) =>
+                  r.id && editId === r.id ? (
+                    <tr key={r.id} className="border-b border-slate-50">
+                      <td colSpan={6} className="py-2">
+                        <EntryEditForm row={r} onDone={() => setEditId(null)} />
+                      </td>
+                    </tr>
+                  ) : (
+                  <tr key={r.id ?? `d${i}`} className={`border-b border-slate-50 ${r.id ? "group cursor-pointer hover:bg-slate-50" : ""}`} onClick={r.id ? () => setEditId(r.id) : undefined} title={r.id ? "Clique para editar" : undefined}>
                     <td className="whitespace-nowrap py-1.5 pr-2 text-slate-500">{r.date ? br(r.date) : <span className="text-slate-400">abertura</span>}</td>
                     {/* memo de abertura é só explicação — fica no tooltip p/ não engordar a linha */}
                     <td className="py-1.5 pr-2 text-slate-700" title={r.memo ?? undefined}>
@@ -581,16 +637,20 @@ export function PoolHouseTimeline({
                     <td className="py-1.5 pr-2">{srcPill(r.source)}</td>
                     <td className="whitespace-nowrap py-1.5 pr-2 text-right tabular-nums">{r.inAmount != null ? fmt2(r.inAmount) : ""}</td>
                     <td className="whitespace-nowrap py-1.5 text-right tabular-nums">{r.outAmount != null ? fmt2(r.outAmount) : ""}</td>
-                    <td className="py-1.5 text-right">
+                    <td className="whitespace-nowrap py-1.5 text-right">
                       {r.id && (
-                        <form action={deleteHouseCashEntry}>
-                          <input type="hidden" name="entryId" value={r.id} />
-                          <button type="submit" title="Apagar lançamento" className="text-xs text-slate-300 hover:text-red-500">✕</button>
-                        </form>
+                        <span className="flex items-center justify-end gap-1.5">
+                          <span className="text-xs text-slate-300 group-hover:text-[#1f3a5f]">✎</span>
+                          <form action={deleteHouseCashEntry} onClick={(e) => e.stopPropagation()}>
+                            <input type="hidden" name="entryId" value={r.id} />
+                            <button type="submit" title="Apagar lançamento" className="text-xs text-slate-300 hover:text-red-500">✕</button>
+                          </form>
+                        </span>
                       )}
                     </td>
                   </tr>
-                ))}
+                  ),
+                )}
                 {h.ledger.rows.length > 0 && (
                   <>
                     <tr className="bg-slate-50 font-bold">
@@ -645,15 +705,23 @@ export function PoolHouseTimeline({
               </thead>
               <tbody className="text-[13px]">
                 {([
-                  ["Lote", h.planned.lot, h.actual.lot, true],
-                  ["Obra", h.planned.build, h.actual.build, true],
-                  ["Venda", h.planned.sale, h.actual.sale, false],
-                  ["Closing da venda", h.planned.closing, h.actual.closing, true],
-                ] as Array<[string, number | null, number | null, boolean]>).map(([l, plan, real, costRow]) => (
+                  ["Lote", h.planned.lot, h.actual.lot, true, "LOT"],
+                  ["Obra", h.planned.build, h.actual.build, true, "BUILD"],
+                  ["Venda", h.planned.sale, h.actual.sale, false, null],
+                  ["Closing da venda", h.planned.closing, h.actual.closing, true, null],
+                ] as Array<[string, number | null, number | null, boolean, "LOT" | "BUILD" | null]>).map(([l, plan, real, costRow, cat]) => (
                   <tr key={l} className="border-b border-slate-50">
                     <td className="py-1.5 pr-2 font-semibold text-slate-700">{l}</td>
                     <td className="py-1.5 pr-2 text-right tabular-nums text-slate-500">{plan != null ? fmt2(plan) : "—"}</td>
-                    <td className="py-1.5 pr-2 text-right tabular-nums text-slate-800">{real != null ? fmt2(real) : "—"}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums text-slate-800">
+                      {real != null ? fmt2(real) : "—"}
+                      {/* real de lote/obra = soma do extrato; ✎ leva ao lançamento (ou abre "+ Lançar") */}
+                      {cat ? (
+                        <button type="button" onClick={() => adjustCategory(cat)} title="Ajustar no extrato da casa" className="ml-1.5 text-xs text-slate-300 hover:text-[#1f3a5f]">✎</button>
+                      ) : (
+                        <button type="button" onClick={() => document.getElementById("venda")?.scrollIntoView({ behavior: "smooth", block: "start" })} title="Ajustar em Registrar venda" className="ml-1.5 text-xs text-slate-300 hover:text-[#1f3a5f]">✎</button>
+                      )}
+                    </td>
                     <td className="py-1.5 text-right"><Delta value={plan != null && real != null ? real - plan : null} goodWhenNegative={costRow} /></td>
                   </tr>
                 ))}
@@ -665,7 +733,10 @@ export function PoolHouseTimeline({
                 </tr>
               </tbody>
             </table>
-            <p className="mt-2 text-[11px] text-slate-400">Lucro por custo da casa{h.coTotal ? " (inclui change orders)" : ""}. Juros e taxas do loan são do pool.</p>
+            <p className="mt-2 text-[11px] text-slate-400">
+              Lucro por custo da casa{h.coTotal ? " (inclui change orders)" : ""}. Juros e taxas do loan são do pool.
+              Real de lote e obra = soma do extrato da casa (✎ ajusta lá); venda e closing = etapa 7.
+            </p>
             <details className="mt-2">
               <summary className="cursor-pointer text-[11px] text-slate-400 hover:text-slate-600">De onde vem o planejado? (ajustar pro forma)</summary>
               <p className="mt-2 text-[11px] text-slate-400">Veio da simulação de origem na conversão do pool. Ajuste só se a premissa da casa mudou de fato.</p>
