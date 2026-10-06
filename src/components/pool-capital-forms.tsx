@@ -66,23 +66,52 @@ const INCOME_CATEGORIES = [
 
 // Despesa do PRÓPRIO pool (não das casas) — provisionada ou paga. Ou RECEITA do pool (06/10):
 // crédito do lender, reembolso, juros de conta — entra no caixa e no lucro, não é aporte.
-export function AddPoolExpenseForm({ poolId }: { poolId: string }) {
+// Dois botões explícitos — "+ Despesa" e "+ Receita" — cada um abre o form já no modo certo
+// (pedido do Stefan 06/10: o modo escondido dentro do form confundia o operador).
+export function PoolExpenseLauncher({ poolId }: { poolId: string }) {
+  const [open, setOpen] = useState<"OUT" | "IN" | null>(null);
+  const btn = (d: "OUT" | "IN", label: string) => (
+    <button
+      type="button"
+      onClick={() => setOpen((o) => (o === d ? null : d))}
+      className={`rounded-lg border px-3.5 py-1.5 text-xs font-semibold transition ${
+        open === d ? "border-[#1f3a5f] bg-blue-50 text-[#1f3a5f]" : d === "IN" ? "border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "border-slate-300 text-slate-600 hover:bg-slate-50"
+      }`}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div className="w-full">
+      <div className="flex justify-end gap-2">
+        {btn("OUT", "+ Despesa")}
+        {btn("IN", "+ Receita")}
+      </div>
+      {open && (
+        <div className="mt-3 rounded-lg border border-blue-100 bg-slate-50 p-4">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[#1f3a5f]">
+            {open === "IN" ? "Nova receita do pool" : "Nova despesa do pool"}
+          </div>
+          <AddPoolExpenseForm key={open} poolId={poolId} direction={open} onDone={() => setOpen(null)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AddPoolExpenseForm({ poolId, direction = "OUT", onDone }: { poolId: string; direction?: "OUT" | "IN"; onDone?: () => void }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(
-    addPoolExpense.bind(null, poolId),
+    async (prev: FormState, fd: FormData) => {
+      const r = await addPoolExpense(poolId, prev, fd);
+      if (!r?.error) onDone?.();
+      return r;
+    },
     undefined,
   );
-  const [direction, setDirection] = useState<"OUT" | "IN">("OUT");
   const income = direction === "IN";
   return (
     <form action={formAction} className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="direction" value={direction} />
-      <div className="inline-flex overflow-hidden rounded-lg border border-slate-300">
-        {(["OUT", "IN"] as const).map((d) => (
-          <button key={d} type="button" onClick={() => setDirection(d)} className={`px-3 py-2 text-xs font-semibold ${direction === d ? "bg-[#1f3a5f] text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}>
-            {d === "OUT" ? "Despesa" : "Receita"}
-          </button>
-        ))}
-      </div>
       <div className="w-40">
         <label className={labelClass}>Data</label>
         <input name="date" type="date" required className={inputClass} />

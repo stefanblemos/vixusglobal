@@ -12,7 +12,7 @@ import { portalStatusByMember } from "@/lib/portal/access";
 import { payoutByMember } from "@/lib/pools/payout-data";
 import { loanAwaitingClosing } from "@/lib/pools/draws";
 import { PoolStatusStepper } from "@/components/pool-status-stepper";
-import { AddPoolExpenseForm } from "@/components/pool-capital-forms";
+import { PoolExpenseLauncher } from "@/components/pool-capital-forms";
 import { deletePoolExpense, togglePoolExpensePaid } from "@/lib/actions/pools";
 import { PoolTabsNav } from "@/components/pool-tabs";
 import { PoolCashTab } from "@/components/pool-cash-tab";
@@ -1453,13 +1453,19 @@ export default async function PoolDetailPage({
               />
               {/* Despesas do pool (saíram do Overview no layout novo): pagas × provisionadas */}
               <section className="rounded-xl border border-slate-200 bg-white px-5 py-4">
-                <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
-                  Despesas do pool
-                </h2>
-                <p className="mt-0.5 text-xs text-slate-400">
-                  Saem do caixa antes do lucro — provisionadas seguram a devolução aos investidores.
-                  Receitas (crédito do lender, reembolso) entram aqui com sinal positivo e somam ao lucro.
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-xs font-semibold uppercase tracking-wider text-[#1f3a5f]">
+                      Despesas e receitas do pool
+                    </h2>
+                    <p className="mt-0.5 text-xs text-slate-400">
+                      Despesas saem do caixa antes do lucro (provisionadas seguram a devolução aos investidores).
+                      Receitas — crédito do lender, reembolso, juros de conta — entram no caixa e somam ao lucro.
+                    </p>
+                  </div>
+                  {/* dois botões explícitos (06/10): o operador não precisa descobrir o modo dentro do form */}
+                  <PoolExpenseLauncher poolId={pool.id} />
+                </div>
                 {pool.expenses.length > 0 ? (
                   <div className="mt-2 divide-y divide-slate-50 border-t border-slate-100">
                     {pool.expenses.map((e) => (
@@ -1500,14 +1506,6 @@ export default async function PoolDetailPage({
                 ) : (
                   <p className="mt-2 text-sm text-slate-400">Nenhuma despesa lançada.</p>
                 )}
-                <details className="mt-3">
-                  <summary className="inline-block cursor-pointer rounded-lg border border-slate-300 px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
-                    + Despesa
-                  </summary>
-                  <div className="mt-3">
-                    <AddPoolExpenseForm poolId={pool.id} />
-                  </div>
-                </details>
               </section>
             </>
           )}
