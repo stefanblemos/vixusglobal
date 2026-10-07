@@ -108,10 +108,19 @@ export type FinalReportData = {
     realCost: number | null; // lote + obra + change orders + closing real
     profitPlanned: number | null;
     profitReal: number | null;
+    // capital por casa (07/10): bruto que o pool colocou, o que o banco reembolsou via draw, líquido que ficou
+    lot: number;
+    build: number; // obra + change orders
+    draws: number;
+    equityGross: number;
+    returned: number;
+    equityNet: number;
   }>;
   cascade: {
     raised: number;
-    equityToHouses: number;
+    equityToHouses: number; // líquido (bruto − reembolsado)
+    equityGross: number;
+    returnedToPool: number;
     salesNet: number;
     bankCosts: number; // juros + fees + reserve − créditos (informativo: já dentro dos payoffs)
     poolIncome: number;
@@ -345,6 +354,7 @@ async function loadPool(poolId: string) {
           catalogLocation: { select: { name: true } },
           loanEntries: { where: { type: "DRAW", pending: false }, select: { amount: true, date: true } },
           changeOrders: { select: { amount: true } }, // encerramento: custo real da casa
+          cashEntries: { where: { kind: { in: ["EQUITY_IN", "RETURN_TO_POOL"] } }, select: { kind: true, amount: true } }, // capital bruto × reembolsado
         },
       },
       members: { include: { entries: true, party: true, company: true } },
@@ -403,7 +413,17 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
     const realCost = hasReal ? n(h.actualLotCost) + n(h.actualBuildCost) + co + n(h.closingCost) : null;
     const plannedSale = h.plannedSalePrice != null ? n(h.plannedSalePrice) : null;
     const soldPrice = h.soldPrice != null ? n(h.soldPrice) : null;
+    const ce = (h.cashEntries as Array<{ kind: string; amount: unknown }> | undefined) ?? [];
+    const equityGross = ce.filter((e) => e.kind === "EQUITY_IN").reduce((s, e) => s + n(e.amount), 0);
+    const returned = ce.filter((e) => e.kind === "RETURN_TO_POOL").reduce((s, e) => s + n(e.amount), 0);
+    const draws = ((h.loanEntries as Array<{ amount: unknown }> | undefined) ?? []).reduce((s, e) => s + n(e.amount), 0);
     return {
+      lot: round2(n(h.actualLotCost)),
+      build: round2(n(h.actualBuildCost) + co),
+      draws: round2(draws),
+      equityGross: round2(equityGross),
+      returned: round2(returned),
+      equityNet: round2(n(h.ownCapital)),
       address: (h.address as string).split(",")[0],
       saleDate: isoD(h.saleDate),
       plannedSale,
@@ -486,10 +506,12 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
     lastSaleDate: isoD(saleDates[saleDates.length - 1] ?? null),
     closedAt: closedAt.toISOString().slice(0, 10),
     months,
-    houses: hRows,
+    houses: [...hRows].sort((a, b) => (a.saleDate ?? "").localeCompare(b.saleDate ?? "")),
     cascade: {
       raised: round2(raised),
       equityToHouses: round2(equityToHouses),
+      equityGross: round2(hRows.reduce((s, r) => s + r.equityGross, 0)),
+      returnedToPool: round2(hRows.reduce((s, r) => s + r.returned, 0)),
       salesNet: round2(salesNet),
       bankCosts: round2(bankCosts),
       poolIncome: round2(poolIncome),
@@ -510,7 +532,7 @@ function buildFinal(cur: ReturnType<typeof metricsAt>, asOf: Date): FinalReportD
     bridge,
     investors,
     projectIrr: xirr(allFlows),
-    profitPct: equityToHouses > 0 ? profit / equityToHouses : null,
+    profitPct: raised > 0 ? profit / raised : null, // sobre o capital aportado (07/10)
   };
 }
 

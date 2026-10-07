@@ -312,10 +312,14 @@ export async function returnExcessToPool(formData: FormData): Promise<void> {
   const houseId = String(formData.get("houseId") ?? "");
   const amount = Number(String(formData.get("amount") ?? "").replace(/,/g, ""));
   if (!houseId || !Number.isFinite(amount) || amount <= 0) return;
+  // data opcional (07/10): o reembolso do banco tem data real (o draw) — default hoje
+  const rawDate = String(formData.get("date") ?? "");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? new Date(`${rawDate}T12:00:00Z`) : new Date();
+  const memo = String(formData.get("memo") ?? "").trim() || "Excedente do banco devolvido ao caixa do pool";
   const house = await prisma.poolHouse.findUnique({ where: { id: houseId }, select: { poolId: true, address: true } });
   if (!house) return;
   const entry = await prisma.houseCashEntry.create({
-    data: { houseId, kind: "RETURN_TO_POOL", category: "RETURN_TO_POOL", date: new Date(), amount, memo: "Excedente do banco devolvido ao caixa do pool" },
+    data: { houseId, kind: "RETURN_TO_POOL", category: "RETURN_TO_POOL", date, amount, memo },
   });
   await afterHouseCashChange(houseId);
   await logInvestmentAudit({

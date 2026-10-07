@@ -35,7 +35,12 @@ export function ClosingReportSections({
           ["rp.final.c.profit", c.profit, true],
         ] as Array<[string, number, boolean]>).map(([k, v, bold]) => (
           <div key={k} className={`flex justify-between ${bold ? "mt-1 border-t border-dashed border-slate-300 pt-1 text-[13px] font-extrabold text-slate-900" : ""}`}>
-            <span>{t(k as never)}</span>
+            <span>
+              {t(k as never)}
+              {k === "rp.final.c.houses" && c.returnedToPool > 0.005 && (
+                <span className="ml-1 text-[9.5px] text-slate-400">{t("rp.final.c.houses.h", { gross: m(c.equityGross), ret: m(c.returnedToPool) })}</span>
+              )}
+            </span>
             <b className={`tabular-nums ${v < 0 && !bold ? "text-slate-500" : ""}`}>{v < 0 ? `−${m(-v)}` : m(v)}</b>
           </div>
         ))}
@@ -52,40 +57,25 @@ export function ClosingReportSections({
         </div>
       </div>
 
-      {/* 3 · casas — colunas separadas (pedido 06/10: "plan → real" na mesma célula ficava bagunçado) */}
+      {/* 3 · casas — venda, custo, banco e capital por casa (pedido 07/10) */}
       <h2 className={h2}>{t("rp.final.s3")}</h2>
       {(() => {
         const sum = (f: (h: FinalReportData["houses"][number]) => number | null) => final.houses.reduce((s, h) => s + (f(h) ?? 0), 0);
         const cell = (v: number | null, cls = "") => <td className={`whitespace-nowrap py-1 text-right tabular-nums ${cls}`}>{v == null ? "—" : v < 0 ? `−${m(-v)}` : m(v)}</td>;
-        const dcell = (plan: number | null, real: number | null, goodWhenLower: boolean) => {
-          if (plan == null || real == null) return <td className="py-1 text-right text-slate-300">—</td>;
-          const d = real - plan;
-          const good = goodWhenLower ? d <= 0 : d >= 0;
-          return <td className={`whitespace-nowrap py-1 text-right text-[10.5px] tabular-nums ${Math.abs(d) < 0.005 ? "text-slate-400" : good ? "text-emerald-700" : "text-red-700"}`}>{d >= 0 ? "+" : "−"}{m(Math.abs(d))}</td>;
-        };
-        const plan = lang === "pt" ? "Plan." : "Plan";
-        const real = lang === "pt" ? "Real" : "Actual";
-        const group = "border-l border-slate-200 pl-2";
+        const hasRet = final.houses.some((h) => h.returned > 0.005);
+        const hdr = (k: string, cls = "") => <th className={`py-1 text-right font-medium ${cls}`}>{t(k as never)}</th>;
         return (
           <table className="w-full">
             <thead>
-              <tr className="text-left text-[9px] uppercase tracking-wider text-slate-400">
-                <th></th>
-                <th colSpan={3} className={`pb-0.5 text-center ${group}`}>{lang === "pt" ? "Venda" : "Sale"}</th>
-                <th colSpan={3} className={`pb-0.5 text-center ${group}`}>{lang === "pt" ? "Custo" : "Cost"}</th>
-                <th colSpan={2} className={`pb-0.5 text-center ${group}`}>{lang === "pt" ? "Lucro" : "Profit"}</th>
-                <th></th>
-              </tr>
               <tr className="border-b border-slate-200 text-left text-[9.5px] uppercase tracking-wider text-slate-400">
                 <th className="py-1 font-medium">{t("rp.final.h.home")}</th>
-                <th className={`py-1 text-right font-medium ${group}`}>{plan}</th>
-                <th className="py-1 text-right font-medium">{real}</th>
-                <th className="py-1 text-right font-medium">Δ</th>
-                <th className={`py-1 text-right font-medium ${group}`}>{plan}</th>
-                <th className="py-1 text-right font-medium">{real}</th>
-                <th className="py-1 text-right font-medium">Δ</th>
-                <th className={`py-1 text-right font-medium ${group}`}>{plan}</th>
-                <th className="py-1 text-right font-medium">{real}</th>
+                <th className="py-1 text-right font-medium">{lang === "pt" ? "Venda" : "Sale"}</th>
+                {hdr("rp.final.h.lot", "border-l border-slate-200")}
+                {hdr("rp.final.h.build")}
+                {hdr("rp.final.h.draws", "border-l border-slate-200")}
+                {hdr("rp.final.h.equity")}
+                {hasRet && hdr("rp.final.h.returned")}
+                <th className="py-1 text-right font-medium border-l border-slate-200">{lang === "pt" ? "Lucro" : "Profit"}</th>
                 <th className="py-1 text-right font-medium">{t("rp.final.h.closed")}</th>
               </tr>
             </thead>
@@ -93,38 +83,32 @@ export function ClosingReportSections({
               {final.houses.map((h) => (
                 <tr key={h.address} className="border-b border-slate-100">
                   <td className="py-1 font-medium">{h.address}</td>
-                  {cell(h.plannedSale, `text-slate-500 ${group}`)}
                   {cell(h.soldPrice, "font-semibold")}
-                  {dcell(h.plannedSale, h.soldPrice, false)}
-                  {cell(h.plannedCost, `text-slate-500 ${group}`)}
-                  {cell(h.realCost, "font-semibold")}
-                  {dcell(h.plannedCost, h.realCost, true)}
-                  {cell(h.profitPlanned, `text-slate-500 ${group}`)}
-                  {cell(h.profitReal, `font-semibold ${h.profitReal != null && h.profitReal < 0 ? "text-red-700" : ""}`)}
+                  {cell(h.lot, "border-l border-slate-200 text-slate-600")}
+                  {cell(h.build, "text-slate-600")}
+                  {cell(h.draws, "border-l border-slate-200 text-slate-600")}
+                  {cell(h.equityNet)}
+                  {hasRet && cell(h.returned, "text-emerald-700")}
+                  {cell(h.profitReal, `border-l border-slate-200 font-semibold ${h.profitReal != null && h.profitReal < 0 ? "text-red-700" : ""}`)}
                   <td className="whitespace-nowrap py-1 text-right text-slate-500">{fmtD(h.saleDate)}</td>
                 </tr>
               ))}
               <tr className="font-bold text-slate-900">
                 <td className="py-1">Total</td>
-                {cell(sum((h) => h.plannedSale), group)}
                 {cell(sum((h) => h.soldPrice))}
-                {dcell(sum((h) => h.plannedSale), sum((h) => h.soldPrice), false)}
-                {cell(sum((h) => h.plannedCost), group)}
-                {cell(sum((h) => h.realCost))}
-                {dcell(sum((h) => h.plannedCost), sum((h) => h.realCost), true)}
-                {cell(sum((h) => h.profitPlanned), group)}
-                {cell(sum((h) => h.profitReal))}
+                {cell(sum((h) => h.lot), "border-l border-slate-200")}
+                {cell(sum((h) => h.build))}
+                {cell(sum((h) => h.draws), "border-l border-slate-200")}
+                {cell(sum((h) => h.equityNet))}
+                {hasRet && cell(sum((h) => h.returned), "text-emerald-700")}
+                {cell(sum((h) => h.profitReal), "border-l border-slate-200")}
                 <td></td>
               </tr>
             </tbody>
           </table>
         );
       })()}
-      <p className="mt-1 text-[9.5px] text-slate-400">
-        {lang === "pt"
-          ? "Lucro por casa = venda − lote − obra − change orders − closing. Juros e fees do banco são do projeto (seção 2), não da casa."
-          : "Profit per home = sale − lot − construction − change orders − closing. Bank interest and fees belong to the project (section 2), not to the home."}
-      </p>
+      <p className="mt-1 text-[9.5px] text-slate-400">{t("rp.final.h.note")}</p>
 
       {/* ponte casa → projeto (06/10): explica por que o lucro das casas ≠ lucro do projeto */}
       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11.5px] text-slate-700">

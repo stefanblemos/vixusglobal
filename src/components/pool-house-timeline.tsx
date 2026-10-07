@@ -684,10 +684,14 @@ export function PoolHouseTimeline({
               “Abertura” = valores da ficha antiga, sem data. Saldo positivo é dinheiro que entrou e não foi gasto: ou é custo ainda não lançado, ou é excedente a devolver ao caixa do pool. Negativo = custo pago sem a entrada correspondente lançada.
             </p>
             {h.ledger.balance > 0.01 && (
-              <form action={returnExcessToPool} className="mt-2">
+              <form action={returnExcessToPool} className="mt-2 flex flex-wrap items-center gap-2">
                 <input type="hidden" name="houseId" value={h.id} />
                 <input type="hidden" name="amount" value={h.ledger.balance} />
                 <button type="submit" className={ghostClass}>↩ Devolver excedente de ${fmt2(h.ledger.balance)} ao caixa do pool</button>
+                <label className="flex items-center gap-1 text-[11px] text-slate-500">
+                  em <input type="date" name="date" defaultValue={new Date().toISOString().slice(0, 10)} className="rounded border border-slate-200 px-1.5 py-0.5 text-[11px]" />
+                </label>
+                <input name="memo" placeholder="motivo (ex.: draw do banco reembolsou o capital)" className="w-72 rounded border border-slate-200 px-2 py-0.5 text-[11px]" />
               </form>
             )}
           </section>
