@@ -4,13 +4,15 @@ import { InventoryShell, Kpi, br, card, h2, money, pct1, pill, td, tdr, th, thr 
 import { ActionForm } from "@/components/inventory/action-form";
 import { applySuggestedPrice, confirmPriceInQbo, importItemsCsv, mapGlName, mapVendorName, mergeItems, seedItemsFromGl, unmapGlName, updateItem } from "@/lib/actions/inventory";
 import { marginOf, priceForMargin } from "@/lib/inventory/settings";
+import { suggestItems } from "@/lib/inventory/classify";
+import Link from "next/link";
 import { productName } from "@/lib/inventory/classify";
 import { loadLayers } from "@/lib/inventory/fifo";
 
 export const dynamic = "force-dynamic";
 
-export default async function ItemsPage({ searchParams }: { searchParams: Promise<{ company?: string }> }) {
-  const { company } = await searchParams;
+export default async function ItemsPage({ searchParams }: { searchParams: Promise<{ company?: string; all?: string }> }) {
+  const { company, all } = await searchParams;
   const ctx = await inventoryContext(company);
   const cid = ctx.companyId;
   const gl = ctx.gl;
@@ -52,6 +54,11 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
   for (const l of prodLines) if (l.itemId && l.invoice.kind === "GOODS" && !l.invoice.shipment?.closedAt) transit.set(l.itemId, l.invoice.shipment ? (l.invoice.shipment.name ?? (l.invoice.shipment.containers.length ? l.invoice.shipment.containers.join(" + ") : l.invoice.shipment.key)) : `#${l.invoice.no} sem frete`);
   // preço do app ≠ preço no QBO (último CSV): falta atualizar um dos dois
   const diverged = items.filter((i) => i.listPrice && i.qboPrice && Math.abs(Number(i.listPrice) - Number(i.qboPrice)) > 0.004);
+  // provável sample: nunca vendeu no GL e o QBO tem no máximo 1 unidade (regra do Stefan, 17/11) — fica escondido por padrão
+  const likelySample = (i: (typeof items)[number]) => realized(i) == null && (i.qtyOnHand == null || Number(i.qtyOnHand) <= 1) && !transit.has(i.id);
+  const samples = items.filter(likelySample);
+  const showAll = all === "1";
+  const shownItems = showAll ? items : items.filter((i) => !likelySample(i));
 
   return (
     <InventoryShell tab="items" companies={ctx.companies} companyId={cid} companyName={ctx.company?.legalName ?? null} glUntil={gl?.coverageUntil ?? null}>
@@ -118,8 +125,23 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
                   <td className={td}>
                     <form action={mapVendorName} className="flex items-center gap-1">
                       <input type="hidden" name="vendorName" value={u.name} />
-                      <select name="itemId" className="max-w-[320px] rounded border border-slate-200 px-1 py-0.5 text-xs"><option value="">escolher…</option>{items.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</select>
-                      <button className="rounded border border-[#1f3a5f] px-2 py-0.5 text-[11px] font-semibold text-[#1f3a5f]">confirmar</button>
+                      {(() => {
+                        const sug = suggestItems(u.name, items);
+                        const best = sug[0] && sug[0].score >= 0.5 && (!sug[1] || sug[0].score - sug[1].score >= 0.05) ? sug[0].item.id : "";
+                        const sugIds = new Set(sug.map((x) => x.item.id));
+                        return (
+                          <>
+                            <select name="itemId" defaultValue={best} className={`max-w-[320px] rounded border px-1 py-0.5 text-xs ${best ? "border-emerald-400 bg-emerald-50" : sug.length ? "border-amber-300 bg-amber-50" : "border-slate-200"}`}>
+                              <option value="">escolher…</option>
+                              {sug.length > 0 && <optgroup label={sug.length > 1 && !best ? "Sugestões (mais de uma parecida — escolha)" : "Sugestão"}>{sug.map((x) => <option key={x.item.id} value={x.item.id}>★ {x.item.name} · {Math.round(x.score * 100)}%</option>)}</optgroup>}
+                              <optgroup label="Todos os itens">{items.filter((i) => !sugIds.has(i.id)).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}</optgroup>
+                            </select>
+                            <button className="rounded border border-[#1f3a5f] px-2 py-0.5 text-[11px] font-semibold text-[#1f3a5f]">confirmar</button>
+                            {best && <span className="text-[10px] text-emerald-700">sugerido</span>}
+                            {!best && sug.length > 1 && <span className="text-[10px] text-amber-700">{sug.length} parecidos</span>}
+                          </>
+                        );
+                      })()}
                     </form>
                   </td>
                 </tr>
@@ -130,13 +152,21 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
       )}
 
       <div className={card}>
-        <h2 className={h2}>Itens · custo com frete, preço de lista e margem</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className={`${h2} mb-0`}>Itens · custo com frete, preço de lista e margem</h2>
+          {samples.length > 0 && (
+            <span className="text-[11px] text-slate-500">
+              {showAll ? <>mostrando {samples.length} prováveis samples · <Link href={`/inventory/items?company=${cid}`} className="text-[#1f3a5f] hover:underline">esconder</Link></> : <>{samples.length} prováveis samples escondidos (sem venda no GL e ≤ 1 unidade no QBO) · <Link href={`/inventory/items?company=${cid}&all=1`} className="text-[#1f3a5f] hover:underline">mostrar</Link></>}
+            </span>
+          )}
+        </div>
         {items.length === 0 ? <p className="text-sm text-slate-500">Nenhum item. Importe o CSV do QBO ou crie a partir do GL.</p> : (
           <table className="w-full text-sm">
             <thead><tr><th className={th}>Item (QBO)</th><th className={th}>Nomes · fornecedor / GL</th><th className={thr}>Custo com frete</th><th className={thr}>Preço de lista</th><th className={thr}>Margem</th><th className={thr}>Preço p/ {margin}%</th><th className={thr}>Realizada (GL)</th><th className={th}></th></tr></thead>
             <tbody>
-              {items.map((i) => {
+              {shownItems.map((i) => {
                 const cost = landed(i);
+                const isSample = likelySample(i);
                 const lp = i.listPrice ? Number(i.listPrice) : null;
                 const qp = i.qboPrice ? Number(i.qboPrice) : null;
                 const div = lp != null && qp != null && Math.abs(lp - qp) > 0.004;
@@ -146,7 +176,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
                 const low = mg != null && mg < margin / 100;
                 return (
                   <tr key={i.id} className="border-t border-slate-100">
-                    <td className={td}>{i.name}{i.category && <span className="block text-[10px] text-slate-400">{i.category}</span>}{!i.active && pill("off", "inativo")}</td>
+                    <td className={td}>{i.name}{i.category && <span className="block text-[10px] text-slate-400">{i.category}</span>}{!i.active && pill("off", "inativo")}{isSample && <span className="block">{pill("off", "provável sample")}</span>}</td>
                     <td className={`${td} text-[11px] text-slate-500`}>
                       {i.vendorNames.length ? i.vendorNames.join(" · ") : <span className="text-slate-300">fornecedor: —</span>}
                       <div>{i.glNames.filter((g) => g !== i.name).map((g) => <span key={g} className="mr-1 inline-flex items-center gap-0.5 rounded bg-slate-100 px-1">{g}<form action={unmapGlName} className="inline"><input type="hidden" name="itemId" value={i.id} /><input type="hidden" name="glName" value={g} /><button className="text-slate-400 hover:text-red-600">×</button></form></span>)}</div>

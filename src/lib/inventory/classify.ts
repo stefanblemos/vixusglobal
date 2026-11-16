@@ -77,3 +77,41 @@ export function hasCloseHint(lines: { activity: string; desc?: string | null }[]
   }
   return null;
 }
+
+/**
+ * Semelhança entre o nome na invoice do fornecedor e o nome do item no QBO (0..1).
+ * Tokens normalizados (minúsculas, sem pontuação; "blk/black", "bn/brushed nickel", "sn/satin nickel",
+ * "wt/white" equivalem); prefixo de marca ("KAH-", "ZBT-") igual vale bônus; um conter o outro vale bônus.
+ */
+const SYN: Record<string, string> = { black: "blk", blck: "blk", "brushed nickel": "bn", "satin nickel": "sn", white: "wt", wht: "wt" };
+function tokensOf(name: string): string[] {
+  let n = (name ?? "").toLowerCase();
+  for (const [k, v] of Object.entries(SYN)) n = n.replace(new RegExp(`\\b${k}\\b`, "g"), v);
+  return n.replace(/[^a-z0-9]+/g, " ").trim().split(/\s+/).filter((t) => t && t !== "and" && t !== "with");
+}
+export function nameSimilarity(a: string, b: string): number {
+  const ta = tokensOf(a);
+  const tb = tokensOf(b);
+  if (!ta.length || !tb.length) return 0;
+  const sa = new Set(ta);
+  const sb = new Set(tb);
+  let inter = 0;
+  for (const t of sa) if (sb.has(t)) inter++;
+  let score = inter / (sa.size + sb.size - inter); // Jaccard
+  const pa = ta[0];
+  const pb = tb[0];
+  if (pa === pb && pa.length >= 3) score += 0.15; // mesma marca (KAH, ZBT…)
+  const ja = ta.join(" ");
+  const jb = tb.join(" ");
+  if (ja === jb) return 1; // nome exato (normalizado) ganha de quem só contém ("… 2G Pro" é outro produto)
+  if (ja.includes(jb) || jb.includes(ja)) score += 0.2;
+  return Math.min(0.95, score);
+}
+/** Melhores candidatos (ordenados) acima de um limiar. */
+export function suggestItems<T extends { id: string; name: string }>(name: string, items: T[], min = 0.34): { item: T; score: number }[] {
+  return items
+    .map((item) => ({ item, score: nameSimilarity(name, item.name) }))
+    .filter((x) => x.score >= min)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 5);
+}
