@@ -130,7 +130,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
       )}
 
       <div className={card}>
-        <h2 className={h2}>Itens · custo vigente, preço de lista e margem</h2>
+        <h2 className={h2}>Itens · custo com frete, preço de lista e margem</h2>
         {items.length === 0 ? <p className="text-sm text-slate-500">Nenhum item. Importe o CSV do QBO ou crie a partir do GL.</p> : (
           <table className="w-full text-sm">
             <thead><tr><th className={th}>Item (QBO)</th><th className={th}>Nomes · fornecedor / GL</th><th className={thr}>Custo com frete</th><th className={thr}>Preço de lista</th><th className={thr}>Margem</th><th className={thr}>Preço p/ {margin}%</th><th className={thr}>Realizada (GL)</th><th className={th}></th></tr></thead>

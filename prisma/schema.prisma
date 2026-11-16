@@ -2096,6 +2096,7 @@ model InventoryShipment {
   aiStatus   String? // COMPLETE | PENDING | UNCLEAR
   aiNote     String? // resumo em PT-BR
   aiPending  String[] @default([]) // custos que ainda devem vir
+  aiContingent String[] @default([]) // eventuais (yard storage, demurrage…): não bloqueiam o fechamento
   aiAt       DateTime?
   aiHash     String? // hash das invoices/memos analisadas — muda = nota desatualizada
   note       String?

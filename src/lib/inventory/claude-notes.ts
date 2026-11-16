@@ -15,7 +15,7 @@ import type { InvoiceRow } from "./shipments";
 const MODEL = "claude-sonnet-5-5";
 
 export type NotesStatus = "COMPLETE" | "PENDING" | "UNCLEAR";
-export type NotesAnalysis = { status: NotesStatus; summary: string; pending: string[]; covered: string[] };
+export type NotesAnalysis = { status: NotesStatus; summary: string; pending: string[]; covered: string[]; contingent: string[] };
 
 export type NotesInvoice = { no: string; kind: "GOODS" | "FREIGHT" | "SAMPLE"; date: string; memo: string[]; costs: { label: string; amount: number }[] };
 
@@ -26,10 +26,10 @@ export function notesHash(invoices: NotesInvoice[]): string {
   return h.digest("hex").slice(0, 16);
 }
 
-const PROMPT = (name: string, invoices: NotesInvoice[]) => `You are checking whether a container shipment from an import supplier has been FULLY billed.
+const PROMPT = (name: string, invoices: NotesInvoice[], closeTerms: string[]) => `You are checking whether a container shipment from an import supplier has been FULLY billed, so the operator can "close costs" (freeze the landed cost of the goods).
 
 Shipment: ${name}
-Invoices in this shipment (chronological), with the free-text notes printed on each one and the cost lines already billed:
+Invoices in this shipment in ORDER OF ISSUE (oldest first), each with the free-text notes printed on it and the cost lines actually billed:
 
 ${invoices
   .map(
@@ -41,21 +41,26 @@ ${i.costs.length ? i.costs.map((c) => `  ${c.label}: ${c.amount.toFixed(2)}`).jo
   )
   .join("\n\n")}
 
-Suppliers state in the notes which charges are NOT included on that invoice (e.g. "Freight, Shipping or Brokerage Fees NOT included", "Chassis, Yard Storage, CrossDocking NOT included"). A charge that one invoice says is NOT included may be billed later on another invoice of the same shipment. Your job: compare every "NOT included" statement against the cost lines billed on ALL invoices of the shipment.
+How to read this (rules from the operator):
+1. Read chronologically. An older invoice says which charges are NOT included ON THAT INVOICE; newer invoices then bill those charges. A charge named as "NOT included" on an older invoice is SETTLED as soon as any later invoice has a billed line for it. Notes on an older invoice never override lines billed later.
+2. The shipment reaches its end when the final-leg services are BILLED AS LINES: ${closeTerms.length ? closeTerms.join(", ") : "cross-docking, unloading, delivery"} (also "flatbed/delivery fee", "final delivery"). If such lines exist, the shipment is COMPLETE. Words in notes do not count; only billed lines count.
+3. Charges that only happen if something goes wrong — yard storage, demurrage, detention, per-diem, storage, waiting time — are CONTINGENT. They never block closing: list them under "contingent", not "pending", even if a note says NOT included.
+4. "PENDING" only when a real, expected charge (freight, drayage, customs clearance, duties, insurance, handling, cross-docking/unloading/delivery) was named as NOT included and no later invoice billed it AND the final-leg lines of rule 2 are not billed yet. "UNCLEAR" only when there are no notes at all and no freight invoice.
+5. Downpayment, resale certificate, payment instructions are not charges.
 
 Answer ONLY with JSON (no prose, no markdown fence):
 {
   "status": "COMPLETE" | "PENDING" | "UNCLEAR",
-  "summary": "<2-3 short sentences in Brazilian Portuguese for the operator: what has been billed, what is still expected, and whether the shipment looks ready to close costs>",
-  "pending": ["<each charge still expected, short, in Portuguese>"],
-  "covered": ["<each charge that a note said NOT included but was later billed, short, in Portuguese>"]
-}
-Rules: "COMPLETE" only when every charge named as NOT included has a matching billed line (or the notes say nothing is excluded). "PENDING" when at least one named charge has no billed line yet. "UNCLEAR" when notes are missing or contradictory. Downpayment / resale certificate / payment instructions are not charges. Keep it factual; do not invent charges that no note mentions.`;
+  "summary": "<2-3 short sentences in Brazilian Portuguese: what was billed and on which invoices, what (if anything) is still expected, and whether it is safe to close costs now>",
+  "pending": ["<real charges still expected, in Portuguese; empty when COMPLETE>"],
+  "contingent": ["<contingent charges mentioned as NOT included that may or may not ever be billed, in Portuguese>"],
+  "covered": ["<charges an older note said NOT included that a later invoice billed, in Portuguese>"]
+}`;
 
-export async function analyzeShipmentNotes(name: string, invoices: NotesInvoice[]): Promise<NotesAnalysis> {
+export async function analyzeShipmentNotes(name: string, invoices: NotesInvoice[], closeTerms: string[] = []): Promise<NotesAnalysis> {
   if (!process.env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY não configurada.");
   const client = new Anthropic({ maxRetries: 3 });
-  const res = await client.messages.create({ model: MODEL, max_tokens: 1200, messages: [{ role: "user", content: PROMPT(name, invoices) }] });
+  const res = await client.messages.create({ model: MODEL, max_tokens: 1200, messages: [{ role: "user", content: PROMPT(name, invoices, closeTerms) }] });
   const text = res.content.filter((c): c is Anthropic.TextBlock => c.type === "text").map((c) => c.text).join("\n");
   const a = text.indexOf("{");
   const b = text.lastIndexOf("}");
@@ -63,7 +68,7 @@ export async function analyzeShipmentNotes(name: string, invoices: NotesInvoice[
   const raw = JSON.parse(text.slice(a, b + 1)) as Partial<NotesAnalysis>;
   const status: NotesStatus = raw.status === "COMPLETE" || raw.status === "PENDING" || raw.status === "UNCLEAR" ? raw.status : "UNCLEAR";
   const list = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x ?? "").trim()).filter(Boolean) : []);
-  return { status, summary: String(raw.summary ?? "").trim() || "Sem resumo.", pending: list(raw.pending), covered: list(raw.covered) };
+  return { status, summary: String(raw.summary ?? "").trim() || "Sem resumo.", pending: list(raw.pending), covered: list(raw.covered), contingent: list(raw.contingent) };
 }
 
 /** Invoices do embarque (mercadoria + frete + frete tardio) no formato da análise. */

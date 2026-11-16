@@ -79,8 +79,9 @@ export async function analyzeShipmentNotesAction(_p: InvState, fd: FormData): Pr
   if (!input.length) return { error: "Embarque sem invoices." };
   const name = sh.name ?? (sh.containers.length ? sh.containers.join(" + ") : sh.key);
   try {
-    const a = await analyzeShipmentNotes(name, input);
-    await prisma.inventoryShipment.update({ where: { id }, data: { aiStatus: a.status, aiNote: a.summary, aiPending: a.pending, aiAt: new Date(), aiHash: notesHash(input) } });
+    const s = await getInventorySettings(sh.companyId);
+    const a = await analyzeShipmentNotes(name, input, s.closeHintTerms);
+    await prisma.inventoryShipment.update({ where: { id }, data: { aiStatus: a.status, aiNote: a.summary, aiPending: a.pending, aiContingent: a.contingent, aiAt: new Date(), aiHash: notesHash(input) } });
     touch();
     return { ok: a.status === "COMPLETE" ? "Notas lidas: nada pendente." : a.status === "PENDING" ? `Notas lidas: falta cobrar ${a.pending.join(", ") || "algo"}.` : "Notas lidas, sem conclusão clara." };
   } catch (e) {

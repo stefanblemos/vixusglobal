@@ -2,7 +2,7 @@ import { ActionForm } from "./action-form";
 import { pill } from "./inventory-shell";
 import { analyzeShipmentNotesAction } from "@/lib/actions/inventory";
 
-type Ship = { id: string; aiStatus: string | null; aiNote: string | null; aiPending: string[]; aiAt: Date | null; aiHash: string | null };
+type Ship = { id: string; aiStatus: string | null; aiNote: string | null; aiPending: string[]; aiContingent: string[]; aiAt: Date | null; aiHash: string | null };
 
 /**
  * Nota do Claude sobre os memos do embarque: o que já foi cobrado × o que as invoices dizem
@@ -32,9 +32,10 @@ export function ShipmentNotes({ sh, hash, closed }: { sh: Ship; hash: string; cl
         <>
           <p className="mt-1">{sh.aiNote}</p>
           {sh.aiPending.length > 0 && <p className="mt-1"><b>Ainda deve vir:</b> {sh.aiPending.join(" · ")}</p>}
+          {sh.aiContingent.length > 0 && <p className="mt-1 opacity-80"><b>Eventuais (só se ocorrer, não seguram o fechamento):</b> {sh.aiContingent.join(" · ")}</p>}
         </>
       ) : (
-        <p className="mt-1 opacity-80">O Claude lê os memos de todas as invoices do embarque (“… NOT included”) e diz o que já foi cobrado e o que ainda falta.</p>
+        <p className="mt-1 opacity-80">O Claude lê as notas de todas as invoices do embarque na ordem de emissão (“… NOT included” nas antigas, cobrado nas seguintes) e diz o que já foi cobrado e o que ainda falta.</p>
       )}
     </div>
   );
