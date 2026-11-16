@@ -11,6 +11,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { classifyCost, isProductActivity, productName, containersOf, refsOf } from "@/lib/inventory/classify";
 import { linesClose, usDateToIso, type ParsedInvoice } from "@/lib/inventory/parse-invoice";
+import { parseInvoicePdfWithClaude } from "@/lib/inventory/claude-parse";
 import { buildShipmentView, loadInvoices, recomputeShipments, toClosedData } from "@/lib/inventory/shipments";
 import { loadGlData, glItemName } from "@/lib/inventory/gl";
 import { runFifo } from "@/lib/inventory/fifo";
@@ -50,6 +51,20 @@ export async function saveInventorySettings(_p: InvState, fd: FormData): Promise
   });
   touch();
   return { ok: "Configuração salva." };
+}
+
+// ─── leitura pelo Claude (fallback do pdf.js) ────────────────────────────────
+export async function readInvoicePdfWithClaude(fd: FormData): Promise<{ invoices?: ParsedInvoice[]; error?: string }> {
+  const file = fd.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Arquivo?" };
+  if (file.size > 30 * 1024 * 1024) return { error: "PDF acima de 30 MB." };
+  try {
+    const invoices = await parseInvoicePdfWithClaude(Buffer.from(await file.arrayBuffer()));
+    if (!invoices.length) return { error: "O Claude não encontrou invoice neste PDF (só anexos?)." };
+    return { invoices };
+  } catch (e) {
+    return { error: `Leitura pelo Claude falhou: ${e instanceof Error ? e.message : String(e)}` };
+  }
 }
 
 // ─── fornecedores ────────────────────────────────────────────────────────────

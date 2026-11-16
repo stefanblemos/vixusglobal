@@ -3,9 +3,14 @@
 import { useRef, useState } from "react";
 import { rowsFromItems, parseInvoicePages, linesClose, usDateToIso, type ParsedInvoice, type PdfTextItem } from "@/lib/inventory/parse-invoice";
 import { isProductActivity } from "@/lib/inventory/classify";
-import { submitInvoice, type SubmitInvoiceResult } from "@/lib/actions/inventory";
+import { submitInvoice, readInvoicePdfWithClaude, type SubmitInvoiceResult } from "@/lib/actions/inventory";
 
-type Pending = { parsed: ParsedInvoice; fileName: string; file: File; kind: "GOODS" | "FREIGHT" | "SAMPLE"; result?: SubmitInvoiceResult; busy?: boolean };
+type Pending = { parsed: ParsedInvoice; fileName: string; file: File; kind: "GOODS" | "FREIGHT" | "SAMPLE"; result?: SubmitInvoiceResult; busy?: boolean; via: "pdfjs" | "claude"; rereading?: boolean };
+
+const EMPTY: ParsedInvoice = { no: null, date: null, terms: null, lines: [], memo: [], container: null, subtotal: null, discount: 0, tax: 0, total: null, payment: null, balance: null, pages: 0 };
+const kindOf = (inv: ParsedInvoice): Pending["kind"] => (inv.lines.some((l) => isProductActivity(l.activity)) ? "GOODS" : "FREIGHT");
+/** Texto "legível"? PDFs impressos pelo Distiller sem mapa de fonte viram símbolos (!"#$%). */
+const looksGarbled = (txt: string) => { const t = txt.replace(/\s+/g, ""); if (t.length < 40) return true; const letters = (t.match(/[A-Za-z]/g) ?? []).length; return letters / t.length < 0.45; };
 
 const fmt = (v: number | null | undefined) => (v == null ? "—" : "$" + v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 
@@ -33,14 +38,26 @@ export function InvoiceUpload({ companyId, vendors }: { companyId: string; vendo
         const buf = await file.arrayBuffer();
         const doc = await pdfjs.getDocument({ data: buf }).promise;
         const pages = [];
+        let allText = "";
         for (let p = 1; p <= doc.numPages; p++) {
           const page = await doc.getPage(p);
           const tc = await page.getTextContent();
-          pages.push(rowsFromItems(tc.items as unknown as PdfTextItem[]));
+          const items = tc.items as unknown as PdfTextItem[];
+          allText += items.map((i) => i.str).join("");
+          pages.push(rowsFromItems(items));
         }
-        const invs = parseInvoicePages(pages);
-        if (!invs.length) next.push({ parsed: { no: null, date: null, terms: null, lines: [], memo: [], container: null, subtotal: null, discount: 0, tax: 0, total: null, payment: null, balance: null, pages: doc.numPages }, fileName: file.name, file, kind: "GOODS", result: { status: "error", no: null, error: "Nenhuma invoice reconhecida neste PDF." } });
-        for (const inv of invs) next.push({ parsed: inv, fileName: file.name, file, kind: inv.lines.some((l) => isProductActivity(l.activity)) ? "GOODS" : "FREIGHT" });
+        const garbled = looksGarbled(allText);
+        const invs = garbled ? [] : parseInvoicePages(pages);
+        if (!invs.length) {
+          // sem camada de texto utilizável (escaneado / Distiller sem mapa de fonte): lê pelo Claude no servidor
+          const fd = new FormData();
+          fd.set("file", file);
+          const r = await readInvoicePdfWithClaude(fd);
+          if (r.invoices?.length) for (const inv of r.invoices) next.push({ parsed: inv, fileName: file.name, file, kind: kindOf(inv), via: "claude" });
+          else next.push({ parsed: { ...EMPTY, pages: doc.numPages }, fileName: file.name, file, kind: "GOODS", via: "claude", result: { status: "error", no: null, error: r.error ?? "Nenhuma invoice reconhecida neste PDF." } });
+          continue;
+        }
+        for (const inv of invs) next.push({ parsed: inv, fileName: file.name, file, kind: kindOf(inv), via: "pdfjs" });
       }
       setItems((prev) => [...prev, ...next]);
     } catch (e) {
@@ -49,6 +66,23 @@ export function InvoiceUpload({ companyId, vendors }: { companyId: string; vendo
       setReading(false);
       if (inputRef.current) inputRef.current.value = "";
     }
+  }
+
+  /** Relê o arquivo pelo Claude e troca as linhas deste item pelas invoices que ele achou. */
+  async function reread(idx: number) {
+    const it = items[idx];
+    setItems((p) => p.map((x, i) => (i === idx ? { ...x, rereading: true } : x)));
+    const fd = new FormData();
+    fd.set("file", it.file);
+    const r = await readInvoicePdfWithClaude(fd);
+    setItems((p) => {
+      if (!r.invoices?.length) return p.map((x, i) => (i === idx ? { ...x, rereading: false, result: { status: "error", no: x.parsed.no, error: r.error ?? "Nada lido." } } : x));
+      const fresh: Pending[] = r.invoices.map((inv) => ({ parsed: inv, fileName: it.fileName, file: it.file, kind: kindOf(inv), via: "claude" as const }));
+      // tira todos os itens do mesmo arquivo (o Claude releu o PDF inteiro) e põe os novos no lugar
+      const first = p.findIndex((x) => x.file === it.file);
+      const rest = p.filter((x) => x.file !== it.file);
+      return [...rest.slice(0, first), ...fresh, ...rest.slice(first)];
+    });
   }
 
   async function send(idx: number, replace = false) {
@@ -90,7 +124,13 @@ export function InvoiceUpload({ companyId, vendors }: { companyId: string; vendo
                   <span className="text-slate-500">{usDateToIso(p.date) ?? "sem data"}</span>
                   <span className="font-semibold tabular-nums">{fmt(p.total)}</span>
                   <span className="text-xs text-slate-500">{p.lines.length} linhas · {it.fileName}{p.container ? ` · ${p.container}` : ""}</span>
+                  {it.via === "claude" && <span className="rounded-full bg-violet-50 px-2 py-0.5 text-[10px] font-bold uppercase text-violet-700" title="PDF sem texto legível: lido por visão no servidor">lido pelo Claude</span>}
                   {!ok && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold uppercase text-amber-700">linhas ≠ total</span>}
+                  {(!ok || r?.status === "error") && (
+                    <button onClick={() => reread(idx)} disabled={it.rereading || it.busy} className="rounded-lg border border-violet-300 px-2 py-0.5 text-[11px] text-violet-700 hover:bg-violet-50 disabled:opacity-50" title="Manda o PDF ao servidor e lê por visão">
+                      {it.rereading ? "lendo…" : it.via === "claude" ? "Reler com o Claude" : "Ler com o Claude"}
+                    </button>
+                  )}
                   {!r && (
                     <>
                       <select value={it.kind} onChange={(e) => setItems((pp) => pp.map((x, i) => (i === idx ? { ...x, kind: e.target.value as Pending["kind"] } : x)))} className="rounded border border-slate-300 px-2 py-1 text-xs">
