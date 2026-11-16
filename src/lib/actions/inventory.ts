@@ -124,36 +124,62 @@ export async function importItemsCsv(_p: InvState, fd: FormData): Promise<InvSta
   const companyId = str(fd.get("companyId"));
   const file = fd.get("file");
   if (!companyId || !(file instanceof File) || file.size === 0) return { error: "Escolha o CSV exportado do QBO." };
-  const text = Buffer.from(await file.arrayBuffer()).toString("utf8").replace(/^﻿/, "");
+  const text = Buffer.from(await file.arrayBuffer()).toString("utf8").replace(/^\uFEFF/, "");
   const parsed = Papa.parse<Record<string, string>>(text, { header: true, skipEmptyLines: true });
   const rows = parsed.data ?? [];
   if (!rows.length) return { error: "CSV vazio ou sem cabeçalho." };
   const headers = Object.keys(rows[0]);
   const find = (re: RegExp) => headers.find((h) => re.test(h));
-  const hName = find(/full\s*name|product\/service\s*name|^name$|item/i) ?? find(/name/i);
-  const hPrice = find(/sales\s*price|price|rate/i);
+  // Export "Products and Services" do QBO (nov/2026): Product/Service Name, Variant Name, Quantity on hand,
+  // Item type, Category, Price, Cost, Sales Description… O nome vem com a categoria COLADA
+  // ("BlindsJST-Cordless Blind 34.5"); a 1ª linha da Sales Description é o nome que o GL usa nas vendas.
+  const hName = find(/product\/service\s*name|full\s*name|^name$/i) ?? find(/name/i);
+  const hVariant = find(/variant\s*name/i);
+  const hPrice = find(/sales\s*price|^price$|price|rate/i);
   const hCost = find(/purchase\s*cost|^cost$|cost/i);
   const hQty = find(/quantity|qty|on\s*hand/i);
-  const hType = find(/^type$/i);
+  const hType = find(/item\s*type|^type$/i);
+  const hCat = find(/^category$/i);
+  const hSalesDesc = find(/sales\s*desc/i);
   if (!hName) return { error: `Não achei a coluna do nome. Cabeçalhos: ${headers.join(", ")}` };
   const today = new Date();
   let created = 0;
   let updated = 0;
+  let skipped = 0;
+  const gluedRe = /^(.*?)((?:[A-Z]{3,4}\s?-\s?|Vinyl Floor - |Security Light|Glass |Spring |Hinge ).*)$/;
   for (const r of rows) {
-    const full = (r[hName] ?? "").trim();
-    if (!full) continue;
-    if (hType && r[hType] && !/inventory/i.test(r[hType])) continue; // só itens de estoque
-    const parts = full.split(":").map((x) => x.trim()).filter(Boolean);
-    const name = parts[parts.length - 1];
-    const category = parts.length > 1 ? parts.slice(0, -1).join(" › ") : null;
+    const raw = (r[hName] ?? "").trim();
+    if (!raw) continue;
+    if (hType && r[hType] && !/inventory/i.test(r[hType])) { skipped++; continue; } // só itens de estoque
+    const variant = hVariant ? (r[hVariant] ?? "").trim() : "";
+    const sd = hSalesDesc ? (r[hSalesDesc] ?? "").split("\n")[0].trim() : "";
+    const catCol = hCat ? (r[hCat] ?? "").trim() : "";
+    // 1) "Cat:Sub:Nome" (export antigo) 2) sufixo = 1ª linha da sales description 3) prefixo = categoria 4) regex do GL
+    let name = raw;
+    let category: string | null = catCol || null;
+    if (raw.includes(":")) {
+      const parts = raw.split(":").map((x) => x.trim()).filter(Boolean);
+      name = parts[parts.length - 1];
+      category = parts.length > 1 ? parts.slice(0, -1).join(" › ") : category;
+    } else if (sd.length >= 4 && raw.endsWith(sd)) {
+      name = sd;
+      category = category ?? (raw.slice(0, raw.length - sd.length).replace(/[\s-]+$/, "") || null); // coluna Category manda; o prefixo colado é o plano B
+    } else if (catCol && raw.toLowerCase().startsWith(catCol.toLowerCase()) && raw.length > catCol.length + 2) {
+      name = raw.slice(catCol.length).replace(/^[\s-:]+/, "");
+    } else {
+      const m = raw.match(gluedRe);
+      if (m && m[1]) { name = m[2].trim(); category = category ?? (m[1].trim() || null); }
+    }
+    if (variant && variant !== raw && !name.includes(variant)) name = `${name} ${variant}`;
+    const aliases = [...new Set([name, raw, sd].filter((x) => x && x.length >= 3))];
     const price = hPrice ? num(r[hPrice]) : 0;
     const cost = hCost ? num(r[hCost]) : 0;
     const qty = hQty ? num(r[hQty]) : null;
-    // item já criado a partir do GL com o nome "comprido" (descrição da venda colada): vira este item
-    let ex = await prisma.inventoryItem.findUnique({ where: { companyId_name: { companyId, name } } });
+    // item já existente: pelo nome, por qualquer apelido (nome cru do GL, nome de venda) ou nome "comprido" começando igual
+    let ex = await prisma.inventoryItem.findFirst({ where: { companyId, OR: [{ name: { in: aliases } }, { glNames: { hasSome: aliases } }] } });
     if (!ex) {
-      const long = await prisma.inventoryItem.findFirst({ where: { companyId, OR: [{ name: { startsWith: `${name} /` } }, { name: { startsWith: `${name} ` } }, { glNames: { has: name } }] } });
-      if (long) ex = await prisma.inventoryItem.update({ where: { id: long.id }, data: { name, glNames: [...new Set([...long.glNames, long.name, name])] } });
+      const long = await prisma.inventoryItem.findFirst({ where: { companyId, OR: [{ name: { startsWith: `${name} /` } }, { name: { startsWith: `${name} ` } }] } });
+      if (long) ex = long;
     }
     const data = {
       category: category ?? ex?.category ?? null,
@@ -161,12 +187,14 @@ export async function importItemsCsv(_p: InvState, fd: FormData): Promise<InvSta
       ...(qty != null ? { qtyOnHand: qty, qtyAt: today } : {}),
       ...(cost > 0 && !ex?.currentCost ? { currentCost: cost, currentCostAt: today } : {}),
     };
-    const item = ex ? await prisma.inventoryItem.update({ where: { id: ex.id }, data }) : await prisma.inventoryItem.create({ data: { companyId, name, glNames: [name], ...data } });
+    const item = ex
+      ? await prisma.inventoryItem.update({ where: { id: ex.id }, data: { ...data, name, glNames: [...new Set([...ex.glNames, ex.name, ...aliases])] } })
+      : await prisma.inventoryItem.create({ data: { companyId, name, glNames: aliases, ...data } });
     if (price > 0) await prisma.inventoryItemPrice.create({ data: { itemId: item.id, price, effectiveFrom: today, source: "CSV", note: file.name } });
     ex ? updated++ : created++;
   }
   touch();
-  return { ok: `${created} itens criados, ${updated} atualizados.` };
+  return { ok: `${created} itens criados, ${updated} atualizados${skipped ? `, ${skipped} linhas de serviço ignoradas` : ""}.` };
 }
 
 export async function updateItem(fd: FormData): Promise<void> {
