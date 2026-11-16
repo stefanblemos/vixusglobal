@@ -28,20 +28,20 @@ enum UserRole {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  role          UserRole  @default(VIEWER)
-  passwordHash  String? // login por credenciais (equipe interna)
+  id                String    @id @default(cuid())
+  name              String?
+  email             String?   @unique
+  emailVerified     DateTime?
+  image             String?
+  role              UserRole  @default(VIEWER)
+  passwordHash      String? // login por credenciais (equipe interna)
   // Portal (#68): 1º acesso efetivo do investidor — vira o status "ativo" na aba Investidores
   lastPortalLoginAt DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  accounts Account[]
-  sessions Session[]
+  accounts       Account[]
+  sessions       Session[]
   investorAccess InvestorAccess[]
 }
 
@@ -49,15 +49,15 @@ model User {
 // (multi-entidade — PF numa LLC, holding noutra). Os pools do investidor = PoolMembers
 // cujo party/company está no access set. Um dos dois (partyId|companyId) é preenchido.
 model InvestorAccess {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   partyId   String?
-  party     Party?   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  party     Party?    @relation(fields: [partyId], references: [id], onDelete: Cascade)
   companyId String?
-  company   Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company   Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
   invitedAt DateTime? // último convite enviado/gerado p/ esta entidade
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@unique([userId, partyId])
   @@unique([userId, companyId])
@@ -87,14 +87,14 @@ model InvestorLegacy {
 // linha do tempo do extrato como qualquer outro movimento — a regra da carteira roda sozinha
 // na ordem cronológica. Tipos espelham os do extrato (StmtMovement).
 model InvestorLegacyEntry {
-  id       String         @id @default(cuid())
-  legacyId String
-  legacy   InvestorLegacy @relation(fields: [legacyId], references: [id], onDelete: Cascade)
-  date     DateTime       @db.Date
-  kind     String // CONTRIBUTION | DIST_CAPITAL | DIST_PROFIT
-  amount   Decimal        @db.Decimal(20, 2) // sempre positivo
-  label    String? // projeto/origem, ex.: "PH-1"
-  sortOrder Int           @default(0)
+  id        String         @id @default(cuid())
+  legacyId  String
+  legacy    InvestorLegacy @relation(fields: [legacyId], references: [id], onDelete: Cascade)
+  date      DateTime       @db.Date
+  kind      String // CONTRIBUTION | DIST_CAPITAL | DIST_PROFIT
+  amount    Decimal        @db.Decimal(20, 2) // sempre positivo
+  label     String? // projeto/origem, ex.: "PH-1"
+  sortOrder Int            @default(0)
 
   @@index([legacyId])
 }
@@ -204,11 +204,11 @@ model Party {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  ownerStakes Ownership[] @relation("OwnerParty")
-  ownedStakes Ownership[] @relation("OwnedParty")
+  ownerStakes     Ownership[]        @relation("OwnerParty")
+  ownedStakes     Ownership[]        @relation("OwnedParty")
   personalReturns PersonalReturn[]
-  poolMemberships PoolMember[] @relation("PoolMemberParty")
-  perfPayeePools  InvestmentPool[] @relation("PoolPerfPayeeParty")
+  poolMemberships PoolMember[]       @relation("PoolMemberParty")
+  perfPayeePools  InvestmentPool[]   @relation("PoolPerfPayeeParty")
   investorProfile InvestorProfile?
   subscriptions   PoolSubscription[]
   investorAccess  InvestorAccess[]
@@ -217,58 +217,63 @@ model Party {
 }
 
 model Company {
-  id            String              @id @default(cuid())
-  legalName     String
-  tradeName     String?
-  aliases       String[]            @default([]) // nomes alternativos/antigos vistos no QBO (matching de import)
-  jurisdiction  Jurisdiction
-  state         String? // ex.: "FL"
-  entityType    EntityType
-  taxId         String? // EIN / NIF / CNPJ
-  formationDate String? // data de abertura/constituição (do IR ou doc societário) — p/ anos faltantes
-  fiscalYearEnd String              @default("12-31")
-  baseCurrency  String              @default("USD")
-  relationship  CompanyRelationship
-  status        CompanyStatus       @default(ACTIVE)
-  collectsSalesTax Boolean          @default(false) // revende produtos → FL Sales & Use Tax
-  hasEmployees     Boolean          @default(false) // folha → payroll (941/940/RT-6)
-  monitored        Boolean          @default(true) // controlar no fechamento/overview? (false = ex-sócio etc.)
-  controlsTax      Boolean          @default(false) // tomamos conta do IR? (gerida fora do grupo entra no closing)
+  id                String              @id @default(cuid())
+  legalName         String
+  tradeName         String?
+  aliases           String[]            @default([]) // nomes alternativos/antigos vistos no QBO (matching de import)
+  jurisdiction      Jurisdiction
+  state             String? // ex.: "FL"
+  entityType        EntityType
+  taxId             String? // EIN / NIF / CNPJ
+  formationDate     String? // data de abertura/constituição (do IR ou doc societário) — p/ anos faltantes
+  fiscalYearEnd     String              @default("12-31")
+  baseCurrency      String              @default("USD")
+  relationship      CompanyRelationship
+  status            CompanyStatus       @default(ACTIVE)
+  collectsSalesTax  Boolean             @default(false) // revende produtos → FL Sales & Use Tax
+  hasEmployees      Boolean             @default(false) // folha → payroll (941/940/RT-6)
+  monitored         Boolean             @default(true) // controlar no fechamento/overview? (false = ex-sócio etc.)
+  controlsTax       Boolean             @default(false) // tomamos conta do IR? (gerida fora do grupo entra no closing)
   // Entidade DESCONSIDERADA (disregarded): LLC de sócio único que não declara IR próprio — o resultado é
   // consolidado no IR da dona (esta FK). Ex.: BuildPro (100% da Vixus) entra no 1065 da Vixus. É uma
   // eleição fiscal, NÃO se infere de "100% dono" (um sub 100% pode ser C-corp e declarar sozinho).
   disregardedIntoId String?
-  disregardedInto   Company?  @relation("Disregarded", fields: [disregardedIntoId], references: [id], onDelete: SetNull)
-  closedDate    String? // data/ano de encerramento — anos depois = N/A; ano do fecho = só IR final
-  notes         String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
+  disregardedInto   Company?            @relation("Disregarded", fields: [disregardedIntoId], references: [id], onDelete: SetNull)
+  closedDate        String? // data/ano de encerramento — anos depois = N/A; ano do fecho = só IR final
+  notes             String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
 
-  disregardedChildren Company[]      @relation("Disregarded") // entidades desconsideradas declaradas DENTRO desta
-  ownerStakes     Ownership[]        @relation("OwnerCompany")
-  ownedStakes     Ownership[]        @relation("OwnedCompany")
-  loansAsLender   IntercompanyLoan[] @relation("Lender")
-  loansAsBorrower IntercompanyLoan[] @relation("Borrower")
-  qboImports      QboImport[]
-  ledgerTxns      LedgerTxn[]
-  bankStatements  BankStatement[]
-  taxStatuses     CompanyTaxStatus[]
-  taxReturns      TaxReturn[]
-  yearCloses      YearClose[]
-  corporateDocs   CorporateDoc[]
-  yearNotes       CompanyYearNote[]
-  obligationStatuses ObligationStatus[]
-  fixedAssets     FixedAsset[]
-  reserveDeposits ReserveDeposit[]
-  stateTaxFilings StateTaxFiling[]
-  poolsAsEntity   InvestmentPool[]   @relation("PoolEntity")
-  poolMemberships PoolMember[]       @relation("PoolMemberCompany")
-  perfPayeePools  InvestmentPool[]   @relation("PoolPerfPayeeCompany")
-  investorProfile InvestorProfile?
-  subscriptions   PoolSubscription[]
-  investorAccess  InvestorAccess[]
-  investorLegacy  InvestorLegacy?
-  payoutAccount   PayoutAccount?
+  disregardedChildren Company[]           @relation("Disregarded") // entidades desconsideradas declaradas DENTRO desta
+  ownerStakes         Ownership[]         @relation("OwnerCompany")
+  ownedStakes         Ownership[]         @relation("OwnedCompany")
+  loansAsLender       IntercompanyLoan[]  @relation("Lender")
+  loansAsBorrower     IntercompanyLoan[]  @relation("Borrower")
+  qboImports          QboImport[]
+  ledgerTxns          LedgerTxn[]
+  bankStatements      BankStatement[]
+  taxStatuses         CompanyTaxStatus[]
+  taxReturns          TaxReturn[]
+  yearCloses          YearClose[]
+  corporateDocs       CorporateDoc[]
+  inventorySettings   InventorySettings?
+  inventoryItems      InventoryItem[]
+  inventoryInvoices   InventoryInvoice[]
+  inventoryShipments  InventoryShipment[]
+  inventoryClosings   InventoryClosing[]
+  yearNotes           CompanyYearNote[]
+  obligationStatuses  ObligationStatus[]
+  fixedAssets         FixedAsset[]
+  reserveDeposits     ReserveDeposit[]
+  stateTaxFilings     StateTaxFiling[]
+  poolsAsEntity       InvestmentPool[]    @relation("PoolEntity")
+  poolMemberships     PoolMember[]        @relation("PoolMemberCompany")
+  perfPayeePools      InvestmentPool[]    @relation("PoolPerfPayeeCompany")
+  investorProfile     InvestorProfile?
+  subscriptions       PoolSubscription[]
+  investorAccess      InvestorAccess[]
+  investorLegacy      InvestorLegacy?
+  payoutAccount       PayoutAccount?
 }
 
 // Aporte real na conta de reserva de imposto (caixa que foi movido) — para comparar com o
@@ -315,29 +320,29 @@ model StateTaxFiling {
 // Ativo fixo depreciável (US/MACRS). Guarda tipo, data em serviço, custo e as opções de
 // aceleração (§179 / bonus). A depreciação é CALCULADA pelo motor (macrs.ts), não armazenada.
 model FixedAsset {
-  id              String    @id @default(cuid())
-  companyId       String
-  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name            String
-  regime          String    @default("US") // US (MACRS) | PT (quotas constantes, DR 25/2009)
-  category        String // US: AUTO|COMPUTER|EQUIPMENT|… ; PT: BUILDING_COMM|VEHICLE_LIGHT|…
-  acquisitionDate DateTime  @db.Date // colocado em serviço / entrada em uso
-  cost            Decimal   @db.Decimal(20, 4)
-  recoveryYears   Decimal   @db.Decimal(4, 1) // US: 5, 7, 15, 27.5, 39… ; PT: derivado da taxa
-  method          String // MACRS | SL_MM (real property) | SL_PT (quotas constantes)
-  ratePct         Decimal   @default(0) @db.Decimal(6, 3) // PT: taxa anual de depreciação (%)
-  landValue       Decimal   @default(0) @db.Decimal(20, 4) // PT: parcela de terreno (não deprecia)
-  section179      Decimal   @default(0) @db.Decimal(20, 4) // US: deduzido no 1º ano
-  bonusPct        Decimal   @default(0) @db.Decimal(5, 2) // US: % de bonus depreciation (após §179)
+  id                   String                  @id @default(cuid())
+  companyId            String
+  company              Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name                 String
+  regime               String                  @default("US") // US (MACRS) | PT (quotas constantes, DR 25/2009)
+  category             String // US: AUTO|COMPUTER|EQUIPMENT|… ; PT: BUILDING_COMM|VEHICLE_LIGHT|…
+  acquisitionDate      DateTime                @db.Date // colocado em serviço / entrada em uso
+  cost                 Decimal                 @db.Decimal(20, 4)
+  recoveryYears        Decimal                 @db.Decimal(4, 1) // US: 5, 7, 15, 27.5, 39… ; PT: derivado da taxa
+  method               String // MACRS | SL_MM (real property) | SL_PT (quotas constantes)
+  ratePct              Decimal                 @default(0) @db.Decimal(6, 3) // PT: taxa anual de depreciação (%)
+  landValue            Decimal                 @default(0) @db.Decimal(20, 4) // PT: parcela de terreno (não deprecia)
+  section179           Decimal                 @default(0) @db.Decimal(20, 4) // US: deduzido no 1º ano
+  bonusPct             Decimal                 @default(0) @db.Decimal(5, 2) // US: % de bonus depreciation (após §179)
   // Contador depreciou o ativo TOTALMENTE no livro até este ano (ex.: tudo no ano de aquisição, ou
   // catch-up acelerado em ano posterior). Quando setado, o motor trunca: acumulada = custo até este
   // ano, e $0 depois (sem projeção futura). Confirmado pelo usuário — nunca aplicado sozinho.
   fullyDepreciatedYear Int?
-  disposalDate    DateTime? @db.Date
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  yearDepreciations AssetYearDepreciation[]
+  disposalDate         DateTime?               @db.Date
+  notes                String?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  yearDepreciations    AssetYearDepreciation[]
 
   @@index([companyId])
 }
@@ -394,67 +399,67 @@ model CompanyYearNote {
 // registrado, administradores/membros, endereços, nº de registro) — p/ conferir, ano a
 // ano, se o que está registrado no estado bate com o IR declarado.
 model CorporateDoc {
-  id          String   @id @default(cuid())
-  companyId   String?
-  company     Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  matchedName String? // nome lido no documento
-  label       String? // nome dado pelo usuário (usado quando docType = OTHER, sem referência)
-  docType     String // ARTICLES | OPERATING_AGREEMENT | ANNUAL_REPORT | CERTIFICATE | EIN_LETTER | OTHER
-  year        Int? // ano do annual report / período
-  jurisdiction String?
-  state       String?
-  docNumber   String? // nº de registro estadual (ex.: Sunbiz)
-  taxId       String? // FEI/EIN
-  formationDate String?
-  filingDate    String?
-  status        String?
+  id               String   @id @default(cuid())
+  companyId        String?
+  company          Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  matchedName      String? // nome lido no documento
+  label            String? // nome dado pelo usuário (usado quando docType = OTHER, sem referência)
+  docType          String // ARTICLES | OPERATING_AGREEMENT | ANNUAL_REPORT | CERTIFICATE | EIN_LETTER | OTHER
+  year             Int? // ano do annual report / período
+  jurisdiction     String?
+  state            String?
+  docNumber        String? // nº de registro estadual (ex.: Sunbiz)
+  taxId            String? // FEI/EIN
+  formationDate    String?
+  filingDate       String?
+  status           String?
   registeredAgent  Json? // { name, address }
   principalAddress String?
   mailingAddress   String?
-  people      Json? // administradores/membros/diretores: [{ name, title, address }]
-  fileName    String
-  pdf         Bytes?
-  pdfSize     Int?
-  confidence  String?
-  summary     String?
-  createdAt   DateTime @default(now())
+  people           Json? // administradores/membros/diretores: [{ name, title, address }]
+  fileName         String
+  pdf              Bytes?
+  pdfSize          Int?
+  confidence       String?
+  summary          String?
+  createdAt        DateTime @default(now())
 }
 
 // Declaração de imposto da PESSOA FÍSICA (ex.: Form 1040 / IRS Tax Return Transcript).
 // Fecha o ciclo entidade→sócio: confere se o K-1 que cada LLC alocou ao sócio realmente
 // chegou no Schedule E do 1040 dele. SSN guardado só nos últimos 4 dígitos.
 model PersonalReturn {
-  id             String  @id @default(cuid())
-  partyId        String?
-  party          Party?  @relation(fields: [partyId], references: [id], onDelete: SetNull)
-  matchedName    String? // nome do contribuinte lido no transcript
-  spouseName     String?
-  ssnLast4       String?
-  spouseSsnLast4 String?
-  year           Int?
-  filingStatus   String? // ex.: "Married Filing Joint"
-  form           String? // ex.: "1040"
-  preparer       String?
-  wages             Decimal? @db.Decimal(20, 2)
-  ordinaryDividends Decimal? @db.Decimal(20, 2) // 1040 linha 3b (inclui dividendos de C-Corp)
+  id                 String   @id @default(cuid())
+  partyId            String?
+  party              Party?   @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  matchedName        String? // nome do contribuinte lido no transcript
+  spouseName         String?
+  ssnLast4           String?
+  spouseSsnLast4     String?
+  year               Int?
+  filingStatus       String? // ex.: "Married Filing Joint"
+  form               String? // ex.: "1040"
+  preparer           String?
+  wages              Decimal? @db.Decimal(20, 2)
+  ordinaryDividends  Decimal? @db.Decimal(20, 2) // 1040 linha 3b (inclui dividendos de C-Corp)
   qualifiedDividends Decimal? @db.Decimal(20, 2) // 1040 linha 3a
-  businessIncomeC   Decimal? @db.Decimal(20, 2) // Schedule C
-  capitalGain       Decimal? @db.Decimal(20, 2) // Schedule D
-  rentalIncome      Decimal? @db.Decimal(20, 2) // Schedule E aluguel/royalties
-  partnershipIncome Decimal? @db.Decimal(20, 2) // Schedule E partnership/S-corp (renda)
-  partnershipLoss   Decimal? @db.Decimal(20, 2) // Schedule E partnership/S-corp (perda)
-  totalIncome       Decimal? @db.Decimal(20, 2)
-  agi               Decimal? @db.Decimal(20, 2)
-  taxableIncome     Decimal? @db.Decimal(20, 2)
-  totalTax          Decimal? @db.Decimal(20, 2)
-  seTax             Decimal? @db.Decimal(20, 2)
-  qbiDeduction      Decimal? @db.Decimal(20, 2)
-  confidence     String?
-  summary        String?
-  fileName       String
-  pdf            Bytes?
-  pdfSize        Int?
-  createdAt      DateTime @default(now())
+  businessIncomeC    Decimal? @db.Decimal(20, 2) // Schedule C
+  capitalGain        Decimal? @db.Decimal(20, 2) // Schedule D
+  rentalIncome       Decimal? @db.Decimal(20, 2) // Schedule E aluguel/royalties
+  partnershipIncome  Decimal? @db.Decimal(20, 2) // Schedule E partnership/S-corp (renda)
+  partnershipLoss    Decimal? @db.Decimal(20, 2) // Schedule E partnership/S-corp (perda)
+  totalIncome        Decimal? @db.Decimal(20, 2)
+  agi                Decimal? @db.Decimal(20, 2)
+  taxableIncome      Decimal? @db.Decimal(20, 2)
+  totalTax           Decimal? @db.Decimal(20, 2)
+  seTax              Decimal? @db.Decimal(20, 2)
+  qbiDeduction       Decimal? @db.Decimal(20, 2)
+  confidence         String?
+  summary            String?
+  fileName           String
+  pdf                Bytes?
+  pdfSize            Int?
+  createdAt          DateTime @default(now())
 }
 
 // "Fechamento" de um ano conferido: congela a verdade de referência (sócios,
@@ -483,42 +488,42 @@ enum TaxReturnStatus {
 
 // IR (declaração) enviado pelo operador; a Claude extrai sócios + forma de tributação.
 model TaxReturn {
-  id           String          @id @default(cuid())
-  fileName     String
-  companyId    String?
-  company      Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  matchedName  String? // nome da empresa lido no IR
-  taxId        String? // EIN/CNPJ/NIF da entidade
-  year         Int?
-  jurisdiction String?
-  entityType   String?
-  taxTreatment String?
-  taxForm      String? // ex.: "Form 1120-S", "1065", "ECF"
-  city         String?
-  state        String?
-  preparer     String? // contador/escritório que preparou
-  responsible  String? // ex.: Partnership Representative / responsável
-  ordinaryIncome Decimal? @db.Decimal(20, 2)
-  totalIncome    Decimal? @db.Decimal(20, 2)
-  netIncome      Decimal? @db.Decimal(20, 2)
+  id                String          @id @default(cuid())
+  fileName          String
+  companyId         String?
+  company           Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  matchedName       String? // nome da empresa lido no IR
+  taxId             String? // EIN/CNPJ/NIF da entidade
+  year              Int?
+  jurisdiction      String?
+  entityType        String?
+  taxTreatment      String?
+  taxForm           String? // ex.: "Form 1120-S", "1065", "ECF"
+  city              String?
+  state             String?
+  preparer          String? // contador/escritório que preparou
+  responsible       String? // ex.: Partnership Representative / responsável
+  ordinaryIncome    Decimal?        @db.Decimal(20, 2)
+  totalIncome       Decimal?        @db.Decimal(20, 2)
+  netIncome         Decimal?        @db.Decimal(20, 2)
   businessActivity  String?
   incorporationDate String?
   address           String?
   // ⚠️ NÃO ler `figures` direto em telas/cálculos — use effectiveFiguresOf(ret) de @/lib/ir/figures
   // (mescla `figures` + `manualFigures`). Ler só `figures` ignora os ajustes manuais = fonte de verdade
   // divergente. Ver o helper para a lista de consumidores.
-  figures      Json? // linhas LIDAS do IR (IA): [{ key, label, value, line }]
-  manualFigures Json? // ajustes MANUAIS auditáveis: [{ key, label, value, line, note, addedAt }] —
+  figures           Json? // linhas LIDAS do IR (IA): [{ key, label, value, line }]
+  manualFigures     Json? // ajustes MANUAIS auditáveis: [{ key, label, value, line, note, addedAt }] —
   // ex.: depreciação que estava no IR mas não destacada/extraída. Sobrepõe `figures` por key.
-  confidence   String?
-  summary      String?
-  owners       Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
-  k1sReceived  Json? // K-1 RECEBIDOS de investidas: [{ issuerName, issuerEin, amount }]
-  isFinalReturn Boolean @default(false) // "Final return" marcado (entidade encerrada no ano)
-  pdf          Bytes? // arquivo original, para consulta/registro
-  pdfSize      Int?
-  status       TaxReturnStatus @default(ANALYZED)
-  createdAt    DateTime        @default(now())
+  confidence        String?
+  summary           String?
+  owners            Json? // [{ name, taxIdLast4, ownershipPct, allocatedIncome, role }]
+  k1sReceived       Json? // K-1 RECEBIDOS de investidas: [{ issuerName, issuerEin, amount }]
+  isFinalReturn     Boolean         @default(false) // "Final return" marcado (entidade encerrada no ano)
+  pdf               Bytes? // arquivo original, para consulta/registro
+  pdfSize           Int?
+  status            TaxReturnStatus @default(ANALYZED)
+  createdAt         DateTime        @default(now())
 
   // RETIFICAÇÃO: quando o contador revisa o IR, a declaração ANTIGA aponta para a nova e sai
   // dos cálculos — mas fica no histórico com o PDF original (foi o que se protocolou).
@@ -676,20 +681,20 @@ enum BankLineStatus {
 }
 
 model BankStatementLine {
-  id           String         @id @default(cuid())
-  statementId  String
-  statement    BankStatement  @relation(fields: [statementId], references: [id], onDelete: Cascade)
-  date         DateTime       @db.Date
-  description  String
-  amount       Decimal        @db.Decimal(20, 4)
-  balance      Decimal?       @db.Decimal(20, 4)
-  matchedTxnId String? // LedgerTxn reconciliada (no split, o 1º dos lançamentos)
-  matchedTxnIds String[] @default([]) // todos os lançamentos casados (split = N)
-  matchNote    String? // ex.: "split — 3 entries" (1 linha do banco = N lançamentos no GL)
-  status       BankLineStatus @default(UNREVIEWED)
-  note         String?
-  reviewedAt   DateTime?
-  createdAt    DateTime       @default(now())
+  id            String         @id @default(cuid())
+  statementId   String
+  statement     BankStatement  @relation(fields: [statementId], references: [id], onDelete: Cascade)
+  date          DateTime       @db.Date
+  description   String
+  amount        Decimal        @db.Decimal(20, 4)
+  balance       Decimal?       @db.Decimal(20, 4)
+  matchedTxnId  String? // LedgerTxn reconciliada (no split, o 1º dos lançamentos)
+  matchedTxnIds String[]       @default([]) // todos os lançamentos casados (split = N)
+  matchNote     String? // ex.: "split — 3 entries" (1 linha do banco = N lançamentos no GL)
+  status        BankLineStatus @default(UNREVIEWED)
+  note          String?
+  reviewedAt    DateTime?
+  createdAt     DateTime       @default(now())
 }
 
 // Linha do razão (General Ledger) — uma transação por conta.
@@ -799,11 +804,11 @@ enum LoanTxnType {
 }
 
 model IntercompanyLoan {
-  id                String   @id @default(cuid())
+  id                String  @id @default(cuid())
   lenderCompanyId   String
-  lender            Company  @relation("Lender", fields: [lenderCompanyId], references: [id])
+  lender            Company @relation("Lender", fields: [lenderCompanyId], references: [id])
   borrowerCompanyId String
-  borrower          Company  @relation("Borrower", fields: [borrowerCompanyId], references: [id])
+  borrower          Company @relation("Borrower", fields: [borrowerCompanyId], references: [id])
 
   principal          Decimal            @db.Decimal(20, 4)
   currency           String             @default("USD")
@@ -918,8 +923,8 @@ model InvestmentPool {
   // aos sócios — os deltas do report mensal nunca mudam retroativamente
   scheduleBaseline Json?
 
-  unitPrice      Decimal  @default(1000) @db.Decimal(20, 4) // 1 unit = $1.000
-  targetAmount   Decimal? @db.Decimal(20, 2) // orçamento de captação (own capital do pool)
+  unitPrice                 Decimal  @default(1000) @db.Decimal(20, 4) // 1 unit = $1.000
+  targetAmount              Decimal? @db.Decimal(20, 2) // orçamento de captação (own capital do pool)
   // Performance (06/10/2026): % do LUCRO do projeto devido pelo acordo a uma entidade de
   // performance (genérica — hoje a construtora, amanhã outra). Substitui profitSharePct
   // (que guardava a fração do investidor e era invertido na edição). A decisão real (pagar,
@@ -933,7 +938,7 @@ model InvestmentPool {
   // Veículo (06/10): LLC própria (provisiona encerramento/dissolução) ou pool DENTRO de outra
   // empresa (ex.: PH-3 nos livros da Vixus America) — sem custo de encerramento próprio
   ownEntity                 Boolean  @default(true)
-  profitShareTiming String? // PER_SALE | PROJECT_COMPLETION (timing da performance)
+  profitShareTiming         String? // PER_SALE | PROJECT_COMPLETION (timing da performance)
 
   fundingDeadline  DateTime? @db.Date // corte da janela de captação (compra dos lotes)
   startDate        DateTime? @db.Date
@@ -1008,15 +1013,15 @@ model PoolHouse {
   saleDate        DateTime? @db.Date
 
   // Linha do tempo (ficha da casa): datas por passo do status — alimentam o simulado × realizado
-  lotContractDate DateTime? @db.Date
-  lotPaidDate     DateTime? @db.Date
-  buildStartDate  DateTime? @db.Date
-  coDate          DateTime? @db.Date
+  lotContractDate   DateTime? @db.Date
+  lotPaidDate       DateTime? @db.Date
+  buildStartDate    DateTime? @db.Date
+  coDate            DateTime? @db.Date
   // Permit (16/07): a premissa existe no simulador; aqui o REALIZADO p/ o Cronograma
   permitAppliedDate DateTime? @db.Date
   permitIssuedDate  DateTime? @db.Date
   // Anunciada no mercado (16/07): abre a fase Venda no gantt (listed → closing)
-  listedDate DateTime? @db.Date
+  listedDate        DateTime? @db.Date
 
   // Marcos de construção (#73): { "<catalogKey>": "AAAA-MM-DD" } das fases concluídas.
   // % de obra = soma dos pesos das fases marcadas (fonte quando existir; senão draws).
@@ -1053,13 +1058,13 @@ model HouseCashEntry {
 
   kind     HouseCashKind
   category String // LOT | BUILD | CASH_TO_CLOSE | BANK_FEE | INTEREST | CARRYING | OTHER | OPENING
-  date     DateTime @db.Date
-  opening  Boolean  @default(false) // saldo de abertura da migração: valor existia sem data real
-  amount   Decimal  @db.Decimal(20, 2) // sempre positivo; o kind dá o sentido
+  date     DateTime      @db.Date
+  opening  Boolean       @default(false) // saldo de abertura da migração: valor existia sem data real
+  amount   Decimal       @db.Decimal(20, 2) // sempre positivo; o kind dá o sentido
   memo     String?
   // Proveniência (etapa 3): trazido do GL do QuickBooks (LedgerTxn) — não trazer duas vezes;
   // aberturas ganham a data real por aqui
-  glTxnId  String?  @unique
+  glTxnId  String?       @unique
 
   createdAt DateTime @default(now())
 
@@ -1084,20 +1089,20 @@ model HouseChangeOrder {
 // IR para gerar os K-1s. PROVISIONED = previsto (reserva no caixa); PAID = pago. Saem do
 // caixa do pool antes do lucro → rateio automático pro rata às units (padrão do 1065/K-1).
 model PoolExpense {
-  id          String         @id @default(cuid())
-  poolId      String
-  pool        InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
-  date        DateTime       @db.Date
-  category    String // FORMATION | ANNUAL_REPORT | TAX_PREP | ACCOUNTING | DISSOLUTION | PERFORMANCE | OTHER
-  description String
-  amount      Decimal        @db.Decimal(20, 2)
-  status      String         @default("PROVISIONED") // PROVISIONED | PAID | WAIVED (só PERFORMANCE)
+  id             String         @id @default(cuid())
+  poolId         String
+  pool           InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  date           DateTime       @db.Date
+  category       String // FORMATION | ANNUAL_REPORT | TAX_PREP | ACCOUNTING | DISSOLUTION | PERFORMANCE | OTHER
+  description    String
+  amount         Decimal        @db.Decimal(20, 2)
+  status         String         @default("PROVISIONED") // PROVISIONED | PAID | WAIVED (só PERFORMANCE)
   // PERFORMANCE (06/10): decisão tomada numa distribuição de lucro — base, % aplicado e a
   // distribuição de origem. WAIVED guarda o valor que deixou de ser cobrado (histórico/report).
   distributionId String?
-  basisAmount    Decimal?    @db.Decimal(20, 2)
-  pctApplied     Decimal?    @db.Decimal(6, 2)
-  createdAt   DateTime       @default(now())
+  basisAmount    Decimal?       @db.Decimal(20, 2)
+  pctApplied     Decimal?       @db.Decimal(6, 2)
+  createdAt      DateTime       @default(now())
 
   @@index([poolId])
 }
@@ -1168,18 +1173,18 @@ model PoolContribution {
   memberId String
   member   PoolMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
-  kind            PoolEntryKind @default(CONTRIBUTION)
-  date            DateTime      @db.Date
-  amount          Decimal       @db.Decimal(20, 2)
-  units           Decimal       @db.Decimal(20, 4)
-  transferGroupId String? // liga o par TRANSFER_OUT/TRANSFER_IN
+  kind                     PoolEntryKind @default(CONTRIBUTION)
+  date                     DateTime      @db.Date
+  amount                   Decimal       @db.Decimal(20, 2)
+  units                    Decimal       @db.Decimal(20, 4)
+  transferGroupId          String? // liga o par TRANSFER_OUT/TRANSFER_IN
   // Extrato do investidor (carteira, regra aprovada 19/07): rolagem DIRETA vincula o
   // aporte à distribuição reusada (fato); override força "dinheiro novo" mesmo com
   // saldo na carteira (não consome). Sem nada: presunção automática da carteira.
   rolloverOfDistributionId String?
-  newMoneyOverride         Boolean @default(false)
-  memo            String?
-  createdAt       DateTime      @default(now())
+  newMoneyOverride         Boolean       @default(false)
+  memo                     String?
+  createdAt                DateTime      @default(now())
 
   @@index([memberId])
 }
@@ -1191,15 +1196,15 @@ model PoolDistribution {
   poolId String
   pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
 
-  kind        PoolDistributionKind
-  date        DateTime             @db.Date
-  totalAmount Decimal              @db.Decimal(20, 2)
-  houseId     String? // venda que originou a distribuição (opcional)
-  house       PoolHouse?           @relation(fields: [houseId], references: [id], onDelete: SetNull)
-  memo        String?
+  kind         PoolDistributionKind
+  date         DateTime             @db.Date
+  totalAmount  Decimal              @db.Decimal(20, 2)
+  houseId      String? // venda que originou a distribuição (opcional)
+  house        PoolHouse?           @relation(fields: [houseId], references: [id], onDelete: SetNull)
+  memo         String?
   // Gate de distribuível (06/10): passou do seguro ou lucro antes do fim → justificativa gravada
   overrideNote String?
-  createdAt   DateTime             @default(now())
+  createdAt    DateTime             @default(now())
 
   lines PoolDistributionLine[]
 
@@ -1279,19 +1284,19 @@ enum SimPaymentPlan {
 }
 
 model CatalogLocation {
-  id              String   @id @default(cuid())
-  name            String   @unique
-  permitDays      Int
-  lotLeadDays     Int // dias até fechar a compra do lote
-  saleDays        Int // dias para vender após CO
-  lotCostEstimate Decimal? @db.Decimal(20, 2) // valor estimado de lote na região
+  id                String   @id @default(cuid())
+  name              String   @unique
+  permitDays        Int
+  lotLeadDays       Int // dias até fechar a compra do lote
+  saleDays          Int // dias para vender após CO
+  lotCostEstimate   Decimal? @db.Decimal(20, 2) // valor estimado de lote na região
   // Absorção de mercado (NC vendidas/ano) — usada pelo otimizador p/ não encharcar um
   // modelo num local. Onde há ATTOM, o feed manda; onde não há (Orlando, Port Charlotte),
   // esse número manual é a fonte. Mesma unidade do ATTOM (casas novas vendidas por ano).
   absorptionPerYear Int?
-  notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   models     CatalogModelLocation[]
   poolHouses PoolHouse[]
@@ -1401,15 +1406,15 @@ model BankProfile {
   name String @unique
 
   // 1 · Dimensionamento
-  ltcBuildPct Decimal  @default(80) @db.Decimal(5, 2) // % do custo de obra
-  ltcLandPct  Decimal  @default(50) @db.Decimal(5, 2) // % do lote (se financia)
-  financeLand Boolean  @default(false)
-  ltvPct      Decimal  @default(70) @db.Decimal(5, 2) // % do ARV
-  haircutPct  Decimal  @default(5) @db.Decimal(5, 2) // desconto de avaliação sobre ARV
-  perUnitCap  Decimal? @db.Decimal(20, 2)
+  ltcBuildPct      Decimal  @default(80) @db.Decimal(5, 2) // % do custo de obra
+  ltcLandPct       Decimal  @default(50) @db.Decimal(5, 2) // % do lote (se financia)
+  financeLand      Boolean  @default(false)
+  ltvPct           Decimal  @default(70) @db.Decimal(5, 2) // % do ARV
+  haircutPct       Decimal  @default(5) @db.Decimal(5, 2) // desconto de avaliação sobre ARV
+  perUnitCap       Decimal? @db.Decimal(20, 2)
   // O banco autoriza o closing quando X% dos permits estão emitidos (ex.: 10 casas → 8º
   // permit libera). Arredonda para cima (ceil).
-  closingPermitPct Decimal @default(80) @db.Decimal(5, 2)
+  closingPermitPct Decimal  @default(80) @db.Decimal(5, 2)
 
   // 2 · Juros
   rateType      BankRateType      @default(FIXED) // fixa | prime+spread | SOFR+spread
@@ -1431,10 +1436,10 @@ model BankProfile {
   feesFinanced    Boolean @default(true) // capitalizam no loan (senão saem do caixa)
 
   // 4 · Durante a obra
-  servicingMonthly     Decimal @default(0) @db.Decimal(20, 2)
-  inspectionFeePerDraw Decimal @default(0) @db.Decimal(20, 2)
-  drawProcessingFee    Decimal @default(0) @db.Decimal(20, 2)
-  achFeePerBatch       Decimal @default(0) @db.Decimal(20, 2) // por LOTE de draws (mesma data)
+  servicingMonthly           Decimal @default(0) @db.Decimal(20, 2)
+  inspectionFeePerDraw       Decimal @default(0) @db.Decimal(20, 2)
+  drawProcessingFee          Decimal @default(0) @db.Decimal(20, 2)
+  achFeePerBatch             Decimal @default(0) @db.Decimal(20, 2) // por LOTE de draws (mesma data)
   // Este banco cobra a inspeção À PARTE (invoice depois), não descontada do draw. Quando true,
   // a baixa do draw NÃO lança a inspection automática e ALERTA — perguntando se já foi descontada.
   inspectionBilledSeparately Boolean @default(false)
@@ -1445,12 +1450,12 @@ model BankProfile {
 
   // Interest reserve: financiada no closing (capitaliza), o juro mensal consome a reserve
   // (sem compor), e o NÃO USADO é creditado na reconciliação final (reduz o último payoff).
-  hasInterestReserve Boolean @default(false)
+  hasInterestReserve Boolean         @default(false)
   // reserve financiada CONSOME o comprometido (envelope, estilo BC) ou capitaliza por fora
-  reserveInEnvelope  Boolean @default(false)
+  reserveInEnvelope  Boolean         @default(false)
   // excedente do loan (comprometido > fees+reserve+obra): cheque no closing+15 ou nada
   overfundingMode    OverfundingMode @default(NONE)
-  reserveMonths      Decimal @default(6) @db.Decimal(4, 1) // sizing: meses de juro sobre o comprometido
+  reserveMonths      Decimal         @default(6) @db.Decimal(4, 1) // sizing: meses de juro sobre o comprometido
 
   // 5 · Na venda / payoff
   releaseMode     BankReleaseMode @default(SWEEP_FULL) // 100% do líquido | sweep% + quitação na última
@@ -1582,41 +1587,41 @@ model PoolSimulation {
   poolId String?
   pool   InvestmentPool? @relation(fields: [poolId], references: [id], onDelete: SetNull)
 
-  name          String
+  name               String
   // nome da LLC dedicada (VIXUS_MANAGED) — aparece na capa do report; vazio = "to be formed"
-  vehicleEntityName String?
-  fundingMode   SimFundingMode  @default(BANK)
-  bankProfileId String?
-  bankProfile   BankProfile?    @relation(fields: [bankProfileId], references: [id])
-  scenarioCode  String          @default("REAL")
-  scenario      BufferScenario  @relation(fields: [scenarioCode], references: [code])
-  compMode      BuilderCompMode @default(PERFORMANCE)
-  perfPct       Decimal         @default(35) @db.Decimal(5, 2) // % do lucro p/ 4U, ANTES do split
-  perfTiming    String          @default("PROJECT_COMPLETION") // PER_SALE | PROJECT_COMPLETION
+  vehicleEntityName  String?
+  fundingMode        SimFundingMode      @default(BANK)
+  bankProfileId      String?
+  bankProfile        BankProfile?        @relation(fields: [bankProfileId], references: [id])
+  scenarioCode       String              @default("REAL")
+  scenario           BufferScenario      @relation(fields: [scenarioCode], references: [code])
+  compMode           BuilderCompMode     @default(PERFORMANCE)
+  perfPct            Decimal             @default(35) @db.Decimal(5, 2) // % do lucro p/ 4U, ANTES do split
+  perfTiming         String              @default("PROJECT_COMPLETION") // PER_SALE | PROJECT_COMPLETION
   // Promote (waterfall): tiers programáveis [{hurdle: % a.a. sobre o capital médio em risco
   // (null = acima do último), promote: % da faixa para a 4U}]. Pago na conclusão.
-  promoteTiers  Json?
+  promoteTiers       Json?
   // OPEN_BOOK: taxa flat de lucro por casa p/ a 4U — entra no CUSTO da casa (obra + fee),
   // paga pelos gatilhos do plano de desembolso
-  flatFeePerHouse Decimal       @default(0) @db.Decimal(20, 2)
-  paymentPlan   SimPaymentPlan  @default(STANDARD)
+  flatFeePerHouse    Decimal             @default(0) @db.Decimal(20, 2)
+  paymentPlan        SimPaymentPlan      @default(STANDARD)
   // Aporte único de 100% em D+0 (vs JIT) — mostra o impacto do capital parado na TIR
-  upfrontFunding Boolean        @default(false)
-  equityGatePct Decimal         @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
-  unitGapDays   Int             @default(3)
+  upfrontFunding     Boolean             @default(false)
+  equityGatePct      Decimal             @default(10) @db.Decimal(5, 2) // mínimo p/ iniciar sem banco
+  unitGapDays        Int                 @default(3)
   // Estrutura do veículo (14/07): VIXUS_MANAGED = LLC dedicada da Vixus (units \$1.000,
   // 506(b)); CLIENT_ENTITY = entidade própria do grupo (Vixus = Development Manager)
-  vehicleStructure SimVehicleStructure @default(VIXUS_MANAGED)
-  clientEntityName String? // nome/tipo da entidade do cliente (caso CLIENT_ENTITY)
+  vehicleStructure   SimVehicleStructure @default(VIXUS_MANAGED)
+  clientEntityName   String? // nome/tipo da entidade do cliente (caso CLIENT_ENTITY)
   // Waiver do custo de abertura (16/07): custos do veículo valem independentemente da
   // estrutura; se o cliente JÁ tem entidade e não abrirá nova, a isenção é explícita aqui
-  waiveFormationCost Boolean @default(false)
+  waiveFormationCost Boolean             @default(false)
 
-  units  Json // [{ locationId, modelId }]
-  result Json? // snapshot: { kpis, events[], monthly[], units[] }
+  units     Json // [{ locationId, modelId }]
+  result    Json? // snapshot: { kpis, events[], monthly[], units[] }
   // Prosa do Investment Summary gerada pela Claude (market commentary + closing remarks),
   // cacheada por hash de (extrato ATTOM + KPIs + cesta) — re-gera só quando os dados mudam
-  reportAi Json? // { hash, marketCommentary[], closingRemarks, generatedAt, model }
+  reportAi  Json? // { hash, marketCommentary[], closingRemarks, generatedAt, model }
   // Aba Premissas: ajuste fino POR SIMULAÇÃO sem tocar catálogo/cenários. Só guarda o que
   // DIVERGE do catálogo (campo não tocado segue o catálogo); buffers do cenário aplicam
   // por cima. { locations: {locId:{lotCost,lotLeadDays,permitDays,saleDays}},
@@ -1654,17 +1659,17 @@ model PoolLoanDocument {
   loanId String
   loan   PoolLoan @relation(fields: [loanId], references: [id], onDelete: Cascade)
 
-  kind     LoanDocKind
-  fileName String
-  pdf      Bytes
-  pdfSize  Int
-  portalVisible Boolean @default(false) // data room (Fase 3): investidor vê no portal?
-  summary  String? // 1 linha da IA
-  extracted Json? // extração completa (auditável)
-  proposal  Json? // itens propostos aguardando revisão; null após aplicar/arquivar
+  kind           LoanDocKind
+  fileName       String
+  pdf            Bytes
+  pdfSize        Int
+  portalVisible  Boolean     @default(false) // data room (Fase 3): investidor vê no portal?
+  summary        String? // 1 linha da IA
+  extracted      Json? // extração completa (auditável)
+  proposal       Json? // itens propostos aguardando revisão; null após aplicar/arquivar
   appliedSummary String? // o que foi aplicado (ex.: "closing · prazo · 2 fees")
   appliedAt      DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime    @default(now())
 
   @@index([loanId])
 }
@@ -1688,32 +1693,32 @@ model PoolLoan {
   poolId String
   pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
 
-  bankProfileId String?
-  bankProfile   BankProfile? @relation(fields: [bankProfileId], references: [id])
-  loanNumber    String? // ex.: "77959"
-  committed     Decimal?  @db.Decimal(20, 2) // valor comprometido
-  aprPct        Decimal?  @db.Decimal(6, 3) // taxa contratual (p/ conferência dos juros)
-  firstContactDate DateTime? @db.Date // 1º contato com o banco (abre o estágio de documentação; AI preenche com a data do LOI)
+  bankProfileId       String?
+  bankProfile         BankProfile? @relation(fields: [bankProfileId], references: [id])
+  loanNumber          String? // ex.: "77959"
+  committed           Decimal?     @db.Decimal(20, 2) // valor comprometido
+  aprPct              Decimal?     @db.Decimal(6, 3) // taxa contratual (p/ conferência dos juros)
+  firstContactDate    DateTime?    @db.Date // 1º contato com o banco (abre o estágio de documentação; AI preenche com a data do LOI)
   // vencimento do juro mensal (mock aprovado 17/07): lidos do contrato/servicing, editáveis
-  interestDueDay Int? // dia do mês do vencimento (ex.: 1 = todo dia 1º)
-  graceDays      Int? // dias de carência após o vencimento
-  lateFeePct     Decimal? @db.Decimal(6, 3) // multa por atraso (%)
+  interestDueDay      Int? // dia do mês do vencimento (ex.: 1 = todo dia 1º)
+  graceDays           Int? // dias de carência após o vencimento
+  lateFeePct          Decimal?     @db.Decimal(6, 3) // multa por atraso (%)
   // modalidade do envelope (17/07): true = fees POR DENTRO (consomem o teto — net funding);
   // false = POR FORA (somam ao comprometido — gross-up); null = não definido (trata como dentro)
-  feesInEnvelope Boolean?
-  expectedClosingDate DateTime? @db.Date // closing PREVISTO (regra dos 80% dos permits)
-  closingDate   DateTime? @db.Date // closing REAL
+  feesInEnvelope      Boolean?
+  expectedClosingDate DateTime?    @db.Date // closing PREVISTO (regra dos 80% dos permits)
+  closingDate         DateTime?    @db.Date // closing REAL
   // Leva 2 dos marcos: retainage (retenção) que o banco segura por draw até o CO — só se
   // estiver no LOI/contrato (regra do Stefan); nº de draws esperado (contador "N de M").
-  retainagePct  Decimal? @db.Decimal(6, 3)
-  expectedDraws Int?
-  notes         String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  retainagePct        Decimal?     @db.Decimal(6, 3)
+  expectedDraws       Int?
+  notes               String?
+  createdAt           DateTime     @default(now())
+  updatedAt           DateTime     @updatedAt
 
-  entries     PoolLoanEntry[]
-  houses      PoolHouse[]
-  documents   PoolLoanDocument[]
+  entries   PoolLoanEntry[]
+  houses    PoolHouse[]
+  documents PoolLoanDocument[]
 
   @@index([poolId])
 }
@@ -1727,17 +1732,17 @@ model PoolLoan {
 // no PoolLoan (termos do credor, iguais p/ todas as casas). pct = % do total do budget da
 // casa que a linha libera → drawable = pct × loan da casa. amount = $ original do banco.
 model LoanBudgetLine {
-  id            String    @id @default(cuid())
-  houseId       String
-  house         PoolHouse @relation(fields: [houseId], references: [id], onDelete: Cascade)
-  label         String // nome da linha no budget do banco ("Foundation", "Framing"…)
-  pct           Decimal   @db.Decimal(6, 3) // % do budget da casa que esta linha libera
-  amount        Decimal?  @db.Decimal(20, 2) // $ original da linha no doc do banco (exibição/auditoria)
-  milestoneKey  String? // marco nosso (CatalogBuildMilestone.key); null = não mapeado
-  sortOrder     Int       @default(0)
-  source        String    @default("MANUAL") // MANUAL | AI
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String    @id @default(cuid())
+  houseId      String
+  house        PoolHouse @relation(fields: [houseId], references: [id], onDelete: Cascade)
+  label        String // nome da linha no budget do banco ("Foundation", "Framing"…)
+  pct          Decimal   @db.Decimal(6, 3) // % do budget da casa que esta linha libera
+  amount       Decimal?  @db.Decimal(20, 2) // $ original da linha no doc do banco (exibição/auditoria)
+  milestoneKey String? // marco nosso (CatalogBuildMilestone.key); null = não mapeado
+  sortOrder    Int       @default(0)
+  source       String    @default("MANUAL") // MANUAL | AI
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([houseId])
 }
@@ -1750,25 +1755,25 @@ model PoolLoanEntry {
   houseId String? // draw/payoff/reconveyance de uma casa específica
   house   PoolHouse? @relation(fields: [houseId], references: [id], onDelete: SetNull)
 
-  type       PoolLoanEntryType
-  date       DateTime          @db.Date // DRAW: data do CRÉDITO
-  amount     Decimal           @db.Decimal(20, 2) // + aumenta a dívida, − reduz; DRAW: liberado
+  type            PoolLoanEntryType
+  date            DateTime          @db.Date // DRAW: data do CRÉDITO
+  amount          Decimal           @db.Decimal(20, 2) // + aumenta a dívida, − reduz; DRAW: liberado
   // Só para DRAW: o que foi SOLICITADO ao banco e quando (liberado pode diferir)
-  requestedAmount Decimal?  @db.Decimal(20, 2)
-  requestDate     DateTime? @db.Date
+  requestedAmount Decimal?          @db.Decimal(20, 2)
+  requestDate     DateTime?         @db.Date
   // Data REAL em que o pedido foi comunicado ao banco (SMS/WhatsApp/e-mail) — distinta da
   // criação do lançamento no sistema. null = ainda não comunicado. Alimenta o badge do card.
-  bankNotifiedAt  DateTime? @db.Date
+  bankNotifiedAt  DateTime?         @db.Date
   // Draw AGUARDANDO resposta do banco: não entra no saldo nem gera fees até a liberação
-  pending         Boolean   @default(false)
+  pending         Boolean           @default(false)
   // Ciclo de vida do DRAW: REQUESTED (pendente) → APPROVED | DENIED | CANCELLED. Negado/
   // cancelado fica na trilha (amount 0) mas não afeta saldo. Numeração sequencial por loan.
-  drawStatus  String? // REQUESTED | APPROVED | DENIED | CANCELLED (null = legado / não-draw)
-  drawNumber  Int? // Draw #1, #2… por loan (só DRAW)
-  denyReason  String? // motivo quando DENIED/CANCELLED
-  memo       String?
-  reconciled Boolean           @default(false) // conferido contra o extrato do banco
-  createdAt  DateTime          @default(now())
+  drawStatus      String? // REQUESTED | APPROVED | DENIED | CANCELLED (null = legado / não-draw)
+  drawNumber      Int? // Draw #1, #2… por loan (só DRAW)
+  denyReason      String? // motivo quando DENIED/CANCELLED
+  memo            String?
+  reconciled      Boolean           @default(false) // conferido contra o extrato do banco
+  createdAt       DateTime          @default(now())
 
   @@index([loanId, date])
 }
@@ -1886,17 +1891,212 @@ model PoolDocument {
   poolId String
   pool   InvestmentPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
 
-  memberId String? // documento de um sócio específico (ex.: subscription, extrato)
-  docType  String // SUBSCRIPTION | OPERATING_AGREEMENT | NOTE | NOVATION | CAP_TABLE | STATEMENT | DISTRIBUTION_STMT | CLOSING_STMT | OTHER
-  fileName String
-  pdf      Bytes?
-  pdfSize  Int?
-  portalVisible Boolean @default(false) // data room (Fase 3): investidor vê no portal?
+  memberId      String? // documento de um sócio específico (ex.: subscription, extrato)
+  docType       String // SUBSCRIPTION | OPERATING_AGREEMENT | NOTE | NOVATION | CAP_TABLE | STATEMENT | DISTRIBUTION_STMT | CLOSING_STMT | OTHER
+  fileName      String
+  pdf           Bytes?
+  pdfSize       Int?
+  portalVisible Boolean   @default(false) // data room (Fase 3): investidor vê no portal?
   // Report mensal (Fase 5): snapshot CONGELADO do mês — o report publicado nunca muda
-  reportMonth String? // "AAAA-MM" quando o doc é um monthly report
-  data        Json? // ReportMonthData serializado (fonte do render congelado)
-  signedAt DateTime? @db.Date
-  createdAt DateTime @default(now())
+  reportMonth   String? // "AAAA-MM" quando o doc é um monthly report
+  data          Json? // ReportMonthData serializado (fonte do render congelado)
+  signedAt      DateTime? @db.Date
+  createdAt     DateTime  @default(now())
 
   @@index([poolId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// INVENTORY (16/11/2026) — importação de material (Archway → BuildPro): invoices de
+// mercadoria/frete/sample, embarque derivado da invoice de frete, camada de custo FECHADA
+// por embarque (nunca muda), FIFO por item com a régua do GL do QBO, JE mensal de frete →
+// COGS sugerida (lançamento manual no QBO). Regras: memória vixus-inventory-import-module.
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum InventoryInvoiceKind {
+  GOODS
+  FREIGHT
+  SAMPLE
+}
+
+model InventorySettings {
+  companyId String  @id
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  marginPct             Decimal  @default(15) @db.Decimal(6, 2) // margem SOBRE O PREÇO: preço = custo ÷ (1 − m)
+  waitDays              Int      @default(30) // invoice de mercadoria sem frete há N dias → aviso
+  closeHintTerms        String[] @default(["cross-dock", "cross dock", "unloading", "delivery"]) // termos na invoice de frete que sugerem "fechar custos"
+  vendorName            String   @default("Archway Trade LLC")
+  // contas do QBO usadas na régua e na conferência
+  glInventoryAccount    String   @default("Inventory Asset")
+  glFreightAccount      String   @default("Inventory Asset - Freight & Handling")
+  glCogsMaterialAccount String   @default("Supplies & materials - COGS")
+  glCogsFreightAccount  String   @default("Shipping and Handling")
+  updatedAt             DateTime @updatedAt
+}
+
+// Item = produto do QBO. Cada item do QBO é um item; nomes da Archway e do GL só apontam
+// para ele depois de confirmados pelo operador (nunca casamento automático).
+model InventoryItem {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name                  String // nome do item no QBO (sem a categoria)
+  category              String? // categoria/caminho no QBO (ex.: "Flooring › Vinyl Floor")
+  glNames               String[]  @default([]) // como aparece nas linhas do GL (1ª linha da descrição)
+  vendorNames           String[]  @default([]) // como aparece nas invoices da Archway ("HHK-Disk Light")
+  listPrice             Decimal?  @db.Decimal(14, 4) // preço de venda vigente (lista do app)
+  listPriceAt           DateTime? @db.Date
+  currentCost           Decimal?  @db.Decimal(14, 4) // custo desembarcado unitário vigente (último embarque fechado)
+  currentCostAt         DateTime? @db.Date
+  currentCostShipmentId String?
+  qtyOnHand             Decimal?  @db.Decimal(14, 2) // da carga inicial (CSV do QBO) — informativo
+  qtyAt                 DateTime? @db.Date
+  active                Boolean   @default(true)
+  notes                 String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  prices InventoryItemPrice[]
+  lines  InventoryInvoiceLine[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model InventoryItemPrice {
+  id            String        @id @default(cuid())
+  itemId        String
+  item          InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  price         Decimal       @db.Decimal(14, 4)
+  effectiveFrom DateTime      @db.Date
+  source        String // CSV | MANUAL | SUGGESTED
+  note          String?
+  createdAt     DateTime      @default(now())
+
+  @@index([itemId])
+}
+
+model InventoryInvoice {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  vendorName String
+  no         String
+  date       DateTime             @db.Date
+  kind       InventoryInvoiceKind
+  containers String[]             @default([]) // códigos ISO citados (campo Container + memo)
+  refs       String[]             @default([]) // invoices de mercadoria citadas na "Consolidation"
+  memo       String[]             @default([])
+  subtotal   Decimal              @db.Decimal(14, 2)
+  discount   Decimal              @default(0) @db.Decimal(14, 2)
+  tax        Decimal              @default(0) @db.Decimal(14, 2)
+  total      Decimal              @db.Decimal(14, 2) // SEMPRE o total, nunca o balance due
+  payment    Decimal?             @db.Decimal(14, 2)
+  balance    Decimal?             @db.Decimal(14, 2)
+  linesOk    Boolean              @default(true) // soma das linhas + desconto + tax == total
+
+  shipmentId         String? // derivado (recomputeShipments) — gravado p/ consulta
+  shipment           InventoryShipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
+  pinShipmentId      String? // apontado à mão quando o memo não diz
+  sampleTargetItemId String? // só SAMPLE: item em que dilui
+  sampleWrittenOffAt DateTime?          @db.Date // sample baixado como perda
+  lateAdjustment     Boolean            @default(false) // frete que chegou DEPOIS de o embarque fechar custos → COGS do mês em que entrou
+
+  source   String // PDF | MANUAL | GL
+  fileName String?
+  pdf      Bytes?
+  pdfSize  Int?
+  glNum    String? // num da bill no GL, quando veio/foi conferida pelo GL
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines    InventoryInvoiceLine[]
+  versions InventoryInvoiceVersion[]
+
+  @@unique([companyId, vendorName, no])
+  @@index([companyId, kind])
+  @@index([shipmentId])
+}
+
+// Versão anterior de uma invoice substituída (mesmo número, total diferente = correção).
+model InventoryInvoiceVersion {
+  id         String           @id @default(cuid())
+  invoiceId  String
+  invoice    InventoryInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  snapshot   Json // invoice + linhas antes da substituição
+  reason     String?
+  replacedBy String?
+  replacedAt DateTime         @default(now())
+
+  @@index([invoiceId])
+}
+
+model InventoryInvoiceLine {
+  id        String           @id @default(cuid())
+  invoiceId String
+  invoice   InventoryInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  sort      Int              @default(0)
+  activity  String // ex.: "Products:HHK-Disk Light" / "Shipping and Handling:Custom Duties"
+  desc      String? // linhas de descrição juntadas
+  qty       Decimal?         @db.Decimal(14, 4)
+  rate      Decimal?         @db.Decimal(14, 4)
+  amount    Decimal          @db.Decimal(14, 2)
+  isProduct Boolean          @default(false)
+  costGroup String? // duties | freight | insurance | services | bank | other (só custos)
+  itemId    String? // item do QBO confirmado (só produtos)
+  item      InventoryItem?   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+  @@index([itemId])
+}
+
+// Embarque = componente conexo das invoices de frete (mesmo container OU mesma invoice de
+// mercadoria citada). A composição é RECALCULADA a cada invoice; o que é decisão humana fica
+// aqui: nome, fechamento de custos (camada congelada) e a abertura do GL.
+model InventoryShipment {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  key         String // chave estável: containers ordenados ("+") ou "inv:<nº do frete>"
+  name        String?
+  containers  String[]  @default([])
+  deliveredAt DateTime? @db.Date // = data da ÚLTIMA invoice de frete (derivado)
+  isOpening   Boolean   @default(false) // camada de abertura (saldos do GL)
+
+  closedAt   DateTime? // "Fechar custos": a partir daqui a camada não muda
+  closedBy   String?
+  closedData Json? // snapshot congelado: { merch, costs, absorption, items:[{itemId,name,qty,amount,alloc,unitCost}], invoices:[...] }
+  note       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  invoices InventoryInvoice[]
+
+  @@unique([companyId, key])
+  @@index([companyId])
+}
+
+// Fechamento mensal: frete apropriado GRAVADO (nunca só recalculado), p/ que frete que
+// chegue depois apareça no mês em que entrou. merchEnd vem do GL (ou digitado se faltar).
+model InventoryClosing {
+  id             String    @id @default(cuid())
+  companyId      String
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  month          String // "AAAA-MM"
+  merchEnd       Decimal   @db.Decimal(14, 2)
+  merchEndSource String // GL | MANUAL
+  cogsMerch      Decimal   @db.Decimal(14, 2)
+  freightOut     Decimal   @db.Decimal(14, 2) // JE sugerida (gravada)
+  jeBookedAt     DateTime? @db.Date // confirmado (pelo GL ou à mão)
+  jeBookedAmount Decimal?  @db.Decimal(14, 2)
+  data           Json? // detalhe por item/camada
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([companyId, month])
 }

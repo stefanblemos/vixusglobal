@@ -26,6 +26,7 @@ import {
   GitCompare,
   FileText,
   Boxes,
+  Package,
   Network,
   Settings,
   ShieldCheck,
@@ -110,6 +111,18 @@ const NAV: Entry[] = [
       { href: "/pools/draws", label: "Draws", icon: HandCoins },
       { href: "/pools/simulator", label: "Simulator", icon: Calculator },
       { href: "/pools/catalog", label: "Catalog", icon: ClipboardList },
+    ],
+  },
+  {
+    type: "group",
+    label: "Inventory",
+    icon: Package,
+    items: [
+      { href: "/inventory/invoices", label: "Invoices", icon: FileText },
+      { href: "/inventory/shipments", label: "Shipments", icon: Boxes },
+      { href: "/inventory/items", label: "Items & prices", icon: ClipboardList },
+      { href: "/inventory/stock", label: "Stock", icon: Layers },
+      { href: "/inventory/month-end", label: "Month-end", icon: ClipboardCheck },
     ],
   },
   {
