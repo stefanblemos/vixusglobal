@@ -19,7 +19,7 @@ export type GlSettings = {
   glFreightAccount: string;
   glCogsMaterialAccount: string;
   glCogsFreightAccount: string;
-  vendorName: string;
+  vendorKeys: string[]; // chaves (minúsculas) que identificam os fornecedores no rawName do GL
 };
 
 /** 1ª linha da descrição = nome do item no QBO; na abertura tira o sufixo " - Opening inventory and value". */
@@ -46,9 +46,14 @@ export type GlData = {
   months: string[]; // meses com movimento (ordenados)
 };
 
+export const isVendorRow = (rawName: string | null | undefined, keys: string[]) => {
+  const r = (rawName ?? "").toLowerCase();
+  return !!r && keys.some((k) => r.includes(k));
+};
+
 export async function loadGlData(companyId: string, s: GlSettings): Promise<GlData> {
   const tx = await prisma.ledgerTxn.findMany({
-    where: { companyId, OR: [{ account: { in: [s.glInventoryAccount, s.glFreightAccount, s.glCogsMaterialAccount, s.glCogsFreightAccount] } }, { rawName: { contains: s.vendorName.split(" ")[0], mode: "insensitive" } }] },
+    where: { companyId, OR: [{ account: { in: [s.glInventoryAccount, s.glFreightAccount, s.glCogsMaterialAccount, s.glCogsFreightAccount] } }, ...s.vendorKeys.map((k) => ({ rawName: { contains: k, mode: "insensitive" as const } }))] },
     select: { date: true, account: true, type: true, num: true, rawName: true, description: true, amount: true },
     orderBy: { date: "asc" },
   });
@@ -101,7 +106,7 @@ export async function loadGlData(companyId: string, s: GlSettings): Promise<GlDa
     } else if (t.account === s.glCogsFreightAccount) {
       out.freightPostedByMonth[m] = r2((out.freightPostedByMonth[m] ?? 0) + a);
     }
-    if (t.rawName && t.rawName.toLowerCase().includes(s.vendorName.split(" ")[0].toLowerCase()) && t.type === "Bill" && !/Accounts Payable/i.test(t.account))
+    if (t.rawName && isVendorRow(t.rawName, s.vendorKeys) && t.type === "Bill" && !/Accounts Payable/i.test(t.account))
       out.vendorBills.push({ num: t.num, date: t.date, account: t.account, amount: a, description: t.description });
   }
   // nome limpo da abertura: o nome de venda que é sufixo do nome cru (mais longo), senão tira a categoria colada

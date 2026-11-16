@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { inventoryContext } from "../_lib";
+import { waitDaysFor } from "@/lib/inventory/settings";
 import { InventoryShell, Kpi, br, card, h2, money, pill, td, tdr, th, thr } from "@/components/inventory/inventory-shell";
 import { InvoiceUpload } from "@/components/inventory/invoice-upload";
 import { InvoiceManualForm } from "@/components/inventory/invoice-manual-form";
@@ -31,7 +32,9 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
   const coverage = gl?.coverageUntil ?? null;
   const onlyHere = invoices.filter((i) => coverage && i.date.getTime() <= coverage.getTime() && !billNums.has(i.no));
   const noShipment = invoices.filter((i) => i.kind === "GOODS" && !i.shipmentId);
-  const waitDays = ctx.settings?.waitDays ?? 30;
+  const waitOf = (v: string) => (ctx.settings ? waitDaysFor(ctx.settings, v) : 30);
+  const waitDays = waitOf(ctx.settings?.vendorName ?? "");
+  const vendors = ctx.settings?.vendors.map((v) => v.name) ?? [];
   const days = (d: Date) => Math.round((Date.now() - d.getTime()) / 86400000);
   const shipLabel = (s: { name: string | null; containers: string[]; key: string } | null | undefined) => (s ? s.name ?? (s.containers.length ? s.containers.join(" + ") : s.key) : "—");
   const filtered = invoices.filter((i) => (f === "nos" ? !i.shipmentId && i.kind !== "SAMPLE" : f === "goods" ? i.kind === "GOODS" : f === "freight" ? i.kind === "FREIGHT" : f === "sample" ? i.kind === "SAMPLE" : true));
@@ -49,8 +52,8 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
 
       {cid && (
         <div className="flex flex-wrap items-start gap-3">
-          <div className="flex-1 min-w-[320px]"><InvoiceUpload companyId={cid} /></div>
-          <InvoiceManualForm companyId={cid} />
+          <div className="flex-1 min-w-[320px]"><InvoiceUpload companyId={cid} vendors={vendors} /></div>
+          <InvoiceManualForm companyId={cid} vendors={vendors} />
         </div>
       )}
 
@@ -96,7 +99,7 @@ export default async function InvoicesPage({ searchParams }: { searchParams: Pro
                 const qty = prods.reduce((s, l) => s + Number(l.qty ?? 0), 0);
                 const desc = i.kind === "FREIGHT" ? `${i.lines.slice(0, 3).map((l) => l.activity.split(":").pop()).join(", ")}${i.containers.length ? " · " + i.containers.join(" / ") : ""}` : `${prods.slice(0, 2).map((l) => l.activity.replace(/^products?:\s*/i, "")).join(", ")}${prods.length > 2 ? ` +${prods.length - 2}` : ""}${qty ? ` · ${qty.toLocaleString("en-US")} pç` : ""}`;
                 const inGl = billNums.has(i.no);
-                const status = i.kind === "SAMPLE" ? (i.sampleWrittenOffAt ? pill("off", "baixado") : i.shipmentId ? pill("ok", "diluído") : pill("off", "aguarda o lote")) : i.shipmentId ? (i.shipment?.closedAt ? pill("ok", i.lateAdjustment ? "ajuste tardio" : "custo fechado") : pill("info", "no embarque")) : i.kind === "GOODS" ? pill(days(i.date) > waitDays ? "warn" : "off", `${days(i.date)} dias sem frete`) : pill("warn", "frete sem embarque");
+                const status = i.kind === "SAMPLE" ? (i.sampleWrittenOffAt ? pill("off", "baixado") : i.shipmentId ? pill("ok", "diluído") : pill("off", "aguarda o lote")) : i.shipmentId ? (i.shipment?.closedAt ? pill("ok", i.lateAdjustment ? "ajuste tardio" : "custo fechado") : pill("info", "no embarque")) : i.kind === "GOODS" ? pill(days(i.date) > waitOf(i.vendorName) ? "warn" : "off", `${days(i.date)} dias sem frete`) : pill("warn", "frete sem embarque");
                 return (
                   <tr key={i.id} className="border-t border-slate-100">
                     <td className={td}><b className="font-mono">#{i.no}</b><span className="block text-[11px] text-slate-500">{desc}</span></td>

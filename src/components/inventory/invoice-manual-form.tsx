@@ -8,7 +8,7 @@ type L = { activity: string; desc: string; qty: string; rate: string; amount: st
 const input = "rounded-lg border border-slate-300 px-2 py-1 text-xs outline-none focus:border-[#8DC63F]";
 
 /** Invoice sem PDF: cabeçalho + linhas. Linha de produto começa com "Products:". */
-export function InvoiceManualForm({ companyId }: { companyId: string }) {
+export function InvoiceManualForm({ companyId, vendors }: { companyId: string; vendors: string[] }) {
   const [open, setOpen] = useState(false);
   const [lines, setLines] = useState<L[]>([{ activity: "Products:", desc: "", qty: "", rate: "", amount: "" }]);
   const upd = (i: number, k: keyof L, v: string) =>
@@ -37,6 +37,7 @@ export function InvoiceManualForm({ companyId }: { companyId: string }) {
         <input type="hidden" name="companyId" value={companyId} />
         <input type="hidden" name="lines" value={JSON.stringify(lines.filter((l) => l.activity && l.amount).map((l) => ({ activity: l.activity, desc: l.desc, qty: l.qty === "" ? null : Number(l.qty), rate: l.rate === "" ? null : Number(l.rate), amount: Number(l.amount) })))} />
         <div className="grid grid-cols-2 gap-2 md:grid-cols-6">
+          {vendors.length > 1 ? <select name="vendor" className={input}>{vendors.map((v) => <option key={v} value={v}>{v}</option>)}</select> : <input type="hidden" name="vendor" value={vendors[0] ?? ""} />}
           <input name="no" placeholder="Nº invoice *" required className={input} />
           <input name="date" type="date" required className={input} />
           <select name="kind" className={input}>

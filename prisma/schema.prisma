@@ -261,6 +261,7 @@ model Company {
   inventoryInvoices   InventoryInvoice[]
   inventoryShipments  InventoryShipment[]
   inventoryClosings   InventoryClosing[]
+  inventoryVendors    InventoryVendor[]
   yearNotes           CompanyYearNote[]
   obligationStatuses  ObligationStatus[]
   fixedAssets         FixedAsset[]
@@ -1924,15 +1925,31 @@ model InventorySettings {
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   marginPct             Decimal  @default(15) @db.Decimal(6, 2) // margem SOBRE O PREÇO: preço = custo ÷ (1 − m)
-  waitDays              Int      @default(30) // invoice de mercadoria sem frete há N dias → aviso
-  closeHintTerms        String[] @default(["cross-dock", "cross dock", "unloading", "delivery"]) // termos na invoice de frete que sugerem "fechar custos"
-  vendorName            String   @default("Archway Trade LLC")
+  booksClosedThrough    String? // "YYYY-MM": livros fechados (IR entregue) — meses até aqui são só leitura; o ajuste acumulado entra no 1º mês aberto
   // contas do QBO usadas na régua e na conferência
   glInventoryAccount    String   @default("Inventory Asset")
   glFreightAccount      String   @default("Inventory Asset - Freight & Handling")
   glCogsMaterialAccount String   @default("Supplies & materials - COGS")
   glCogsFreightAccount  String   @default("Shipping and Handling")
   updatedAt             DateTime @updatedAt
+}
+
+// Fornecedor de importação (regras por vendor, 17/11/2026). Era um único vendorName no settings.
+model InventoryVendor {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  name           String // como aparece no QBO (rawName da bill) e nas invoices aqui
+  aliases        String[] @default([]) // outras grafias no GL
+  closeHintTerms String[] @default(["cross-dock", "cross dock", "unloading", "delivery"]) // termos na invoice de frete que sugerem "fechar custos"
+  waitDays       Int      @default(30) // mercadoria sem frete há N dias → aviso
+  active         Boolean  @default(true)
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([companyId, name])
 }
 
 // Item = produto do QBO. Cada item do QBO é um item; nomes da Archway e do GL só apontam

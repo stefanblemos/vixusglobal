@@ -14,7 +14,7 @@ import { linesClose, usDateToIso, type ParsedInvoice } from "@/lib/inventory/par
 import { buildShipmentView, loadInvoices, recomputeShipments, toClosedData } from "@/lib/inventory/shipments";
 import { loadGlData, glItemName } from "@/lib/inventory/gl";
 import { runFifo } from "@/lib/inventory/fifo";
-import { getInventorySettings, priceForMargin } from "@/lib/inventory/settings";
+import { getInventorySettings, isClosedBooks, pickVendor, priceForMargin, vendorOfRawName } from "@/lib/inventory/settings";
 
 const INV = "/inventory";
 const num = (v: FormDataEntryValue | null | undefined) => {
@@ -25,6 +25,7 @@ const str = (v: FormDataEntryValue | null | undefined) => String(v ?? "").trim()
 const isoDate = (s: string) => (/^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00Z`) : null);
 const r2 = (v: number) => Math.round(v * 100) / 100;
 const who = async () => (await auth())?.user?.email ?? "sistema";
+const isAdmin = async () => (await auth())?.user?.role === "ADMIN";
 const touch = () => revalidatePath(INV, "layout");
 
 export type InvState = { error?: string; ok?: string } | undefined;
@@ -40,9 +41,7 @@ export async function saveInventorySettings(_p: InvState, fd: FormData): Promise
     where: { companyId },
     data: {
       marginPct,
-      waitDays: Math.max(0, Math.round(num(fd.get("waitDays")))) || 30,
-      closeHintTerms: str(fd.get("closeHintTerms")).split(",").map((s) => s.trim().toLowerCase()).filter(Boolean),
-      vendorName: str(fd.get("vendorName")) || "Archway Trade LLC",
+      booksClosedThrough: /^\d{4}-\d{2}$/.test(str(fd.get("booksClosedThrough"))) ? str(fd.get("booksClosedThrough")) : null,
       glInventoryAccount: str(fd.get("glInventoryAccount")) || "Inventory Asset",
       glFreightAccount: str(fd.get("glFreightAccount")) || "Inventory Asset - Freight & Handling",
       glCogsMaterialAccount: str(fd.get("glCogsMaterialAccount")) || "Supplies & materials - COGS",
@@ -51,6 +50,43 @@ export async function saveInventorySettings(_p: InvState, fd: FormData): Promise
   });
   touch();
   return { ok: "Configuração salva." };
+}
+
+// ─── fornecedores ────────────────────────────────────────────────────────────
+export async function saveVendor(_p: InvState, fd: FormData): Promise<InvState> {
+  const companyId = str(fd.get("companyId"));
+  const id = str(fd.get("id"));
+  const name = str(fd.get("name"));
+  if (!companyId || !name) return { error: "Nome do fornecedor?" };
+  const data = {
+    name,
+    aliases: str(fd.get("aliases")).split(",").map((x) => x.trim()).filter(Boolean),
+    closeHintTerms: str(fd.get("closeHintTerms")).split(",").map((x) => x.trim().toLowerCase()).filter(Boolean),
+    waitDays: Math.max(0, Math.round(num(fd.get("waitDays")))) || 30,
+    active: str(fd.get("active")) !== "0",
+    notes: str(fd.get("notes")) || null,
+  };
+  const dup = await prisma.inventoryVendor.findFirst({ where: { companyId, name, ...(id ? { id: { not: id } } : {}) } });
+  if (dup) return { error: `Já existe o fornecedor "${name}".` };
+  if (id) {
+    const cur = await prisma.inventoryVendor.findUnique({ where: { id } });
+    if (!cur || cur.companyId !== companyId) return { error: "Fornecedor?" };
+    await prisma.inventoryVendor.update({ where: { id }, data });
+    if (cur.name !== name) await prisma.inventoryInvoice.updateMany({ where: { companyId, vendorName: cur.name }, data: { vendorName: name } });
+  } else await prisma.inventoryVendor.create({ data: { companyId, ...data } });
+  touch();
+  return { ok: id ? "Fornecedor atualizado." : "Fornecedor incluído." };
+}
+
+export async function deleteVendor(_p: InvState, fd: FormData): Promise<InvState> {
+  const id = str(fd.get("id"));
+  const v = await prisma.inventoryVendor.findUnique({ where: { id } });
+  if (!v) return { error: "Fornecedor?" };
+  const used = await prisma.inventoryInvoice.count({ where: { companyId: v.companyId, vendorName: v.name } });
+  if (used) return { error: `${used} invoice(s) deste fornecedor. Desative em vez de excluir.` };
+  await prisma.inventoryVendor.delete({ where: { id } });
+  touch();
+  return { ok: "Fornecedor excluído." };
 }
 
 // ─── items ───────────────────────────────────────────────────────────────────
@@ -282,6 +318,7 @@ export async function submitInvoice(fd: FormData): Promise<SubmitInvoiceResult> 
   if (!companyId) return { status: "error", no: parsed.no, error: "Empresa?" };
   if (!parsed.no) return { status: "error", no: null, error: "Sem número de invoice." };
   const s = await getInventorySettings(companyId);
+  const vendorName = pickVendor(s, str(fd.get("vendor")));
   const kindRaw = str(fd.get("kind"));
   const kind = kindRaw === "FREIGHT" || kindRaw === "SAMPLE" || kindRaw === "GOODS" ? kindRaw : parsed.lines.some((l) => isProductActivity(l.activity)) ? "GOODS" : "FREIGHT";
   const dateIso = usDateToIso(parsed.date) ?? str(fd.get("date"));
@@ -295,7 +332,7 @@ export async function submitInvoice(fd: FormData): Promise<SubmitInvoiceResult> 
   const containers = containersOf(parsed.container, parsed.memo);
   const refs = refsOf(parsed.memo, parsed.no).map((r) => r.no);
 
-  const existing = await prisma.inventoryInvoice.findUnique({ where: { companyId_vendorName_no: { companyId, vendorName: s.vendorName, no: parsed.no } }, include: { lines: true } });
+  const existing = await prisma.inventoryInvoice.findUnique({ where: { companyId_vendorName_no: { companyId, vendorName, no: parsed.no } }, include: { lines: true } });
   if (existing) {
     const sameTotal = Math.abs(Number(existing.total) - total) < 0.005;
     if (sameTotal) {
@@ -351,7 +388,7 @@ export async function submitInvoice(fd: FormData): Promise<SubmitInvoiceResult> 
   const created = await prisma.inventoryInvoice.create({
     data: {
       companyId,
-      vendorName: s.vendorName,
+      vendorName,
       no: parsed.no,
       date,
       kind,
@@ -383,10 +420,11 @@ export async function createInvoiceFromGl(_p: InvState, fd: FormData): Promise<I
   const numBill = str(fd.get("num"));
   if (!companyId || !numBill) return { error: "Bill?" };
   const s = await getInventorySettings(companyId);
-  const rows = await prisma.ledgerTxn.findMany({ where: { companyId, num: numBill, type: "Bill", rawName: { contains: s.vendorName.split(" ")[0], mode: "insensitive" } }, orderBy: { amount: "desc" } });
+  const rows = await prisma.ledgerTxn.findMany({ where: { companyId, num: numBill, type: "Bill", OR: s.vendorKeys.map((k) => ({ rawName: { contains: k, mode: "insensitive" as const } })) }, orderBy: { amount: "desc" } });
   const lines = rows.filter((r) => !/Accounts Payable/i.test(r.account));
   if (!lines.length) return { error: `Bill ${numBill} não encontrada no GL.` };
-  const exists = await prisma.inventoryInvoice.findUnique({ where: { companyId_vendorName_no: { companyId, vendorName: s.vendorName, no: numBill } } });
+  const vendorName = vendorOfRawName(rows[0].rawName, s.vendors) ?? s.vendorName;
+  const exists = await prisma.inventoryInvoice.findUnique({ where: { companyId_vendorName_no: { companyId, vendorName, no: numBill } } });
   if (exists) return { error: `Invoice ${numBill} já existe.` };
   const date = lines[0].date;
   const memo = [...new Set(rows.map((l) => (l.description ?? "").trim()).filter(Boolean))]; // inclui a linha de A/P: é onde vem "Container: …"
@@ -405,7 +443,7 @@ export async function createInvoiceFromGl(_p: InvState, fd: FormData): Promise<I
   await prisma.inventoryInvoice.create({
     data: {
       companyId,
-      vendorName: s.vendorName,
+      vendorName,
       no: numBill,
       date,
       kind,
@@ -441,7 +479,8 @@ export async function createInvoiceManual(_p: InvState, fd: FormData): Promise<I
   }
   if (!lines.length) return { error: "Pelo menos uma linha." };
   const s = await getInventorySettings(companyId);
-  const exists = await prisma.inventoryInvoice.findUnique({ where: { companyId_vendorName_no: { companyId, vendorName: s.vendorName, no } } });
+  const vendorName = pickVendor(s, str(fd.get("vendor")));
+  const exists = await prisma.inventoryInvoice.findUnique({ where: { companyId_vendorName_no: { companyId, vendorName, no } } });
   if (exists) return { error: `Invoice ${no} já existe. Solte o PDF para comparar/substituir.` };
   const memo = str(fd.get("memo")).split("\n").map((x) => x.trim()).filter(Boolean);
   const container = str(fd.get("container")) || null;
@@ -450,7 +489,7 @@ export async function createInvoiceManual(_p: InvState, fd: FormData): Promise<I
   await prisma.inventoryInvoice.create({
     data: {
       companyId,
-      vendorName: s.vendorName,
+      vendorName,
       no,
       date,
       kind,
@@ -597,6 +636,24 @@ export async function createOpening(_p: InvState, fd: FormData): Promise<InvStat
   return { ok: `Abertura criada: material $${merch.toFixed(2)} em ${items.length} itens · frete $${freight.toFixed(2)} · absorção ${(data.absorption * 100).toFixed(1)}%.` };
 }
 
+/** Edita a abertura (data/frete). Livre enquanto nenhum embarque fechou; depois só ADMIN. */
+export async function updateOpening(_p: InvState, fd: FormData): Promise<InvState> {
+  const companyId = str(fd.get("companyId"));
+  const date = isoDate(str(fd.get("date")));
+  const freight = num(fd.get("freight"));
+  if (!companyId || !date) return { error: "Data da abertura?" };
+  const op = await prisma.inventoryShipment.findFirst({ where: { companyId, isOpening: true } });
+  if (!op) return { error: "Abertura não existe." };
+  const closedOthers = await prisma.inventoryShipment.count({ where: { companyId, isOpening: false, closedAt: { not: null } } });
+  if (closedOthers && !(await isAdmin())) return { error: `Já há ${closedOthers} embarque(s) com custos fechados: só um administrador altera a abertura.` };
+  const d = op.closedData as unknown as { merch: number; pool: number; absorption: number; items: { itemId: string | null; name: string; invNo: string; qty: number; amount: number; alloc: number; unitCost: number }[]; invoices: unknown[] };
+  const merch = d.merch;
+  const data = { ...d, pool: r2(freight), absorption: merch ? freight / merch : 0, items: d.items.map((i) => ({ ...i, alloc: r2(merch ? (freight * i.amount) / merch : 0) })) };
+  await prisma.inventoryShipment.update({ where: { id: op.id }, data: { deliveredAt: date, closedAt: new Date(), closedBy: await who(), closedData: JSON.parse(JSON.stringify(data)) } });
+  touch();
+  return { ok: `Abertura atualizada: frete $${freight.toFixed(2)} · absorção ${(data.absorption * 100).toFixed(1)}%.` };
+}
+
 // ─── month-end ───────────────────────────────────────────────────────────────
 
 export async function closeMonth(_p: InvState, fd: FormData): Promise<InvState> {
@@ -607,16 +664,17 @@ export async function closeMonth(_p: InvState, fd: FormData): Promise<InvState> 
   const res = await runFifo(companyId, s, month);
   const row = res.rows.find((r) => r.month === month);
   if (!row) return { error: "Sem movimento nesse mês." };
+  if (isClosedBooks(s, month)) return { error: `Livros fechados até ${s.booksClosedThrough ?? "o ano passado"}: o ajuste deste mês entra no primeiro mês aberto.` };
   const manual = str(fd.get("merchEnd"));
   const merchEnd = row.glMatStock ?? (manual ? num(manual) : null);
   if (merchEnd == null) return { error: "GL do mês não carregado: informe o estoque final de material." };
   await prisma.inventoryClosing.upsert({
     where: { companyId_month: { companyId, month } },
-    create: { companyId, month, merchEnd, merchEndSource: row.glMatStock != null ? "GL" : "MANUAL", cogsMerch: row.matOut, freightOut: row.suggested, data: JSON.parse(JSON.stringify({ detail: row.detail, noLayer: row.noLayer, lateAdj: row.lateAdj })) },
-    update: { merchEnd, merchEndSource: row.glMatStock != null ? "GL" : "MANUAL", cogsMerch: row.matOut, freightOut: row.suggested, data: JSON.parse(JSON.stringify({ detail: row.detail, noLayer: row.noLayer, lateAdj: row.lateAdj })) },
+    create: { companyId, month, merchEnd, merchEndSource: row.glMatStock != null ? "GL" : "MANUAL", cogsMerch: row.matOut, freightOut: row.suggested, data: JSON.parse(JSON.stringify({ detail: row.detail, noLayer: row.noLayer, lateAdj: row.lateAdj, catchUp: row.catchUp })) },
+    update: { merchEnd, merchEndSource: row.glMatStock != null ? "GL" : "MANUAL", cogsMerch: row.matOut, freightOut: row.suggested, data: JSON.parse(JSON.stringify({ detail: row.detail, noLayer: row.noLayer, lateAdj: row.lateAdj, catchUp: row.catchUp })) },
   });
   touch();
-  return { ok: `${month} fechado: frete a apropriar $${row.suggested.toFixed(2)}.` };
+  return { ok: `${month} fechado: JE de ajuste $${(row.catchUp ?? row.suggested).toFixed(2)} (frete do mês $${row.suggested.toFixed(2)}).` };
 }
 
 export async function markJeBooked(fd: FormData): Promise<void> {

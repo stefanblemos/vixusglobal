@@ -50,7 +50,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
     <InventoryShell tab="items" companies={ctx.companies} companyId={cid} companyName={ctx.company?.legalName ?? null} glUntil={gl?.coverageUntil ?? null}>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Kpi k="Itens" v={items.length} h={`${items.filter((i) => i.listPrice).length} com preço de lista`} />
-        <Kpi k="Nome Archway confirmado" v={items.filter((i) => i.vendorNames.length).length} h={`${unmappedVendor.length} nome(s) de invoice sem item`} />
+        <Kpi k="Nome do fornecedor confirmado" v={items.filter((i) => i.vendorNames.length).length} h={`${unmappedVendor.length} nome(s) de invoice sem item`} />
         <Kpi k="Nomes do GL sem item" v={unmappedGl.length} h="confirme abaixo" />
         <Kpi k={`Abaixo da margem (${margin}%)`} v={below.length} h="custo vigente × preço de lista" />
         <Kpi k="Margem alvo" v={`${margin}%`} h="sobre o preço · preço = custo ÷ (1 − m)" />
@@ -100,7 +100,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
 
       {unmappedVendor.length > 0 && items.length > 0 && (
         <div className={card}>
-          <h2 className={h2}>Nomes nas invoices da Archway sem item</h2>
+          <h2 className={h2}>Nomes nas invoices do fornecedor sem item</h2>
           <table className="w-full text-sm">
             <thead><tr><th className={th}>Nome na invoice</th><th className={th}>Invoices</th><th className={th}>É o item…</th></tr></thead>
             <tbody>
@@ -125,7 +125,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
         <h2 className={h2}>Itens · custo vigente, preço de lista e margem</h2>
         {items.length === 0 ? <p className="text-sm text-slate-500">Nenhum item. Importe o CSV do QBO ou crie a partir do GL.</p> : (
           <table className="w-full text-sm">
-            <thead><tr><th className={th}>Item (QBO)</th><th className={th}>Nomes · Archway / GL</th><th className={thr}>Custo vigente</th><th className={thr}>Preço de lista</th><th className={thr}>Margem</th><th className={thr}>Preço p/ {margin}%</th><th className={thr}>Realizada (GL)</th><th className={th}></th></tr></thead>
+            <thead><tr><th className={th}>Item (QBO)</th><th className={th}>Nomes · fornecedor / GL</th><th className={thr}>Custo vigente</th><th className={thr}>Preço de lista</th><th className={thr}>Margem</th><th className={thr}>Preço p/ {margin}%</th><th className={thr}>Realizada (GL)</th><th className={th}></th></tr></thead>
             <tbody>
               {items.map((i) => {
                 const cost = i.currentCost ? Number(i.currentCost) : null;
@@ -137,7 +137,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
                   <tr key={i.id} className="border-t border-slate-100">
                     <td className={td}>{i.name}{i.category && <span className="block text-[10px] text-slate-400">{i.category}</span>}{!i.active && pill("off", "inativo")}</td>
                     <td className={`${td} text-[11px] text-slate-500`}>
-                      {i.vendorNames.length ? i.vendorNames.join(" · ") : <span className="text-slate-300">Archway: —</span>}
+                      {i.vendorNames.length ? i.vendorNames.join(" · ") : <span className="text-slate-300">fornecedor: —</span>}
                       <div>{i.glNames.filter((g) => g !== i.name).map((g) => <span key={g} className="mr-1 inline-flex items-center gap-0.5 rounded bg-slate-100 px-1">{g}<form action={unmapGlName} className="inline"><input type="hidden" name="itemId" value={i.id} /><input type="hidden" name="glName" value={g} /><button className="text-slate-400 hover:text-red-600">×</button></form></span>)}</div>
                     </td>
                     <td className={tdr}>{cost ? money(cost) : "—"}{i.currentCostAt && <span className="block text-[10px] text-slate-400">{br(i.currentCostAt)}</span>}</td>

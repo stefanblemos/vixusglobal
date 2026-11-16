@@ -14,8 +14,9 @@ const fmt = (v: number | null | undefined) => (v == null ? "—" : "$" + v.toLoc
  * envia uma invoice por vez ao servidor. Mesmo número: igual = ignorada (anexa PDF); diferente =
  * compara e pergunta antes de substituir.
  */
-export function InvoiceUpload({ companyId }: { companyId: string }) {
+export function InvoiceUpload({ companyId, vendors }: { companyId: string; vendors: string[] }) {
   const [items, setItems] = useState<Pending[]>([]);
+  const [vendor, setVendor] = useState(vendors[0] ?? "");
   const [reading, setReading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +56,7 @@ export function InvoiceUpload({ companyId }: { companyId: string }) {
     setItems((p) => p.map((x, i) => (i === idx ? { ...x, busy: true } : x)));
     const fd = new FormData();
     fd.set("companyId", companyId);
+    fd.set("vendor", vendor);
     fd.set("parsed", JSON.stringify(it.parsed));
     fd.set("kind", it.kind);
     fd.set("fileName", it.fileName);
@@ -71,6 +73,7 @@ export function InvoiceUpload({ companyId }: { companyId: string }) {
           {reading ? "Lendo…" : "＋ Soltar PDF da invoice"}
           <input ref={inputRef} type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => readFiles(e.target.files)} disabled={reading} />
         </label>
+        {vendors.length > 1 && <select value={vendor} onChange={(e) => setVendor(e.target.value)} className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs">{vendors.map((v) => <option key={v} value={v}>{v}</option>)}</select>}
         <span className="text-xs text-slate-500">Lido aqui no navegador. Um PDF pode trazer mais de uma invoice; anexos (comprovantes) são pulados. Lemos sempre o TOTAL, nunca o saldo devido.</span>
       </div>
       {err && <p className="mt-2 text-xs text-red-700">{err}</p>}

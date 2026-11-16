@@ -39,6 +39,12 @@ export type MonthRow = {
   glFreightStock: number | null;
   shouldMatStock: number; // Σ saldos das camadas
   glMatStock: number | null;
+  // ajuste ACUMULADO (17/11): quanto a conta de frete no GL está acima do que deveria, já
+  // descontando frete capitalizado no GL cujo embarque ainda não fechou aqui (em trânsito)
+  // e somando frete de embarques fechados que o GL ainda não tem. JE do mês = catchUp.
+  openInGl: number; // frete no GL sem camada aqui (embarque aberto / invoice não cadastrada)
+  closedNotInGl: number; // frete de embarques fechados que não está no GL
+  catchUp: number | null; // glFreightStock − (shouldFreightStock + openInGl − closedNotInGl); null sem GL
   closing: { freightOut: number; jeBookedAt: Date | null; jeBookedAmount: number | null; merchEndSource: string } | null;
   noLayer: Record<string, number>; // glName → COGS sem camada
   detail: { itemName: string; layer: string; take: number; abs: number; freight: number }[];
@@ -95,6 +101,13 @@ export async function runFifo(companyId: string, s: GlSettings, upTo?: string): 
   const closingBy = new Map(closings.map((c) => [c.month, c]));
   // frete tardio: invoices FREIGHT lateAdjustment → mês da data da invoice
   const late = await prisma.inventoryInvoice.findMany({ where: { companyId, kind: "FREIGHT", lateAdjustment: true }, select: { date: true, total: true } });
+  // frete das invoices cadastradas (p/ o acumulado): nº, data, total, mês da camada se o embarque fechou
+  const frInv = await prisma.inventoryInvoice.findMany({ where: { companyId, kind: "FREIGHT" }, select: { no: true, date: true, total: true, shipment: { select: { closedAt: true, deliveredAt: true } } } });
+  const closedMonthByNo = new Map<string, string>();
+  for (const i of frInv) if (i.shipment?.closedAt && i.shipment.deliveredAt) closedMonthByNo.set(i.no, i.shipment.deliveredAt.toISOString().slice(0, 7));
+  const frBills = gl.vendorBills.filter((b) => b.account === s.glFreightAccount && b.num).map((b) => ({ num: b.num as string, month: b.date.toISOString().slice(0, 7), amount: b.amount }));
+  const billNums = new Set(frBills.map((b) => b.num));
+  const coverageMonth = gl.coverageUntil ? gl.coverageUntil.toISOString().slice(0, 7) : null;
   const lateByMonth: Record<string, number> = {};
   for (const l of late) {
     const m = l.date.toISOString().slice(0, 7);
@@ -148,6 +161,12 @@ export async function runFifo(companyId: string, s: GlSettings, upTo?: string): 
     const posted = gl.freightPostedByMonth[cur] ?? 0;
     const eligible = layers.filter((L) => L.month <= cur);
     const c = closingBy.get(cur);
+    // frete capitalizado no GL até `cur` cujo embarque não tinha camada em `cur`
+    const openInGl = r2(frBills.filter((b) => b.month <= cur && !((closedMonthByNo.get(b.num) ?? "9999") <= cur)).reduce((x, b) => x + b.amount, 0));
+    // frete de embarques fechados (camada ≤ cur) que o GL não tem, dentro da cobertura
+    const closedNotInGl = r2(frInv.filter((i) => (closedMonthByNo.get(i.no) ?? "9999") <= cur && !billNums.has(i.no) && coverageMonth != null && i.date.toISOString().slice(0, 7) <= cur && i.date.toISOString().slice(0, 7) <= coverageMonth).reduce((x, i) => x + n(i.total), 0));
+    const shouldFr = r2(eligible.reduce((s, L) => s + L.left * L.abs, 0));
+    const glFr = balanceAt(gl.freightBalanceByMonth, cur);
     rows.push({
       month: cur,
       matOut: r2(matOut),
@@ -156,8 +175,11 @@ export async function runFifo(companyId: string, s: GlSettings, upTo?: string): 
       lateAdj: r2(lateAdj),
       posted: r2(posted),
       diff: r2(suggested - posted),
-      shouldFreightStock: r2(eligible.reduce((s, L) => s + L.left * L.abs, 0)),
-      glFreightStock: balanceAt(gl.freightBalanceByMonth, cur),
+      shouldFreightStock: shouldFr,
+      glFreightStock: glFr,
+      openInGl,
+      closedNotInGl,
+      catchUp: glFr == null ? null : r2(glFr - (shouldFr + openInGl - closedNotInGl)),
       shouldMatStock: r2(eligible.reduce((s, L) => s + L.left, 0)),
       glMatStock: balanceAt(gl.inventoryBalanceByMonth, cur),
       closing: c ? { freightOut: n(c.freightOut), jeBookedAt: c.jeBookedAt, jeBookedAmount: c.jeBookedAmount == null ? null : n(c.jeBookedAmount), merchEndSource: c.merchEndSource } : null,
