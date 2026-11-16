@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db";
 import { classifyCost, isProductActivity, productName, containersOf, refsOf } from "@/lib/inventory/classify";
 import { linesClose, usDateToIso, type ParsedInvoice } from "@/lib/inventory/parse-invoice";
 import { parseInvoicePdfWithClaude } from "@/lib/inventory/claude-parse";
+import { analyzeShipmentNotes, notesHash, toNotesInvoices } from "@/lib/inventory/claude-notes";
 import { buildShipmentView, loadInvoices, recomputeShipments, toClosedData } from "@/lib/inventory/shipments";
 import { loadGlData, glItemName } from "@/lib/inventory/gl";
 import { runFifo } from "@/lib/inventory/fifo";
@@ -64,6 +65,26 @@ export async function readInvoicePdfWithClaude(fd: FormData): Promise<{ invoices
     return { invoices };
   } catch (e) {
     return { error: `Leitura pelo Claude falhou: ${e instanceof Error ? e.message : String(e)}` };
+  }
+}
+
+/** Lê os memos de todas as invoices do embarque pelo Claude e grava a nota (cobrado × "NOT included"). */
+export async function analyzeShipmentNotesAction(_p: InvState, fd: FormData): Promise<InvState> {
+  const id = str(fd.get("shipmentId"));
+  const sh = await prisma.inventoryShipment.findUnique({ where: { id } });
+  if (!sh) return { error: "Embarque?" };
+  const all = await loadInvoices(sh.companyId);
+  const rows = all.filter((i) => i.shipmentId === id);
+  const input = toNotesInvoices(rows);
+  if (!input.length) return { error: "Embarque sem invoices." };
+  const name = sh.name ?? (sh.containers.length ? sh.containers.join(" + ") : sh.key);
+  try {
+    const a = await analyzeShipmentNotes(name, input);
+    await prisma.inventoryShipment.update({ where: { id }, data: { aiStatus: a.status, aiNote: a.summary, aiPending: a.pending, aiAt: new Date(), aiHash: notesHash(input) } });
+    touch();
+    return { ok: a.status === "COMPLETE" ? "Notas lidas: nada pendente." : a.status === "PENDING" ? `Notas lidas: falta cobrar ${a.pending.join(", ") || "algo"}.` : "Notas lidas, sem conclusão clara." };
+  } catch (e) {
+    return { error: `Leitura das notas falhou: ${e instanceof Error ? e.message : String(e)}` };
   }
 }
 
@@ -196,16 +217,22 @@ export async function importItemsCsv(_p: InvState, fd: FormData): Promise<InvSta
       const long = await prisma.inventoryItem.findFirst({ where: { companyId, OR: [{ name: { startsWith: `${name} /` } }, { name: { startsWith: `${name} ` } }] } });
       if (long) ex = long;
     }
+    // preço do CSV vira preço de lista só quando o item ainda não tem lista (1ª carga). Depois, o CSV
+    // é ESPELHO do QBO: se divergir da lista do app, a tela avisa e o operador decide (regra 17/11:
+    // preço novo é ajustado no QBO e no app ao mesmo tempo). Custo do QBO não é custo vigente (sem frete).
+    const firstPrice = price > 0 && !ex?.listPrice;
     const data = {
       category: category ?? ex?.category ?? null,
-      ...(price > 0 ? { listPrice: price, listPriceAt: today } : {}),
+      ...(firstPrice ? { listPrice: price, listPriceAt: today } : {}),
       ...(qty != null ? { qtyOnHand: qty, qtyAt: today } : {}),
-      ...(cost > 0 && !ex?.currentCost ? { currentCost: cost, currentCostAt: today } : {}),
+      qboPrice: price > 0 ? price : null,
+      qboCost: cost > 0 ? cost : null,
+      qboAt: today,
     };
     const item = ex
       ? await prisma.inventoryItem.update({ where: { id: ex.id }, data: { ...data, name, glNames: [...new Set([...ex.glNames, ex.name, ...aliases])] } })
       : await prisma.inventoryItem.create({ data: { companyId, name, glNames: aliases, ...data } });
-    if (price > 0) await prisma.inventoryItemPrice.create({ data: { itemId: item.id, price, effectiveFrom: today, source: "CSV", note: file.name } });
+    if (firstPrice) await prisma.inventoryItemPrice.create({ data: { itemId: item.id, price, effectiveFrom: today, source: "CSV", note: file.name } });
     ex ? updated++ : created++;
   }
   touch();
@@ -243,7 +270,16 @@ export async function applySuggestedPrice(fd: FormData): Promise<void> {
   const s = await getInventorySettings(item.companyId);
   const price = Math.round(priceForMargin(Number(item.currentCost), Number(s.marginPct)) * 100) / 100;
   await prisma.inventoryItem.update({ where: { id }, data: { listPrice: price, listPriceAt: new Date() } });
-  await prisma.inventoryItemPrice.create({ data: { itemId: id, price, effectiveFrom: new Date(), source: "SUGGESTED", note: `custo ${Number(item.currentCost).toFixed(4)} · margem ${Number(s.marginPct)}%` } });
+  await prisma.inventoryItemPrice.create({ data: { itemId: id, price, effectiveFrom: new Date(), source: "SUGGESTED", note: `custo ${Number(item.currentCost).toFixed(4)} · margem ${Number(s.marginPct)}% · atualizar no QBO` } });
+  touch();
+}
+
+/** Operador confirma que o preço de lista já foi digitado no QBO (espelho passa a bater até o próximo CSV). */
+export async function confirmPriceInQbo(fd: FormData): Promise<void> {
+  const id = str(fd.get("itemId"));
+  const item = await prisma.inventoryItem.findUnique({ where: { id } });
+  if (!item || !item.listPrice) return;
+  await prisma.inventoryItem.update({ where: { id }, data: { qboPrice: item.listPrice, qboAt: new Date() } });
   touch();
 }
 

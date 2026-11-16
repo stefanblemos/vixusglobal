@@ -5,6 +5,8 @@ import { InventoryShell, br, card, h2, money, pct1, pill } from "@/components/in
 import { ActionForm } from "@/components/inventory/action-form";
 import { buildShipmentView, loadInvoices, recomputeShipments } from "@/lib/inventory/shipments";
 import { closeShipmentCosts } from "@/lib/actions/inventory";
+import { ShipmentNotes } from "@/components/inventory/shipment-notes";
+import { notesHash, toNotesInvoices } from "@/lib/inventory/claude-notes";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +62,8 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
               {v && v.missingRefs.length > 0 && <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">Faltam as invoices citadas na consolidação: {v.missingRefs.join(", ")}. Sem elas o custo dos outros produtos sobe.</div>}
               {v && v.missingRefs.length === 0 && v.goods.length > 0 && !s.closedAt && <div className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-700">✓ Todas as invoices citadas estão aqui.</div>}
               {v && !s.closedAt && v.closeHint && <div className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-700">A invoice de frete traz <b>{v.closeHint}</b>: costuma ser o último custo do embarque. Sugerimos fechar.</div>}
-              {v && !s.closedAt && !v.closeHint && v.freights.length > 0 && <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">Sem sinal de entrega final na invoice de frete (cross-docking e entrega costumam vir à parte). Pode fechar mesmo assim.</div>}
+              {v && !s.closedAt && !v.closeHint && v.freights.length > 0 && !s.aiNote && <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">Sem sinal de entrega final na invoice de frete (cross-docking e entrega costumam vir à parte). Pode fechar mesmo assim.</div>}
+              {v && !s.isOpening && (s.aiNote || !s.closedAt) && <ShipmentNotes sh={s} hash={notesHash(toNotesInvoices(all.filter((i) => i.shipmentId === s.id)))} closed={!!s.closedAt} />}
               {notInGl.length > 0 && ctx.gl?.coverageUntil && <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">GL: {notInGl.filter((i) => i.date.getTime() <= ctx.gl!.coverageUntil!.getTime()).length ? `faltam no QBO: ${notInGl.filter((i) => i.date.getTime() <= ctx.gl!.coverageUntil!.getTime()).map((i) => "#" + i.no).join(", ")}` : "invoices posteriores à cobertura do GL"}.</div>}
               {v && v.lateFreight.length > 0 && <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">Frete após o fechamento: {v.lateFreight.map((i) => `#${i.no} ${money(i.total)}`).join(", ")} → COGS do mês em que entrou (a camada não muda).</div>}
               {!s.isOpening && !s.closedAt && v && v.goods.length > 0 && (
@@ -76,12 +79,15 @@ export default async function ShipmentsPage({ searchParams }: { searchParams: Pr
         })}
       </div>
       {samplesWaiting.length > 0 && (
-        <div className={card}>
-          <h2 className={h2}>Fora dos embarques · samples aguardando o lote</h2>
-          <ul className="text-sm">
-            {samplesWaiting.map((s) => <li key={s.id} className="border-t border-slate-100 py-1.5 first:border-0"><b className="font-mono">#{s.no}</b> · {money(s.total)} · {br(s.date)} — <Link href={`/inventory/invoices${q}&f=sample`} className="text-[#1f3a5f] hover:underline">apontar o item e o embarque</Link></li>)}
+        <details className="rounded-xl border border-dashed border-slate-200 px-4 py-2 text-xs text-slate-500">
+          <summary className="cursor-pointer">
+            {samplesWaiting.length} sample(s) sem lote · {money(samplesWaiting.reduce((x, s) => x + Number(s.total), 0))} — chegam por avião, fora dos embarques; só entram no custo se a compra do lote acontecer
+          </summary>
+          <ul className="mt-2">
+            {samplesWaiting.map((s) => <li key={s.id} className="border-t border-slate-100 py-1 first:border-0"><b className="font-mono text-slate-700">#{s.no}</b> · {money(s.total)} · {br(s.date)}</li>)}
           </ul>
-        </div>
+          <p className="mt-2 text-[11px]">Em <Link href={`/inventory/invoices${q}&f=sample`} className="text-[#1f3a5f] hover:underline">Invoices › Sample</Link>: se o lote vier, aponte o item e o embarque (o custo dilui no lote); se não vier, dê baixa do sample.</p>
+        </details>
       )}
     </InventoryShell>
   );

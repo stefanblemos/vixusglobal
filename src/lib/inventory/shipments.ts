@@ -23,6 +23,7 @@ export type InvoiceRow = {
   discount: number;
   tax: number;
   lateAdjustment: boolean;
+  memo: string[];
   lines: { id: string; activity: string; desc: string | null; qty: number | null; rate: number | null; amount: number; isProduct: boolean; costGroup: string | null; itemId: string | null }[];
 };
 
@@ -48,6 +49,7 @@ export async function loadInvoices(companyId: string): Promise<InvoiceRow[]> {
     discount: n(i.discount),
     tax: n(i.tax),
     lateAdjustment: i.lateAdjustment,
+    memo: i.memo,
     lines: i.lines.map((l) => ({ id: l.id, activity: l.activity, desc: l.desc, qty: l.qty == null ? null : n(l.qty), rate: l.rate == null ? null : n(l.rate), amount: n(l.amount), isProduct: l.isProduct, costGroup: l.costGroup, itemId: l.itemId })),
   }));
 }

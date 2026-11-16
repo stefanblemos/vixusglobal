@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { inventoryContext } from "../_lib";
 import { InventoryShell, Kpi, br, card, h2, money, pct1, pill, td, tdr, th, thr } from "@/components/inventory/inventory-shell";
 import { ActionForm } from "@/components/inventory/action-form";
-import { applySuggestedPrice, importItemsCsv, mapGlName, mapVendorName, mergeItems, seedItemsFromGl, unmapGlName, updateItem } from "@/lib/actions/inventory";
+import { applySuggestedPrice, confirmPriceInQbo, importItemsCsv, mapGlName, mapVendorName, mergeItems, seedItemsFromGl, unmapGlName, updateItem } from "@/lib/actions/inventory";
 import { marginOf, priceForMargin } from "@/lib/inventory/settings";
 import { productName } from "@/lib/inventory/classify";
 import { loadLayers } from "@/lib/inventory/fifo";
@@ -18,7 +18,7 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
   const [items, prodLines, layers] = cid
     ? await Promise.all([
         prisma.inventoryItem.findMany({ where: { companyId: cid }, orderBy: { name: "asc" } }),
-        prisma.inventoryInvoiceLine.findMany({ where: { isProduct: true, invoice: { companyId: cid } }, select: { activity: true, itemId: true, invoice: { select: { no: true } } } }),
+        prisma.inventoryInvoiceLine.findMany({ where: { isProduct: true, invoice: { companyId: cid } }, select: { activity: true, itemId: true, invoice: { select: { no: true, kind: true, shipment: { select: { closedAt: true, name: true, containers: true, key: true } } } } } }),
         loadLayers(cid),
       ])
     : [[], [], []];
@@ -44,7 +44,14 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
     const abs = absByItem.get(it.id) ?? (layers.find((L) => L.isOpening)?.abs ?? 0);
     return rev > 0 ? { rev, cogs, full: cogs * (1 + abs), mg: 1 - (cogs * (1 + abs)) / rev, abs } : null;
   };
-  const below = items.filter((i) => i.listPrice && i.currentCost && (marginOf(Number(i.currentCost), Number(i.listPrice)) ?? 1) < margin / 100);
+  // custo vigente só existe com frete fechado (currentCostShipmentId). Custo do QBO é só mercadoria.
+  const landed = (i: (typeof items)[number]) => (i.currentCost && i.currentCostShipmentId ? Number(i.currentCost) : null);
+  const below = items.filter((i) => i.listPrice && landed(i) != null && (marginOf(landed(i)!, Number(i.listPrice)) ?? 1) < margin / 100);
+  // itens em trânsito: em invoice de mercadoria cujo embarque ainda não fechou (ou nem formou)
+  const transit = new Map<string, string>();
+  for (const l of prodLines) if (l.itemId && l.invoice.kind === "GOODS" && !l.invoice.shipment?.closedAt) transit.set(l.itemId, l.invoice.shipment ? (l.invoice.shipment.name ?? (l.invoice.shipment.containers.length ? l.invoice.shipment.containers.join(" + ") : l.invoice.shipment.key)) : `#${l.invoice.no} sem frete`);
+  // preço do app ≠ preço no QBO (último CSV): falta atualizar um dos dois
+  const diverged = items.filter((i) => i.listPrice && i.qboPrice && Math.abs(Number(i.listPrice) - Number(i.qboPrice)) > 0.004);
 
   return (
     <InventoryShell tab="items" companies={ctx.companies} companyId={cid} companyName={ctx.company?.legalName ?? null} glUntil={gl?.coverageUntil ?? null}>
@@ -52,7 +59,8 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
         <Kpi k="Itens" v={items.length} h={`${items.filter((i) => i.listPrice).length} com preço de lista`} />
         <Kpi k="Nome do fornecedor confirmado" v={items.filter((i) => i.vendorNames.length).length} h={`${unmappedVendor.length} nome(s) de invoice sem item`} />
         <Kpi k="Nomes do GL sem item" v={unmappedGl.length} h="confirme abaixo" />
-        <Kpi k={`Abaixo da margem (${margin}%)`} v={below.length} h="custo vigente × preço de lista" />
+        <Kpi k={`Abaixo da margem (${margin}%)`} v={below.length} h="custo com frete × preço de lista" />
+        <Kpi k="Preço ≠ QBO" v={diverged.length} h={diverged.length ? "atualizar no QBO (ou reimportar o CSV)" : "lista do app bate com o QBO"} />
         <Kpi k="Margem alvo" v={`${margin}%`} h="sobre o preço · preço = custo ÷ (1 − m)" />
       </div>
 
@@ -125,11 +133,14 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
         <h2 className={h2}>Itens · custo vigente, preço de lista e margem</h2>
         {items.length === 0 ? <p className="text-sm text-slate-500">Nenhum item. Importe o CSV do QBO ou crie a partir do GL.</p> : (
           <table className="w-full text-sm">
-            <thead><tr><th className={th}>Item (QBO)</th><th className={th}>Nomes · fornecedor / GL</th><th className={thr}>Custo vigente</th><th className={thr}>Preço de lista</th><th className={thr}>Margem</th><th className={thr}>Preço p/ {margin}%</th><th className={thr}>Realizada (GL)</th><th className={th}></th></tr></thead>
+            <thead><tr><th className={th}>Item (QBO)</th><th className={th}>Nomes · fornecedor / GL</th><th className={thr}>Custo com frete</th><th className={thr}>Preço de lista</th><th className={thr}>Margem</th><th className={thr}>Preço p/ {margin}%</th><th className={thr}>Realizada (GL)</th><th className={th}></th></tr></thead>
             <tbody>
               {items.map((i) => {
-                const cost = i.currentCost ? Number(i.currentCost) : null;
+                const cost = landed(i);
                 const lp = i.listPrice ? Number(i.listPrice) : null;
+                const qp = i.qboPrice ? Number(i.qboPrice) : null;
+                const div = lp != null && qp != null && Math.abs(lp - qp) > 0.004;
+                const tr = transit.get(i.id);
                 const mg = cost && lp ? marginOf(cost, lp) : null;
                 const rz = realized(i);
                 const low = mg != null && mg < margin / 100;
@@ -140,7 +151,11 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
                       {i.vendorNames.length ? i.vendorNames.join(" · ") : <span className="text-slate-300">fornecedor: —</span>}
                       <div>{i.glNames.filter((g) => g !== i.name).map((g) => <span key={g} className="mr-1 inline-flex items-center gap-0.5 rounded bg-slate-100 px-1">{g}<form action={unmapGlName} className="inline"><input type="hidden" name="itemId" value={i.id} /><input type="hidden" name="glName" value={g} /><button className="text-slate-400 hover:text-red-600">×</button></form></span>)}</div>
                     </td>
-                    <td className={tdr}>{cost ? money(cost) : "—"}{i.currentCostAt && <span className="block text-[10px] text-slate-400">{br(i.currentCostAt)}</span>}</td>
+                    <td className={tdr}>
+                      {cost != null ? <>{money(cost)}<span className="block text-[10px] text-slate-400">{br(i.currentCostAt)}</span></> : <span className="text-slate-400">—</span>}
+                      {tr && <span className="block text-[10px] text-amber-700">em trânsito · {tr}</span>}
+                      {cost == null && i.qboCost && <span className="block text-[10px] text-slate-400">QBO s/ frete {money(Number(i.qboCost))}</span>}
+                    </td>
                     <td className={tdr}>
                       <form action={updateItem} className="flex items-center justify-end gap-1">
                         <input type="hidden" name="itemId" value={i.id} />
@@ -148,12 +163,14 @@ export default async function ItemsPage({ searchParams }: { searchParams: Promis
                         <button className="text-[10px] text-slate-400 hover:text-[#1f3a5f]">ok</button>
                       </form>
                       {i.listPriceAt && <span className="block text-[10px] text-slate-400">{br(i.listPriceAt)}</span>}
+                      {div && <span className="block text-[10px] font-semibold text-red-700">QBO {money(qp)} ≠ app</span>}
                     </td>
                     <td className={`${tdr} font-semibold ${low ? "text-red-700" : mg != null ? "text-emerald-700" : ""}`}>{mg == null ? "—" : pct1(mg)}</td>
                     <td className={tdr}>{cost ? money(priceForMargin(cost, margin)) : "—"}</td>
                     <td className={`${tdr} ${rz && rz.mg < margin / 100 ? "text-red-700" : "text-slate-600"}`}>{rz ? <>{pct1(rz.mg)}<span className="block text-[10px] text-slate-400">abs {pct1(rz.abs)} · rec {money(rz.rev, 0)}</span></> : "—"}</td>
                     <td className={td}>
-                      {low && cost && <form action={applySuggestedPrice}><input type="hidden" name="itemId" value={i.id} /><button className="rounded border border-red-300 px-2 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-50">aplicar {money(priceForMargin(cost, margin))}</button></form>}
+                      {low && cost != null && <form action={applySuggestedPrice}><input type="hidden" name="itemId" value={i.id} /><button className="rounded border border-red-300 px-2 py-0.5 text-[11px] font-semibold text-red-700 hover:bg-red-50">aplicar {money(priceForMargin(cost, margin))}</button></form>}
+                      {div && <form action={confirmPriceInQbo} className="mt-0.5"><input type="hidden" name="itemId" value={i.id} /><button className="rounded border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 hover:bg-slate-50" title="Marque depois de digitar este preço no QBO">já atualizei no QBO</button></form>}
                       <details className="text-[10px] text-slate-400">
                         <summary className="cursor-pointer hover:text-[#1f3a5f]">é o mesmo item que…</summary>
                         <form action={mergeItems} className="mt-1 flex items-center gap-1">

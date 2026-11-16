@@ -1969,6 +1969,10 @@ model InventoryItem {
   currentCostAt         DateTime? @db.Date
   currentCostShipmentId String?
   qtyOnHand             Decimal?  @db.Decimal(14, 2) // da carga inicial (CSV do QBO) — informativo
+  // espelho do QBO (último CSV de Products and Services): serve p/ conferir que o preço do app bate com o QBO
+  qboPrice              Decimal?  @db.Decimal(14, 4)
+  qboCost               Decimal?  @db.Decimal(14, 4) // custo do QBO = só mercadoria, SEM frete (não é custo vigente)
+  qboAt                 DateTime? @db.Date
   qtyAt                 DateTime? @db.Date
   active                Boolean   @default(true)
   notes                 String?
@@ -2088,6 +2092,12 @@ model InventoryShipment {
   closedAt   DateTime? // "Fechar custos": a partir daqui a camada não muda
   closedBy   String?
   closedData Json? // snapshot congelado: { merch, costs, absorption, items:[{itemId,name,qty,amount,alloc,unitCost}], invoices:[...] }
+  // leitura dos memos pelo Claude (17/11): o que já foi cobrado e o que a invoice diz "NOT included"
+  aiStatus   String? // COMPLETE | PENDING | UNCLEAR
+  aiNote     String? // resumo em PT-BR
+  aiPending  String[] @default([]) // custos que ainda devem vir
+  aiAt       DateTime?
+  aiHash     String? // hash das invoices/memos analisadas — muda = nota desatualizada
   note       String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt

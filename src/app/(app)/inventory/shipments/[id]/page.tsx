@@ -8,6 +8,8 @@ import { getInventorySettings, marginOf, priceForMargin, resolveInventoryCompany
 import { loadGlData } from "@/lib/inventory/gl";
 import { COST_GROUP_LABEL, type CostGroup } from "@/lib/inventory/classify";
 import { closeShipmentCosts, renameShipment, reopenShipment } from "@/lib/actions/inventory";
+import { ShipmentNotes } from "@/components/inventory/shipment-notes";
+import { notesHash, toNotesInvoices } from "@/lib/inventory/claude-notes";
 
 export const dynamic = "force-dynamic";
 
@@ -83,6 +85,7 @@ export default async function ShipmentDetail({ params, searchParams }: { params:
                 <div className="flex justify-between border-t border-slate-200 pt-1 font-semibold"><span>Total de custos (rateio por valor)</span><span className="tabular-nums">{money(v.pool)}</span></div>
               </div>
             )}
+            <ShipmentNotes sh={sh} hash={notesHash(toNotesInvoices(all.filter((i) => i.shipmentId === sh.id)))} closed={!!sh.closedAt} />
             {!sh.closedAt && v.goods.length > 0 && (
               <div className="mt-4 border-t border-slate-100 pt-3">
                 {v.closeHint && <p className="mb-2 text-xs text-blue-700">A invoice de frete traz <b>{v.closeHint}</b>: sugerimos fechar os custos.</p>}
